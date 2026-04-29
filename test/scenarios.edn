@@ -1,0 +1,92 @@
+;; Test scenarios for lorekeeper plugin
+;; Each scenario tests that a command/skill produces expected output
+;;
+;; NOTE: Debug output testing via KNOWLEDGE_DEBUG is available for manual debugging
+;; but not used in automated tests since Claude's response to system message
+;; instructions is non-deterministic. If deeper debugging is needed, consider
+;; implementing file-based logging in the hook (write to a log file that tests can check).
+
+[{:name "command-help"
+  :prompt "/lore:help"
+  :workdir "."
+  :expects ["Lorekeeper Status"
+            "lorekeeper:help"
+            "lorekeeper:explore"
+            "lorekeeper:prime"
+            "lorekeeper:review"
+            "lorekeeper:update"]}
+
+ {:name "command-explore-all"
+  :prompt "/lore:explore"
+  :workdir "."
+  :expects ["domain"
+            "frameworks"
+            "languages"
+            "general"]}
+
+ {:name "command-explore-filter"
+  :prompt "/lore:explore domain"
+  :workdir "."
+  :expects ["payments"
+            "inventory"
+            "device"]}
+
+ {:name "command-prime-payments"
+  :prompt "/lore:prime payments"
+  :workdir "."
+  :expects ["Payments" "payments-context\\.md|Loaded.*payments"]}
+
+ {:name "skill-triggers-on-architecture-question"
+  :prompt "What's the architecture pattern we use for command handlers in the backend?"
+  :workdir "."
+  :expects ["CQRS|MediatR|command|handler"]}
+
+ {:name "skill-triggers-on-domain-question"
+  :prompt "What events trigger the creation of a payment?"
+  :workdir "."
+  :expects ["Payment" "OrderPlaced|CheckoutCompleted|event"]}
+
+ {:name "implementation-phase-loads-standards"
+  :prompt "I have this implementation plan. Start implementing Task 1.
+
+# Device Status Query - Implementation Plan
+
+**Goal:** Create a query that returns the current status of devices assigned to a project.
+
+**Architecture:**
+- New query `GetDeviceStatusQuery` in the Application layer following CQRS pattern
+- Returns `List<DeviceStatusDto>` with device ID, status, and last seen timestamp
+- Uses `IAuthorizedQuery<Project>` for authorization
+- Fetches from `IBaseDeviceRepository` filtered by project ID
+- No new database tables - reads existing device state
+- Unit tests with mocked repositories following existing patterns
+
+---
+
+## Task 1: Create DeviceStatusDto
+
+**Files:**
+- Create: `src/Application/Devices/Queries/GetDeviceStatus/DeviceStatusDto.cs`
+
+```csharp
+namespace MyApp.Application.Devices.Queries.GetDeviceStatus;
+
+public record DeviceStatusDto
+{
+    public Guid DeviceId { get; init; }
+    public string Status { get; init; }
+    public DateTimeOffset? LastSeen { get; init; }
+}
+```
+
+**Step 1: Create the DTO file**
+
+**Step 2: Verify build**
+Run: `dotnet build src/Application -tl`
+
+**Step 3: Commit**
+```bash
+git commit -m \"feat: add DeviceStatusDto\"
+```"
+  :workdir "backend"
+  :expects ["DeviceStatusDto|DTO|record"]}]

@@ -1,0 +1,104 @@
+---
+description: Load domain knowledge before working on a business area. Discovers available domains dynamically from the knowledge index.
+---
+
+# Prime Command
+
+Load knowledge files into conversation context. Supports domain keywords for quick access and exact paths for any file in the knowledge base.
+
+## Usage
+
+If no arguments provided, show this help:
+
+```
+Load knowledge into your conversation context.
+
+USAGE:
+  /lore:prime <keyword>           Load by domain keyword
+  /lore:prime <keyword> <keyword> Load multiple domains
+  /lore:prime <path/to/file>      Load by exact path (contains /)
+  /lore:prime domains             List all available domains
+
+DOMAIN KEYWORDS:
+  Discovered dynamically from the knowledge index.
+  Run `/lore:prime domains` to see what's available.
+
+PATH EXAMPLES:
+  /lore:prime domain/my-context
+  /lore:prime frameworks/react/hooks-conventions
+  /lore:prime general/pr-guidelines
+
+EXAMPLES:
+  /lore:prime auth
+  /lore:prime notifications api-design
+  /lore:prime domain/my-context
+
+DISCOVER:
+  /lore:explore                    Browse and search the knowledge base
+```
+
+## Knowledge Path
+
+The knowledge base path is provided by the SessionStart hook. Look for "Knowledge path:" in the
+session context — that is the absolute path to the knowledge directory.
+
+All file references below use `<knowledge-path>` as a placeholder. Replace it with the actual
+path from the session context when using Read, Glob, or Grep tools.
+
+If the session says KNOWLEDGE_BASE_PATH is not set, tell the user:
+"Set the KNOWLEDGE_BASE_PATH environment variable to the path of your knowledge base repo clone
+and restart Claude Code."
+
+## Domain Discovery
+
+The prime command does NOT use a hardcoded domain list. Instead it discovers domains dynamically.
+
+### For `domains` argument:
+Read `<knowledge-path>/_index.json`, filter nodes where `category` is `domain`, list them with titles and descriptions.
+
+### For keyword arguments (no `/` in argument):
+1. Read `<knowledge-path>/_index.json`
+2. For each argument, search domain nodes by:
+   - Exact filename match (e.g., argument `auth` matches node path `domain/auth-user-management`)
+   - Title contains keyword (case-insensitive)
+   - Tags contain keyword
+   - Keywords array contains keyword
+3. If exactly one match, load it
+4. If multiple matches, show them and ask user to pick
+5. If no domain match, fall back to grep search across all knowledge files
+
+## Steps
+
+### 1. Check for Arguments
+
+If no arguments provided, display the help text above and stop.
+
+### 2. Handle `domains` Option
+
+If argument is `domains`, use the Read tool to load `<knowledge-path>/_index.json` and filter nodes where `category` is `domain`. List available domain files with their titles.
+
+### 3. Load Files
+
+For each argument provided:
+
+**If argument is a keyword (no `/`) -> dispatch knowledge-reader:**
+1. Read `<knowledge-path>/_index.json`
+2. Search domain nodes using the matching rules from Domain Discovery above
+3. If exactly one match: dispatch **knowledge-reader** agent with:
+   "Load all knowledge for the {domain-name} domain. Include domain context, relevant standards, and learnings."
+4. If multiple matches: list them and ask the user to pick
+5. If no match found: dispatch **knowledge-reader** with:
+   "Find any knowledge relevant to: {keyword}"
+
+**If argument contains `/` -> dispatch knowledge-reader with path hint:**
+Dispatch **knowledge-reader** agent with:
+"Load knowledge from {path}. Include related learnings."
+
+### 4. Output Format
+
+The knowledge-reader agent returns a structured summary. Present it to the user as-is — the reader's output format (Context Summary, Standards & Patterns, Gotchas & Learnings, Sources) is designed for consumption.
+
+If the reader returns no results, display:
+```
+No knowledge found for "{argument}". Use `/lore:explore` to browse available files.
+```

@@ -1,0 +1,17 @@
+{
+  "description": "Ensure coding standards and architecture knowledge are loaded before planning or writing code",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/load-standards-reminder.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

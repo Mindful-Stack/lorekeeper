@@ -1,0 +1,18 @@
+{
+  "name": "lorekeeper",
+  "description": "AI-assisted knowledge base plugin for Claude Code",
+  "owner": {
+    "name": "Lorekeeper Plugin Contributors"
+  },
+  "plugins": [
+    {
+      "name": "lorekeeper",
+      "description": "Knowledge base access, PR review, and domain context for development",
+      "version": "1.0.0",
+      "source": "./",
+      "author": {
+        "name": "Lorekeeper Plugin Contributors"
+      }
+    }
+  ]
+}

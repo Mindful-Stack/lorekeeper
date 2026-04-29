@@ -1,0 +1,330 @@
+# Lorekeeper — Claude Code Plugin
+
+A Claude Code plugin that provides intelligent access to a team's knowledge base.
+
+## Features
+
+- **Domain Knowledge**: Load business domain context into conversation
+- **PR Review**: Structured code review using team standards
+- **Knowledge Search**: Fast search across all knowledge nodes
+- **Pattern Identification**: Answer "how do we do X?" using docs-first approach
+- **Update Proposals**: Suggest knowledge base improvements
+
+## Setup
+
+### 1. Clone the Plugin Repo
+
+```bash
+git clone git@github.com:your-org/lorekeeper.git
+```
+
+### 2. Set the Environment Variable
+
+The plugin needs to know where the knowledge base is. Set `KNOWLEDGE_BASE_PATH` to the absolute path of your `shared-knowledge` clone:
+
+**Windows (System Environment Variables) -- recommended:**
+1. Settings > System > About > Advanced system settings > Environment Variables
+2. Add new User variable:
+   - Name: `KNOWLEDGE_BASE_PATH`
+   - Value: `C:/Users/you/source/shared-knowledge`
+
+**Windows (PowerShell profile):**
+```powershell
+# Add to your PowerShell profile ($PROFILE)
+$env:KNOWLEDGE_BASE_PATH = "C:/Users/you/source/shared-knowledge"
+```
+
+**macOS/Linux:**
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export KNOWLEDGE_BASE_PATH="/home/you/source/shared-knowledge"
+```
+
+If the environment variable is not set, the plugin falls back to looking for `docs/shared-knowledge/` in the current repo (submodule approach).
+
+**Optional:** Set `KNOWLEDGE_MAX_AGE_DAYS` to control the staleness warning threshold (default: 7 days).
+
+### 3. Run with the Plugin
+
+The current recommended way to use the plugin is with the `--plugin-dir` flag, pointing to your local clone:
+*note: this will change once stable*
+
+```bash
+claude --plugin-dir /path/to/lorekeeper
+```
+
+This loads the plugin for that session without requiring a global install. You can add a shell alias for convenience:
+
+**Windows (PowerShell profile):**
+```powershell
+function claude-lorekeeper { claude --plugin-dir "C:/Users/you/source/lorekeeper" @args }
+```
+
+**macOS/Linux:**
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+alias claude-lorekeeper='claude --plugin-dir /path/to/lorekeeper'
+```
+
+### 4. Verify Setup
+
+Start Claude Code with the plugin, then:
+
+```bash
+/lore:help
+```
+
+This shows plugin status and available commands. You should see "Knowledge base found" in the output.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/lore:help` | Show status and help |
+| `/lore:init` | Initialize a new knowledge base from templates |
+| `/lore:onboard` | Interactive onboarding for new team members |
+| `/lore:explore` | Browse and search knowledge |
+| `/lore:prime` | Load knowledge into context |
+| `/lore:review` | Review a PR or local changes |
+| `/lore:update` | Propose knowledge updates |
+
+### Init
+
+Scaffold a new knowledge base:
+
+```bash
+/lore:init                    # Create starter knowledge structure
+```
+
+### Onboard
+
+Interactive walkthrough for developers joining the team:
+
+```bash
+/lore:onboard              # Interactive - asks role, shows menu
+/lore:onboard backend      # Skip role question, backend focus
+/lore:onboard frontend     # Skip role question, frontend focus
+/lore:onboard fullstack    # Skip role question, fullstack focus
+```
+
+Features:
+- Detects which repos you have locally
+- Shows which starter repos to clone for your role
+- System architecture overview
+- Deep dives into each repo (structure, patterns, workflow)
+- Q&A mode using the knowledge base
+
+### Prime
+
+Load knowledge into conversation context:
+
+```bash
+/lore:prime                              # Show help and available domains
+/lore:prime domains                      # List all domains
+/lore:prime payments                         # Load a domain context
+/lore:prime inventory user-management            # Load multiple domains
+/lore:prime domain/payments-context          # Load by exact path
+/lore:prime frameworks/react/hooks-conventions  # Load any knowledge file
+```
+
+### Review
+
+Review code changes using team standards:
+
+```bash
+/lore:review                # Auto-detect PR or local changes
+/lore:review pr             # Review current PR
+/lore:review pr 123         # Review specific PR
+/lore:review changes        # Review local changes vs main
+/lore:review staged         # Review staged changes
+```
+
+### Explore
+
+Browse and search knowledge files:
+
+```bash
+/lore:explore                              # List all knowledge nodes
+/lore:explore domain                       # List domain knowledge
+/lore:explore payments                         # Search for "payments"
+```
+
+### Update Knowledge
+
+Propose updates to the knowledge base:
+
+```bash
+/lore:update Add password-reset flow to user-management context
+```
+
+## Skills (Auto-Invoked)
+
+These skills trigger automatically when relevant:
+
+| Skill | Triggers On |
+|-------|-------------|
+| `knowledge-discovery` | Working in repos that need domain/technical context |
+| `pattern-identifier` | Questions about standards ("How do we...", "Should I...", "What's our pattern for...") |
+| `review` | "Review my PR", "Check this code" |
+| `knowledge-update` | "Document this", finding knowledge gaps |
+
+### Pattern Identifier Flow
+
+The `pattern-identifier` skill answers questions about team standards using a **docs-first, codebase-second** approach:
+
+```
+User Question ("How do we handle one-line if statements?")
+                      |
+                      v
+         +-------------------------+
+         |   pattern-identifier    |
+         |        skill            |
+         +-----------+-------------+
+                     v
+         +-------------------------+
+         |   knowledge-searcher    |  <-- Subagent (keeps context clean)
+         |        agent            |
+         |                         |
+         |  - Search _index.json   |
+         |  - Grep for keywords    |
+         |  - Read matching docs   |
+         +-----------+-------------+
+                     v
+              +-----------+
+              | Confidence|
+              +-----+-----+
+                    |
+      +-------------+-------------+
+      v             v             v
+ fully-documented  partial     undocumented
+      |             |             |
+      v             +------+------+
+ Return answer             v
+                 +-------------------------+
+                 |    Explore agent        |  <-- Codebase fallback
+                 |                         |
+                 |  - Find real examples   |
+                 |  - Count occurrences    |
+                 |  - Note locations       |
+                 +-----------+-------------+
+                             v
+                 +-------------------------+
+                 |   Combined Response     |
+                 |                         |
+                 |  - Docs + codebase      |
+                 |  - Sources with lines   |
+                 |  - Update suggestion    |
+                 +-------------------------+
+```
+
+**Confidence levels:**
+
+| Level | Meaning | Action |
+|-------|---------|--------|
+| `fully-documented` | Explicit answer in knowledge base | Return answer with sources |
+| `partially-documented` | Related content but not complete | Add codebase examples, suggest update |
+| `undocumented` | Nothing relevant in docs | Answer from codebase, strong update suggestion |
+
+**Principle:** The knowledge base is the source of truth. Codebase shows practice, which may deviate from standards.
+
+## Agents
+
+Subagents run in isolation to keep the main conversation context clean:
+
+| Agent | Purpose |
+|-------|---------  |
+| `knowledge-searcher` | Searches knowledge base, returns structured answers with sources and confidence |
+
+The `knowledge-searcher` agent:
+- Searches `_index.json` for tag/title/description matches
+- Greps knowledge files for keywords
+- Reads top 3-5 matching files
+- Returns structured output: Answer, Sources (with line numbers), Confidence, Gap description
+
+## Knowledge Structure
+
+```
+knowledge/
+├── _index.json    # Pre-built index (generated by build-index)
+├── general/       # Cross-repo standards
+├── domain/        # DDD bounded contexts
+├── frameworks/    # Framework-specific patterns
+└── languages/     # Language-specific guidelines
+```
+
+Note: The `knowledge/` directory lives in the `shared-knowledge` repo, not in this plugin repo. This plugin provides the commands, skills, agents, and hooks that interact with that knowledge.
+
+## Architecture
+
+The plugin uses **zero runtime scripts** (except the SessionStart hook). All commands and skills use Claude's native tools:
+
+- **Environment variable**: `KNOWLEDGE_BASE_PATH` points to the knowledge repo clone (falls back to `docs/shared-knowledge/` submodule path)
+- **SessionStart hook**: Validates path, checks staleness, injects resolved path into session
+- **Listing**: Read `_index.json` (pre-built at development time)
+- **Search**: Grep tool with regex patterns
+- **Context detection**: Glob + Read for `*.csproj`, `package.json`, etc.
+- **File loading**: Read tool directly
+
+### How Path Resolution Works
+
+```
+ENV VAR                  HOOK (bash)                    SKILLS/COMMANDS (markdown)
+KNOWLEDGE_BASE_PATH  ->  load-standards-reminder.sh  -> systemMessage includes:
+                          - validate path exists          "Knowledge path: /path/to/knowledge/"
+                          - check staleness via git    -> Skills say: "Read <knowledge-path>/domain/foo.md"
+                          - output resolved path          Claude resolves at runtime
+```
+
+If `KNOWLEDGE_BASE_PATH` is not set, the hook falls back to detecting `docs/shared-knowledge/` in the current repo.
+
+### Build Script
+
+The CLI handles index building:
+
+```bash
+node scripts/build-index.js    # Regenerate knowledge/_index.json
+```
+
+Run this after adding, removing, or renaming knowledge files. The output (`knowledge/_index.json`) should be committed to the `shared-knowledge` repo.
+
+## Plugin Structure
+
+```
+lorekeeper/
+├── package.json       # Plugin manifest
+├── README.md
+├── agents/            # Subagent definitions
+├── commands/          # Slash command definitions
+├── hooks/             # Lifecycle hooks (SessionStart, etc.)
+├── scripts/           # Build scripts (index generation)
+├── skills/            # Auto-invoked skill definitions
+└── test/              # Tests
+```
+
+## Troubleshooting
+
+### Plugin says "KNOWLEDGE_BASE_PATH is NOT set"
+
+1. Set the environment variable to the path of your `shared-knowledge` repo clone
+2. Restart Claude Code (env vars are read at startup)
+3. Run `/lore:help` to verify
+
+### Plugin says path doesn't exist
+
+1. Check the path in your `KNOWLEDGE_BASE_PATH` variable is correct
+2. Ensure it points to the root of the `shared-knowledge` repo (not the `knowledge/` subdirectory)
+3. Use forward slashes in the path, even on Windows: `C:/Users/...` not `C:\Users\...`
+
+### Knowledge base is stale warning
+
+The plugin warns when the knowledge repo hasn't been updated in 7+ days (configurable via `KNOWLEDGE_MAX_AGE_DAYS`):
+
+```bash
+cd $KNOWLEDGE_BASE_PATH
+git pull
+```
+
+### Commands not recognized
+
+1. Ensure you started Claude with `--plugin-dir` pointing to this repo
+2. Restart Claude Code after making changes to plugin files

@@ -1,0 +1,14 @@
+{
+  "name": "lorekeeper",
+  "version": "1.0.0",
+  "description": "AI-assisted knowledge base plugin for Claude Code",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build-index": "node scripts/build-index.js"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "knowledge-base",
+  "version": "1.0.0",
+  "description": "A knowledge base consumed by the lorekeeper Claude Code plugin",
+  "scripts": {
+    "test": "node --test src/__tests__/*.test.js",
+    "validate": "node src/cli.js validate",
+    "build-index": "node src/cli.js build-index",
+    "check-index": "node src/cli.js check-index"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "type": "commonjs"
+}

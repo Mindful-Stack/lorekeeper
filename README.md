@@ -279,13 +279,17 @@ If `KNOWLEDGE_BASE_PATH` is not set, the hook falls back to detecting `docs/shar
 
 ### Build Script
 
-The CLI handles index building:
+The knowledge-base owns its own index tooling. Inside the knowledge repo:
 
 ```bash
-node scripts/build-index.js    # Regenerate knowledge/_index.json
+make build-index               # via Makefile
+# or
+npm run build-index            # via package.json scripts
+# or
+node src/cli.js build-index    # directly
 ```
 
-Run this after adding, removing, or renaming knowledge files. The output (`knowledge/_index.json`) should be committed to the `shared-knowledge` repo.
+Run this after adding, removing, or renaming knowledge files. The output (`knowledge/_index.json`) lives in and is committed to the knowledge-base repo.
 
 ## Plugin Structure
 

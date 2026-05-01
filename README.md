@@ -12,65 +12,53 @@ A Claude Code plugin that provides intelligent access to a team's knowledge base
 
 ## Setup
 
-### 1. Clone the Plugin Repo
+### 1. Install the Plugin
 
-```bash
-git clone git@github.com:your-org/lorekeeper.git
+Lorekeeper is distributed via the [Witan marketplace](https://github.com/Mindful-Stack/witan). Inside Claude Code:
+
+```text
+/plugin marketplace add Mindful-Stack/witan
+/plugin install lorekeeper@witan
 ```
 
-### 2. Set the Environment Variable
+### 2. Point at a Knowledge Base
 
-The plugin needs to know where the knowledge base is. Set `KNOWLEDGE_BASE_PATH` to the absolute path of your `shared-knowledge` clone:
+Lorekeeper resolves the knowledge base path in this order:
 
-**Windows (System Environment Variables) -- recommended:**
+1. **`.lorekeeper/config.json`** in the project root — `{ "knowledgeBasePath": "/abs/or/rel/path" }`. Best for per-project setups.
+2. **`KNOWLEDGE_BASE_PATH`** environment variable — best for a single global default.
+3. **Sibling-dir fallback** — `./docs/shared-knowledge`, `./shared-knowledge`, or `./knowledge` in the current repo.
+
+If you don't have a knowledge base yet, scaffold one:
+
+```text
+/lore:init                        # Default: ./shared-knowledge
+/lore:init <path>                 # Custom target
+```
+
+Then either set the env var or write a config file. Setting the env var globally:
+
+**Windows (System Environment Variables) — recommended:**
 1. Settings > System > About > Advanced system settings > Environment Variables
-2. Add new User variable:
-   - Name: `KNOWLEDGE_BASE_PATH`
-   - Value: `C:/Users/you/source/shared-knowledge`
+2. Add: `KNOWLEDGE_BASE_PATH` = `C:/Users/you/source/shared-knowledge`
 
 **Windows (PowerShell profile):**
 ```powershell
-# Add to your PowerShell profile ($PROFILE)
 $env:KNOWLEDGE_BASE_PATH = "C:/Users/you/source/shared-knowledge"
 ```
 
 **macOS/Linux:**
 ```bash
-# Add to ~/.bashrc or ~/.zshrc
 export KNOWLEDGE_BASE_PATH="/home/you/source/shared-knowledge"
 ```
 
-If the environment variable is not set, the plugin falls back to looking for `docs/shared-knowledge/` in the current repo (submodule approach).
-
 **Optional:** Set `KNOWLEDGE_MAX_AGE_DAYS` to control the staleness warning threshold (default: 7 days).
 
-### 3. Run with the Plugin
+### 3. Verify Setup
 
-The current recommended way to use the plugin is with the `--plugin-dir` flag, pointing to your local clone:
-*note: this will change once stable*
+Restart Claude Code (env vars are read at startup), then:
 
-```bash
-claude --plugin-dir /path/to/lorekeeper
-```
-
-This loads the plugin for that session without requiring a global install. You can add a shell alias for convenience:
-
-**Windows (PowerShell profile):**
-```powershell
-function claude-lorekeeper { claude --plugin-dir "C:/Users/you/source/lorekeeper" @args }
-```
-
-**macOS/Linux:**
-```bash
-# Add to ~/.bashrc or ~/.zshrc
-alias claude-lorekeeper='claude --plugin-dir /path/to/lorekeeper'
-```
-
-### 4. Verify Setup
-
-Start Claude Code with the plugin, then:
-
-```bash
+```text
 /lore:help
 ```
 

@@ -89,4 +89,14 @@ Run: `dotnet build src/Application -tl`
 git commit -m \"feat: add DeviceStatusDto\"
 ```"
   :workdir "backend"
-  :expects ["DeviceStatusDto|DTO|record"]}]
+  :expects ["DeviceStatusDto|DTO|record"]}
+
+ {:name "command-doctor-runs"
+  :prompt "/lore:doctor"
+  :workdir "."
+  :expects ["doctor|diagnostic|errors|warnings|workspace|knowledge"]}
+
+ {:name "command-init-already-workspace"
+  :prompt "/lore:init"
+  :workdir "."
+  :expects ["init|workspace|retrofit|adopt|already|household"]}]

@@ -43,9 +43,10 @@ if [ -z "$RESOLVED_PATH" ] && [ -n "${KNOWLEDGE_BASE_PATH:-}" ]; then
     RESOLVED_PATH="$KNOWLEDGE_BASE_PATH"
 fi
 
-# 3. Sibling fallback
+# 3. Sibling fallback. `lore/` is the canonical name in the witan-household
+# pattern; the others are kept for back-compat with pre-witan-household setups.
 if [ -z "$RESOLVED_PATH" ]; then
-    for candidate in "./docs/shared-knowledge" "./shared-knowledge" "./knowledge"; do
+    for candidate in "./lore" "./docs/lore" "./docs/shared-knowledge" "./shared-knowledge" "./knowledge"; do
         if [ -d "$candidate" ] && { [ -d "$candidate/knowledge" ] || [ -f "$candidate/knowledge.config.json" ]; }; then
             RESOLVED_PATH="$(cd "$candidate" && pwd)"
             break

@@ -23,33 +23,55 @@ Lorekeeper is distributed via the [Witan marketplace](https://github.com/Mindful
 
 ### 2. Point at a Knowledge Base
 
-Lorekeeper resolves the knowledge base path in this order:
+The simplest setup is the **witan-household** workspace pattern — a meta-repo that bundles your code repos, devcontainer, and knowledge base together. Lorekeeper auto-discovers the `lore/` directory inside such a workspace via sibling-fallback; no env vars or config files needed.
 
-1. **`.lorekeeper/config.json`** in the project root — `{ "knowledgeBasePath": "/abs/or/rel/path" }`. Best for per-project setups.
-2. **`KNOWLEDGE_BASE_PATH`** environment variable — best for a single global default.
-3. **Sibling-dir fallback** — `./docs/shared-knowledge`, `./shared-knowledge`, or `./knowledge` in the current repo.
+```text
+# Option A — start from the template repo (no Reeve required)
+gh repo create my-workspace --template Mindful-Stack/witan-household
+gh repo clone my-workspace
+cd my-workspace
+# Open Claude Code here; /lore:help reports "Knowledge base found"
 
-If you don't have a knowledge base yet, scaffold one:
+# Option B — via Reeve (if you use it)
+reeve household new my-workspace
+```
+
+Either gives you a workspace with `lore/knowledge/` populated from the starter template; Claude Code launched from the workspace root finds the KB automatically.
+
+If you'd rather wire it up manually, Lorekeeper resolves the knowledge base path in this order:
+
+1. **`.lorekeeper/config.json`** in the project root — `{ "knowledgeBasePath": "/abs/or/rel/path" }`. Best for per-project setups with custom paths.
+2. **`KNOWLEDGE_BASE_PATH`** environment variable — best for a single global default that applies anywhere.
+3. **Sibling-dir fallback** in CWD, first match wins:
+   - `./lore` (canonical — witan-household)
+   - `./docs/lore`
+   - `./docs/shared-knowledge`, `./shared-knowledge`, `./knowledge` (legacy, kept for back-compat)
+
+   Each candidate must contain either a `knowledge/` subdirectory or a `knowledge.config.json` to be recognised.
+
+If you want JUST a knowledge base repo (no workspace ceremony), scaffold one with:
 
 ```text
 /lore:init                        # Default: ./shared-knowledge
 /lore:init <path>                 # Custom target
 ```
 
-Then either set the env var or write a config file. Setting the env var globally:
+This creates a standalone KB repo with its own tooling. Point Lorekeeper at it via `KNOWLEDGE_BASE_PATH` or `.lorekeeper/config.json`.
+
+Setting the env var globally:
 
 **Windows (System Environment Variables) — recommended:**
 1. Settings > System > About > Advanced system settings > Environment Variables
-2. Add: `KNOWLEDGE_BASE_PATH` = `C:/Users/you/source/shared-knowledge`
+2. Add: `KNOWLEDGE_BASE_PATH` = `C:/Users/you/source/my-workspace/lore` (or wherever your KB lives)
 
 **Windows (PowerShell profile):**
 ```powershell
-$env:KNOWLEDGE_BASE_PATH = "C:/Users/you/source/shared-knowledge"
+$env:KNOWLEDGE_BASE_PATH = "C:/Users/you/source/my-workspace/lore"
 ```
 
 **macOS/Linux:**
 ```bash
-export KNOWLEDGE_BASE_PATH="/home/you/source/shared-knowledge"
+export KNOWLEDGE_BASE_PATH="/home/you/source/my-workspace/lore"
 ```
 
 **Optional:** Set `KNOWLEDGE_MAX_AGE_DAYS` to control the staleness warning threshold (default: 7 days).
@@ -240,13 +262,13 @@ knowledge/
 └── languages/     # Language-specific guidelines
 ```
 
-Note: The `knowledge/` directory lives in the `shared-knowledge` repo, not in this plugin repo. This plugin provides the commands, skills, agents, and hooks that interact with that knowledge.
+Note: The `knowledge/` directory lives in your knowledge-base directory (typically `lore/` inside a witan-household workspace, or a standalone KB repo), not in this plugin repo. This plugin provides the commands, skills, agents, and hooks that interact with that knowledge.
 
 ## Architecture
 
 The plugin uses **zero runtime scripts** (except the SessionStart hook). All commands and skills use Claude's native tools:
 
-- **Environment variable**: `KNOWLEDGE_BASE_PATH` points to the knowledge repo clone (falls back to `docs/shared-knowledge/` submodule path)
+- **Path resolution**: SessionStart hook resolves the KB path from `.lorekeeper/config.json` → `KNOWLEDGE_BASE_PATH` → sibling-dir fallback (`lore/`, `docs/lore/`, `shared-knowledge/`, ...)
 - **SessionStart hook**: Validates path, checks staleness, injects resolved path into session
 - **Listing**: Read `_index.json` (pre-built at development time)
 - **Search**: Grep tool with regex patterns
@@ -256,14 +278,14 @@ The plugin uses **zero runtime scripts** (except the SessionStart hook). All com
 ### How Path Resolution Works
 
 ```
-ENV VAR                  HOOK (bash)                    SKILLS/COMMANDS (markdown)
-KNOWLEDGE_BASE_PATH  ->  load-standards-reminder.sh  -> systemMessage includes:
-                          - validate path exists          "Knowledge path: /path/to/knowledge/"
-                          - check staleness via git    -> Skills say: "Read <knowledge-path>/domain/foo.md"
+RESOLUTION ORDER         HOOK (bash)                    SKILLS/COMMANDS (markdown)
+.lorekeeper/config.json  load-standards-reminder.sh  -> systemMessage includes:
+KNOWLEDGE_BASE_PATH       - validate path exists          "Knowledge path: /path/to/knowledge/"
+sibling-dir fallback      - check staleness via git    -> Skills say: "Read <knowledge-path>/domain/foo.md"
                           - output resolved path          Claude resolves at runtime
 ```
 
-If `KNOWLEDGE_BASE_PATH` is not set, the hook falls back to detecting `docs/shared-knowledge/` in the current repo.
+In a witan-household workspace, sibling-dir fallback finds `./lore/` automatically — no env var or config file needed.
 
 ### Build Script
 
@@ -295,16 +317,20 @@ lorekeeper/
 
 ## Troubleshooting
 
-### Plugin says "KNOWLEDGE_BASE_PATH is NOT set"
+### Plugin says "No knowledge base configured"
 
-1. Set the environment variable to the path of your `shared-knowledge` repo clone
-2. Restart Claude Code (env vars are read at startup)
-3. Run `/lore:help` to verify
+The hook checked all three resolution paths and found nothing. Pick one:
+
+1. **Use the witan-household pattern** — `cd` into a workspace meta-repo whose `lore/` subdirectory has a `knowledge/` folder inside. Restart Claude Code. (Easiest if you're starting fresh — see Setup section above.)
+2. **Set `KNOWLEDGE_BASE_PATH`** — point at your knowledge-base root. Restart Claude Code (env vars are read at startup).
+3. **Write `.lorekeeper/config.json`** — `{ "knowledgeBasePath": "/path/to/kb" }` in the project root.
+
+Then run `/lore:help` to verify.
 
 ### Plugin says path doesn't exist
 
-1. Check the path in your `KNOWLEDGE_BASE_PATH` variable is correct
-2. Ensure it points to the root of the `shared-knowledge` repo (not the `knowledge/` subdirectory)
+1. Check the path in your `KNOWLEDGE_BASE_PATH` variable (or `.lorekeeper/config.json`) is correct.
+2. Ensure it points to the root of the knowledge-base directory (the one that *contains* `knowledge/`), not `knowledge/` itself.
 3. Use forward slashes in the path, even on Windows: `C:/Users/...` not `C:\Users\...`
 
 ### Knowledge base is stale warning

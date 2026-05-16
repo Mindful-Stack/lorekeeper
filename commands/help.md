@@ -80,13 +80,15 @@ Always display available commands:
 
 | Command | Description |
 |---------|-------------|
-| `/lore:help` | This help message |
-| `/lore:onboard` | Interactive onboarding walkthrough for new team members |
+| `/lore:doctor` | Run full workspace + KB diagnostic |
 | `/lore:explore [query]` | Browse and search knowledge nodes |
+| `/lore:help` | This help message |
+| `/lore:init` | Adopt witan in this directory (detects greenfield / existing repo / poly-repo and dispatches) |
+| `/lore:learn [description]` | Capture a learning (gotcha, edge case, non-obvious behaviour) |
+| `/lore:onboard` | Interactive onboarding walkthrough for new team members |
 | `/lore:prime <topic>` | Load knowledge into context (keywords or paths) |
 | `/lore:review` | Review PR/code using team standards |
 | `/lore:update` | Propose updates to the knowledge base |
-| `/lore:learn [description]` | Capture a learning (gotcha, edge case, non-obvious behaviour) |
 
 ## Knowledge Categories
 

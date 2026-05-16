@@ -1,44 +1,170 @@
 ---
-description: Scaffold a fresh knowledge base from the bundled template by invoking the init-knowledge-base script.
+description: Adopt witan in this directory. Smart: detects whether it's empty, an existing repo, a project with docs, or a poly-repo parent, and dispatches accordingly.
 ---
 
 # Init Command
 
-Create a fully-equipped knowledge base from the bundled template.
+Adopt witan in the current directory. The command detects state and offers the right setup.
 
 ## Usage
 
 ```
-/lore:init                    # Default target: ./shared-knowledge
-/lore:init <target-path>      # Custom target
+/lore:init                # Run in the current directory
+/lore:init <name>         # Override the workspace name (otherwise inferred)
 ```
 
 ## Implementation
 
-When this command is invoked:
+### Step 1: Detect state
 
-1. **Resolve target path:**
-   - If the user provided an argument, use it as `<target>`.
-   - Otherwise, default to `./shared-knowledge` relative to the current working directory.
+Use the Bash tool to run the detection script:
 
-2. **Invoke the init script:**
-   Use the Bash tool:
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/init-detect.js
+```
+
+Parse the JSON output. The `scenario` field is one of:
+
+- `greenfield` — empty directory; scaffold from scratch
+- `files-no-git` — has files but no .git/; confirm before initialising
+- `single-repo-retrofit` — git repo, no household.json; add workspace files in place
+- `docs-migration` — git repo with `docs/`/`knowledge/`/`wiki/` directory; offer rename or override
+- `poly-repo-retrofit` — multiple child git repos at depth 1; offer to wrap them
+- `already-a-workspace` — has household.json; refuse with helpful message
+- `refused` — running in `$HOME` or `$HOME/Source`; refuse with safety message
+
+### Step 2: Dispatch per scenario
+
+Use AskUserQuestion to confirm the scenario interpretation and gather any additional input (workspace name, sibling selection for poly-repo). Then run the scenario-specific actions via Bash.
+
+For each scenario, the workspace name defaults to the basename of CWD unless the user provided an argument to /lore:init.
+
+#### Greenfield
+
+1. Confirm with the user: "I'll scaffold a fresh witan-household workspace here. Workspace name will be `<inferred>`. OK?"
+2. If yes, clone the witan-household template from GitHub:
+
+```bash
+git clone --depth=1 https://github.com/Mindful-Stack/witan-household.git .tmp-witan-clone
+# Move template content into CWD
+mv .tmp-witan-clone/.devcontainer .tmp-witan-clone/.gitignore .tmp-witan-clone/CLAUDE.md \
+   .tmp-witan-clone/Makefile .tmp-witan-clone/README.md .tmp-witan-clone/household.json \
+   .tmp-witan-clone/lore .tmp-witan-clone/scripts .
+rm -rf .tmp-witan-clone
+chmod +x scripts/*.sh
+./scripts/rename.sh "<workspace-name>"
+git init -b main && git add -A && git commit -m "initial workspace (from Mindful-Stack/witan-household)"
+```
+
+3. Report what was created.
+
+#### Files-no-git
+
+1. Confirm: "I see files in this directory but no .git/. Initialise a new git repo and adopt witan here?"
+2. If yes: same as Greenfield except the `git init`-then-commit includes the existing files.
+
+#### Single-repo retrofit
+
+1. Confirm: "This is an existing git repo. I'll add the witan workspace files (household.json, .devcontainer/, CLAUDE.md, lore/, .gitignore updates) without touching your existing code. OK?"
+2. Clone the witan-household template to a tempdir and copy only the workspace files in:
+
+```bash
+TMPL=$(mktemp -d)
+git clone --depth=1 https://github.com/Mindful-Stack/witan-household.git "$TMPL"
+# Copy only the workspace artefacts — handle existing CLAUDE.md specially
+if [ -f CLAUDE.md ]; then
+    echo "" >> CLAUDE.md
+    echo "<!-- witan-household additions: -->" >> CLAUDE.md
+    cat "$TMPL/CLAUDE.md" >> CLAUDE.md
+else
+    cp "$TMPL/CLAUDE.md" CLAUDE.md
+fi
+cp "$TMPL/household.json" .
+cp -r "$TMPL/.devcontainer" .
+cp -r "$TMPL/lore" .
+cp "$TMPL/Makefile" .
+cp -r "$TMPL/scripts" .
+chmod +x scripts/*.sh
+# Merge .gitignore: append the workspace-meta patterns to existing
+if [ -f .gitignore ]; then
+    echo "" >> .gitignore
+    echo "# witan-household additions:" >> .gitignore
+    cat "$TMPL/.gitignore" >> .gitignore
+else
+    cp "$TMPL/.gitignore" .
+fi
+rm -rf "$TMPL"
+./scripts/rename.sh "<workspace-name>"
+git add household.json .devcontainer lore Makefile scripts CLAUDE.md .gitignore
+git commit -m "adopt witan-household pattern (in-place retrofit)"
+```
+
+3. Report; remind the user to review the merged CLAUDE.md and `.gitignore`.
+
+#### Docs migration
+
+The context has `dir` set to `docs`, `knowledge`, or `wiki`.
+
+1. Show the user the detected dir.
+2. AskUserQuestion with options:
+   - "Rename `<dir>/` to `lore/knowledge/` (Recommended)"
+   - "Keep `<dir>/` and set up `KNOWLEDGE_BASE_PATH` override instead"
+   - "Cancel"
+
+3. If rename: run single-repo retrofit, then move the existing dir into `lore/knowledge`:
    ```bash
-   node ${CLAUDE_PLUGIN_ROOT}/scripts/init-knowledge-base.js --target <target>
+   # After single-repo retrofit has scaffolded lore/knowledge/_starter.md files
+   for f in <dir>/*; do
+       mv "$f" lore/knowledge/
+   done
+   rmdir <dir>
+   git add -A && git commit -m "migrate <dir>/ into lore/knowledge/"
+   ```
+4. If override: run single-repo retrofit; afterwards write `.lorekeeper/config.json`:
+   ```bash
+   mkdir -p .lorekeeper
+   ABS=$(realpath <dir>)
+   echo "{ \"knowledgeBasePath\": \"$ABS\" }" > .lorekeeper/config.json
    ```
 
-3. **On success (exit code 0):** display the script's output verbatim. The script prints next-step instructions including how to wire up `KNOWLEDGE_BASE_PATH` or `.lorekeeper/config.json`.
+#### Poly-repo retrofit
 
-4. **On conflict (exit code 1 with "already has" in output):** explain the conflict and suggest either:
-   - Picking a different `<target-path>`, or
-   - Removing the conflicting files (the script lists them).
+The context has `repos` array set to the detected child git repos.
 
-5. **Offer to set up `.lorekeeper/config.json`** if the user agrees:
-   - Create `.lorekeeper/` directory in the current project root if missing
-   - Write `.lorekeeper/config.json` with `{ "knowledgeBasePath": "<absolute-target-path>" }`
-   - Tell the user to restart Claude Code
+1. List the detected repos. AskUserQuestion (multiSelect) for which to include in the workspace.
+2. If user picks at least one: scaffold the workspace at CWD (single-repo-retrofit flow without preserving existing CLAUDE.md, since CWD typically doesn't have one) and populate `household.json`'s `repos[]` with the selected siblings. Workspace name defaults to CWD basename.
+
+```bash
+# After scaffolding the workspace files...
+SELECTED="<comma-separated names from AskUserQuestion answer>"
+SELECTED="$SELECTED" node -e "
+    const fs = require('fs');
+    const path = './household.json';
+    const m = JSON.parse(fs.readFileSync(path, 'utf8'));
+    const names = process.env.SELECTED.split(',').filter(Boolean);
+    for (const name of names) {
+        m.repos.push({ name });
+    }
+    fs.writeFileSync(path, JSON.stringify(m, null, 2) + '\n');
+"
+git init -b main && git add -A && git commit -m "wrap existing siblings in a witan-household meta-repo"
+```
+
+3. Report. Note that the siblings' `.git/` histories are unchanged.
+
+#### Already-a-workspace
+
+1. Print: "This directory is already a witan-household (household.json exists). For status, run `/lore:help`. For diagnostics, run `/lore:doctor`."
+2. Exit without changes.
+
+#### Refused
+
+1. Print the refusal reason from the detection context.
+2. Suggest: `mkdir <name> && cd <name> && /lore:init`.
+3. Exit without changes.
 
 ## Notes
 
-- The script is deterministic — it does **not** top up partial structures.
-- The bundled template includes its own validation/index tooling. After init, the user runs `make build-index` (or `npm run build-index`) inside the new knowledge-base directory.
+- Every scaffold flow ends with a single commit. The user can amend or split before pushing.
+- For greenfield and files-no-git, the script clones the witan-household template fresh each time. For air-gapped environments, the user can manually `git clone` the template once and pass its local path to a future invocation (not implemented in v1).
+- The single-repo-retrofit MERGES the workspace's `.gitignore` into the existing one rather than overwriting. The user should review the result.

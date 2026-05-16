@@ -49,15 +49,6 @@ If you'd rather wire it up manually, Lorekeeper resolves the knowledge base path
 
    Each candidate must contain either a `knowledge/` subdirectory or a `knowledge.config.json` to be recognised.
 
-If you want JUST a knowledge base repo (no workspace ceremony), scaffold one with:
-
-```text
-/lore:init                        # Default: ./shared-knowledge
-/lore:init <path>                 # Custom target
-```
-
-This creates a standalone KB repo with its own tooling. Point Lorekeeper at it via `KNOWLEDGE_BASE_PATH` or `.lorekeeper/config.json`.
-
 Setting the env var globally:
 
 **Windows (System Environment Variables) — recommended:**
@@ -91,7 +82,8 @@ This shows plugin status and available commands. You should see "Knowledge base 
 | Command | Description |
 |---------|-------------|
 | `/lore:help` | Show status and help |
-| `/lore:init` | Initialize a new knowledge base from templates |
+| `/lore:init` | Detect workspace state and scaffold or retrofit accordingly |
+| `/lore:doctor` | Run a full workspace + KB diagnostic (manifest validity, sibling presence, KB hygiene) |
 | `/lore:onboard` | Interactive onboarding for new team members |
 | `/lore:explore` | Browse and search knowledge |
 | `/lore:prime` | Load knowledge into context |
@@ -100,11 +92,23 @@ This shows plugin status and available commands. You should see "Knowledge base 
 
 ### Init
 
-Scaffold a new knowledge base:
+Adopt witan in the current directory. The command detects state and dispatches:
 
 ```bash
-/lore:init                    # Create starter knowledge structure
+/lore:init                # Detect CWD state, scaffold or retrofit accordingly
+/lore:init <name>         # Override workspace name (otherwise inferred from CWD basename)
 ```
+
+Scenarios it handles:
+
+- **Greenfield** (empty dir): fresh witan-household scaffold.
+- **Single-repo retrofit** (existing git repo): adds workspace files in place; existing code untouched.
+- **Docs migration** (existing repo with `docs/`/`knowledge/`/`wiki/`): offers rename to `lore/knowledge/` or env-var override.
+- **Poly-repo retrofit** (parent of multiple git repos): wraps them in a meta-repo.
+- **Already-a-workspace**: refuses; suggests `/lore:help`.
+- **Refused** (running in `$HOME` or `$HOME/Source`): suggests creating a dedicated dir first.
+
+The bundled standalone-KB template flow (`/lore:init <path>` that scaffolds a separate repo) is gone — the witan-household pattern covers both standalone-Lorekeeper and Lorekeeper-with-Reeve use cases.
 
 ### Onboard
 
@@ -166,6 +170,18 @@ Propose updates to the knowledge base:
 ```bash
 /lore:update Add password-reset flow to user-management context
 ```
+
+### Doctor
+
+Run a full diagnostic against your workspace and KB:
+
+```bash
+/lore:doctor
+```
+
+Checks include: manifest parses + workspace pointer resolves + KB pointer resolves + sibling presence on host + KB index freshness + frontmatter validity + broken wikilinks + orphan files.
+
+Exits non-zero if errors are found; surfaces each with a file:line reference and suggested fix.
 
 ## Skills (Auto-Invoked)
 

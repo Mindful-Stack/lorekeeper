@@ -99,4 +99,14 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "command-init-already-workspace"
   :prompt "/lore:init"
   :workdir "."
-  :expects ["init|workspace|retrofit|adopt|already|household"]}]
+  :expects ["init|workspace|retrofit|adopt|already|household"]}
+
+ {:name "cultivate-no-arg-refuses"
+  :prompt "/lore:cultivate"
+  :workdir "."
+  :expects ["domain name required|usage|future"]}
+
+ {:name "cultivate-bootstrap-prompts-for-purpose"
+  :prompt "/lore:cultivate fresh-domain"
+  :workdir "."
+  :expects ["Purpose|Key Entities|Ubiquitous Language|household.json"]}]

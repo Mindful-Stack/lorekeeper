@@ -39,6 +39,15 @@ Parse the JSON output. Two top-level shapes:
 
 The `context` object has: `domain_name`, `domain_file_path`, `exists`, `missing_sections` (only populated for refine), `code_repos` (array of sibling repo names to scan), `kb_root` (relative path to the lore knowledge dir), optional `warning`.
 
+### Step 2b: Surface warning context (if present)
+
+If `context.warning` is set (e.g. an existing file lacks the `domain` tag in frontmatter, so the detect script classified the situation as bootstrap-with-warning), surface the warning to the user via AskUserQuestion BEFORE proceeding to Step 3:
+
+- [Continue anyway] → the bootstrap flow proceeds and will replace whatever's currently in the file.
+- [Cancel] → exit; preserves the existing untagged file as-is.
+
+If there's no warning, skip this step.
+
 ### Step 3: Dispatch per mode
 
 #### Bootstrap mode
@@ -171,11 +180,7 @@ Identical to refine mode in structure. The suggestion mix is drift-flavoured rat
 - Files in domain code areas (heuristic: code paths containing the domain slug) changed in the last 30 days without a corresponding KB update (last commit on the domain file is older than the latest commit on those code paths).
 - Dead wikilinks.
 
-Use the same per-suggestion AskUserQuestion loop, same batch-PR dispatch. PR title: `cultivate: <domain_name> — audit`.
-
-### Step 4: Handle warning context
-
-If the detect output's `context.warning` is set (e.g. file exists but lacks the `domain` tag), surface it to the user BEFORE the confirmation in step 3. The user can [Continue anyway] (the bootstrap will replace whatever's there) or [Cancel] (preserves the existing untagged file).
+Use the same per-suggestion AskUserQuestion loop, same `changes:` block as refine (with `action: update` and the post-application full-file content), same batch-PR dispatch. PR title: `cultivate: <domain_name> — audit`.
 
 ## Notes
 

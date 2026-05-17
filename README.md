@@ -83,6 +83,7 @@ This shows plugin status and available commands. You should see "Knowledge base 
 |---------|-------------|
 | `/lore:help` | Show status and help |
 | `/lore:init` | Detect workspace state and scaffold or retrofit accordingly |
+| `/lore:cultivate` | Cultivate a bounded-context domain (bootstrap a new one, refine gaps, or audit drift) |
 | `/lore:doctor` | Run a full workspace + KB diagnostic (manifest validity, sibling presence, KB hygiene) |
 | `/lore:onboard` | Interactive onboarding for new team members |
 | `/lore:explore` | Browse and search knowledge |
@@ -170,6 +171,24 @@ Propose updates to the knowledge base:
 ```bash
 /lore:update Add password-reset flow to user-management context
 ```
+
+### Cultivate
+
+Cultivate a single bounded-context domain node:
+
+```bash
+/lore:cultivate <domain>      # e.g. /lore:cultivate grant-matching
+```
+
+The command detects the domain's current state and dispatches:
+
+- **Bootstrap** (no doc exists): scans the codebase for entity + language candidates, walks you through DDD-shape Q&A, drafts a complete node, opens a PR.
+- **Refine** (doc exists, missing canonical sections or has gaps): identifies missing sections + drift, walks you through per-suggestion [Apply]/[Skip] prompts, batches approved changes into one PR.
+- **Audit** (mature doc): same loop as refine, focused on drift detection (terms in code not in doc, recent file activity without KB updates, dead wikilinks).
+
+All three modes scan the manifest repos (excluding the workspace meta-repo and the knowledge-base entry). One invocation = at most one PR; cancelling at any prompt = no PR.
+
+Bare `/lore:cultivate` with no argument is reserved for a future whole-KB cultivation pass.
 
 ### Doctor
 

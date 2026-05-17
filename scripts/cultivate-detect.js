@@ -1,0 +1,107 @@
+#!/usr/bin/env node
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+const CANONICAL_SECTIONS = [
+    'Purpose',
+    'Key Entities',
+    'Ubiquitous Language',
+    'Integration Points',
+    'Key Workflows',
+];
+
+function findWorkspaceRoot(cwd) {
+    let dir = fs.realpathSync(cwd);
+    for (let i = 0; i < 6; i++) {
+        if (fs.existsSync(path.join(dir, 'household.json'))) return dir;
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+    }
+    return null;
+}
+
+function detect(domainName, cwd) {
+    const workspaceRoot = findWorkspaceRoot(cwd);
+    if (!workspaceRoot) {
+        return {
+            error: 'not-in-witan-household',
+            message: 'Could not find household.json in this directory or any parent. Run /lore:init to set up a witan-household first.',
+        };
+    }
+
+    let manifest;
+    try {
+        manifest = JSON.parse(fs.readFileSync(path.join(workspaceRoot, 'household.json'), 'utf8'));
+    } catch (e) {
+        return {
+            error: 'manifest-unreadable',
+            message: `household.json could not be parsed: ${e.message}`,
+        };
+    }
+
+    const codeRepos = (manifest.repos || [])
+        .filter((r) => r.name !== manifest.workspace && r.name !== manifest.knowledge_base)
+        .map((r) => r.name);
+
+    const kbDirName = manifest.knowledge_base || 'lore';
+    const kbRoot = path.join(workspaceRoot, kbDirName, 'knowledge');
+    const domainFileAbs = path.join(kbRoot, 'domain', `${domainName}.md`);
+    const exists = fs.existsSync(domainFileAbs);
+
+    const baseContext = {
+        domain_name: domainName,
+        domain_file_path: path.relative(workspaceRoot, domainFileAbs),
+        exists,
+        missing_sections: [],
+        code_repos: codeRepos,
+        kb_root: path.relative(workspaceRoot, kbRoot),
+    };
+
+    if (!exists) {
+        return { mode: 'bootstrap', context: baseContext };
+    }
+
+    const content = fs.readFileSync(domainFileAbs, 'utf8');
+
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    const isTaggedDomain =
+        !!frontmatterMatch && /tags:\s*\[[^\]]*\bdomain\b/.test(frontmatterMatch[1]);
+
+    if (!isTaggedDomain) {
+        return {
+            mode: 'bootstrap',
+            context: {
+                ...baseContext,
+                warning: `File exists but frontmatter lacks tags: [domain, ...]; treating as bootstrap. Existing content will be preserved; review before applying.`,
+            },
+        };
+    }
+
+    const missing = CANONICAL_SECTIONS.filter((section) => {
+        const pattern = new RegExp(`^##\\s+${section}\\b`, 'm');
+        return !pattern.test(content);
+    });
+
+    if (missing.length > 0) {
+        return { mode: 'refine', context: { ...baseContext, missing_sections: missing } };
+    }
+
+    return { mode: 'audit', context: baseContext };
+}
+
+function main() {
+    const domainName = process.argv[2];
+    if (!domainName) {
+        console.error('Usage: cultivate-detect <domain-name>');
+        process.exit(2);
+    }
+    const result = detect(domainName, process.cwd());
+    console.log(JSON.stringify(result, null, 2));
+}
+
+if (require.main === module) main();
+
+module.exports = { detect, CANONICAL_SECTIONS };

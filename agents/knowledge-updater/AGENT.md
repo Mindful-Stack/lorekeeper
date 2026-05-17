@@ -40,7 +40,8 @@ When you receive the batch shape, you:
 - Create ONE branch and ONE PR for the entire batch (do not open multiple PRs).
 - Apply every `changes[i]` in order before committing.
 - Use `pr_title` and `pr_body` verbatim for the PR.
-- Run `make build-index` once at the end (not per-change), then commit the index alongside the substantive changes.
+- Run the index rebuild once at the end (not per-change), then commit the index alongside the substantive changes. See PR Workflow step 5 for the canonical command.
+- Step 3's branch name becomes `cultivate/<domain-name>-<mode>` (e.g. `cultivate/grant-matching-bootstrap`); steps 7 and 8 use the supplied `pr_title` and `pr_body` verbatim instead of the single-change `<type>/<slug>/<action>/<title>` placeholders.
 
 ## Knowledge Type Schemas
 
@@ -72,7 +73,7 @@ All changes follow this exact flow. For batch input (multiple `changes`), apply 
 2. `git checkout main && git pull`
 3. `git checkout -b knowledge/<type>-<slug>`
 4. Write/modify the file
-5. `node src/cli.js build-index`
+5. `make build-index` (rebuilds `<knowledge-path>/_index.json` via the witan-household template's `lore/_tools/cli.js`)
 6. `git add knowledge/<path> knowledge/_index.json`
 7. `git commit -m "docs: <action> <type> - <title>"`
 8. `gh pr create --title "docs: <action> <type> - <title>" --body "<description>"`
@@ -88,7 +89,7 @@ Return:
 ## Important Rules
 
 1. **Always PR** — never commit directly to main. Main is protected.
-2. **Always rebuild index** — run `node src/cli.js build-index` after any file change
+2. **Always rebuild index** — run `make build-index` after any file change (delegates to the witan-household template's `lore/_tools/cli.js`)
 3. **Validate frontmatter** — ensure all required fields are present for the knowledge type
 4. **Follow tag conventions** — domain tags match domain file slugs, tech tags match framework/language directory names
 5. **Atomic changes** — one concept per PR

@@ -21,11 +21,26 @@ The knowledge repo root is the parent directory of `<knowledge-path>` (i.e., one
 
 ## Input
 
-You receive:
+You receive ONE of these two shapes:
+
+### Single-change shape (back-compat)
+
 1. **Type** — what kind of knowledge: `learning`, `standard`, `domain`, `adr`
 2. **Content** — the approved content to write (already reviewed by the developer)
 3. **Action** — `create` (new file) or `update` (modify existing file)
 4. **File path** (for updates) — which file to modify
+
+### Batch shape (used by `/lore:cultivate`)
+
+1. **changes** — an array of `{ action, file_path, content }` entries. Each entry is a single-file change. All entries in the batch land in ONE PR.
+2. **pr_title** — title for the PR (e.g. `cultivate: grant-matching — bootstrap`).
+3. **pr_body** — body for the PR; typically a bulleted list of which suggestions were applied.
+
+When you receive the batch shape, you:
+- Create ONE branch and ONE PR for the entire batch (do not open multiple PRs).
+- Apply every `changes[i]` in order before committing.
+- Use `pr_title` and `pr_body` verbatim for the PR.
+- Run `make build-index` once at the end (not per-change), then commit the index alongside the substantive changes.
 
 ## Knowledge Type Schemas
 
@@ -51,7 +66,7 @@ Required frontmatter: title, description, tags (include adr), status (proposed|a
 
 ## PR Workflow
 
-All changes follow this exact flow:
+All changes follow this exact flow. For batch input (multiple `changes`), apply all changes within steps 4-6 BEFORE the index rebuild and commit:
 
 1. Navigate to knowledge repo root (parent of `<knowledge-path>`)
 2. `git checkout main && git pull`

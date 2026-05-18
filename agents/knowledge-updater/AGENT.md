@@ -21,11 +21,27 @@ The knowledge repo root is the parent directory of `<knowledge-path>` (i.e., one
 
 ## Input
 
-You receive:
+You receive ONE of these two shapes:
+
+### Single-change shape (back-compat)
+
 1. **Type** — what kind of knowledge: `learning`, `standard`, `domain`, `adr`
 2. **Content** — the approved content to write (already reviewed by the developer)
 3. **Action** — `create` (new file) or `update` (modify existing file)
 4. **File path** (for updates) — which file to modify
+
+### Batch shape (used by `/lore:cultivate`)
+
+1. **changes** — an array of `{ action, file_path, content }` entries. Each entry is a single-file change. All entries in the batch land in ONE PR.
+2. **pr_title** — title for the PR (e.g. `cultivate: grant-matching — bootstrap`).
+3. **pr_body** — body for the PR; typically a bulleted list of which suggestions were applied.
+
+When you receive the batch shape, you:
+- Create ONE branch and ONE PR for the entire batch (do not open multiple PRs).
+- Apply every `changes[i]` in order before committing.
+- Use `pr_title` and `pr_body` verbatim for the PR.
+- Run the index rebuild once at the end (not per-change), then commit the index alongside the substantive changes. See PR Workflow step 5 for the canonical command.
+- Step 3's branch name becomes `cultivate/<domain-name>-<mode>` (e.g. `cultivate/grant-matching-bootstrap`); steps 7 and 8 use the supplied `pr_title` and `pr_body` verbatim instead of the single-change `<type>/<slug>/<action>/<title>` placeholders.
 
 ## Knowledge Type Schemas
 
@@ -51,13 +67,13 @@ Required frontmatter: title, description, tags (include adr), status (proposed|a
 
 ## PR Workflow
 
-All changes follow this exact flow:
+All changes follow this exact flow. For batch input (multiple `changes`), apply all changes within steps 4-6 BEFORE the index rebuild and commit:
 
 1. Navigate to knowledge repo root (parent of `<knowledge-path>`)
 2. `git checkout main && git pull`
 3. `git checkout -b knowledge/<type>-<slug>`
 4. Write/modify the file
-5. `node src/cli.js build-index`
+5. `make build-index` (rebuilds `<knowledge-path>/_index.json` via the witan-household template's `lore/_tools/cli.js`)
 6. `git add knowledge/<path> knowledge/_index.json`
 7. `git commit -m "docs: <action> <type> - <title>"`
 8. `gh pr create --title "docs: <action> <type> - <title>" --body "<description>"`
@@ -73,7 +89,7 @@ Return:
 ## Important Rules
 
 1. **Always PR** — never commit directly to main. Main is protected.
-2. **Always rebuild index** — run `node src/cli.js build-index` after any file change
+2. **Always rebuild index** — run `make build-index` after any file change (delegates to the witan-household template's `lore/_tools/cli.js`)
 3. **Validate frontmatter** — ensure all required fields are present for the knowledge type
 4. **Follow tag conventions** — domain tags match domain file slugs, tech tags match framework/language directory names
 5. **Atomic changes** — one concept per PR

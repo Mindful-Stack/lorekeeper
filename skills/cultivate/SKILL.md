@@ -13,19 +13,11 @@ Cultivate (bootstrap / refine / audit) a single bounded-context domain node. The
 /lore:cultivate <domain>     # required: the domain's slug (e.g. grant-matching)
 ```
 
-Bare `/lore:cultivate` with no argument is reserved for a future whole-KB cultivation pass and currently refuses with usage instructions.
+This skill is always invoked with a domain name — either directly by the `/lore:cultivate <domain>` slash command, or chained by the `cultivate-discovery` skill (which surveys the household and passes the picked domain name through). The bare `/lore:cultivate` (no-arg) form routes to `cultivate-discovery`, never to this skill.
 
 ## Implementation
 
-### Step 1: Validate argument
-
-If the user invoked `/lore:cultivate` with no argument, print:
-
-> `domain name required; usage: /lore:cultivate <domain>. (Future: whole-KB cultivation pass — see docs/superpowers/specs/2026-05-17-lore-cultivate-design.md "Future expansion".)`
-
-Stop. Do not proceed.
-
-### Step 2: Detect state
+### Step 1: Detect state
 
 Use the Bash tool to run the detection script:
 
@@ -40,7 +32,7 @@ Parse the JSON output. Two top-level shapes:
 
 The `context` object has: `domain_name`, `domain_file_path`, `exists`, `missing_sections` (only populated for refine), `code_repos` (array of sibling repo names to scan), `kb_root` (relative path to the lore knowledge dir), optional `warning`.
 
-### Step 2b: Surface warning context (if present)
+### Step 2: Surface warning context (if present)
 
 If `context.warning` is set (e.g. an existing file lacks the `domain` tag in frontmatter, so the detect script classified the situation as bootstrap-with-warning), surface the warning to the user via AskUserQuestion BEFORE proceeding to Step 3:
 

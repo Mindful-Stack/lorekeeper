@@ -160,7 +160,12 @@ Body flow:
 
 6. **Prioritize via free-text pick + confirmation**. The candidate list can exceed AskUserQuestion's 4-option cap, so the survey rendered in step 5 numbers each actionable row, and discovery prompts in plain text:
    > "Pick up to 3 items to act on now. Reply with slugs (or row numbers) comma-separated — e.g. `grant-matching, file-extraction` or `1, 3`. Type `none` to skip everything."
-   Parse the reply: split on commas, map row numbers to slugs, drop unknown tokens (report them), de-dup, clip to first 3. Then run **one** AskUserQuestion to confirm with options `[Proceed]` / `[Pick different items]` / `[Cancel]` — fits within the 4-option limit regardless of how many picks the user named.
+   Parser:
+   - `none` (case-insensitive) anywhere in the reply short-circuits to "nothing actioned" and exits zero — protects against `none, 1` ambiguity.
+   - Slug comparison is case-insensitive (lowercase both sides before matching against actionable rows). So `Grant-Matching`, `GRANTS`, `grant-matching` all resolve identically.
+   - Numeric tokens outside `1..N` (where N is the row count from step 5) are reported as `ignored: <n> — out of range (1-<N>)`. Other unknown tokens reported as `ignored: <token> — not in the survey`.
+   - De-dup (case-insensitive) and clip to first 3 in user-given order; mention the clip if the user named more than 3.
+   - Then run **one** AskUserQuestion to confirm with options `[Proceed]` / `[Pick different items]` / `[Cancel]` — fits within the 4-option limit regardless of how many picks the user named.
 
 7. **Chain with inter-pick off-ramp**. For each confirmed pick (sequentially):
    - Use the Skill tool with `skill: cultivate`, `args: <picked slug>`.
@@ -196,7 +201,9 @@ When invoked with `--survey` (or `__survey__` sentinel if `--` flag handling is 
     "existing_domains": [
       { "name": "grants", "file_path": "lore/knowledge/domain/grants.md", "missing_sections": ["Key Workflows"] },
       { "name": "users",  "file_path": "lore/knowledge/domain/users.md",  "missing_sections": [] }
-    ]
+    ],
+    "kb_warnings": [],
+    "read_errors": []
   }
 }
 ```
@@ -205,6 +212,15 @@ When invoked with `--survey` (or `__survey__` sentinel if `--` flag handling is 
 - Lists every `*.md` under `<kb_root>/domain/` that has `tags: [domain, ...]` in its frontmatter.
 - Files lacking the `domain` tag are excluded (same heuristic as per-domain detect's `bootstrap-with-warning` path).
 - `missing_sections` per file uses the existing `CANONICAL_SECTIONS` regex check.
+
+`kb_warnings`:
+- Populated when the knowledge structure is missing pieces. Two cases:
+  - `<kb_root>` itself doesn't exist → one warning suggesting `/lore:doctor`.
+  - `<kb_root>/domain/` doesn't exist → one warning noting "no domain nodes to audit" but the codebase scan still runs.
+- Empty array when the KB is fully present.
+
+`read_errors`:
+- One entry per `.md` file in the domain dir that could not be read (e.g. permission denied). Each entry: `{ file_path, message }`. Survey continues over the remaining files. A single unreadable file never aborts the snapshot.
 
 Error shape unchanged: `{ error: "not-in-witan-household", message: "..." }`.
 
@@ -219,21 +235,26 @@ Inline markdown, Claude-generated from the aggregated scan + audit data. No stru
 ## Error semantics
 
 - **Not in a witan-household** → discovery skill bails with the `cultivate-detect --survey`'s error message, suggests `/lore:doctor`.
+- **`<kb_root>` or `<kb_root>/domain/` missing** → detect script returns `kb_warnings`; skill surfaces them inline and continues with codebase scan (no existing-domain findings, but new candidates still surfaced).
+- **Existing-node file unreadable** (permission denied etc.) → detect script returns one entry per bad file in `read_errors`; skill prints `Skipped <file>: <message>` and continues with the other files. A single unreadable file never aborts the survey.
+- **Existing-node file has malformed frontmatter** → already filtered out by `--survey`'s tag check. No special handling required in the skill.
 - **Zero candidates AND zero existing-node findings** → friendly "your KB looks healthy" message; exit without prompting.
-- **Existing-node file has malformed frontmatter** → discovery skill logs a warning ("skipped `<file>` — frontmatter parse error"), continues with the rest. Doesn't abort the session.
-- **User picks 0 items** → "survey complete; nothing actioned." Exit zero.
-- **A chained `cultivate` skill invocation fails** (knowledge-updater errors, user cancels mid-interview, etc.) → reported in the final summary as `<name>: cancelled` or `<name>: failed — <reason>`. Continue with the next picked item; don't abort the whole session.
+- **User picks 0 items (or types `none`)** → "Survey complete; nothing actioned." Exit zero.
+- **A chained `cultivate` skill invocation fails** (knowledge-updater errors, user cancels mid-interview, etc.) → reported in the final summary as `<name>: cancelled` or `<name>: failed — <reason>`. The inter-pick AskUserQuestion still fires so the user decides whether to continue or pause.
 - **`cultivate-detect --survey` itself fails** (manifest unreadable etc.) → propagate the underlying error from the detect script, suggest `/lore:doctor`.
 
 ## Testing
 
 ### Unit (`scripts/__tests__/cultivate-detect.test.js`)
 
-Extend with 3 new tests for `--survey` mode (existing 6 per-domain tests stay):
+Extend with 6 new tests for `--survey` mode (existing 6 per-domain tests stay):
 
 - `survey mode with no domain files → empty existing_domains, populated code_repos`.
 - `survey mode with mixed domain files → lists each with its missing_sections per the per-domain logic`.
 - `survey mode skips files lacking domain tag in frontmatter`.
+- `survey: domain/ dir missing → kb_warnings populated, no abort`.
+- `survey: knowledge/ dir missing → kb_warnings populated, no abort`.
+- `survey: unreadable .md file → recorded in read_errors, survey continues`.
 
 ### Babashka scenario (`test/scenarios.edn`)
 

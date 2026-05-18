@@ -20,7 +20,9 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/cultivate-detect.js --survey
 Parse the JSON output. Two shapes:
 
 - `{ error: "...", message: "..." }` — bail. Print the message; suggest `/lore:doctor` for diagnostics. Do not proceed.
-- `{ mode: "survey", context: {...} }` — proceed. The `context` has: `workspace_root`, `kb_root`, `code_repos`, `existing_domains` (array of `{ name, file_path, missing_sections }`).
+- `{ mode: "survey", context: {...} }` — proceed. The `context` has: `workspace_root`, `kb_root`, `code_repos`, `existing_domains` (array of `{ name, file_path, missing_sections }`), `kb_warnings` (array of strings — surfaced when `knowledge/` or `knowledge/domain/` doesn't exist), `read_errors` (array of `{ file_path, message }` — unreadable `.md` files in the domain dir).
+
+If `kb_warnings` is non-empty, print each warning inline before continuing (the survey still runs; warnings just inform the user that the existing-domain audit was partial or skipped). Do the same for `read_errors`: surface them as `Skipped <file>: <message>` lines so the user knows the audit isn't complete, then continue.
 
 ### Step 2: Codebase scan
 
@@ -102,10 +104,13 @@ Prompt the user with plain text (NOT via AskUserQuestion, because the candidate 
 
 Wait for the user's free-text reply. Then:
 
-1. **Parse** the reply: split on comma, trim whitespace, accept either slug strings or row numbers (1-indexed against the Step 5 ordering). Map numbers back to slugs.
-2. **Validate**: drop tokens that don't match any actionable row; report unknown tokens in the confirmation message ("ignored: `frobnicator` — not in the survey").
-3. **De-duplicate** and **clip to the first 3** valid entries. If the user named more than 3, mention the clip ("clipping to first 3: `a`, `b`, `c`").
-4. **Empty/`none` case**: print `Survey complete; nothing actioned.` and exit zero.
+1. **Parse** the reply: split on comma, trim whitespace. Each token is either a slug string or a row number (1-indexed against the Step 5 ordering). Map numbers back to slugs.
+2. **`none` short-circuit**: if any token is `none` (case-insensitive) anywhere in the reply, print `Survey complete; nothing actioned.` and exit zero. Do not process the other tokens.
+3. **Validate** each remaining token:
+   - **Slug tokens**: lowercase both sides before comparing (so `Grant-Matching`, `grant-matching`, and `GRANT-MATCHING` all match the same row). Drop tokens that don't match any actionable row; report each as `ignored: <token> — not in the survey`.
+   - **Numeric tokens**: if the number is outside `1..N` (where N is the number of actionable rows rendered in Step 5), report as `ignored: <n> — out of range (1-<N>)`. Otherwise map to the corresponding slug.
+4. **De-duplicate** (case-insensitive) and **clip to the first 3** valid entries (in user-given order). If the user named more than 3 valid items, mention the clip: `clipping to first 3: <a>, <b>, <c>`.
+5. **Empty result** (user replied with only invalid tokens, or with whitespace only): print `Survey complete; nothing actioned.` and exit zero.
 
 Then run **one** AskUserQuestion to confirm the picks (≤3 picks → ≤4 options total, fits the schema):
 
@@ -154,10 +159,12 @@ Omit any section that has no entries.
 ## Error semantics
 
 - **Not in a witan-household** → bail with the detect-script error; suggest `/lore:doctor`.
-- **Zero candidates AND zero existing-node findings** → friendly "your KB looks healthy" message; exit.
+- **`knowledge/` or `knowledge/domain/` directory missing** → surfaced via `kb_warnings`; print each warning inline, then continue with the codebase scan (existing-domain audit produces no findings, but new-candidate discovery still runs).
 - **One existing-node file has malformed frontmatter** → already filtered out by `--survey`'s tag check; nothing to handle here.
+- **One existing-node file is unreadable** (permissions, etc.) → surfaced via `read_errors`; print `Skipped <file>: <message>` inline, continue with the other files.
+- **Zero candidates AND zero existing-node findings** → friendly "your KB looks healthy" message; exit.
 - **Codebase scan yields no parseable source** in any repo → flag in the report ("no candidates surfaced from code; you may need to declare domains manually") and continue with the audit-only survey.
-- **A chained cultivate skill invocation fails** → record in final summary; continue with the next pick.
+- **A chained cultivate skill invocation fails** → record in final summary; continue (or pause if the user chooses) on the inter-pick AskUserQuestion.
 
 ## Notes
 

@@ -101,10 +101,10 @@ git commit -m \"feat: add DeviceStatusDto\"
   :workdir "."
   :expects ["init|workspace|retrofit|adopt|already|household"]}
 
- {:name "cultivate-no-arg-refuses"
+ {:name "cultivate-no-arg-runs-discovery"
   :prompt "/lore:cultivate"
   :workdir "."
-  :expects ["domain name required|usage|future"]}
+  :expects ["candidate|survey|discover|household.json|domain"]}
 
  {:name "cultivate-bootstrap-prompts-for-purpose"
   :prompt "/lore:cultivate fresh-domain"

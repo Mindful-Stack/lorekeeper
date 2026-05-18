@@ -31,9 +31,9 @@ When the user invokes bare `/lore:cultivate` in a witan-household:
 4. Discovery skill walks `existing_domains` to surface gaps/drift (reuses the per-file logic the cultivate skill's audit mode uses).
 5. Claude inspects all the gathered signal and proposes candidate bounded contexts (clustering by directory + naming + import topology — Claude's pattern-recognition, no algorithmic clustering).
 6. Sectioned survey rendered: `## New candidate domains` and `## Existing domains with findings`.
-7. User picks 0-3 items via AskUserQuestion.
-8. For each picked item (sequentially), discovery skill invokes the `cultivate` skill via the Skill tool with that domain name. Each chained run produces its own PR.
-9. Final summary lists the PRs opened.
+7. User picks 0-3 items via free-text reply (comma-separated slugs or row numbers from the survey), then confirms via a single AskUserQuestion (Proceed / Pick different / Cancel).
+8. For each picked item (sequentially), discovery skill invokes the `cultivate` skill via the Skill tool with that domain name. Each chained run produces its own PR. Between picks, an AskUserQuestion offers an off-ramp (continue / pause for later) so the user can stop mid-batch without losing the completed work.
+9. Final summary lists PRs opened, plus any picks the user deferred via the off-ramp.
 
 A discovery session ending with 3 picks produces up to 3 PRs (one per cultivated domain). Each PR is reviewable independently; a bad suggestion in one doesn't contaminate the others.
 
@@ -54,9 +54,9 @@ User: /lore:cultivate                  /lore:cultivate <domain>
               ├─ Codebase scan (Glob/Grep across code_repos)
               ├─ Existing-node audit (walk domain/*.md, classify gaps)
               ├─ Claude proposes candidate contexts
-              ├─ Render sectioned survey
-              ├─ AskUserQuestion: prioritize 0-3 items
-              └─ For each picked item:
+              ├─ Render sectioned survey (numbered, max 10 actionable rows)
+              ├─ Free-text pick (0-3 slugs/numbers) + AskUserQuestion confirmation
+              └─ For each picked item (with inter-pick continue/pause AskUserQuestion):
                       │
                       ▼
             skills/cultivate/SKILL.md ◄────────────┘
@@ -81,7 +81,7 @@ If the user picks 0 items, discovery exits without invoking anything.
 
 ## Per-skill content
 
-### `skills/cultivate/SKILL.md` (extracted; no functional change)
+### `skills/cultivate/SKILL.md` (extracted from current `commands/cultivate.md`; one functional change)
 
 Frontmatter:
 
@@ -92,7 +92,7 @@ description: Cultivate a single bounded-context domain node — bootstrap a new 
 ---
 ```
 
-Body: every line of the current PR #3 version of `commands/cultivate.md` from "Cultivate (bootstrap / refine / audit) a single bounded-context domain node..." through the Notes section. Zero text changes; only relocation.
+Body: every line of the current PR #3 version of `commands/cultivate.md` from "Cultivate (bootstrap / refine / audit) a single bounded-context domain node..." through the Notes section — **except** the original Step 1 (no-arg-validation refusal). The slash wrapper now owns arg-presence dispatch, so the cultivate skill is always invoked with a domain name and the refusal branch is unreachable. Step numbering after extraction: original Step 2 becomes new Step 1 (Detect state); original Step 2b becomes new Step 2 (Warning context); original Step 3 stays as Step 3 (Dispatch). All other content unchanged.
 
 ### `commands/cultivate.md` (refactored to thin wrapper)
 
@@ -158,23 +158,26 @@ Body flow:
 
    If both N and M are zero: print "Your KB looks healthy; nothing to surface today." and exit.
 
-6. **AskUserQuestion: prioritize**. multiSelect, capped at 3 picks total across both sections combined.
-   "Which items do you want to act on now? (Pick 0-3. Each pick chains into a full `/lore:cultivate <name>` flow with its own PR.)"
-   Options: every new candidate + every existing-domain-with-findings entry, each presented as `<name> — <one-line summary>`.
+6. **Prioritize via free-text pick + confirmation**. The candidate list can exceed AskUserQuestion's 4-option cap, so the survey rendered in step 5 numbers each actionable row, and discovery prompts in plain text:
+   > "Pick up to 3 items to act on now. Reply with slugs (or row numbers) comma-separated — e.g. `grant-matching, file-extraction` or `1, 3`. Type `none` to skip everything."
+   Parse the reply: split on commas, map row numbers to slugs, drop unknown tokens (report them), de-dup, clip to first 3. Then run **one** AskUserQuestion to confirm with options `[Proceed]` / `[Pick different items]` / `[Cancel]` — fits within the 4-option limit regardless of how many picks the user named.
 
-7. **Chain**. For each picked item (sequentially):
-   - Use the Skill tool with `skill: cultivate`, prompt context including the picked domain name.
-   - Wait for return (PR URL on success, cancellation message otherwise).
-   - Continue to the next pick.
+7. **Chain with inter-pick off-ramp**. For each confirmed pick (sequentially):
+   - Use the Skill tool with `skill: cultivate`, `args: <picked slug>`.
+   - Wait for return (PR URL on success, cancellation/failure message otherwise).
+   - If more picks remain, run AskUserQuestion: `[Continue to next pick]` / `[Pause — finish later]`. Pause routes to the final summary with the remaining picks marked deferred; continue advances to the next pick. The off-ramp fires even after a failed chain so the user — not the skill — decides whether to abort the batch.
 
-8. **Final summary**. Recap:
+8. **Final summary**. Recap (omit any empty section):
    ```
    Discovery session complete.
    Surveyed: N candidates, M existing-domain findings.
-   Actioned: K of those.
+   Actioned: K of <total picks>.
    PRs opened:
      - <name>: <PR URL>
-     - <name>: <PR URL>
+   Other outcomes:
+     - <name>: cancelled / failed — <reason>
+   Deferred (paused at user request — re-run /lore:cultivate to resume):
+     - <name>
    ```
 
 ## Data flow
@@ -254,8 +257,8 @@ The existing `cultivate-bootstrap-prompts-for-purpose` scenario stays untouched 
 
 ## Open items deferred to writing-plans
 
-- **Detect script `--survey` invocation shape** — flag (`--survey`) vs sentinel positional (`__survey__`) vs separate script. Plan to pick the option with the cleanest interaction with the existing argv handling.
-- **Cap on candidate list size** — if Claude surfaces 20 candidates in a large codebase, the AskUserQuestion options list could be unwieldy. Lean: cap displayed candidates at 10 with a "+N more — re-run after acting on these" hint.
+- ~~**Detect script `--survey` invocation shape**~~ — **Resolved.** Picked `--survey` as a flag in `argv[2]`; `main()` dispatches `--survey` to `survey()` and any other value to `detect(<domain>)`. No separate script needed.
+- ~~**Cap on candidate list size**~~ — **Resolved.** Cap displayed actionable rows at 10 (new candidates + existing-with-findings combined). Numbered in render, picked via free-text reply, then confirmed via a single 3-option AskUserQuestion — sidesteps the 4-option-per-question schema cap entirely.
 - **Per-skill discoverability through `/lore:help`** — currently `/lore:help`'s commands table lists slash commands. Skills aren't listed because they're invokable via natural language too. Decide whether to add a "Skills" section to `/lore:help` or leave skills implicit.
 
 ## Verification

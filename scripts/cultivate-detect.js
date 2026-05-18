@@ -92,16 +92,76 @@ function detect(domainName, cwd) {
     return { mode: 'audit', context: baseContext };
 }
 
+function survey(cwd) {
+    const workspaceRoot = findWorkspaceRoot(cwd);
+    if (!workspaceRoot) {
+        return {
+            error: 'not-in-witan-household',
+            message: 'Could not find household.json in this directory or any parent. Run /lore:init to set up a witan-household first.',
+        };
+    }
+
+    let manifest;
+    try {
+        manifest = JSON.parse(fs.readFileSync(path.join(workspaceRoot, 'household.json'), 'utf8'));
+    } catch (e) {
+        return {
+            error: 'manifest-unreadable',
+            message: `household.json could not be parsed: ${e.message}`,
+        };
+    }
+
+    const codeRepos = (manifest.repos || [])
+        .filter((r) => r.name !== manifest.workspace && r.name !== manifest.knowledge_base)
+        .map((r) => r.name);
+
+    const kbDirName = manifest.knowledge_base || 'lore';
+    const kbRoot = path.join(workspaceRoot, kbDirName, 'knowledge');
+    const domainDir = path.join(kbRoot, 'domain');
+
+    const existingDomains = [];
+    if (fs.existsSync(domainDir)) {
+        for (const entry of fs.readdirSync(domainDir)) {
+            if (!entry.endsWith('.md')) continue;
+            const filePath = path.join(domainDir, entry);
+            const content = fs.readFileSync(filePath, 'utf8');
+            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+            const isTaggedDomain =
+                !!frontmatterMatch && /tags:\s*\[[^\]]*\bdomain\b/.test(frontmatterMatch[1]);
+            if (!isTaggedDomain) continue;
+            const missing = CANONICAL_SECTIONS.filter((section) => {
+                const pattern = new RegExp(`^##\\s+${section}\\b`, 'm');
+                return !pattern.test(content);
+            });
+            existingDomains.push({
+                name: entry.replace(/\.md$/, ''),
+                file_path: path.relative(workspaceRoot, filePath),
+                missing_sections: missing,
+            });
+        }
+    }
+
+    return {
+        mode: 'survey',
+        context: {
+            workspace_root: workspaceRoot,
+            kb_root: path.relative(workspaceRoot, kbRoot),
+            code_repos: codeRepos,
+            existing_domains: existingDomains,
+        },
+    };
+}
+
 function main() {
-    const domainName = process.argv[2];
-    if (!domainName) {
-        console.error('Usage: cultivate-detect <domain-name>');
+    const arg = process.argv[2];
+    if (!arg) {
+        console.error('Usage: cultivate-detect <domain-name> | --survey');
         process.exit(2);
     }
-    const result = detect(domainName, process.cwd());
+    const result = arg === '--survey' ? survey(process.cwd()) : detect(arg, process.cwd());
     console.log(JSON.stringify(result, null, 2));
 }
 
 if (require.main === module) main();
 
-module.exports = { detect, CANONICAL_SECTIONS };
+module.exports = { detect, survey, CANONICAL_SECTIONS };

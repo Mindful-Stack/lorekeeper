@@ -154,3 +154,66 @@ test('missing domain arg → exit 2', () => {
     }
     assert.equal(exitCode, 2);
 });
+
+// --- Survey mode tests ---
+
+const COMPLETE_DOMAIN_FOR_SURVEY = COMPLETE_DOMAIN; // already defined above
+
+const SECOND_DOMAIN_INCOMPLETE = `---
+title: Users
+description: User accounts.
+tags: [domain]
+---
+
+# Users
+
+## Purpose
+
+...
+
+## Key Entities
+
+...
+`; // missing Ubiquitous Language, Integration Points, Key Workflows
+
+const UNTAGGED_FILE = `---
+title: Some Notes
+tags: [misc]
+---
+
+# Some Notes
+`;
+
+function survey(cwd) {
+    const out = execSync(`node ${SCRIPT} --survey`, { cwd, encoding: 'utf8' });
+    return JSON.parse(out);
+}
+
+test('survey: no domain files → empty existing_domains, populated code_repos', () => withWorkspace((root) => {
+    const result = survey(root);
+    assert.equal(result.mode, 'survey');
+    assert.deepEqual(result.context.code_repos, ['backend']);
+    assert.deepEqual(result.context.existing_domains, []);
+    assert.equal(result.context.kb_root, 'lore/knowledge');
+    assert.equal(result.context.workspace_root, root);
+}));
+
+test('survey: mixed domain files → each listed with missing_sections', () => withWorkspace((root) => {
+    fs.writeFileSync(path.join(root, 'lore/knowledge/domain/grants.md'), COMPLETE_DOMAIN_FOR_SURVEY);
+    fs.writeFileSync(path.join(root, 'lore/knowledge/domain/users.md'), SECOND_DOMAIN_INCOMPLETE);
+    const result = survey(root);
+    assert.equal(result.context.existing_domains.length, 2);
+    const grants = result.context.existing_domains.find(d => d.name === 'grants');
+    const users = result.context.existing_domains.find(d => d.name === 'users');
+    assert.deepEqual(grants.missing_sections, []);
+    assert.deepEqual(users.missing_sections, ['Ubiquitous Language', 'Integration Points', 'Key Workflows']);
+    assert.equal(grants.file_path, 'lore/knowledge/domain/grants.md');
+}));
+
+test('survey: skips files lacking domain tag in frontmatter', () => withWorkspace((root) => {
+    fs.writeFileSync(path.join(root, 'lore/knowledge/domain/grants.md'), COMPLETE_DOMAIN_FOR_SURVEY);
+    fs.writeFileSync(path.join(root, 'lore/knowledge/domain/notes.md'), UNTAGGED_FILE);
+    const result = survey(root);
+    assert.equal(result.context.existing_domains.length, 1);
+    assert.equal(result.context.existing_domains[0].name, 'grants');
+}));

@@ -83,7 +83,7 @@ This shows plugin status and available commands. You should see "Knowledge base 
 |---------|-------------|
 | `/lore:help` | Show status and help |
 | `/lore:init` | Detect workspace state and scaffold or retrofit accordingly |
-| `/lore:cultivate` | Cultivate a bounded-context domain (bootstrap a new one, refine gaps, or audit drift) |
+| `/lore:cultivate` | Cultivate a bounded-context domain. With a name: bootstrap/refine/audit. Without: discover candidate domains in the codebase + audit existing ones |
 | `/lore:doctor` | Run a full workspace + KB diagnostic (manifest validity, sibling presence, KB hygiene) |
 | `/lore:onboard` | Interactive onboarding for new team members |
 | `/lore:explore` | Browse and search knowledge |
@@ -177,10 +177,11 @@ Propose updates to the knowledge base:
 Cultivate a single bounded-context domain node:
 
 ```bash
-/lore:cultivate <domain>      # e.g. /lore:cultivate grant-matching
+/lore:cultivate <domain>      # work on a specific domain (e.g. /lore:cultivate grant-matching)
+/lore:cultivate               # discover candidate domains + audit existing ones
 ```
 
-The command detects the domain's current state and dispatches:
+**With a name argument**, the command detects the domain's current state and dispatches:
 
 - **Bootstrap** (no doc exists): scans the codebase for entity + language candidates, walks you through DDD-shape Q&A, drafts a complete node, opens a PR.
 - **Refine** (doc exists, missing canonical sections or has gaps): identifies missing sections + drift, walks you through per-suggestion [Apply]/[Skip] prompts, batches approved changes into one PR.
@@ -188,7 +189,7 @@ The command detects the domain's current state and dispatches:
 
 All three modes scan the manifest repos (excluding the workspace meta-repo and the knowledge-base entry). One invocation = at most one PR; cancelling at any prompt = no PR.
 
-Bare `/lore:cultivate` with no argument is reserved for a future whole-KB cultivation pass.
+**Without an argument**, the command surveys the household: it scans `manifest.repos` for candidate bounded contexts and audits existing `domain/*.md` nodes for gaps or drift. It renders a sectioned report (new candidates + existing-domain findings), lets you prioritize 0-3 items via interactive prompts, then chains into a full `/lore:cultivate <name>` flow for each picked item (one PR per chained run, capped at 3 per session).
 
 ### Doctor
 

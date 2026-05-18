@@ -80,7 +80,7 @@ Always display available commands:
 
 | Command | Description |
 |---------|-------------|
-| `/lore:cultivate` | Cultivate a bounded-context domain (bootstrap / refine / audit) |
+| `/lore:cultivate` | Cultivate a bounded-context domain — with arg: bootstrap/refine/audit; without arg: discover candidates + audit existing |
 | `/lore:doctor` | Run full workspace + KB diagnostic |
 | `/lore:explore [query]` | Browse and search knowledge nodes |
 | `/lore:help` | This help message |

@@ -216,4 +216,41 @@ test('survey: skips files lacking domain tag in frontmatter', () => withWorkspac
     const result = survey(root);
     assert.equal(result.context.existing_domains.length, 1);
     assert.equal(result.context.existing_domains[0].name, 'grants');
+    assert.deepEqual(result.context.kb_warnings, []);
+    assert.deepEqual(result.context.read_errors, []);
+}));
+
+test('survey: domain/ dir missing → kb_warnings populated, no abort', () => withWorkspace((root) => {
+    fs.rmSync(path.join(root, 'lore/knowledge/domain'), { recursive: true });
+    const result = survey(root);
+    assert.equal(result.mode, 'survey');
+    assert.deepEqual(result.context.existing_domains, []);
+    assert.equal(result.context.kb_warnings.length, 1);
+    assert.match(result.context.kb_warnings[0], /domain\/ does not exist/);
+}));
+
+test('survey: knowledge/ dir missing → kb_warnings populated, no abort', () => withWorkspace((root) => {
+    fs.rmSync(path.join(root, 'lore/knowledge'), { recursive: true });
+    const result = survey(root);
+    assert.equal(result.mode, 'survey');
+    assert.deepEqual(result.context.existing_domains, []);
+    assert.equal(result.context.kb_warnings.length, 1);
+    assert.match(result.context.kb_warnings[0], /knowledge dir not found/);
+}));
+
+test('survey: unreadable .md file → recorded in read_errors, survey continues', () => withWorkspace((root) => {
+    fs.writeFileSync(path.join(root, 'lore/knowledge/domain/grants.md'), COMPLETE_DOMAIN_FOR_SURVEY);
+    const badPath = path.join(root, 'lore/knowledge/domain/broken.md');
+    fs.writeFileSync(badPath, 'placeholder');
+    fs.chmodSync(badPath, 0o000);
+    try {
+        const result = survey(root);
+        assert.equal(result.mode, 'survey');
+        assert.equal(result.context.existing_domains.length, 1);
+        assert.equal(result.context.existing_domains[0].name, 'grants');
+        assert.equal(result.context.read_errors.length, 1);
+        assert.equal(result.context.read_errors[0].file_path, 'lore/knowledge/domain/broken.md');
+    } finally {
+        fs.chmodSync(badPath, 0o644);
+    }
 }));

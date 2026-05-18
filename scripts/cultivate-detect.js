@@ -120,11 +120,27 @@ function survey(cwd) {
     const domainDir = path.join(kbRoot, 'domain');
 
     const existingDomains = [];
-    if (fs.existsSync(domainDir)) {
+    const kbWarnings = [];
+    const readErrors = [];
+
+    if (!fs.existsSync(kbRoot)) {
+        kbWarnings.push(`knowledge dir not found at ${path.relative(workspaceRoot, kbRoot)}/ — no existing-domain audit possible. Run /lore:doctor to investigate.`);
+    } else if (!fs.existsSync(domainDir)) {
+        kbWarnings.push(`${path.relative(workspaceRoot, domainDir)}/ does not exist — no domain nodes to audit. New candidates from the codebase scan will still be surfaced.`);
+    } else {
         for (const entry of fs.readdirSync(domainDir)) {
             if (!entry.endsWith('.md')) continue;
             const filePath = path.join(domainDir, entry);
-            const content = fs.readFileSync(filePath, 'utf8');
+            let content;
+            try {
+                content = fs.readFileSync(filePath, 'utf8');
+            } catch (e) {
+                readErrors.push({
+                    file_path: path.relative(workspaceRoot, filePath),
+                    message: e.message,
+                });
+                continue;
+            }
             const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
             const isTaggedDomain =
                 !!frontmatterMatch && /tags:\s*\[[^\]]*\bdomain\b/.test(frontmatterMatch[1]);
@@ -148,6 +164,8 @@ function survey(cwd) {
             kb_root: path.relative(workspaceRoot, kbRoot),
             code_repos: codeRepos,
             existing_domains: existingDomains,
+            kb_warnings: kbWarnings,
+            read_errors: readErrors,
         },
     };
 }

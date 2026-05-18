@@ -1,6 +1,6 @@
 ---
 name: cultivate-discovery
-description: Discover candidate bounded contexts in a witan-household's codebase and audit existing domain nodes. Use when the user invokes /lore:cultivate with no argument, or when they ask "what domains does this project have?" or "help me find bounded contexts" or similar exploratory DDD questions in a witan-household with code repos.
+description: EXPLORE / DISCOVER bounded contexts when none has been named. Surveys a witan-household's codebase for candidate domains AND audits existing domain nodes for gaps/drift. Use when the user invokes /lore:cultivate with no argument, asks "what domains does this project have?", "help me find bounded contexts", "where should I start with DDD?", or similar exploratory questions about the project's domain landscape. ONCE a specific domain is named, hand off to the cultivate skill instead.
 ---
 
 # Cultivate — Discovery
@@ -66,23 +66,27 @@ Cap displayed candidates at 10. If more were detected, mention the cap in the su
 
 ### Step 5: Render sectioned survey
 
-Print the survey as inline markdown:
+Print the survey as inline markdown. Every actionable row is numbered with its slug visible so users can pick by slug in Step 6:
 
 ```
 ## New candidate domains (N found)
 
-- **<slug>** — <evidence>; rationale: <one sentence>.
-- ...
+1. **<slug-a>** — <evidence>; rationale: <one sentence>.
+2. **<slug-b>** — ...
+...
 
 ## Existing domains with findings (M total)
 
-- **<name>** — missing sections: <list or "none">; drift signals: <list or "none">.
-- ...
+3. **<slug-c>** — missing sections: <list or "none">; drift signals: <list or "none">.
+4. **<slug-d>** — ...
+...
 
 ## Healthy domains (K total)
 
 <comma-separated names of existing domains with no findings, or skip section if K = 0 or list is overwhelming>
 ```
+
+Numbering is continuous across the two sections (new candidates first, then existing-with-findings). Cap displayed actionable rows at 10 combined; if more were detected mention the cap inline.
 
 If both N and M are zero, print:
 
@@ -90,24 +94,43 @@ If both N and M are zero, print:
 
 And exit (do not run Step 6 or 7).
 
-### Step 6: Prioritize via AskUserQuestion
+### Step 6: Prioritize via free-text pick + AskUserQuestion confirmation
 
-Use AskUserQuestion with `multiSelect: true` and a hard cap of 3 selections:
+Prompt the user with plain text (NOT via AskUserQuestion, because the candidate list can exceed AskUserQuestion's 4-option cap):
 
-> "Which items do you want to act on now? (Pick 0-3. Each pick chains into a full `/lore:cultivate <name>` flow with its own PR. Re-run discovery after acting on these to see the rest.)"
+> "Pick up to 3 items to act on now. Reply with slugs (or row numbers) comma-separated — e.g. `grant-matching, file-extraction` or `1, 3`. Type `none` to skip everything. Each pick chains into a full per-domain cultivate flow with its own PR."
 
-Options: every new candidate's `<slug>` + every existing-domain-with-findings entry, each presented as `<name> — <one-line summary>`.
+Wait for the user's free-text reply. Then:
 
-If the user picks 0 items: print `Survey complete; nothing actioned.` and exit zero.
+1. **Parse** the reply: split on comma, trim whitespace, accept either slug strings or row numbers (1-indexed against the Step 5 ordering). Map numbers back to slugs.
+2. **Validate**: drop tokens that don't match any actionable row; report unknown tokens in the confirmation message ("ignored: `frobnicator` — not in the survey").
+3. **De-duplicate** and **clip to the first 3** valid entries. If the user named more than 3, mention the clip ("clipping to first 3: `a`, `b`, `c`").
+4. **Empty/`none` case**: print `Survey complete; nothing actioned.` and exit zero.
 
-### Step 7: Chain into cultivate skill (sequential)
+Then run **one** AskUserQuestion to confirm the picks (≤3 picks → ≤4 options total, fits the schema):
 
-For each picked item, in the order the user listed them:
+> "Cultivating: `<a>`, `<b>`, `<c>` in that order. Proceed?"
 
-- Use the Skill tool: `skill: cultivate`, prompt context including the picked domain name.
-- Wait for the chained skill to complete. It will run its full per-domain flow (bootstrap for new candidates / refine or audit for existing domains, per its own state detection) and either return a PR URL or a cancellation message.
-- Record the result (`{ name, status: "pr-opened" | "cancelled" | "failed", detail: <url or message> }`).
-- Continue to the next picked item even if one failed — don't abort the whole session on a single failure.
+Options:
+- `[Proceed]` → continue to Step 7.
+- `[Pick different items]` → re-prompt from the top of Step 6 (free-text again).
+- `[Cancel]` → print `Survey complete; nothing actioned.` and exit zero.
+
+### Step 7: Chain into cultivate skill (sequential, with inter-pick pause)
+
+For each confirmed pick, in the order the user listed them:
+
+1. Use the Skill tool: `skill: cultivate`, `args: <picked slug>`. The cultivate skill will run its full per-domain flow (bootstrap / refine / audit per its own detect-script dispatch) and return a PR URL or a cancellation/failure message.
+2. Record the result (`{ name, status: "pr-opened" | "cancelled" | "failed", detail: <url or message> }`).
+3. **If more picks remain after this one**, run AskUserQuestion to give the user an off-ramp between picks:
+
+   > "Finished `<slug>` (<status>: <url-or-reason>). Next up: `<next-slug>`. Continue?"
+
+   Options:
+   - `[Continue to next pick]` → proceed with the next slug.
+   - `[Pause — finish later]` → stop chaining; jump to Step 8 with whatever's been completed so far. Mention in the final summary that the remaining picks were deferred so the user can re-run discovery later.
+
+4. If a chained run failed, still ask the continue/pause question — don't abort the whole session unilaterally. Let the user decide.
 
 ### Step 8: Final summary
 
@@ -116,13 +139,17 @@ Print a recap:
 ```
 Discovery session complete.
 Surveyed: N candidates, M existing-domain findings, K healthy domains.
-Actioned: <count> of the picks.
+Actioned: <count> of <total picks>.
 PRs opened:
-  - <name>: <url>
   - <name>: <url>
 Other outcomes:
   - <name>: cancelled / failed — <reason>
+Deferred (paused at user request — re-run /lore:cultivate to resume):
+  - <name>
+  - <name>
 ```
+
+Omit any section that has no entries.
 
 ## Error semantics
 

@@ -1,11 +1,11 @@
 ---
 name: cultivate
-description: Cultivate a single bounded-context domain node — bootstrap a new one from a codebase scan, refine an existing one with missing canonical DDD sections, or audit a mature one for drift. Use when the user invokes /lore:cultivate <domain> or asks to flesh out a specific bounded context.
+description: Cultivate a SPECIFIC, NAMED bounded-context domain node — bootstrap a new one from a codebase scan, refine an existing one with missing canonical DDD sections, or audit a mature one for drift. Use ONLY when the user has named a specific domain (e.g. /lore:cultivate <name>, "work on the payments domain", "flesh out grant-matching"). For exploring what domains exist or finding new ones, use cultivate-discovery instead.
 ---
 
 # Cultivate
 
-Cultivate (bootstrap / refine / audit) a single bounded-context domain node. The command detects the domain's state and dispatches accordingly.
+Cultivate (bootstrap / refine / audit) a single bounded-context domain node. The skill detects the domain's state and dispatches accordingly.
 
 ## Usage
 
@@ -13,7 +13,14 @@ Cultivate (bootstrap / refine / audit) a single bounded-context domain node. The
 /lore:cultivate <domain>     # required: the domain's slug (e.g. grant-matching)
 ```
 
-This skill is always invoked with a domain name — either directly by the `/lore:cultivate <domain>` slash command, or chained by the `cultivate-discovery` skill (which surveys the household and passes the picked domain name through). The bare `/lore:cultivate` (no-arg) form routes to `cultivate-discovery`, never to this skill.
+## Input contract
+
+This skill is always invoked with a domain name. Two entry paths converge here:
+
+- **Via the slash command `/lore:cultivate <domain>`**: the domain name is the slash argument. The slash wrapper passes it through.
+- **Via the Skill tool (chained from `cultivate-discovery`)**: the domain name is the `args` parameter of the Skill invocation. The discovery skill passes the picked slug.
+
+In both cases, treat the received string as the domain slug (e.g. `grant-matching`). It maps directly to `lore/knowledge/domain/<slug>.md`. The bare `/lore:cultivate` (no-arg) form is routed by the slash wrapper to `cultivate-discovery`, NEVER to this skill — so there is no no-arg path to handle here.
 
 ## Implementation
 

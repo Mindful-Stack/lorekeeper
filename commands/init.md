@@ -132,25 +132,76 @@ The context has `dir` set to `docs`, `knowledge`, or `wiki`.
 The context has `repos` array set to the detected child git repos.
 
 1. List the detected repos. AskUserQuestion (multiSelect) for which to include in the workspace.
-2. If user picks at least one: scaffold the workspace at CWD (single-repo-retrofit flow without preserving existing CLAUDE.md, since CWD typically doesn't have one) and populate `household.json`'s `repos[]` with the selected siblings. Workspace name defaults to CWD basename.
 
-```bash
-# After scaffolding the workspace files...
-SELECTED="<comma-separated names from AskUserQuestion answer>"
-SELECTED="$SELECTED" node -e "
-    const fs = require('fs');
-    const path = './household.json';
-    const m = JSON.parse(fs.readFileSync(path, 'utf8'));
-    const names = process.env.SELECTED.split(',').filter(Boolean);
-    for (const name of names) {
-        m.repos.push({ name });
-    }
-    fs.writeFileSync(path, JSON.stringify(m, null, 2) + '\n');
-"
-git init -b main && git add -A && git commit -m "wrap existing siblings in a witan-household meta-repo"
-```
+2. If user picks at least one: AskUserQuestion for KB topology:
 
-3. Report. Note that the siblings' `.git/` histories are unchanged.
+   > "How should the `lore/` knowledge base live in this workspace?"
+
+   Options:
+   - **Inline (Recommended)** — `lore/` is tracked as a subdirectory of the workspace meta-repo. Simpler; one repo to push, one PR stream. Choose this if unsure.
+   - **Sibling repo** — `lore/` is its own git repo at `<workspace>/lore/`, gitignored from the workspace meta-repo. KB has its own PR stream — useful if you want different access control or release cadence for KB vs workspace.
+
+3. Scaffold the workspace at CWD (single-repo-retrofit flow without preserving existing CLAUDE.md, since CWD typically doesn't have one). Populate `household.json`'s `repos[]` with the selected siblings. Workspace name defaults to CWD basename.
+
+   The scaffold and commit flow differs slightly between the two KB topologies.
+
+   **If inline KB:**
+
+   ```bash
+   # After scaffolding the workspace files (lore/ included)...
+   SELECTED="<comma-separated names from sibling AskUserQuestion answer>"
+   SELECTED="$SELECTED" node -e "
+       const fs = require('fs');
+       const path = './household.json';
+       const m = JSON.parse(fs.readFileSync(path, 'utf8'));
+       const names = process.env.SELECTED.split(',').filter(Boolean);
+       for (const name of names) {
+           m.repos.push({ name });
+       }
+       fs.writeFileSync(path, JSON.stringify(m, null, 2) + '\n');
+   "
+   git init -b main && git add -A && git commit -m "wrap existing siblings in a witan-household meta-repo"
+   ```
+
+   **If sibling KB:**
+
+   ```bash
+   # After scaffolding the workspace files...
+   SELECTED="<comma-separated names from sibling AskUserQuestion answer>"
+   SELECTED="$SELECTED" node -e "
+       const fs = require('fs');
+       const path = './household.json';
+       const m = JSON.parse(fs.readFileSync(path, 'utf8'));
+       const names = process.env.SELECTED.split(',').filter(Boolean);
+       for (const name of names) {
+           m.repos.push({ name });
+       }
+       fs.writeFileSync(path, JSON.stringify(m, null, 2) + '\n');
+   "
+
+   # The template .gitignore uses an allowlist pattern (/* then !/lore/);
+   # remove the !/lore/ line so the catch-all /* gitignores lore/ from the
+   # workspace meta-repo BEFORE the initial commit.
+   if grep -q '^!/lore/$' .gitignore 2>/dev/null; then
+       grep -v '^!/lore/$' .gitignore > .gitignore.tmp && mv .gitignore.tmp .gitignore
+   fi
+
+   git init -b main && git add -A && git commit -m "wrap existing siblings in a witan-household meta-repo (sibling KB)"
+
+   # Initialize lore/ as its own sibling repo:
+   (cd lore && git init -b main && git add -A && git commit -m "initial KB from witan-household template")
+   ```
+
+4. Report. Note that the siblings' `.git/` histories are unchanged. If sibling KB was chosen, also tell the user how to publish it:
+
+   > "Sibling KB initialized at `<workspace>/lore/` as its own git repo. To publish it as a GitHub repo:
+   > ```
+   > cd lore
+   > gh repo create <org>/lore --private
+   > git remote add origin git@github.com:<org>/lore.git
+   > git push -u origin main
+   > ```
+   > Then back in the workspace, update `household.json`'s `lore` entry's `url` field with the new remote and commit."
 
 #### Already-a-workspace
 
@@ -165,6 +216,7 @@ git init -b main && git add -A && git commit -m "wrap existing siblings in a wit
 
 ## Notes
 
-- Every scaffold flow ends with a single commit. The user can amend or split before pushing.
+- Most scaffold flows end with a single commit. The poly-repo-retrofit sibling-KB path is the exception: it produces one commit on the workspace meta-repo and one in `lore/`'s new git history. The user can amend or split before pushing.
 - For greenfield and files-no-git, the script clones the witan-household template fresh each time. For air-gapped environments, the user can manually `git clone` the template once and pass its local path to a future invocation (not implemented in v1).
 - The single-repo-retrofit MERGES the workspace's `.gitignore` into the existing one rather than overwriting. The user should review the result.
+- The sibling-KB option is only offered in poly-repo-retrofit. Greenfield/files-no-git/single-repo-retrofit/docs-migration always scaffold inline; users can convert to sibling later via `./scripts/split-lore.sh` from the witan-household template.

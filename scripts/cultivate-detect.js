@@ -43,7 +43,7 @@ function detect(domainName, cwd) {
     }
 
     const codeRepos = (manifest.repos || [])
-        .filter((r) => r.name !== manifest.workspace && r.name !== manifest.knowledge_base)
+        .filter((r) => r.name !== manifest.meta_repo && r.name !== manifest.knowledge_base)
         .map((r) => r.name);
 
     const kbDirName = manifest.knowledge_base || 'lore';
@@ -112,7 +112,7 @@ function survey(cwd) {
     }
 
     const codeRepos = (manifest.repos || [])
-        .filter((r) => r.name !== manifest.workspace && r.name !== manifest.knowledge_base)
+        .filter((r) => r.name !== manifest.meta_repo && r.name !== manifest.knowledge_base)
         .map((r) => r.name);
 
     const kbDirName = manifest.knowledge_base || 'lore';

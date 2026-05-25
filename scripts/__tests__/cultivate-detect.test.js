@@ -17,7 +17,7 @@ function withWorkspace(callback) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cultivate-detect-'));
     const root = fs.realpathSync(tmp);
     fs.writeFileSync(path.join(root, 'household.json'), JSON.stringify({
-        workspace: 'test-workspace',
+        meta_repo: 'test-workspace',
         knowledge_base: 'lore',
         repos: [
             { name: 'test-workspace' },

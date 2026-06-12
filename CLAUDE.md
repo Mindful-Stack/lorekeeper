@@ -38,18 +38,23 @@ Touch `.knowledge-debug` in the knowledge-repo root (or in this plugin root), or
 
 ### Path resolution (the load-bearing detail)
 
-`hooks/load-standards-reminder.sh` runs on `SessionStart` and resolves the knowledge-base path in this priority order:
+`hooks/load-standards-reminder.sh` runs on `SessionStart` and resolves the knowledge base(s) in this priority order:
 
-1. `.lorekeeper/config.json` in CWD — `{ "knowledgeBasePath": "..." }`, relative paths resolve against CWD
-2. `KNOWLEDGE_BASE_PATH` env var
-3. Sibling-dir fallback — `./docs/shared-knowledge`, `./shared-knowledge`, or `./knowledge` (must contain either a `knowledge/` subdir or `knowledge.config.json`)
+1. `.lorekeeper/config.json` in CWD — `{ "knowledgeBasePath": "..." }`, relative paths resolve against CWD (single KB)
+2. `KNOWLEDGE_BASE_PATH` env var (single KB)
+3. `household.json` walk-up — walk up from CWD (bounded to 6 levels) looking for a witan-household manifest. Reads `shared_knowledge_bases` (optional array of dir names, priority order lowest -> highest) plus `knowledge_base` (the team/write KB, default `lore`); each name resolves as `<household-root>/<name>` and must contain a `knowledge/` subdir. This is the only multi-KB tier.
+4. Sibling-dir fallback — `./lore`, `./docs/lore`, `./docs/shared-knowledge`, `./shared-knowledge`, or `./knowledge` (must contain either a `knowledge/` subdir or `knowledge.config.json`)
+
+Tiers 1 and 2 are explicit configuration: when set but broken, the hook surfaces the error instead of falling through.
 
 It then:
-- Verifies the path exists and has a `knowledge/` subdirectory
-- Checks git age in the knowledge repo and warns if older than `KNOWLEDGE_MAX_AGE_DAYS` (default 7)
-- Emits a JSON `systemMessage` containing the resolved path **plus** the "Skill Router" — a block telling the model which skill to use for which kind of task
+- Checks git age in each knowledge repo and warns if older than `KNOWLEDGE_MAX_AGE_DAYS` (default 7)
+- Nags about KBs listed in `household.json` that have no `knowledge/` directory
+- Emits a JSON `systemMessage` containing one `Knowledge path:` line per KB (priority order, lowest first), a `Team knowledge path:` line (the write target — always the last KB), **plus** the "Skill Router" — a block telling the model which skill to use for which kind of task
 
-Commands and agents do not call this script directly. Instead, every command/agent markdown file says: *look for "Knowledge path:" in the session context and use that as `<knowledge-path>`*. The model substitutes the value at runtime. This is the only mechanism by which commands learn where the knowledge base is.
+Convention everywhere: **the last `Knowledge path:` line is the write target**, and the hook also emits the explicit `Team knowledge path:` marker for it. Multi-KB override semantics are whole-file replacement (a higher-priority KB's file fully replaces a lower-priority one at the same relative path — never section-level merging). Don't break either — skills/commands depend on them.
+
+Commands and agents do not call this script directly. Instead, every command/agent markdown file says: *look for "Knowledge path:" markers in the session context and use them as `<knowledge-path>`*. The model substitutes the values at runtime. This is the only mechanism by which commands learn where the knowledge base is.
 
 If you change the hook's output format, every `<knowledge-path>` consumer (every file under `commands/`, `agents/`, and `skills/`) is potentially affected.
 
@@ -78,9 +83,27 @@ The SessionStart hook's systemMessage names skills like `pattern-identifier`, `b
 
 The plugin's full name is `lorekeeper` but slash commands use the short `/lore:` prefix (e.g. `/lore:prime`, `/lore:review`). When wiring new commands, file names under `commands/` are short (`prime.md`, `review.md`) — the `/lore:` prefix comes from the plugin manifest, not the filenames.
 
+## Version bumps are mandatory
+
+Any PR that changes plugin contents — hooks, skills, agents, commands, scripts, manifests, even docs that ship inside the plugin — **must** bump the plugin's `version` field. The Claude Code updater compares manifest versions, not git SHAs: if the version doesn't move, `/plugin update lorekeeper@witan` short-circuits and every cached install keeps running the old code indefinitely.
+
+Follow [semantic versioning](https://semver.org/):
+
+- **PATCH** (`1.0.X`) — bug fixes, hook tweaks, doc-only changes inside the plugin, internal refactors. Anything backwards-compatible that users don't need to know about.
+- **MINOR** (`1.X.0`) — new commands, new skills, new agents, additive options. Backwards-compatible new functionality.
+- **MAJOR** (`X.0.0`) — breaking changes: renamed/removed commands, changed config or manifest schema, anything users will need to adjust for.
+
+The version field appears in three manifests — keep them in sync, in the same PR as the change:
+
+- `.claude-plugin/plugin.json` → `version`
+- `package.json` → `version`
+- `Mindful-Stack/witan` marketplace listing → the lorekeeper entry's `version` *(lives in the witan repo — this is the one the updater actually compares against, so a bump here needs a companion PR there)*
+
+Don't defer the bump to a "release PR" later — by the time later comes, multiple changes are unreleased and cached installs are increasingly drifted. Bump in the same PR as the change, every time.
+
 ## Things to avoid
 
-- Don't add team-specific content (no Ramudden URLs, no MyApp.* namespaces outside generic placeholders). This is a deliberate fork-with-fresh-history of an internal plugin, kept generic for public distribution. Use generic placeholders (`payments`, `inventory`, `user-management`).
-- Don't hard-code domain lists or repo lists into commands. `/lore:prime` discovers domains from `_index.json`; `/lore:onboard` requires `repos_catalog` in the knowledge base's `knowledge.config.json`.
+- Don't add team-specific content (no internal company URLs or names, no MyApp.* namespaces outside generic placeholders). This is a deliberate fork-with-fresh-history of an internal plugin, kept generic for public distribution. Use generic placeholders (`payments`, `inventory`, `user-management`).
+- Don't hard-code domain lists or repo lists into commands. `/lore:prime` discovers domains from `_index.json`; `/lore:onboard` reads repos from `household.json`'s `repos` array (or legacy `repos_catalog` in the knowledge base's `knowledge.config.json`).
 - Don't add Node scripts to commands unless there's no native-tools alternative — see "Zero-runtime principle".
 - `docs/agent/`, `docs/plans/`, `docs/specs/` are gitignored — local-only artefacts. Don't reference them from committed files.

@@ -42,12 +42,28 @@ If you'd rather wire it up manually, Lorekeeper resolves the knowledge base path
 
 1. **`.lorekeeper/config.json`** in the project root — `{ "knowledgeBasePath": "/abs/or/rel/path" }`. Best for per-project setups with custom paths.
 2. **`KNOWLEDGE_BASE_PATH`** environment variable — best for a single global default that applies anywhere.
-3. **Sibling-dir fallback** in CWD, first match wins:
+3. **`household.json` walk-up** — from the current directory upward (max 6 levels), Lorekeeper looks for a witan-household manifest. If found, it reads `knowledge_base` (the team KB, default `lore`) plus the optional `shared_knowledge_bases` array — see "Multiple knowledge bases" below. This is what makes `/lore:*` work from inside any code repo within a household, not just from the household root.
+4. **Sibling-dir fallback** in CWD, first match wins:
    - `./lore` (canonical — witan-household)
    - `./docs/lore`
    - `./docs/shared-knowledge`, `./shared-knowledge`, `./knowledge` (legacy, kept for back-compat)
 
    Each candidate must contain either a `knowledge/` subdirectory or a `knowledge.config.json` to be recognised.
+
+#### Multiple knowledge bases
+
+A household can layer a shared (e.g. org-wide) KB underneath the team KB. Declare it in `household.json`:
+
+```json
+{
+  "meta_repo": "my-workspace",
+  "knowledge_base": "lore",
+  "shared_knowledge_bases": ["org-lore"],
+  "repos": [ ... ]
+}
+```
+
+Each entry is a directory name inside the household that must contain a `knowledge/` folder. KBs are read in priority order — `shared_knowledge_bases` first (lowest), `knowledge_base` last (highest). When the same relative file exists in more than one KB, the higher-priority file wins outright (whole-file replacement, never section merging). The team KB (`knowledge_base`) is the default write target for `/lore:learn` and `/lore:update`; edits to files owned by a shared KB are routed there as PRs instead.
 
 Setting the env var globally:
 
@@ -76,6 +92,17 @@ Restart Claude Code (env vars are read at startup), then:
 ```
 
 This shows plugin status and available commands. You should see "Knowledge base found" in the output.
+
+## Keeping the plugin up to date
+
+```text
+/plugin update lorekeeper@witan
+/reload-plugins
+```
+
+`/reload-plugins` picks up the new hooks, skills, agents, and commands without restarting Claude Code. A full restart is only needed when environment variables changed (they're read at startup).
+
+The updater compares the `version` in the marketplace manifest. If it hasn't moved since your last install, the update short-circuits and your cached copy keeps running. Run `/plugin update` periodically; if `/lore:help` looks wrong after, re-run the install flow.
 
 ## Commands
 
@@ -209,10 +236,18 @@ These skills trigger automatically when relevant:
 
 | Skill | Triggers On |
 |-------|-------------|
-| `knowledge-discovery` | Working in repos that need domain/technical context |
 | `pattern-identifier` | Questions about standards ("How do we...", "Should I...", "What's our pattern for...") |
 | `review` | "Review my PR", "Check this code" |
 | `knowledge-update` | "Document this", finding knowledge gaps |
+| `brainstorming` | Creative work — features, components, new functionality |
+| `writing-plans` | Multi-step tasks with spec/requirements |
+| `executing-plans` | Executing a written implementation plan |
+| `test-driven-development` | Implementing any feature or bugfix |
+| `systematic-debugging` | Bugs, test failures, unexpected behaviour |
+| `verification-before-completion` | Claiming work is complete or fixed |
+| `subagent-driven-development` | Independent tasks from a plan (same session) |
+| `dispatching-parallel-agents` | Multiple independent problems |
+| `cultivate` / `cultivate-discovery` | Domain cultivation via `/lore:cultivate` |
 
 ### Pattern Identifier Flow
 
@@ -278,11 +313,14 @@ User Question ("How do we handle one-line if statements?")
 Subagents run in isolation to keep the main conversation context clean:
 
 | Agent | Purpose |
-|-------|---------  |
-| `knowledge-searcher` | Searches knowledge base, returns structured answers with sources and confidence |
+|-------|---------|
+| `knowledge-question-answerer` | Searches knowledge base, returns structured answers with sources and confidence |
+| `knowledge-reader` | Loads task-relevant knowledge (standards, patterns, gotchas) as a distilled summary |
+| `knowledge-updater` | Handles the full PR flow for knowledge base changes (branch, write, index rebuild, PR) |
+| `plan-compliance-reviewer` | Verifies a completed implementation task against its original plan/spec |
 
-The `knowledge-searcher` agent:
-- Searches `_index.json` for tag/title/description matches
+The `knowledge-question-answerer` agent:
+- Searches each configured KB's `_index.json` for tag/title/description matches
 - Greps knowledge files for keywords
 - Reads top 3-5 matching files
 - Returns structured output: Answer, Sources (with line numbers), Confidence, Gap description
@@ -304,8 +342,8 @@ Note: The `knowledge/` directory lives in your knowledge-base directory (typical
 
 The plugin uses **zero runtime scripts** (except the SessionStart hook). All commands and skills use Claude's native tools:
 
-- **Path resolution**: SessionStart hook resolves the KB path from `.lorekeeper/config.json` → `KNOWLEDGE_BASE_PATH` → sibling-dir fallback (`lore/`, `docs/lore/`, `shared-knowledge/`, ...)
-- **SessionStart hook**: Validates path, checks staleness, injects resolved path into session
+- **Path resolution**: SessionStart hook resolves KB paths from `.lorekeeper/config.json` → `KNOWLEDGE_BASE_PATH` → `household.json` walk-up (multi-KB) → sibling-dir fallback (`lore/`, `docs/lore/`, `shared-knowledge/`, ...)
+- **SessionStart hook**: Validates paths, checks staleness per KB, injects resolved paths into session (one `Knowledge path:` marker per KB plus a `Team knowledge path:` write target)
 - **Listing**: Read `_index.json` (pre-built at development time)
 - **Search**: Grep tool with regex patterns
 - **Context detection**: Glob + Read for `*.csproj`, `package.json`, etc.
@@ -316,12 +354,13 @@ The plugin uses **zero runtime scripts** (except the SessionStart hook). All com
 ```
 RESOLUTION ORDER         HOOK (bash)                    SKILLS/COMMANDS (markdown)
 .lorekeeper/config.json  load-standards-reminder.sh  -> systemMessage includes:
-KNOWLEDGE_BASE_PATH       - validate path exists          "Knowledge path: /path/to/knowledge/"
-sibling-dir fallback      - check staleness via git    -> Skills say: "Read <knowledge-path>/domain/foo.md"
-                          - output resolved path          Claude resolves at runtime
+KNOWLEDGE_BASE_PATH       - validate paths exist          "Knowledge path: /path/to/knowledge/"  (one per KB)
+household.json walk-up    - check staleness via git       "Team knowledge path: ..."  (write target)
+sibling-dir fallback      - output resolved paths      -> Skills say: "Read <knowledge-path>/domain/foo.md"
+                                                          Claude resolves at runtime
 ```
 
-In a witan-household workspace, sibling-dir fallback finds `./lore/` automatically — no env var or config file needed.
+In a witan-household workspace, the `household.json` walk-up (or, from the household root, the sibling-dir fallback) finds `lore/` automatically — no env var or config file needed.
 
 ### Build Script
 
@@ -355,9 +394,9 @@ lorekeeper/
 
 ### Plugin says "No knowledge base configured"
 
-The hook checked all three resolution paths and found nothing. Pick one:
+The hook checked all four resolution tiers and found nothing. Pick one:
 
-1. **Use the witan-household pattern** — `cd` into a workspace meta-repo whose `lore/` subdirectory has a `knowledge/` folder inside. Restart Claude Code. (Easiest if you're starting fresh — see Setup section above.)
+1. **Use the witan-household pattern** — `cd` anywhere inside a workspace meta-repo with a `household.json` whose `lore/` directory has a `knowledge/` folder inside. Restart Claude Code. (Easiest if you're starting fresh — see Setup section above.)
 2. **Set `KNOWLEDGE_BASE_PATH`** — point at your knowledge-base root. Restart Claude Code (env vars are read at startup).
 3. **Write `.lorekeeper/config.json`** — `{ "knowledgeBasePath": "/path/to/kb" }` in the project root.
 
@@ -382,3 +421,15 @@ git pull
 
 1. Ensure you started Claude with `--plugin-dir` pointing to this repo
 2. Restart Claude Code after making changes to plugin files
+
+## Contributing
+
+### Versioning policy
+
+Follows [semantic versioning](https://semver.org/). **Every PR that changes plugin contents must bump the version in the same PR** — the Claude Code updater compares manifest versions, not git SHAs. Skip the bump and `/plugin update lorekeeper@witan` short-circuits on every user's machine, leaving cached installs running the old code.
+
+- **PATCH** — fixes, internal refactors, doc-only changes
+- **MINOR** — new commands/skills/agents, additive options
+- **MAJOR** — renamed/removed commands, config or manifest schema changes
+
+Keep the version in sync across `.claude-plugin/plugin.json`, `package.json`, and the lorekeeper entry in the [Witan marketplace](https://github.com/Mindful-Stack/witan) manifest (the one the updater actually compares — needs a companion PR there).

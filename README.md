@@ -343,7 +343,7 @@ Note: The `knowledge/` directory lives in your knowledge-base directory (typical
 The plugin uses **zero runtime scripts** (except the SessionStart hook). All commands and skills use Claude's native tools:
 
 - **Path resolution**: SessionStart hook resolves KB paths from `.lorekeeper/config.json` → `KNOWLEDGE_BASE_PATH` → `household.json` walk-up (multi-KB) → sibling-dir fallback (`lore/`, `docs/lore/`, `shared-knowledge/`, ...)
-- **SessionStart hook**: Validates paths, checks staleness per KB, injects resolved paths into session (one `Knowledge path:` marker per KB plus a `Team knowledge path:` write target)
+- **SessionStart hook**: Validates paths, checks staleness per KB, and injects the resolved paths into Claude's context via `additionalContext` (one `Knowledge path:` marker per KB plus a `Team knowledge path:` write target). User-facing summaries and warnings go on the separate `systemMessage` channel.
 - **Listing**: Read `_index.json` (pre-built at development time)
 - **Search**: Grep tool with regex patterns
 - **Context detection**: Glob + Read for `*.csproj`, `package.json`, etc.
@@ -353,10 +353,11 @@ The plugin uses **zero runtime scripts** (except the SessionStart hook). All com
 
 ```
 RESOLUTION ORDER         HOOK (bash)                    SKILLS/COMMANDS (markdown)
-.lorekeeper/config.json  load-standards-reminder.sh  -> systemMessage includes:
+.lorekeeper/config.json  load-standards-reminder.sh  -> additionalContext (model-visible):
 KNOWLEDGE_BASE_PATH       - validate paths exist          "Knowledge path: /path/to/knowledge/"  (one per KB)
 household.json walk-up    - check staleness via git       "Team knowledge path: ..."  (write target)
-sibling-dir fallback      - output resolved paths      -> Skills say: "Read <knowledge-path>/domain/foo.md"
+sibling-dir fallback      - output resolved paths      -> systemMessage (user-visible): summary + stale list
+                                                       -> Skills say: "Read <knowledge-path>/domain/foo.md"
                                                           Claude resolves at runtime
 ```
 

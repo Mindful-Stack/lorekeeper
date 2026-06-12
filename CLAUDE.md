@@ -32,7 +32,7 @@ These cover `scripts/init-detect.js` — CWD-state classification for `/lore:ini
 
 ### Debug mode for the SessionStart hook
 
-Touch `.knowledge-debug` in the knowledge-repo root (or in this plugin root), or set `KNOWLEDGE_DEBUG=1`. The hook then injects extra `[KNOWLEDGE:DEBUG]` instructions in its systemMessage so the model prints what fired and which skill/agent it dispatched. Debug output relies on Claude following instructions, so it's reliable interactively but not in automated tests.
+Touch `.knowledge-debug` in the knowledge-repo root (or in this plugin root), or set `KNOWLEDGE_DEBUG=1`. The hook then injects extra `[KNOWLEDGE:DEBUG]` instructions into its model-facing `additionalContext` so the model prints what fired and which skill/agent it dispatched. Debug output relies on Claude following instructions, so it's reliable interactively but not in automated tests.
 
 ## Architecture
 
@@ -48,9 +48,13 @@ Touch `.knowledge-debug` in the knowledge-repo root (or in this plugin root), or
 Tiers 1 and 2 are explicit configuration: when set but broken, the hook surfaces the error instead of falling through.
 
 It then:
-- Checks git age in each knowledge repo and warns if older than `KNOWLEDGE_MAX_AGE_DAYS` (default 7)
+- Checks git age in each knowledge repo and flags any older than `KNOWLEDGE_MAX_AGE_DAYS` (default 7)
 - Nags about KBs listed in `household.json` that have no `knowledge/` directory
-- Emits a JSON `systemMessage` containing one `Knowledge path:` line per KB (priority order, lowest first), a `Team knowledge path:` line (the write target — always the last KB), **plus** the "Skill Router" — a block telling the model which skill to use for which kind of task
+- Emits a single JSON object using **both** SessionStart output channels:
+  - `hookSpecificOutput.additionalContext` (**model-visible, hidden from the user**) — one `Knowledge path:` line per KB (priority order, lowest first), the `Team knowledge path:` write-target line, the "Skill Router", and any model-facing instruction (e.g. the stale-KB update offer). This is the channel the model actually reads the markers from.
+  - `systemMessage` (**user-visible, hidden from the model**) — a one-line human summary, the compact list of stale KBs, the missing-KB nag, and setup guidance when nothing resolves. No markers here; the user never needs to read paths.
+
+The two channels are not interchangeable: `systemMessage` is shown to the user but withheld from Claude, while `additionalContext` is injected into Claude's context but not shown to the user. Put anything the *model* must read (markers, router, instructions) in `additionalContext`; put anything the *user* should see (warnings, summaries) in `systemMessage`. The output JSON is assembled by hand, so every interpolated path/name is passed through `json_escape` first — a stray quote or backslash in a path would otherwise produce invalid JSON and silently break the whole message.
 
 Convention everywhere: **the last `Knowledge path:` line is the write target**, and the hook also emits the explicit `Team knowledge path:` marker for it. Multi-KB override semantics are whole-file replacement (a higher-priority KB's file fully replaces a lower-priority one at the same relative path — never section-level merging). Don't break either — skills/commands depend on them.
 

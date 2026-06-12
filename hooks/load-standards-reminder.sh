@@ -15,6 +15,20 @@ elif [ -f ".knowledge-debug" ] || [ -f "$PLUGIN_ROOT/.knowledge-debug" ]; then
     DEBUG_MODE="true"
 fi
 
+# --- Helper: escape a value for embedding in the hand-built JSON below ---
+# The systemMessage / additionalContext payloads are assembled by hand (no jq/node
+# dependency on the output path), so any interpolated value that could contain a
+# backslash or double-quote — chiefly filesystem paths on Windows or unusual dir
+# names — must be escaped or it produces invalid JSON. Intended `\n` line breaks in
+# the message literals are written as the two-character sequence \n and are NOT
+# touched by this helper; it only sanitises interpolated values.
+json_escape() {
+    local s=$1
+    s=${s//\\/\\\\}   # backslash -> \\
+    s=${s//\"/\\\"}   # double quote -> \"
+    printf '%s' "$s"
+}
+
 # --- Skill Router (shared between debug and production) ---
 SKILL_ROUTER='Lorekeeper Skill Router:\n\nWhen working in projects with a configured knowledge base, use the RIGHT skill for the task:\n\n- QUESTIONS about patterns/conventions/standards (\"How do we handle X?\", \"What'\''s our pattern for Y?\", \"Do we use X?\")\n  -> Use the pattern-identifier skill (docs-first via knowledge-question-answerer agent)\n\n- CREATIVE WORK (features, components, new functionality)\n  -> Use the brainstorming skill (design before code, always)\n\n- MULTI-STEP TASKS with spec/requirements\n  -> Use the writing-plans skill (task breakdown before implementation)\n\n- EXECUTING a written plan\n  -> Use the executing-plans skill (batch execution with checkpoints)\n\n- IMPLEMENTING any feature or bugfix\n  -> Use the test-driven-development skill (RED-GREEN-REFACTOR, default for all work)\n\n- BUG, TEST FAILURE, or UNEXPECTED BEHAVIOR\n  -> Use the systematic-debugging skill (4-phase root cause methodology)\n\n- CLAIMING WORK IS COMPLETE or FIXED\n  -> Use the verification-before-completion skill (evidence before claims, always)\n\n- INDEPENDENT TASKS from a plan\n  -> Use the subagent-driven-development skill (coordinated plan execution)\n\n- MULTIPLE INDEPENDENT PROBLEMS (e.g., unrelated test failures)\n  -> Use the dispatching-parallel-agents skill (ad-hoc parallel work)\n\n- LOADING DOMAIN CONTEXT manually\n  -> Use /lore:prime <domain>\n\n- CODE REVIEW or PR review\n  -> Use the review skill or /lore:review command\n\n- MISSING or OUTDATED documentation noticed\n  -> Use the knowledge-update skill or /lore:update command\n\nIf there is even a small chance a skill applies, invoke it before responding.\nCommon rationalizations for skipping (\"this is simple\", \"let me explore first\",\n\"I already know this\") are not valid reasons to bypass skills.\n\nIf you are about to write or modify code and no workflow skill has been invoked,\ndispatch knowledge-reader with the task context before proceeding.\n\nPriority: User instructions > Plugin skills > Default system prompt.\n\nStandards Loading Order: Knowledge base (general -> language -> framework -> domain)\nTHEN repo-local standards (docs/standards/). Repo-specific standards take precedence\nwhen they conflict.\n\nMulti-KB rule: When multiple `Knowledge path:` markers are present, they are listed\nin priority order (lowest to highest); later entries override earlier ones when the\nsame relative path exists in both (whole-file replacement, never section merging).\nWrites always go to the `Team knowledge path:` marker (the last/highest-priority KB)\nunless the file being edited already lives in another KB.'
 
@@ -72,9 +86,9 @@ if [ -n "$RESOLVED_PATH" ]; then
     KNOWLEDGE_ROOT="${RESOLVED_PATH//\\//}"
 
     if [ ! -d "$KNOWLEDGE_ROOT" ]; then
-        KNOWLEDGE_MSG="Knowledge base path \\\"$KNOWLEDGE_ROOT\\\" does not exist.\n\nPlease verify the path and restart Claude Code."
+        KNOWLEDGE_MSG="Knowledge base path \\\"$(json_escape "$KNOWLEDGE_ROOT")\\\" does not exist.\n\nPlease verify the path and restart Claude Code."
     elif [ ! -d "$KNOWLEDGE_ROOT/knowledge" ]; then
-        KNOWLEDGE_MSG="Knowledge base path \\\"$KNOWLEDGE_ROOT\\\" has no knowledge/ subdirectory.\n\nExpected: $KNOWLEDGE_ROOT/knowledge/"
+        KNOWLEDGE_MSG="Knowledge base path \\\"$(json_escape "$KNOWLEDGE_ROOT")\\\" has no knowledge/ subdirectory.\n\nExpected: $(json_escape "$KNOWLEDGE_ROOT")/knowledge/"
     else
         KNOWLEDGE_ROOTS+=("$KNOWLEDGE_ROOT")
         KNOWLEDGE_PATHS+=("$KNOWLEDGE_ROOT/knowledge")
@@ -119,9 +133,9 @@ try {
         if [ ${#KNOWLEDGE_PATHS[@]} -eq 0 ]; then
             MISSING_DETAIL=""
             if [ ${#MISSING_KBS[@]} -gt 0 ]; then
-                MISSING_DETAIL="\\nMissing: ${MISSING_KBS[*]}"
+                MISSING_DETAIL="\\nMissing: $(json_escape "${MISSING_KBS[*]}")"
             fi
-            KNOWLEDGE_MSG="⚠️  witan-household found at $HOUSEHOLD_ROOT but no knowledge bases resolved.$MISSING_DETAIL\n\nClone the missing knowledge bases into the household (or fix knowledge_base / shared_knowledge_bases in household.json), then restart Claude Code.\n\nAll /lore:* commands will degrade until this is configured."
+            KNOWLEDGE_MSG="⚠️  witan-household found at $(json_escape "$HOUSEHOLD_ROOT") but no knowledge bases resolved.$MISSING_DETAIL\n\nClone the missing knowledge bases into the household (or fix knowledge_base / shared_knowledge_bases in household.json), then restart Claude Code.\n\nAll /lore:* commands will degrade until this is configured."
         fi
     else
         # 4. Sibling fallback. `lore/` is the canonical name in the witan-household
@@ -133,7 +147,7 @@ try {
                     KNOWLEDGE_ROOTS+=("$KB_ROOT")
                     KNOWLEDGE_PATHS+=("$KB_ROOT/knowledge")
                 else
-                    KNOWLEDGE_MSG="Knowledge base path \\\"$KB_ROOT\\\" has no knowledge/ subdirectory.\n\nExpected: $KB_ROOT/knowledge/"
+                    KNOWLEDGE_MSG="Knowledge base path \\\"$(json_escape "$KB_ROOT")\\\" has no knowledge/ subdirectory.\n\nExpected: $(json_escape "$KB_ROOT")/knowledge/"
                 fi
                 break
             fi
@@ -141,31 +155,43 @@ try {
     fi
 fi
 
-# --- Build the systemMessage ---
+# --- Build the two output channels ---
+#   systemMessage     -> shown to the USER only (Claude does NOT see it).
+#                        Carries the human summary, staleness list, and setup guidance.
+#   additionalContext -> injected into the MODEL's context (the user does NOT see it).
+#                        Carries the `Knowledge path:` markers, the skill router, and
+#                        any model-facing instruction (e.g. the stale-KB update offer).
+# This split is the documented SessionStart hook contract; keeping the markers on the
+# model-visible channel is what every command/agent depends on.
+SYS_MSG=""
+MODEL_CTX=""
+
 if [ ${#KNOWLEDGE_PATHS[@]} -gt 0 ]; then
     KB_COUNT=${#KNOWLEDGE_PATHS[@]}
     LAST_IDX=$((KB_COUNT - 1))
     TEAM_KB_PATH="${KNOWLEDGE_PATHS[$LAST_IDX]}"
 
-    # Header: single-KB keeps the old wording for backward compat; multi-KB gets a summary.
+    # Header (model context): single-KB keeps the old wording for backward compat.
     if [ "$KB_COUNT" -eq 1 ]; then
-        HEADER="Knowledge base: ${KNOWLEDGE_ROOTS[0]}"
+        HEADER="Knowledge base: $(json_escape "${KNOWLEDGE_ROOTS[0]}")"
     else
         HEADER="Knowledge bases ($KB_COUNT, in priority order lowest -> highest; later overrides earlier):"
         for i in "${!KNOWLEDGE_ROOTS[@]}"; do
-            HEADER="$HEADER\\n  $((i+1)). ${KNOWLEDGE_ROOTS[$i]}"
+            HEADER="$HEADER\\n  $((i+1)). $(json_escape "${KNOWLEDGE_ROOTS[$i]}")"
         done
     fi
 
-    # One `Knowledge path:` line per KB, in priority order (lowest first).
+    # One `Knowledge path:` line per KB (model context), in priority order (lowest first),
+    # followed by the `Team knowledge path:` write-target marker.
     PATH_LINES=""
     for kb_path in "${KNOWLEDGE_PATHS[@]}"; do
-        PATH_LINES="${PATH_LINES}Knowledge path: $kb_path/\\n"
+        PATH_LINES="${PATH_LINES}Knowledge path: $(json_escape "$kb_path")/\\n"
     done
-    PATH_LINES="${PATH_LINES}Team knowledge path: $TEAM_KB_PATH/"
+    PATH_LINES="${PATH_LINES}Team knowledge path: $(json_escape "$TEAM_KB_PATH")/"
 
-    # Staleness check per KB
-    STALENESS_WARNING=""
+    # Staleness: collect stale KB roots. The visible list goes to the user; the
+    # actual update *offer* goes to the model via additionalContext.
+    STALE_ROOTS=()
     if command -v git &>/dev/null; then
         for kb_root in "${KNOWLEDGE_ROOTS[@]}"; do
             if [ -d "$kb_root/.git" ]; then
@@ -174,30 +200,69 @@ if [ ${#KNOWLEDGE_PATHS[@]} -gt 0 ]; then
                     NOW_TS=$(date +%s)
                     AGE_DAYS=$(( (NOW_TS - LAST_COMMIT_TS) / 86400 ))
                     if [ "$AGE_DAYS" -ge "$KNOWLEDGE_MAX_AGE_DAYS" ]; then
-                        STALENESS_WARNING="${STALENESS_WARNING}\\nWARNING: $kb_root may be stale (last updated $AGE_DAYS days ago). Pull latest: cd $kb_root && git pull"
+                        STALE_ROOTS+=("$kb_root")
                     fi
                 fi
             fi
         done
     fi
 
-    # Partial nag: some KBs were listed in household.json but don't have /knowledge/.
-    PARTIAL_NAG=""
-    if [ ${#MISSING_KBS[@]} -gt 0 ]; then
-        PARTIAL_NAG="\\n\\n⚠️  Some knowledge bases listed in household.json have no /knowledge/ directory: ${MISSING_KBS[*]}. Clone them into $HOUSEHOLD_ROOT, or remove them from shared_knowledge_bases."
+    # User-facing summary line.
+    if [ "$KB_COUNT" -eq 1 ]; then
+        SYS_MSG="Lorekeeper: knowledge base loaded ($(json_escape "${KNOWLEDGE_ROOTS[0]}"))."
+    else
+        SYS_MSG="Lorekeeper: $KB_COUNT knowledge bases loaded; team/write KB is $(json_escape "${KNOWLEDGE_ROOTS[$LAST_IDX]}")."
     fi
 
-    KNOWLEDGE_MSG="${HEADER}\\n${PATH_LINES}${STALENESS_WARNING}${PARTIAL_NAG}"
-elif [ -z "$KNOWLEDGE_MSG" ]; then
-    KNOWLEDGE_MSG='No knowledge base configured.\n\nOptions:\n  1. Run /lore:init to scaffold a new knowledge base (witan-household)\n  2. Set KNOWLEDGE_BASE_PATH environment variable\n  3. Add .lorekeeper/config.json with { \"knowledgeBasePath\": \"/path\" } to this project\n\nAll /lore:* commands will show setup instructions until configured.'
+    # Staleness — two channels:
+    #   visible: a compact list + a note that Claude will offer to refresh them.
+    #   model:   a one-shot instruction to offer the refresh command, prompt-gated.
+    STALE_INSTRUCTION=""
+    if [ ${#STALE_ROOTS[@]} -gt 0 ]; then
+        STALE_LIST=""
+        for r in "${STALE_ROOTS[@]}"; do
+            STALE_LIST="${STALE_LIST}\\n  - $(json_escape "$r")"
+        done
+        SYS_MSG="${SYS_MSG}\\n\\n⚠️  ${#STALE_ROOTS[@]} knowledge base(s) may be stale (no commit in >= ${KNOWLEDGE_MAX_AGE_DAYS} days):${STALE_LIST}\\nClaude will offer to update them."
+
+        if [ -n "$HOUSEHOLD_ROOT" ]; then
+            STALE_INSTRUCTION="Stale knowledge base(s) detected: $(json_escape "${STALE_ROOTS[*]}"). At a natural moment (not mid-task), offer ONCE to refresh them by running \\\"make -C $(json_escape "$HOUSEHOLD_ROOT") update-kb\\\". If that make target does not exist, fall back to \\\"git -C <kb-root> pull --ff-only\\\" for each stale KB. Do not run it without the user's go-ahead, and do not raise this again this session."
+        else
+            STALE_INSTRUCTION="Stale knowledge base(s) detected: $(json_escape "${STALE_ROOTS[*]}"). At a natural moment (not mid-task), offer ONCE to refresh each by running \\\"git -C <kb-root> pull --ff-only\\\". Do not run it without the user's go-ahead, and do not raise this again this session."
+        fi
+    fi
+
+    # Partial nag (user-facing): KBs listed in household.json without a knowledge/ dir.
+    if [ ${#MISSING_KBS[@]} -gt 0 ]; then
+        SYS_MSG="${SYS_MSG}\\n\\n⚠️  Some knowledge bases listed in household.json have no knowledge/ directory: $(json_escape "${MISSING_KBS[*]}"). Clone them into $(json_escape "$HOUSEHOLD_ROOT"), or remove them from shared_knowledge_bases."
+    fi
+
+    # Assemble the model context: markers + (optional stale offer) + skill router.
+    MODEL_CTX="${HEADER}\\n${PATH_LINES}"
+    if [ -n "$STALE_INSTRUCTION" ]; then
+        MODEL_CTX="${MODEL_CTX}\\n\\n${STALE_INSTRUCTION}"
+    fi
+    MODEL_CTX="${MODEL_CTX}\\n\\n${SKILL_ROUTER}"
+elif [ -n "$KNOWLEDGE_MSG" ]; then
+    # A resolution-stage notice was set (broken explicit path, household-found-but-empty,
+    # sibling without knowledge/). Show it to the user; also expose it to the model so
+    # /lore:* commands can detect the not-configured / degraded state from session context.
+    SYS_MSG="$KNOWLEDGE_MSG"
+    MODEL_CTX="${KNOWLEDGE_MSG}\\n\\n${SKILL_ROUTER}"
+else
+    SYS_MSG='No knowledge base configured.\n\nOptions:\n  1. Run /lore:init to scaffold a new knowledge base (witan-household)\n  2. Set KNOWLEDGE_BASE_PATH environment variable\n  3. Add .lorekeeper/config.json with { \"knowledgeBasePath\": \"/path\" } to this project\n\nAll /lore:* commands will show setup instructions until configured.'
+    MODEL_CTX="No knowledge base configured.\\n\\n${SKILL_ROUTER}"
 fi
 
 # --- Output ---
 if [ "$DEBUG_MODE" = "true" ]; then
-    # Build debug prefix
+    # Debug instructions are model-facing — prepend them to the model context channel.
     DEBUG_PREFIX="LOREKEEPER DEBUG MODE ENABLED.\\n\\nYou MUST output these debug lines at the START of your response:\\n\\n[KNOWLEDGE:DEBUG] hook_fired=SessionStart\\n[KNOWLEDGE:DEBUG] knowledge_env=\${KNOWLEDGE_BASE_PATH:-<not set>}\\n\\nThen, when executing any /lore:* command, ALSO output:\\n  [KNOWLEDGE:DEBUG] command=<command-name>\\n\\nWhen a workflow skill triggers, ALSO output:\\n  [KNOWLEDGE:DEBUG] skill_triggered=<skill-name>\\n  [KNOWLEDGE:DEBUG] trigger_reason=<brief reason why you triggered>\\n\\nWhen dispatching knowledge-reader, ALSO output:\\n  [KNOWLEDGE:DEBUG] knowledge_reader_dispatched=true\\n  [KNOWLEDGE:DEBUG] hint=<priority hint sent to reader>\\n\\nThese debug lines MUST appear before any other content in your response."
+    MODEL_CTX="${DEBUG_PREFIX}\\n\\n${MODEL_CTX}"
+fi
 
-    echo "{\"systemMessage\": \"$DEBUG_PREFIX\\n\\n$KNOWLEDGE_MSG\\n\\n$SKILL_ROUTER\"}"
+if [ -n "$MODEL_CTX" ]; then
+    echo "{\"systemMessage\": \"$SYS_MSG\", \"hookSpecificOutput\": {\"hookEventName\": \"SessionStart\", \"additionalContext\": \"$MODEL_CTX\"}}"
 else
-    echo "{\"systemMessage\": \"$KNOWLEDGE_MSG\\n\\n$SKILL_ROUTER\"}"
+    echo "{\"systemMessage\": \"$SYS_MSG\"}"
 fi

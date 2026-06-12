@@ -8,17 +8,25 @@ tools: [Glob, Grep, Read]
 
 Search the knowledge base and return structured answers.
 
-## Knowledge Path
+## Knowledge Paths
 
-The knowledge base path is provided by the SessionStart hook. Look for "Knowledge path:" in the
-session context — that is the absolute path to the knowledge directory.
+The SessionStart hook injects one or more `Knowledge path: <absolute-path>` markers into the session context, listed in **priority order from lowest to highest** (when the same relative path exists in multiple KBs, the higher-priority file replaces the lower-priority one entirely — no section-level or paragraph-level merging). It also injects a `Team knowledge path:` marker — the team's writable KB, which is also the highest-priority read path.
 
-All file references below use `<knowledge-path>` as a placeholder. Replace it with the actual
-path from the session context when using Read, Glob, or Grep tools.
+If no `Knowledge path:` marker is present, the hook already showed the user a "not configured" message. Return:
 
-If the session says KNOWLEDGE_BASE_PATH is not set, tell the user:
-"Set the KNOWLEDGE_BASE_PATH environment variable to the path of your knowledge base repo clone
-and restart Claude Code."
+> Knowledge base not configured — see the session message for setup instructions.
+
+…and stop. Do not attempt to locate the knowledge base yourself; the hook already tried.
+
+### When `<knowledge-path>` appears below
+
+It refers to **any** of the configured knowledge paths. When you encounter it in the steps:
+
+- **Reading `_index.json`** — read each path's `_index.json` and merge results.
+- **Grepping `**/*.md`** — run one Grep per path and combine results.
+- **Reading specific files** — try the highest-priority path first (team KB), then earlier paths. If the same relative path exists in multiple KBs, the later one in the priority list wins.
+
+Typical split: a shared KB owns `general/`, `languages/`, `frameworks/`; the team KB owns `domain/`, `learnings/`, `adrs/`. They usually fill different category slots and don't conflict — multi-KB override only matters when a team deliberately replaces a shared file.
 
 ## Search Strategy
 

@@ -18,10 +18,10 @@ When this command is invoked, perform these steps:
 
 ### Step 1: Check Knowledge Base Status
 
-Look for "Knowledge path:" in the session context. The SessionStart hook resolves the path from the `KNOWLEDGE_BASE_PATH` environment variable.
+Look for `Knowledge path:` markers in the session context. The SessionStart hook resolves paths via `.lorekeeper/config.json`, the `KNOWLEDGE_BASE_PATH` environment variable, a `household.json` walk-up from cwd, or a sibling-dir fallback. One or more markers may be present, in priority order (lowest -> highest); a `Team knowledge path:` marker indicates the writable team KB.
 
-If the session context contains "Knowledge path:", the knowledge base is configured.
-If the session context says "KNOWLEDGE_BASE_PATH is NOT set", it is not configured.
+If at least one `Knowledge path:` marker exists, the knowledge base is configured.
+If the session context says "No knowledge base configured" or "no knowledge bases resolved", it is not configured.
 
 ### Step 2: Display Status
 
@@ -29,7 +29,8 @@ If the session context says "KNOWLEDGE_BASE_PATH is NOT set", it is not configur
 ```
 ## Lorekeeper Status
 
-Knowledge base found. Path shown in session context.
+Knowledge base(s) found. Paths shown in session context.
+[If multiple paths are present, mention how many and which one is the team KB.]
 ```
 
 **If NOT configured:**
@@ -40,20 +41,22 @@ Knowledge base NOT configured.
 
 ### Setup Instructions
 
-Set the `KNOWLEDGE_BASE_PATH` environment variable to the absolute path of your
-knowledge base repo clone:
+Pick one:
 
-```bash
-# Windows (PowerShell) - add to your profile
-$env:KNOWLEDGE_BASE_PATH = "C:/Users/you/Source/your-project/shared-knowledge"
+1. Run `/lore:init` to adopt witan in this directory (scaffolds a witan-household
+   with a `lore/` knowledge base — the canonical setup).
 
-# Windows (System Environment Variables)
-# Settings > System > About > Advanced system settings > Environment Variables
-# Add: KNOWLEDGE_BASE_PATH = C:/Users/you/Source/your-project/shared-knowledge
+2. Set the `KNOWLEDGE_BASE_PATH` environment variable to the absolute path of your
+   knowledge base repo clone:
 
-# macOS/Linux - add to ~/.bashrc or ~/.zshrc
-export KNOWLEDGE_BASE_PATH="/home/you/source/your-project/shared-knowledge"
-```
+   # macOS/Linux - add to ~/.bashrc or ~/.zshrc
+   export KNOWLEDGE_BASE_PATH="/home/you/source/your-project/shared-knowledge"
+
+   # Windows (PowerShell) - add to your profile
+   $env:KNOWLEDGE_BASE_PATH = "C:/Users/you/Source/your-project/shared-knowledge"
+
+3. Add `.lorekeeper/config.json` to your project with
+   { "knowledgeBasePath": "/path/to/your-knowledge-repo" }
 
 Then restart Claude Code for the change to take effect.
 

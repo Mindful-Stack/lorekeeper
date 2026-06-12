@@ -32,17 +32,15 @@ When invoked via `/lore:review [target]`:
 - `staged` - Review staged changes
 - `last <N>` - Review last N commits
 
-## Knowledge Path
+## Knowledge Paths
 
-The knowledge base path is provided by the SessionStart hook. Look for "Knowledge path:" in the
-session context — that is the absolute path to the knowledge directory.
+The SessionStart hook injects one or more `Knowledge path:` markers into the session context, listed in **priority order from lowest to highest** (when the same relative path exists in multiple KBs, the higher-priority file replaces the lower-priority one entirely — no section-level or paragraph-level merging).
 
-All file references below use `<knowledge-path>` as a placeholder. Replace it with the actual
-path from the session context when using Read, Glob, or Grep tools.
+When `<knowledge-path>` appears below, it refers to **any** of the configured knowledge paths. The dispatched knowledge-reader agent handles multi-KB iteration internally — you just hand it the task context.
 
-If the session says KNOWLEDGE_BASE_PATH is not set, tell the user:
-"Set the KNOWLEDGE_BASE_PATH environment variable to the path of your knowledge base
-repo clone and restart Claude Code."
+If no `Knowledge path:` marker is present in the session context, tell the user:
+"No knowledge base configured — run `/lore:init` to set one up, or see the SessionStart message
+for other options, then restart Claude Code."
 
 ## How to Review
 

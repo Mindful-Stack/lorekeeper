@@ -22,17 +22,17 @@ If no description provided, extract the learning from recent conversation contex
 /lore:learn
 ```
 
-## Knowledge Path
+## Knowledge Paths
 
-The knowledge base path is provided by the SessionStart hook. Look for "Knowledge path:" in the
-session context — that is the absolute path to the knowledge directory.
+The SessionStart hook injects one or more `Knowledge path:` markers (read sources, priority order lowest -> highest) and a `Team knowledge path:` marker (the team's writable KB).
 
-All file references below use `<knowledge-path>` as a placeholder. Replace it with the actual
-path from the session context when using Read, Glob, or Grep tools.
+When `<knowledge-path>` appears below:
+- In **read/search contexts**: iterate over all `Knowledge path:` markers.
+- In **write contexts** (proposed file paths, paths passed to knowledge-updater): always use the `Team knowledge path:` — learnings are team-owned and never go to shared KBs.
 
-If the session says KNOWLEDGE_BASE_PATH is not set, tell the user:
-"Set the KNOWLEDGE_BASE_PATH environment variable to the path of your knowledge base repo clone
-and restart Claude Code."
+If no `Knowledge path:` marker is present in the session context, tell the user:
+"No knowledge base configured — run `/lore:init` to set one up, or see the SessionStart message
+for other options, then restart Claude Code."
 
 ## Steps
 

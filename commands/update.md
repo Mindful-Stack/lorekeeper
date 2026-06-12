@@ -21,17 +21,20 @@ Explicitly propose a knowledge base update.
 /lore:update Add React Query patterns to react knowledge
 ```
 
-## Knowledge Path
+## Knowledge Paths
 
-The knowledge base path is provided by the SessionStart hook. Look for "Knowledge path:" in the
-session context — that is the absolute path to the knowledge directory.
+The SessionStart hook injects one or more `Knowledge path:` markers (read sources, priority order lowest -> highest) and a `Team knowledge path:` marker (the default writable KB).
 
-All file references below use `<knowledge-path>` as a placeholder. Replace it with the actual
-path from the session context when using Read, Glob, or Grep tools.
+When `<knowledge-path>` appears below:
+- In **search/read contexts**: iterate over all `Knowledge path:` markers.
+- In **write contexts**: all KBs accept changes via PR.
+  - **Edits**: use the file's actual location (whichever KB it lives in); knowledge-updater routes the PR to that repo.
+  - **New team-flavored content** (learnings, domain): default to the team KB.
+  - **New cross-cutting content** (`general/`, `languages/`, `frameworks/`): if multiple KBs are configured, ask the user where it belongs and pass the chosen target to knowledge-updater.
 
-If the session says KNOWLEDGE_BASE_PATH is not set, tell the user:
-"Set the KNOWLEDGE_BASE_PATH environment variable to the path of your knowledge base repo clone
-and restart Claude Code."
+If no `Knowledge path:` marker is present in the session context, tell the user:
+"No knowledge base configured — run `/lore:init` to set one up, or see the SessionStart message
+for other options, then restart Claude Code."
 
 ## Steps
 

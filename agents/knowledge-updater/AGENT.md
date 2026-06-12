@@ -12,12 +12,19 @@ tools: [Glob, Grep, Read, Bash]
 
 Handle the mechanics of updating the shared knowledge base via PR.
 
-## Knowledge Path
+## Write Routing
 
-The knowledge base path is provided by the SessionStart hook. Look for "Knowledge path:" in the
-session context — that is the absolute path to the knowledge directory.
+All KBs are writable via PR — including shared KBs owned by other teams. The team's KB (`Team knowledge path:` marker in the session context) is the **default landing spot for new team-flavored content**, not a hard limit. Route the PR to whichever repo actually owns the file you're touching.
 
-The knowledge repo root is the parent directory of `<knowledge-path>` (i.e., one level up from the `knowledge/` directory).
+**Routing rules** (apply in order):
+
+1. **Editing an existing file** (Action = `update`): search all `Knowledge path:` markers for the file path. PR against the repo containing it. Do not copy the file into the team KB.
+2. **New file, team-flavored content** (learnings, domain context, team-specific ADRs): default to the team KB (`Team knowledge path:`).
+3. **New file, cross-cutting content** (`general/`, `languages/`, `frameworks/` standards): if multiple KBs are configured, the calling skill should have prompted the user to choose. The caller passes the target KB path in the input; use it as-is. If only the team KB is configured, default to it.
+
+The KB repo root is the parent directory of `knowledge/` (i.e., one level up from the chosen `Knowledge path:` marker). Use `git -C <relative-path> ...` from the household root (the relative path is the KB's directory name, e.g. `./lore`).
+
+If no `Team knowledge path:` marker is present, the hook already showed the user a "not configured" message. Return that message and stop.
 
 ## Input
 
@@ -29,6 +36,7 @@ You receive ONE of these two shapes:
 2. **Content** — the approved content to write (already reviewed by the developer)
 3. **Action** — `create` (new file) or `update` (modify existing file)
 4. **File path** (for updates) — which file to modify
+5. **Target KB path** (optional, for cross-cutting `create` actions) — absolute path of the KB the PR should target. If omitted, apply the routing rules above.
 
 ### Batch shape (used by `/lore:cultivate`)
 
@@ -69,7 +77,7 @@ Required frontmatter: title, description, tags (include adr), status (proposed|a
 
 All changes follow this exact flow. For batch input (multiple `changes`), apply all changes within steps 4-6 BEFORE the index rebuild and commit:
 
-1. Navigate to knowledge repo root (parent of `<knowledge-path>`)
+1. Resolve the target KB repo root from the routing rules above (parent of the chosen `Knowledge path:` marker). Prefer `git -C <relative-path> <cmd>` to avoid `cd` entirely (e.g., `git -C ./lore status`). When invoked from the household root, the relative path is the target KB's directory name. Avoid `cd /abs/path && …` — compound absolute-path commands don't match relative-path permission rules and trigger permission prompts.
 2. `git checkout main && git pull`
 3. `git checkout -b knowledge/<type>-<slug>`
 4. Write/modify the file
@@ -94,3 +102,6 @@ Return:
 4. **Follow tag conventions** — domain tags match domain file slugs, tech tags match framework/language directory names
 5. **Atomic changes** — one concept per PR
 6. **Return to main after** — `git checkout main` after creating the PR to leave the repo clean
+7. **Node body is the published artifact** — write rules plainly. No PR meta-commentary ("proposal under discussion", "discussion welcome", links back to the PR). For discussion context:
+   - **PR description** — motivation, what changed, why now, open questions for reviewers.
+   - **Inline PR review comments** — line-anchored call-outs that should *not* land in the file. Use `gh pr review --comment -F <body-file>` with `--body` per file/line, or `gh api repos/<owner>/<repo>/pulls/<n>/comments` for single inline comments.

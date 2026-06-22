@@ -49,17 +49,20 @@ You discovered something **not documented anywhere**. This creates a new file in
 
 **Key constraint:** The agent never commits without the developer seeing and approving the draft.
 
-## Knowledge Path
+## Knowledge Paths
 
-The knowledge base path is provided by the SessionStart hook. Look for "Knowledge path:" in the
-session context — that is the absolute path to the knowledge directory.
+The SessionStart hook injects one or more `Knowledge path:` markers (read sources, priority order lowest -> highest) and a `Team knowledge path:` marker (the default writable KB).
 
-All file references below use `<knowledge-path>` as a placeholder. Replace it with the actual
-path from the session context when using Read, Glob, or Grep tools.
+When `<knowledge-path>` appears below:
+- In **search/read contexts**: iterate over all `Knowledge path:` markers to find existing content.
+- In **write contexts**: all KBs accept changes via PR — including shared KBs owned by other teams.
+  - **Edits**: the proposed file path should be the file's actual location (whichever KB it lives in). knowledge-updater will route the PR to the right repo.
+  - **New team-flavored content** (learnings, domain): default to the team KB.
+  - **New cross-cutting content** (`general/`, `languages/`, `frameworks/`): if multiple KBs are configured, ask the user where it belongs ("This is a shared standard — propose to the shared KB or to your team KB?"), then pass the chosen path to knowledge-updater.
 
-If the session says KNOWLEDGE_BASE_PATH is not set, tell the user:
-"Set the KNOWLEDGE_BASE_PATH environment variable to the path of your knowledge base
-repo clone and restart Claude Code."
+If no `Knowledge path:` marker is present in the session context, tell the user:
+"No knowledge base configured — run `/lore:init` to set one up, or see the SessionStart message
+for other options, then restart Claude Code."
 
 ## How to Propose Updates
 

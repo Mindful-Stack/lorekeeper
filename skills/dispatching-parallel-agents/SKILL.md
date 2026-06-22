@@ -93,7 +93,7 @@ capturing them as learnings using `/lore:learn`.
 
 Good agent prompts are:
 1. **Focused** - One clear problem domain
-2. **Self-contained** - All context needed to understand the problem
+2. **Self-contained** - All context needed to understand the problem (use relative paths anchored to the agent's launch cwd; absolute paths break travel and trigger compound-`cd` permission prompts)
 3. **Specific about output** - What should the agent return?
 
 ```markdown
@@ -118,6 +118,11 @@ Return: Summary of what you found and what you fixed.
 ```
 
 ## Common Mistakes
+
+**❌ Absolute paths baked into agent prompts:** "Edit /home/me/project/foo/bar.ts" — the agent often constructs `cd /abs/path && cmd`, which triggers permission prompts and assumes the agent's cwd matches yours
+**✅ Relative paths anchored to the agent's launch cwd:** "Edit ./foo/bar.ts" or "Run from `./lore`: `git status`" — matches relative-path permission rules (`Bash(cd ./*)`, `Bash(git -C ./* …)`) and travels between machines
+
+If the agent genuinely needs to operate in a sibling directory, prefer `git -C ./<subdir> <cmd>` over `cd /abs/path && <cmd>` — the former is allowed without prompts, the latter isn't.
 
 **❌ Too broad:** "Fix all the tests" - agent gets lost
 **✅ Specific:** "Fix agent-tool-abort.test.ts" - focused scope

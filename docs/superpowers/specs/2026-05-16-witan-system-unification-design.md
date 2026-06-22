@@ -77,10 +77,10 @@ Three separate commands; any failing aborts container creation with a clear erro
 
 #### Bootstrap tooling — `Makefile` + `scripts/`
 
-Faithful port of the gp-workspace bootstrap with ramudden-specifics stripped. Shipped files:
+Faithful port of the upstream internal workspace bootstrap with team-specifics stripped. Shipped files:
 
 - `Makefile` — targets for setup, pull, status, split-lore, rename, build-index, validate, doctor (some delegate to lore tooling).
-- `scripts/setup.sh` — Node-based manifest parser (no jq dep). Flags: `--repos=name1,name2`, `--tag=foo`. Default: clone every entry with a `url`, excluding the workspace entry. Drops the ramudden `--core` flag (no `core` tag convention) and drops the env-var-writing step (witan-household uses sibling-fallback, not env vars).
+- `scripts/setup.sh` — Node-based manifest parser (no jq dep). Flags: `--repos=name1,name2`, `--tag=foo`. Default: clone every entry with a `url`, excluding the workspace entry. Drops the upstream `--core` flag (no `core` tag convention) and drops the env-var-writing step (witan-household uses sibling-fallback, not env vars).
 - `scripts/pull-all.sh` — `git fetch --prune` everywhere, ff-pull each sibling that's on a clean main.
 - `scripts/status-all.sh` — one-line `git status` summary per sibling.
 

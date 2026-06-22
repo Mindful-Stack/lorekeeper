@@ -15,54 +15,51 @@ Interactive onboarding for developers joining the team. This command is data-dri
 /lore:onboard fullstack    # Skip role question, fullstack path
 ```
 
-## Knowledge Path
+## Knowledge Paths
 
-The knowledge base path is provided by the SessionStart hook. Look for "Knowledge path:" in the
-session context — that is the absolute path to the knowledge directory. The knowledge repo root
-is the parent of that path.
+The SessionStart hook injects one or more `Knowledge path:` markers into the session context, listed in **priority order from lowest to highest**. It also injects a `Team knowledge path:` marker — the team's writable KB.
 
-All file references below use `<knowledge-path>` as a placeholder. Replace it with the actual
-path from the session context when using Read, Glob, or Grep tools.
+When `<knowledge-path>` appears below, it refers to **any** of the configured knowledge paths. For `general/repo-map.md`, look in each path in priority order (highest first); the team KB may override a shared KB's map. The knowledge repo root for each path is the parent directory of `knowledge/`.
 
-If the session says KNOWLEDGE_BASE_PATH is not set, tell the user:
-"Set the KNOWLEDGE_BASE_PATH environment variable to the path of your knowledge base repo clone
-and restart Claude Code."
+If no `Knowledge path:` marker is present in the session context, tell the user:
+"No knowledge base configured — run `/lore:init` to set one up, or see the SessionStart message
+for other options, then restart Claude Code."
 
-## Config Gate
+## Repos Gate
 
-Before proceeding, read `knowledge.config.json` from the knowledge repo root (parent of `<knowledge-path>/`).
+Before proceeding, locate the repos catalog. Resolve it in this order:
 
-Check for `repos_catalog` in the config. If `repos_catalog` is not configured:
+1. **`household.json` walk-up** — walk up from the current working directory looking for a `household.json` file (bounded to ~6 levels). If found and it has a non-empty `repos` array, use that as the catalog.
+2. **Legacy `repos_catalog`** — read `knowledge.config.json` from the team KB repo root (parent of the `Team knowledge path:`). If it has a `repos_catalog` field, read the file it points to (relative to the KB repo root).
+
+If neither resolves:
 
 ```
-The /lore:onboard command requires a repos catalog to be configured.
+The /lore:onboard command requires a repos catalog.
 
-Add `repos_catalog` to your knowledge.config.json pointing to your repos.json file:
-
-{
-  "repos_catalog": "repos.json"
-}
+Either run /lore:onboard from inside a witan-household (household.json lists the repos),
+or add `repos_catalog` to your knowledge base's knowledge.config.json pointing to a repos.json file.
 
 Then re-run /lore:onboard.
 ```
 
-Stop here if not configured.
+Stop here.
 
 ## Data Files
 
 The command uses two data sources:
 
-1. **Repos catalog** (`repos.json` or whatever `repos_catalog` points to) in the knowledge repo root
+1. **Repos catalog** — `household.json`'s `repos` array, or the legacy `repos_catalog` file (see Repos Gate above)
 2. **`<knowledge-path>/general/repo-map.md`** - architecture overview and starter packs (if it exists)
 
 ## Implementation
 
 ### Step 1: Load Data
 
-1. Read `knowledge.config.json` from the knowledge repo root
-2. Read the repos catalog file (from `repos_catalog` config value)
-3. Read `<knowledge-path>/general/repo-map.md` if it exists
-4. Parse repos data: extract names, descriptions, roles, tags, starter flags, clone URLs
+1. Resolve the repos catalog (see Repos Gate above)
+2. Read `<knowledge-path>/general/repo-map.md` if it exists
+3. Parse repos data: extract names, descriptions, roles, tags, starter flags, clone URLs (tolerate missing fields — household.json entries may only carry name and url)
+4. When the catalog comes from `household.json`, exclude the entries named by `meta_repo` and `knowledge_base` — they are infrastructure, not code repos to onboard into
 
 ### Step 2: Detect Context
 

@@ -62,11 +62,17 @@ Lorekeeper's JS readers (`cultivate-detect.js`, `/lore:onboard`) now read
 
 `household.json` gains one top-level field: `"schema_version": <integer>`.
 
-- **v1** — the implicit pre-versioning era (the `workspace`-key schema). A
-  manifest with **no** `schema_version` is *defined as* v1. This absence-means-v1
-  rule is the only inference allowed; it is not a reader fallback.
+- **v1** — the implicit pre-versioning era. A manifest with **no**
+  `schema_version` is *defined as* v1 (the starting version label). This
+  absence-means-v1 rule is the only inference allowed; it is not a reader
+  fallback.
 - **v2** — the current `meta_repo` schema, now the first explicitly-stamped
   version.
+
+Important: "v1" is a *version label*, not a guarantee about field shape. A
+manifest can be unversioned yet already carry `meta_repo` (created after the
+`workspace`→`meta_repo` rename but before version stamping). The migrator must
+therefore be **shape-aware**, not assume the old key is present — see §4.
 
 ### 2. Single source of truth
 
@@ -76,6 +82,14 @@ Lorekeeper's JS readers (`cultivate-detect.js`, `/lore:onboard`) now read
 - The JS modules `require()` it.
 
 No duplicated constant to drift.
+
+Implementation notes:
+
+- Pass paths into `node -e` via **env vars or argv**, never interpolated into the
+  JS source — matching how the hook already passes the household.json path.
+- **Failure behavior:** if `node` is unavailable or `manifest-schema.json` is
+  unreadable, the hook **skips the schema-gate nag and preserves existing
+  resolution behavior**. The gate must never break SessionStart.
 
 ### 3. The hook gate — detect + nag (never blocks)
 
@@ -92,24 +106,40 @@ This is a `systemMessage` (user-visible, hidden from the model) — consistent w
 the hook's convention that warnings go to the user, markers go to the model. No
 new model-facing marker is added. Commands keep running.
 
+**Composition with existing nags.** The schema comparison runs **whenever a
+`household.json` is found**, independently of whether knowledge bases resolve
+successfully (the hook can find the manifest but still fail to resolve KBs when
+directories are missing). The schema warning is **appended to** the user-visible
+message alongside any stale-KB / missing-KB nags, not gated behind the
+"knowledge bases loaded" path.
+
 ### 4. Migration registry — `scripts/migrate-manifest.js`
 
 A pure-JS, unit-tested module (mirrors the existing `init-detect.js` /
 `cultivate-detect.js` precedent — the deterministic-transform case the
 zero-runtime principle explicitly allows). Structure:
 
-- An **ordered list** of migration steps, each `from N → N+1`, e.g.:
-
-  ```js
-  { from: 1, to: 2, describe: 'rename `workspace` → `meta_repo`',
-    transform: (m) => { m.meta_repo = m.workspace; delete m.workspace; return m; } }
-  ```
-
+- An **ordered list** of migration steps, each `from N → N+1`.
 - `migrate(manifest)` applies every step from the manifest's current version up to
   `current`, in order — a v1 workspace reaches v3 by chaining 1→2→3.
 - **Idempotent**: re-running on an already-current manifest is a no-op.
 - Modes: `--dry-run` (print the field diff without writing) and apply.
 - Resolves the manifest's starting version with the absence-means-v1 rule from §1.
+
+The v1→v2 step must be **shape-aware and conflict-safe** — absence of
+`schema_version` does *not* imply the `workspace` key is present (a manifest may
+already carry `meta_repo`). The transform branches on actual field shape:
+
+| `workspace` | `meta_repo` | Action |
+|---|---|---|
+| present | absent | rename `workspace` → `meta_repo`, stamp `schema_version: 2` |
+| absent | present | already correct shape — just stamp `schema_version: 2` |
+| present | present, **same value** | delete `workspace`, stamp `schema_version: 2` |
+| present | present, **different values** | **stop and report a conflict** — do not write |
+
+A conflict (last row) is surfaced to the user with both values so they can resolve
+it by hand; the migrator makes no guess. This is migration logic, not runtime
+reading, so it does not violate the "no reader fallback" principle.
 
 ### 5. `/lore:migrate` command (the only manifest writer)
 
@@ -117,22 +147,38 @@ zero-runtime principle explicitly allows). Structure:
 
 1. Read the workspace `schema_version` (default 1). If already `current` →
    "Schema up to date (v2). Nothing to migrate." and stop.
-2. Run `migrate-manifest.js --dry-run` → show the exact field diff + the version
-   bump.
-3. Confirm with the user. On yes, apply: rewrite `household.json` with fields
-   renamed and `schema_version` bumped.
-4. **Tooling-sync offer** (opt-in second step):
-   `Your scripts/ / Makefile look older than the template. Re-sync from Mindful-Stack/witan-household? [y/N]`
-   On yes: shallow-clone the template to a temp dir, copy `scripts/` + `Makefile`
-   over, and list what changed. **git is the safety net** — the user reviews
-   `git diff` before committing. Best-effort, clearly bounded, never silent.
+2. **Dirty-state preflight (manifest):** if `household.json` has uncommitted
+   changes, **stop** before applying — ask the user to commit or stash first.
+   "Review `git diff` before committing" does not protect against clobbering
+   uncommitted edits.
+3. Run `migrate-manifest.js --dry-run` → show the exact field diff + the version
+   bump. If the migrator reports a **conflict** (§4 last row), stop and surface it.
+4. Confirm with the user. On yes, apply: rewrite `household.json` with the
+   shape-aware transform and `schema_version` bumped.
+5. **Tooling refresh offer** (opt-in second step — phrased as an optional refresh,
+   not a staleness claim):
+   `This migration can also refresh template-managed tooling (scripts/ and Makefile) from the current witan-household template. This overwrites those paths. Refresh? [y/N]`
+   On yes:
+   - **Dirty-state preflight (tooling):** if `scripts/` or `Makefile` have
+     uncommitted changes, stop or require a second explicit confirmation before
+     overwriting — git only protects committed state.
+   - Shallow-clone the template to a temp dir; copy `scripts/` + `Makefile` with
+     mode preservation (`cp -a` semantics).
+   - **Report changed files** afterward via a bounded
+     `git diff --name-status -- scripts Makefile` so the user sees exactly what
+     happened, then reviews `git diff` before committing.
+   - Clean up the temp clone on success **and** on failure.
+   Best-effort, clearly bounded, never silent.
 
 `/lore:migrate` is the **only** command that writes `household.json`.
 
 ### 6. Template + init stamp new workspaces
 
-Both the template's `household.json` and `/lore:init`'s scaffold write
-`"schema_version": <current>`, so freshly-created workspaces are never drifted.
+The template's `household.json` ships with `"schema_version": <current>`. But
+`/lore:init` must **not rely on the template alone** — after copying the scaffold
+it explicitly sets `schema_version` from `scripts/manifest-schema.json` (the
+plugin's own source of truth). Otherwise a future plugin scaffolding from a stale
+template would immediately produce a drift nag on a brand-new workspace.
 
 ### 7. Readers stay clean
 
@@ -144,15 +190,25 @@ acts on the nag — acceptable under "nag, don't block."
 ## Testing
 
 - `scripts/__tests__/migrate-manifest.test.js`:
-  - 1→2 renames `workspace` → `meta_repo`.
   - Idempotency: applying to an already-v2 manifest is a no-op.
   - Chained 1→3 (once a third version exists; structure must support it).
   - Missing `schema_version` is treated as v1.
   - Already-current → no changes, reports nothing to do.
+  - **Shape-aware v1→v2 cases** (the §4 table):
+    - no version + `workspace` only → rename + stamp v2.
+    - no version + `meta_repo` only → stamp v2, no rename.
+    - both keys, same value → drop `workspace`, stamp v2.
+    - both keys, different values → reports a conflict, writes nothing.
+  - **Registry integrity:** migration steps are contiguous (`from`/`to` form an
+    unbroken chain) and the final step's `to` equals `manifest-schema.current`.
 - Hook test (`scripts/__tests__/load-standards-hook.test.js`):
   - Drift nag fires when workspace `<` current.
   - Reverse nag fires when workspace `>` current.
   - Silent when equal.
+  - Schema nag composes with a missing-KB nag (both appear) when household.json is
+    found but KBs don't resolve.
+  - Hook degrades gracefully (no crash, existing resolution intact) when
+    `manifest-schema.json` is unreadable.
 
 ## Release
 
@@ -162,6 +218,14 @@ acts on the nag — acceptable under "nag, don't block."
   companion PR in `Mindful-Stack/witan`.
 - The template change (`schema_version` in `household.json`) is a separate PR to
   `Mindful-Stack/witan-household`.
+
+### Housekeeping (part of the same PR)
+
+- Add `/lore:migrate` to the user-facing command lists: `commands/help.md`, the
+  README command table, and any scenario expectations that enumerate commands.
+- Update `CLAUDE.md`'s "the only executable code is the hook and
+  `init-detect.js`" wording to also list `migrate-manifest.js` (and note
+  `cultivate-detect.js` if currently omitted).
 
 ## Validation on grantigo (the live test)
 

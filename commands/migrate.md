@@ -24,7 +24,7 @@ The workspace root is the directory containing it. If none is found, tell the us
 ### Step 2: Dry-run to see what would change
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/migrate-manifest.js --dry-run --dir <workspace-root>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/migrate-manifest.js --dry-run --dir=<workspace-root>
 ```
 
 - Exit 0 with "Already at schema vN. Nothing to migrate." → report it and **skip to
@@ -50,7 +50,7 @@ protect uncommitted edits from being overwritten.
 Show the dry-run diff and ask the user to confirm. On yes:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/migrate-manifest.js --dir <workspace-root>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/migrate-manifest.js --dir=<workspace-root>
 ```
 
 Report the applied diff. Remind the user to review `git diff household.json` before

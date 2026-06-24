@@ -41,7 +41,26 @@ Also warn if an entry duplicates `knowledge_base` (the team KB must not be liste
 
 Skip this step entirely when `household.json` is absent or has no `shared_knowledge_bases` — single-KB setups stay silent.
 
-### Step 4: Render the output
+### Step 4: Check schema version (read-only)
+
+Compare the workspace's `household.json` `schema_version` (absent ⇒ 1) against the
+plugin's current schema:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/migrate-manifest.js --dry-run --dir=<workspace-root>
+```
+
+- "Already at schema vN. Nothing to migrate." (exit 0) → report the schema is current.
+- "Would migrate vA -> vB:" (exit 0) → report drift as a warning and suggest `/lore:migrate`.
+- "Workspace schema vN is newer than this plugin ..." (exit 4) → report as a warning:
+  the workspace was written by a newer Lorekeeper than the one installed. Suggest
+  `/plugin update lorekeeper@witan` (NOT `/lore:migrate` — there is nothing to migrate).
+- Exit 3 (CONFLICT) → report the conflicting fields as an error and suggest
+  `/lore:migrate` (which will surface the same conflict for the user to resolve).
+
+This step never writes — it only reports. `/lore:migrate` is the writer.
+
+### Step 5: Render the output
 
 Display the tool's output verbatim. If there are errors (exit code 1):
 
@@ -50,11 +69,11 @@ Display the tool's output verbatim. If there are errors (exit code 1):
 - For missing sibling errors: print `make setup` as the suggested fix.
 - For `_index.json` staleness: print `make build-index` as the suggested fix.
 
-### Step 5: Exit cleanly
+### Step 6: Exit cleanly
 
 End the response with a one-line summary: "X errors, Y warnings. <suggested next step or 'All clear.'>"
 
 ## Notes
 
-- /lore:doctor never modifies files. It's read-only.
+- /lore:doctor never modifies files. It's read-only. This includes schema drift: doctor reports it but never applies it — `/lore:migrate` is the writer.
 - The diagnostic tool lives in the witan-household template under `lore/_tools/`. If the user's workspace was created before the tooling was added, `cli.js doctor` won't exist; in that case, suggest the user run `make build-index` from inside the new witan-household template they should adopt.

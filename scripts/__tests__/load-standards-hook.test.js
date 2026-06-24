@@ -191,3 +191,70 @@ test('debug mode: instructions on the model channel, still valid JSON', () =>
         const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb, KNOWLEDGE_DEBUG: '1' });
         assert.match(ctx(json), /LOREKEEPER DEBUG MODE ENABLED/);
     }));
+
+// --- schema-version gate -------------------------------------------------------
+
+test('schema gate: nags when workspace schema_version is behind the plugin', () =>
+    withTmp((tmp) => {
+        fs.mkdirSync(path.join(tmp, 'lore', 'knowledge'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'household.json'),
+            JSON.stringify({ workspace: 'ws', knowledge_base: 'lore' })); // v1 (no schema_version)
+        const { json } = runHook(tmp);
+        assert.match(json.systemMessage, /schema v1 is older than this plugin \(v2\)/);
+        assert.match(json.systemMessage, /\/lore:migrate/);
+    }));
+
+test('schema gate: silent when schema_version matches the plugin', () =>
+    withTmp((tmp) => {
+        fs.mkdirSync(path.join(tmp, 'lore', 'knowledge'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'household.json'),
+            JSON.stringify({ schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore' }));
+        const { json } = runHook(tmp);
+        assert.doesNotMatch(json.systemMessage, /older than this plugin/);
+        assert.doesNotMatch(json.systemMessage, /newer than this plugin/);
+    }));
+
+test('schema gate: reverse-nags when workspace schema is newer than the plugin', () =>
+    withTmp((tmp) => {
+        fs.mkdirSync(path.join(tmp, 'lore', 'knowledge'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'household.json'),
+            JSON.stringify({ schema_version: 99, meta_repo: 'ws', knowledge_base: 'lore' }));
+        const { json } = runHook(tmp);
+        assert.match(json.systemMessage, /newer than this plugin/);
+        assert.match(json.systemMessage, /\/plugin update lorekeeper@witan/);
+    }));
+
+test('schema gate: composes with a missing-KB nag (both appear)', () =>
+    withTmp((tmp) => {
+        // household found, but the declared KB dir is missing -> KB nag path.
+        fs.writeFileSync(path.join(tmp, 'household.json'),
+            JSON.stringify({ workspace: 'ws', knowledge_base: 'lore' })); // v1, no lore/ dir
+        const { json } = runHook(tmp);
+        assert.match(json.systemMessage, /no knowledge bases resolved/);
+        assert.match(json.systemMessage, /schema v1 is older than this plugin/);
+    }));
+
+// Simulates "node present but non-functional" → schema gate degrades silently,
+// SessionStart still succeeds and emits valid JSON with no schema nag.
+test('schema gate: degrades silently when node is non-functional (valid JSON, no schema nag)', () =>
+    withTmp((tmp) => {
+        fs.mkdirSync(path.join(tmp, 'lore', 'knowledge'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'household.json'),
+            JSON.stringify({ workspace: 'ws', knowledge_base: 'lore' })); // v1 (no schema_version)
+
+        // Create a throwaway bin dir containing a `node` shim that always exits non-zero.
+        // Prepending it to PATH means `command -v node` still finds *a* node, but every
+        // node call fails — exercising the `2>/dev/null || echo ""` fallback in the gate.
+        const binDir = path.join(tmp, 'bin');
+        fs.mkdirSync(binDir);
+        const shimPath = path.join(binDir, 'node');
+        fs.writeFileSync(shimPath, '#!/bin/sh\nexit 1\n');
+        fs.chmodSync(shimPath, 0o755);
+
+        const { json } = runHook(tmp, { PATH: `${binDir}:${process.env.PATH}` });
+
+        // Hook output must still be valid JSON (runHook already JSON.parses — throws on failure).
+        // No schema nag should appear when node can't compute the comparison.
+        assert.doesNotMatch(json.systemMessage, /older than this plugin/);
+        assert.doesNotMatch(json.systemMessage, /newer than this plugin/);
+    }));

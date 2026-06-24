@@ -62,6 +62,7 @@ KNOWLEDGE_ROOTS=()
 KNOWLEDGE_PATHS=()
 MISSING_KBS=()
 HOUSEHOLD_ROOT=""
+SCHEMA_NAG=""
 
 # 1. Per-project config
 if [ -f "$PWD/.lorekeeper/config.json" ]; then
@@ -129,6 +130,34 @@ try {
                 MISSING_KBS+=("$kb_name")
             fi
         done <<< "$KB_LIST"
+
+        # --- Schema-version gate (composes with KB nags below; never blocks) ---
+        # Read the workspace's declared schema_version (absent -> 1) and the plugin's
+        # current schema. On drift, set SCHEMA_NAG; it is appended to SYS_MSG after the
+        # message is assembled. Degrade silently (no nag, no crash) if node or the
+        # schema file is unavailable — the gate must never break SessionStart.
+        if command -v node &>/dev/null && [ -f "$PLUGIN_ROOT/scripts/manifest-schema.json" ]; then
+            SCHEMA_CMP=$(HH="$HOUSEHOLD_ROOT" SCHEMA_FILE="$PLUGIN_ROOT/scripts/manifest-schema.json" node -e "
+try {
+  const m = require(process.env.HH + '/household.json');
+  const cur = require(process.env.SCHEMA_FILE).current;
+  const ws = Number.isInteger(m.schema_version) ? m.schema_version : 1;
+  if (typeof cur !== 'number') process.exit(0);
+  if (ws < cur) console.log('behind ' + ws + ' ' + cur);
+  else if (ws > cur) console.log('ahead ' + ws + ' ' + cur);
+} catch (e) {}
+" 2>/dev/null || echo "")
+            if [ -n "$SCHEMA_CMP" ]; then
+                # shellcheck disable=SC2086
+                set -- $SCHEMA_CMP
+                SCHEMA_STATUS=$1; SCHEMA_WS=$2; SCHEMA_CUR=$3
+                if [ "$SCHEMA_STATUS" = "behind" ]; then
+                    SCHEMA_NAG="⚠️  Workspace schema v${SCHEMA_WS} is older than this plugin (v${SCHEMA_CUR}). Run /lore:migrate to update household.json. Some /lore:* commands may misbehave until you do."
+                elif [ "$SCHEMA_STATUS" = "ahead" ]; then
+                    SCHEMA_NAG="Workspace schema v${SCHEMA_WS} is newer than this plugin (v${SCHEMA_CUR}). Update the plugin: /plugin update lorekeeper@witan."
+                fi
+            fi
+        fi
 
         if [ ${#KNOWLEDGE_PATHS[@]} -eq 0 ]; then
             MISSING_DETAIL=""
@@ -252,6 +281,16 @@ elif [ -n "$KNOWLEDGE_MSG" ]; then
 else
     SYS_MSG='No knowledge base configured.\n\nOptions:\n  1. Run /lore:init to scaffold a new knowledge base (witan-household)\n  2. Set KNOWLEDGE_BASE_PATH environment variable\n  3. Add .lorekeeper/config.json with { \"knowledgeBasePath\": \"/path\" } to this project\n\nAll /lore:* commands will show setup instructions until configured.'
     MODEL_CTX="No knowledge base configured.\\n\\n${SKILL_ROUTER}"
+fi
+
+# Append the schema-drift nag (if any) to the user-visible message, composing with
+# whatever KB summary/nags were already assembled. User-facing only; not a marker.
+if [ -n "${SCHEMA_NAG:-}" ]; then
+    if [ -n "$SYS_MSG" ]; then
+        SYS_MSG="${SYS_MSG}\\n\\n${SCHEMA_NAG}"
+    else
+        SYS_MSG="$SCHEMA_NAG"
+    fi
 fi
 
 # --- Output ---

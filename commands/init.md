@@ -51,6 +51,15 @@ mv .tmp-witan-clone/.devcontainer .tmp-witan-clone/.gitignore .tmp-witan-clone/C
    .tmp-witan-clone/Makefile .tmp-witan-clone/README.md .tmp-witan-clone/household.json \
    .tmp-witan-clone/lore .tmp-witan-clone/scripts .
 rm -rf .tmp-witan-clone
+# Stamp schema_version from the plugin's source of truth (do NOT rely on the
+# template alone — a stale template could otherwise birth a drifted workspace).
+CUR=$(node -e "console.log(require('${CLAUDE_PLUGIN_ROOT}/scripts/manifest-schema.json').current)")
+CUR="$CUR" node -e "
+    const fs = require('fs');
+    const m = JSON.parse(fs.readFileSync('./household.json', 'utf8'));
+    m.schema_version = Number(process.env.CUR);
+    fs.writeFileSync('./household.json', JSON.stringify(m, null, 2) + '\n');
+"
 chmod +x scripts/*.sh
 ./scripts/rename.sh "<workspace-name>"
 git init -b main && git add -A && git commit -m "initial workspace (from Mindful-Stack/witan-household)"
@@ -80,6 +89,15 @@ else
     cp "$TMPL/CLAUDE.md" CLAUDE.md
 fi
 cp "$TMPL/household.json" .
+# Stamp schema_version from the plugin's source of truth (do NOT rely on the
+# template alone — a stale template could otherwise birth a drifted workspace).
+CUR=$(node -e "console.log(require('${CLAUDE_PLUGIN_ROOT}/scripts/manifest-schema.json').current)")
+CUR="$CUR" node -e "
+    const fs = require('fs');
+    const m = JSON.parse(fs.readFileSync('./household.json', 'utf8'));
+    m.schema_version = Number(process.env.CUR);
+    fs.writeFileSync('./household.json', JSON.stringify(m, null, 2) + '\n');
+"
 cp -r "$TMPL/.devcontainer" .
 cp -r "$TMPL/lore" .
 cp "$TMPL/Makefile" .

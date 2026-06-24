@@ -52,10 +52,20 @@ test('v1->v2: both keys with different values is a conflict (no write)', () => {
     assert.match(r.conflict, /different values/);
 });
 
-test('idempotency: already-current manifest is a no-op', () => {
+test('idempotency: already-current manifest is a no-op, not flagged newer', () => {
     const r = migrate({ schema_version: 2, meta_repo: 'ws', repos: [] });
     assert.equal(r.ok, true);
     assert.equal(r.changed, false);
+    assert.equal(r.newer, false);
+});
+
+test('newer-than-plugin manifest is flagged newer, not a no-op or migration', () => {
+    const r = migrate({ schema_version: 99, meta_repo: 'ws', repos: [] });
+    assert.equal(r.ok, true);
+    assert.equal(r.newer, true);
+    assert.equal(r.changed, false);
+    assert.equal(r.fromVersion, 99);
+    assert.equal(r.toVersion, 99);
 });
 
 test('migrate never mutates the input object', () => {

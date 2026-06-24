@@ -30,6 +30,10 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/migrate-manifest.js --dry-run --dir=<workspac
 - Exit 0 with "Already at schema vN. Nothing to migrate." → report it and **skip to
   Step 6** (offer tooling refresh anyway — tooling can be stale even when the schema
   is current).
+- Exit 4 with "Workspace schema vN is newer than this plugin ..." → the workspace was
+  written by a newer Lorekeeper than the one installed. Do **not** migrate or write.
+  Surface the message and tell the user to update the plugin
+  (`/plugin update lorekeeper@witan`), then stop.
 - Exit 3 (CONFLICT) → show the conflict message verbatim. Do **not** write anything.
   Explain that both `workspace` and `meta_repo` are set to different values and the
   user must pick one by hand, then stop.

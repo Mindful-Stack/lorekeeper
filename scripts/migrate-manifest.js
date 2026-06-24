@@ -46,23 +46,31 @@ function resolveVersion(m) {
 }
 
 // Apply every migration step from the manifest's version up to CURRENT.
+// Result shape: { ok, manifest, changed, newer, conflict, fromVersion, toVersion }.
+//   - newer: the manifest declares a schema this plugin doesn't understand yet
+//     (fromVersion > CURRENT) — the plugin is out of date, not the workspace.
 function migrate(manifestInput) {
     const m = JSON.parse(JSON.stringify(manifestInput)); // never mutate the caller's object
     const fromVersion = resolveVersion(m);
-    if (fromVersion >= CURRENT) {
-        return { ok: true, manifest: m, changed: false, conflict: null, fromVersion, toVersion: fromVersion };
+    if (fromVersion > CURRENT) {
+        // Newer than we support: distinct from "current". The fix is to update the
+        // plugin, not to migrate the manifest (mirrors the SessionStart ahead nag).
+        return { ok: true, manifest: m, changed: false, newer: true, conflict: null, fromVersion, toVersion: fromVersion };
+    }
+    if (fromVersion === CURRENT) {
+        return { ok: true, manifest: m, changed: false, newer: false, conflict: null, fromVersion, toVersion: fromVersion };
     }
     for (const step of MIGRATIONS) {
         if (step.from < fromVersion) continue; // already past this step
         if (step.to > CURRENT) break;          // don't overshoot the target
         const res = step.transform(m);
         if (res.conflict) {
-            return { ok: false, manifest: m, changed: false, conflict: res.conflict, fromVersion, toVersion: step.from };
+            return { ok: false, manifest: m, changed: false, newer: false, conflict: res.conflict, fromVersion, toVersion: step.from };
         }
         m.schema_version = step.to;
     }
     // The file always changes when fromVersion < CURRENT: schema_version was stamped.
-    return { ok: true, manifest: m, changed: true, conflict: null, fromVersion, toVersion: CURRENT };
+    return { ok: true, manifest: m, changed: true, newer: false, conflict: null, fromVersion, toVersion: CURRENT };
 }
 
 // --- CLI ---
@@ -98,6 +106,10 @@ function main(argv) {
     if (!result.ok) {
         console.error(`CONFLICT: ${result.conflict}`);
         process.exit(3);
+    }
+    if (result.newer) {
+        console.error(`Workspace schema v${result.fromVersion} is newer than this plugin (v${CURRENT}). Update the plugin: /plugin update lorekeeper@witan.`);
+        process.exit(4);
     }
     if (!result.changed) {
         console.log(`Already at schema v${CURRENT}. Nothing to migrate.`);

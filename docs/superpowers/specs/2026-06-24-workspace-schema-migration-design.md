@@ -122,8 +122,16 @@ zero-runtime principle explicitly allows). Structure:
 - An **ordered list** of migration steps, each `from N → N+1`.
 - `migrate(manifest)` applies every step from the manifest's current version up to
   `current`, in order — a v1 workspace reaches v3 by chaining 1→2→3.
-- **Idempotent**: re-running on an already-current manifest is a no-op.
+- **Idempotent**: re-running on an already-`current` manifest is a no-op.
+- **Newer-than-current** (`fromVersion > current`) is a *distinct* outcome from
+  "current", not a silent no-op: the manifest was written by a newer plugin, so the
+  fix is to update the plugin, not migrate the manifest. The engine flags this
+  (`newer: true`) and the CLI surfaces it with its own message + exit code so
+  `/lore:doctor` and `/lore:migrate` don't misreport a newer workspace as current.
+  This mirrors the SessionStart hook's "ahead" reverse nag (§3).
 - Modes: `--dry-run` (print the field diff without writing) and apply.
+- CLI exit codes: **0** ok/no-op/dry-run, **2** unreadable manifest, **3** conflict,
+  **4** newer-than-this-plugin.
 - Resolves the manifest's starting version with the absence-means-v1 rule from §1.
 
 The v1→v2 step must be **shape-aware and conflict-safe** — absence of
@@ -193,7 +201,9 @@ acts on the nag — acceptable under "nag, don't block."
   - Idempotency: applying to an already-v2 manifest is a no-op.
   - Chained 1→3 (once a third version exists; structure must support it).
   - Missing `schema_version` is treated as v1.
-  - Already-current → no changes, reports nothing to do.
+  - Already-current → no changes, reports nothing to do, not flagged newer.
+  - Newer-than-current (`schema_version > current`) → `newer: true`, no changes
+    (distinct from the current no-op).
   - **Shape-aware v1→v2 cases** (the §4 table):
     - no version + `workspace` only → rename + stamp v2.
     - no version + `meta_repo` only → stamp v2, no rename.

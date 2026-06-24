@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Lorekeeper is a **Claude Code plugin** distributed via the Witan marketplace (`Mindful-Stack/witan`). It exposes the `/lore:*` slash commands, plus a SessionStart hook, several agents, and a set of skills that wire Claude into a separate "shared knowledge base" repo. The plugin itself is almost entirely markdown — commands, skills, and agents are markdown files that Claude reads as instructions. The only executable code is `hooks/load-standards-reminder.sh` and `scripts/init-detect.js`.
+Lorekeeper is a **Claude Code plugin** distributed via the Witan marketplace (`Mindful-Stack/witan`). It exposes the `/lore:*` slash commands, plus a SessionStart hook, several agents, and a set of skills that wire Claude into a separate "shared knowledge base" repo. The plugin itself is almost entirely markdown — commands, skills, and agents are markdown files that Claude reads as instructions. The only executable code is `hooks/load-standards-reminder.sh` and the scripts under `scripts/` (`init-detect.js`, `cultivate-detect.js`, and `migrate-manifest.js`).
 
 The knowledge base that the plugin reads is **not in this repo**. It lives at a separate path resolved at session start.
 

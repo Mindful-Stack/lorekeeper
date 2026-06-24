@@ -110,6 +110,7 @@ The updater compares the `version` in the marketplace manifest. If it hasn't mov
 |---------|-------------|
 | `/lore:help` | Show status and help |
 | `/lore:init` | Detect workspace state and scaffold or retrofit accordingly |
+| `/lore:migrate` | Bring household.json up to the schema the current plugin expects; optionally refresh template tooling |
 | `/lore:cultivate` | Cultivate a bounded-context domain. With a name: bootstrap/refine/audit. Without: discover candidate domains in the codebase + audit existing ones |
 | `/lore:doctor` | Run a full workspace + KB diagnostic (manifest validity, sibling presence, KB hygiene) |
 | `/lore:onboard` | Interactive onboarding for new team members |

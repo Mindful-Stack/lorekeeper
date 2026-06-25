@@ -108,7 +108,7 @@ function main(argv) {
         process.exit(3);
     }
     if (result.newer) {
-        console.error(`Workspace schema v${result.fromVersion} is newer than this plugin (v${CURRENT}). Update the plugin: /plugin update lorekeeper@witan.`);
+        console.error(`Workspace schema v${result.fromVersion} is newer than this plugin (v${CURRENT}). Update the plugin: /plugin update lore@witan.`);
         process.exit(4);
     }
     if (!result.changed) {

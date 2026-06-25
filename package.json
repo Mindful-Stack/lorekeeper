@@ -1,7 +1,7 @@
 {
-  "name": "lorekeeper",
-  "version": "1.2.0",
-  "description": "AI-assisted knowledge base plugin for Claude Code",
+  "name": "lore",
+  "version": "2.0.0",
+  "description": "Lorekeeper — AI-assisted knowledge base plugin for Claude Code",
   "private": true,
   "type": "commonjs",
   "dependencies": {},

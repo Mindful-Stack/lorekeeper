@@ -85,11 +85,11 @@ The SessionStart hook's systemMessage names skills like `pattern-identifier`, `b
 
 ### Slash-command namespace
 
-The plugin's full name is `lorekeeper` but slash commands use the short `/lore:` prefix (e.g. `/lore:prime`, `/lore:review`). When wiring new commands, file names under `commands/` are short (`prime.md`, `review.md`) — the `/lore:` prefix comes from the plugin manifest, not the filenames.
+The plugin's `name` (in `.claude-plugin/plugin.json`) is `lore`, so slash commands are `/lore:` (e.g. `/lore:prime`, `/lore:review`). In Claude Code the command namespace is **always** the plugin `name` — there is no separate prefix field — so the `/lore:` prefix comes from `name`, not from the `commands/` filenames (which are short: `prime.md`, `review.md`). The **Lorekeeper** name/brand lives on in the GitHub repo (`Mindful-Stack/lorekeeper`) and the marketplace description; only the invocation handle (`lore@witan`, `/lore:`) is short.
 
 ## Version bumps are mandatory
 
-Any PR that changes plugin contents — hooks, skills, agents, commands, scripts, manifests, even docs that ship inside the plugin — **must** bump the plugin's `version` field. The Claude Code updater compares manifest versions, not git SHAs: if the version doesn't move, `/plugin update lorekeeper@witan` short-circuits and every cached install keeps running the old code indefinitely.
+Any PR that changes plugin contents — hooks, skills, agents, commands, scripts, manifests, even docs that ship inside the plugin — **must** bump the plugin's `version` field. The Claude Code updater compares manifest versions, not git SHAs: if the version doesn't move, `/plugin update lore@witan` short-circuits and every cached install keeps running the old code indefinitely.
 
 Follow [semantic versioning](https://semver.org/):
 

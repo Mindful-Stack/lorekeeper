@@ -221,7 +221,7 @@ test('schema gate: reverse-nags when workspace schema is newer than the plugin',
             JSON.stringify({ schema_version: 99, meta_repo: 'ws', knowledge_base: 'lore' }));
         const { json } = runHook(tmp);
         assert.match(json.systemMessage, /newer than this plugin/);
-        assert.match(json.systemMessage, /\/plugin update lorekeeper@witan/);
+        assert.match(json.systemMessage, /\/plugin update lore@witan/);
     }));
 
 test('schema gate: composes with a missing-KB nag (both appear)', () =>

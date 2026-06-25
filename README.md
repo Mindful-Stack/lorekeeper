@@ -18,7 +18,7 @@ Lorekeeper is distributed via the [Witan marketplace](https://github.com/Mindful
 
 ```text
 /plugin marketplace add Mindful-Stack/witan
-/plugin install lorekeeper@witan
+/plugin install lore@witan
 ```
 
 ### 2. Point at a Knowledge Base
@@ -96,7 +96,7 @@ This shows plugin status and available commands. You should see "Knowledge base 
 ## Keeping the plugin up to date
 
 ```text
-/plugin update lorekeeper@witan
+/plugin update lore@witan
 /reload-plugins
 ```
 
@@ -428,7 +428,7 @@ git pull
 
 ### Versioning policy
 
-Follows [semantic versioning](https://semver.org/). **Every PR that changes plugin contents must bump the version in the same PR** — the Claude Code updater compares manifest versions, not git SHAs. Skip the bump and `/plugin update lorekeeper@witan` short-circuits on every user's machine, leaving cached installs running the old code.
+Follows [semantic versioning](https://semver.org/). **Every PR that changes plugin contents must bump the version in the same PR** — the Claude Code updater compares manifest versions, not git SHAs. Skip the bump and `/plugin update lore@witan` short-circuits on every user's machine, leaving cached installs running the old code.
 
 - **PATCH** — fixes, internal refactors, doc-only changes
 - **MINOR** — new commands/skills/agents, additive options

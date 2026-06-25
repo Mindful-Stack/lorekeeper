@@ -54,7 +54,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/migrate-manifest.js --dry-run --dir=<workspac
 - "Would migrate vA -> vB:" (exit 0) → report drift as a warning and suggest `/lore:migrate`.
 - "Workspace schema vN is newer than this plugin ..." (exit 4) → report as a warning:
   the workspace was written by a newer Lorekeeper than the one installed. Suggest
-  `/plugin update lorekeeper@witan` (NOT `/lore:migrate` — there is nothing to migrate).
+  `/plugin update lore@witan` (NOT `/lore:migrate` — there is nothing to migrate).
 - Exit 3 (CONFLICT) → report the conflicting fields as an error and suggest
   `/lore:migrate` (which will surface the same conflict for the user to resolve).
 

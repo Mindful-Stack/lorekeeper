@@ -154,7 +154,7 @@ try {
                 if [ "$SCHEMA_STATUS" = "behind" ]; then
                     SCHEMA_NAG="⚠️  Workspace schema v${SCHEMA_WS} is older than this plugin (v${SCHEMA_CUR}). Run /lore:migrate to update household.json. Some /lore:* commands may misbehave until you do."
                 elif [ "$SCHEMA_STATUS" = "ahead" ]; then
-                    SCHEMA_NAG="Workspace schema v${SCHEMA_WS} is newer than this plugin (v${SCHEMA_CUR}). Update the plugin: /plugin update lorekeeper@witan."
+                    SCHEMA_NAG="Workspace schema v${SCHEMA_WS} is newer than this plugin (v${SCHEMA_CUR}). Update the plugin: /plugin update lore@witan."
                 fi
             fi
         fi

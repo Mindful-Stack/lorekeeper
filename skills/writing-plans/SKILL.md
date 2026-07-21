@@ -221,13 +221,11 @@ After writing the complete plan, look at the spec with fresh eyes and check the 
 
 **3. Type consistency:** Do the types, method signatures, and property names you used in later tasks match what you defined in earlier tasks? A function called `clearLayers()` in Task 3 but `clearFullLayers()` in Task 7 is a bug.
 
-**4. Would-it-fail scan:** For every test you wrote into the plan, ask what would
-have to break for it to go red. Flag any test that asserts a value the test
+**4. Would-it-fail scan:** Run "Test Steps Name What They Distinguish" over every
+test in the plan, mechanically. Flag any test that asserts a value the test
 itself supplied, or performs a state change the fixture has already made (a
-`chmod` to a mode it already holds, a write of a value already present). These
-read as thorough and catch nothing. This check exists because both defects the
-"Code In A Plan Is A Draft" section describes were in shipped plans and neither
-was caught by checks 1-3.
+`chmod` to a mode it already holds, a write of a value already present). Both
+defects in "Code In A Plan Is A Draft" shipped past checks 1-3.
 
 **5. Spec-conflict scan:** Where the plan resolves a spec ambiguity or
 contradiction, does the spec still say the old thing? If so, fix the **spec**,
@@ -235,6 +233,12 @@ not just the plan — otherwise the next reader reconciles a conflict that no
 longer exists, and the two documents drift. One source of truth per fact.
 
 If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
+
+**When the plan is high-stakes** — it builds shared test infrastructure, crosses a
+security boundary, or you wrote systems behaviour into a step — dispatch a fresh
+reviewer with `./plan-document-reviewer-prompt.md` as well. Checks 4 and 5 ask you
+to find defects in code you just wrote and already believe; a second context is
+the only reliable check on that.
 
 ## Execution Handoff
 

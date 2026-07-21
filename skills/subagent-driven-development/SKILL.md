@@ -163,9 +163,16 @@ place will re-dispatch entire completed task sequences — the single most
 expensive failure mode this workflow has. Track progress in a file, not only in
 TodoWrite.
 
-- At skill start, check for a ledger (e.g. `.agent/sdd/progress.md`, git-ignored).
+- At skill start, check for a ledger (e.g. `.agent/sdd/progress.md`).
   Tasks recorded there as complete **are** complete — do not re-dispatch them;
   resume at the first task not marked complete.
+- **Exclude the artefact directory from git before writing anything into it.**
+  Implementers commit their own work; an untracked `.agent/sdd/` gets swept into
+  their commits, and a `review-N.diff` written for one task then appears inside
+  the diff the *next* reviewer reads. Append the directory to
+  `.git/info/exclude` (local-only, leaves the project's tracked `.gitignore`
+  alone) unless the repo already ignores it. If the project has its own
+  convention for local agent artefacts, use that path instead.
 - When a task's review comes back clean, append one line:
   `Task N: complete (commits <base7>..<head7>, review clean)`.
 - Record Minor findings you deferred, and any decision the human made that
@@ -217,8 +224,16 @@ worth catching.
   cap its severity. If a prompt you are writing contains "do not flag", "don't
   treat X as a defect", or "at most Minor" — stop. You are spending the review to
   spare yourself a loop. Let it raise the finding and adjudicate it.
-- **Do not ask a reviewer to re-run tests the implementer already ran** on the
-  same code; the implementer's report carries that evidence.
+
+  Narrowing *scope* is legitimate and different: "review the change, not the
+  pre-existing codebase" bounds what the reviewer looks at. "Don't flag X" tells
+  it what conclusion it may not reach about something already in scope. Bound the
+  diff; never bound the verdict.
+- **Do not ask a reviewer to re-run the test suite** the implementer already ran
+  on the same code; the implementer's report carries that evidence. This is about
+  re-running commands, not about trust — reviewers still verify every claim by
+  reading the code, and still run a test themselves when the *claim under review*
+  is that a specific test fails for a specific reason.
 
 ### Adversarial Verification
 
@@ -267,6 +282,7 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 You: I'm using Subagent-Driven Development to execute this plan.
 
 [Check .agent/sdd/progress.md — no ledger, this is a fresh run]
+[Confirm .agent/ is excluded from git; add it to .git/info/exclude]
 [Read plan file once: docs/plans/feature-plan.md]
 [Note global constraints and cross-task context; create TodoWrite with all tasks]
 

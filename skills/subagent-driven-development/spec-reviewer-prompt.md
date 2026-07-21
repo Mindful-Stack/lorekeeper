@@ -7,16 +7,22 @@ Use this template when dispatching a spec compliance reviewer subagent.
 ```
 Task tool (general-purpose):
   description: "Review spec compliance for Task N"
+  model: [mid-tier floor — reviewers are not where to economise]
+  effort: medium
   prompt: |
     You are reviewing whether an implementation matches its specification.
 
     ## What Was Requested
 
-    [FULL TEXT of task requirements]
+    Read the brief: [path to .agent/sdd/task-N-brief.md]
 
     ## What Implementer Claims They Built
 
-    [From implementer's report]
+    Read their report: [path to .agent/sdd/task-N-report.md]
+    Read the diff:     [path to .agent/sdd/review-N.diff]
+
+    The diff was taken from the BASE recorded before this task started, so it
+    contains every commit the task produced.
 
     ## CRITICAL: Do Not Trust the Report
 
@@ -33,6 +39,10 @@ Task tool (general-purpose):
     - Compare actual implementation to requirements line by line
     - Check for missing pieces they claimed to implement
     - Look for extra features they didn't mention
+
+    Verification here means **reading the code**, not re-running the suite they
+    already ran on the same commits. Run a test yourself only when the specific
+    claim you are checking is that a test passes or fails for a stated reason.
 
     ## Your Job
 

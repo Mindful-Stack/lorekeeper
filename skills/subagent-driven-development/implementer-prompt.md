@@ -2,19 +2,35 @@
 
 Use this template when dispatching an implementer subagent.
 
+**Before dispatching:** write this one task's text to a brief file, and record
+BASE = current HEAD (see SKILL.md → File Handoffs, Durable Progress).
+
+**Always set model and effort explicitly** — an omitted model inherits your own
+session model, which is usually the most expensive one available. Defaults for
+this role: cheapest tier + `low` effort when the brief carries complete code
+(transcription plus testing); mid-tier + `medium` when the brief is prose and the
+subagent must make structural decisions.
+
 ```
 Task tool (general-purpose):
   description: "Implement Task N: [task name]"
+  model: [cheapest tier if the brief carries complete code, else mid-tier]
+  effort: [low if the brief carries complete code, else medium]
   prompt: |
     You are implementing Task N: [task name]
 
     ## Task Description
 
-    [FULL TEXT of task from plan - paste it here, don't make subagent read file]
+    Read your brief: [path to .agent/sdd/task-N-brief.md]
+
+    It contains the complete task text — exact file paths, code, test cases, and
+    acceptance criteria. It is the single source of requirements; do not read the
+    full plan file.
 
     ## Context
 
-    [Scene-setting: where this fits, dependencies, architectural context]
+    [Scene-setting: where this fits, dependencies, architectural context.
+     One task's worth — do not paste prior tasks' summaries or history.]
 
     ## Before You Begin
 
@@ -99,13 +115,21 @@ Task tool (general-purpose):
 
     ## Report Format
 
-    When done, report:
-    - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
+    Write your full report to: [path to .agent/sdd/task-N-report.md]
+
+    It should cover:
     - What you implemented (or what you attempted, if blocked)
-    - What you tested and test results
+    - What you tested, the commands you ran, and their results
     - Files changed
     - Self-review findings (if any)
-    - Any issues or concerns
+    - Any issues or concerns, with file:line references
+
+    **Return only this summary** in your final message — the reviewers read the
+    report file, so anything you repeat here just costs the controller context:
+    - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
+    - Commit SHAs you created
+    - One line of test results (e.g. "42 passed, 0 failed")
+    - Concerns needing a decision (or "none")
 
     Use DONE_WITH_CONCERNS if you completed the work but have doubts about correctness.
     Use BLOCKED if you cannot complete the task. Use NEEDS_CONTEXT if you need

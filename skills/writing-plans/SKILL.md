@@ -120,9 +120,94 @@ Every step must contain the actual content an engineer needs. These are **plan f
 - Steps that describe what to do without showing how (code blocks required for code steps)
 - References to types, functions, or methods not defined in any task
 
+## Code In A Plan Is A Draft, Not A Dictation
+
+The previous section demands complete code. This one bounds it, because complete
+code has a specific failure mode: **plan code gets less scrutiny than
+hand-written code, because it arrives pre-approved.** An implementer reads it as
+a decision already made and transcribes it. A defect written here therefore
+survives longer than the same defect written anywhere else.
+
+Two real examples, both shipped in plans and caught only by an implementer who
+happened to run them:
+
+- A test step that ran `chmod g+w` on a directory the plan itself had created at
+  mode `0770`. Group-writable already — a no-op. The test asserted a mode change
+  would be noticed and **could never have failed**.
+- A step asserting `export { thing } from './mod.js'` would keep the
+  re-exporting module's own internal caller working. False in ES modules: a pure
+  re-export creates no local binding. The compiler rejected it immediately.
+
+Both were one execution away from being caught, and neither was.
+
+So: **where a step's code makes a behavioural claim, state the property the step
+must achieve, alongside the code.** The code is the starting point; the property
+is the requirement.
+
+| Instead of only | Also state the property |
+|---|---|
+| `chmod g+w <dir>` | "the mode must actually change — pick a bit the fixture does not already have" |
+| `export { x } from './y.js'` | "`cli.ts`'s own internal caller must still resolve `x`; typecheck proves it" |
+| `expect(ctx.identity).toBe('daemon')` | "must exercise real detection — assert the identity the process genuinely has, not one the test supplied" |
+
+A property survives a wrong snippet. A snippet alone does not survive itself.
+
+## Test Steps Name What They Distinguish
+
+For every test step, write one line saying **what failure this test would catch**
+— what would have to be broken for it to go red.
+
+A test whose "expected: FAIL" is satisfied by a typo, a missing import, or a
+value the test itself just supplied is not a test. Specifying test *code* invites
+copying; specifying what the test must *distinguish* invites thought. The
+"Run it to make sure it fails" step means fails **for the stated reason**, and
+the plan should say what that reason is.
+
+Watch particularly for assertions on values the test passed in one line earlier
+— an override spread into a context and then asserted on. These pass whether or
+not the code under test exists at all.
+
+## Shared Test Infrastructure Is Its Own Risk
+
+When one task builds a fixture, harness, or factory that later tasks assert
+against, say so explicitly and treat it as the highest-stakes task in the plan.
+Everything downstream inherits its defects, and a fixture that is healthy *for
+the wrong reason* makes every later check pass while the real thing is broken.
+
+For such a task the plan must state:
+
+- **What the fixture must genuinely reproduce** — the properties later tasks
+  depend on, named individually.
+- **What the environment cannot supply**, and what the fixture does about it.
+  A single-uid test process cannot demonstrate a cross-uid property; a fixture
+  that fakes one converts an inference into an apparent fact. Require the
+  limitation be recorded in the fixture's own data so later tasks can degrade
+  honestly rather than believing they proved something.
+- **Which properties must not collapse.** If production keeps two things
+  distinct, a fixture that merges them silently voids every check that
+  discriminates between them — and those checks keep passing on a host where the
+  two were wrongly identical.
+
+## Environment Assumptions Are Requirements
+
+Defects that pass locally and fail elsewhere rarely have a test surface. Before
+finishing, walk the plan against this list and pin anything it depends on:
+
+- **umask** — file and directory modes created by tests and by the code
+- **git config** — `init.defaultBranch`, ambient `user.name`/`user.email`
+- **uid 0** — under root, `access(2)` grants nearly everything, so every
+  "cannot write / cannot read" assertion silently inverts
+- **available uids/gids** — anything asserting two identities differ
+- **locale, timezone, filesystem case-sensitivity, path length**
+- **service-manager and library semantics** — quote the man page or official
+  documentation in the step, and cite it. Do not write a claim about `systemd`,
+  SQLite, or git behaviour from memory; this is where confident, wrong
+  assertions get embedded and then trusted.
+
 ## Remember
 - Exact file paths always
 - Complete code in every step — if a step changes code, show the code
+- …and the property that code must achieve, wherever the code makes a claim
 - Exact commands with expected output
 - DRY, YAGNI, TDD, frequent commits
 
@@ -135,6 +220,19 @@ After writing the complete plan, look at the spec with fresh eyes and check the 
 **2. Placeholder scan:** Search your plan for red flags — any of the patterns from the "No Placeholders" section above. Fix them.
 
 **3. Type consistency:** Do the types, method signatures, and property names you used in later tasks match what you defined in earlier tasks? A function called `clearLayers()` in Task 3 but `clearFullLayers()` in Task 7 is a bug.
+
+**4. Would-it-fail scan:** For every test you wrote into the plan, ask what would
+have to break for it to go red. Flag any test that asserts a value the test
+itself supplied, or performs a state change the fixture has already made (a
+`chmod` to a mode it already holds, a write of a value already present). These
+read as thorough and catch nothing. This check exists because both defects the
+"Code In A Plan Is A Draft" section describes were in shipped plans and neither
+was caught by checks 1-3.
+
+**5. Spec-conflict scan:** Where the plan resolves a spec ambiguity or
+contradiction, does the spec still say the old thing? If so, fix the **spec**,
+not just the plan — otherwise the next reader reconciles a conflict that no
+longer exists, and the two documents drift. One source of truth per fact.
 
 If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
 

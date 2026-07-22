@@ -104,6 +104,36 @@ This shows plugin status and available commands. You should see "Knowledge base 
 
 The updater compares the `version` in the marketplace manifest. If it hasn't moved since your last install, the update short-circuits and your cached copy keeps running. Run `/plugin update` periodically; if `/lore:help` looks wrong after, re-run the install flow.
 
+### Migrating from `lorekeeper@witan` to `lore@witan`
+
+In June 2026 the plugin was renamed from `lorekeeper` to `lore` (v2.0.0), so the
+install handle changed from `lorekeeper@witan` to `lore@witan` and the commands
+from `/lorekeeper:*` to `/lore:*`. **`/plugin update` cannot cross this rename** —
+the old handle no longer exists in the marketplace, so an install under the old
+name silently stops receiving updates. You must reinstall once, by hand.
+
+**Do you need this?** If `/lore:help` works, you're already on the new handle —
+skip this. If your commands are `/lorekeeper:*`, or `/lore:*` reports "command
+not recognized", you're on the old handle.
+
+**One-time steps:**
+
+```text
+/plugin uninstall lorekeeper@witan
+/plugin install lore@witan
+/reload-plugins
+```
+
+Then verify with `/lore:help`. Your knowledge base, `household.json`, and
+`.lorekeeper/config.json` are untouched by this — only the plugin install
+identity changes.
+
+If a workspace pins the plugin in a settings file (e.g. `enabledPlugins` in
+`.claude/settings.json` or a devcontainer's `claude-settings.json`), update the
+key there too: `"lorekeeper@witan": true` → `"lore@witan": true`. Fresh
+devcontainer builds that run `claude plugin install lore@witan` already get the
+new handle and need nothing.
+
 ## Commands
 
 | Command | Description |

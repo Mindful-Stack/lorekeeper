@@ -3,7 +3,7 @@ name: knowledge-updater
 description: >
   Format knowledge entries and handle the full PR flow for knowledge base changes.
   Knows the schema for all knowledge types (learnings, standards, domain context, ADRs).
-  Creates a branch, writes/modifies the file, rebuilds the index, commits, and creates a PR.
+  Creates a branch, writes/modifies the file, commits, and creates a PR.
   All updates go through a PR flow — main is protected, no exceptions.
 tools: [Glob, Grep, Read, Bash]
 ---
@@ -48,7 +48,7 @@ When you receive the batch shape, you:
 - Create ONE branch and ONE PR for the entire batch (do not open multiple PRs).
 - Apply every `changes[i]` in order before committing.
 - Use `pr_title` and `pr_body` verbatim for the PR.
-- Run the index rebuild once at the end (not per-change), then commit the index alongside the substantive changes. See PR Workflow step 5 for the canonical command.
+- Commit all the changes together in one commit. There is nothing to rebuild afterwards.
 - Step 3's branch name becomes `cultivate/<domain-name>-<mode>` (e.g. `cultivate/grant-matching-bootstrap`); steps 7 and 8 use the supplied `pr_title` and `pr_body` verbatim instead of the single-change `<type>/<slug>/<action>/<title>` placeholders.
 
 ## Knowledge Type Schemas
@@ -75,17 +75,22 @@ Required frontmatter: title, description, tags (include adr), status (proposed|a
 
 ## PR Workflow
 
-All changes follow this exact flow. For batch input (multiple `changes`), apply all changes within steps 4-6 BEFORE the index rebuild and commit:
+All changes follow this exact flow. For batch input (multiple `changes`), apply every change before the commit:
 
 1. Resolve the target KB repo root from the routing rules above (parent of the chosen `Knowledge path:` marker). Prefer `git -C <relative-path> <cmd>` to avoid `cd` entirely (e.g., `git -C ./lore status`). When invoked from the household root, the relative path is the target KB's directory name. Avoid `cd /abs/path && …` — compound absolute-path commands don't match relative-path permission rules and trigger permission prompts.
 2. `git checkout main && git pull`
 3. `git checkout -b knowledge/<type>-<slug>`
 4. Write/modify the file
-5. `make build-index` (rebuilds `<knowledge-path>/_index.json` via the witan-household template's `lore/_tools/cli.js`)
-6. `git add knowledge/<path> knowledge/_index.json`
-7. `git commit -m "docs: <action> <type> - <title>"`
-8. `gh pr create --title "docs: <action> <type> - <title>" --body "<description>"`
-9. `git checkout main` (leave repo clean)
+5. `git add knowledge/<path>`
+6. `git commit -m "docs: <action> <type> - <title>"`
+7. `gh pr create --title "docs: <action> <type> - <title>" --body "<description>"`
+8. `git checkout main` (leave repo clean)
+
+There is no index to rebuild. Retrieval greps frontmatter directly, so a node is discoverable
+the moment it is written — but that makes its `title`, `description` and `tags` the only things
+answering *whether it gets found*. Give every node all three, and prefer tags already in use in
+that KB (`grep -rh '^tags:' <knowledge-path>`) over inventing new ones: a tag used once cannot
+cluster anything.
 
 ## Output
 
@@ -97,11 +102,10 @@ Return:
 ## Important Rules
 
 1. **Always PR** — never commit directly to main. Main is protected.
-2. **Always rebuild index** — run `make build-index` after any file change (delegates to the witan-household template's `lore/_tools/cli.js`)
-3. **Validate frontmatter** — ensure all required fields are present for the knowledge type
-4. **Follow tag conventions** — domain tags match domain file slugs, tech tags match framework/language directory names
-5. **Atomic changes** — one concept per PR
-6. **Return to main after** — `git checkout main` after creating the PR to leave the repo clean
-7. **Node body is the published artifact** — write rules plainly. No PR meta-commentary ("proposal under discussion", "discussion welcome", links back to the PR). For discussion context:
+2. **Validate frontmatter** — ensure all required fields are present for the knowledge type. `title`, `description` and `tags` are what make a node findable at all, since retrieval greps them directly; a node missing any of the three is invisible to search.
+3. **Reuse existing tags** — check `grep -rh '^tags:' <knowledge-path>` before inventing one. Domain tags match domain file slugs, tech tags match framework/language directory names. A tag used once cannot cluster anything.
+4. **Atomic changes** — one concept per PR
+5. **Return to main after** — `git checkout main` after creating the PR to leave the repo clean
+6. **Node body is the published artifact** — write rules plainly. No PR meta-commentary ("proposal under discussion", "discussion welcome", links back to the PR). For discussion context:
    - **PR description** — motivation, what changed, why now, open questions for reviewers.
    - **Inline PR review comments** — line-anchored call-outs that should *not* land in the file. Use `gh pr review --comment -F <body-file>` with `--body` per file/line, or `gh api repos/<owner>/<repo>/pulls/<n>/comments` for single inline comments.

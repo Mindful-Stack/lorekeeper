@@ -64,7 +64,9 @@ If you change the hook's output format, every `<knowledge-path>` consumer (every
 
 ### Zero-runtime principle
 
-Other than the SessionStart hook and the init script, the plugin contains **no scripts**. Listing knowledge is `Read` of `_index.json`. Searching is `Grep`. Loading is `Read`. If you find yourself wanting to add a Node script to support a command, first check whether the command can do the same thing with Claude's native tools.
+Other than the SessionStart hook and the init script, the plugin contains **no scripts**. Listing knowledge is `Glob` of a category directory. Searching is `Grep` — over frontmatter (`^(title|description|tags):`) to find nodes *about* a topic, over the body to find nodes that mention it. Loading is `Read`. If you find yourself wanting to add a Node script to support a command, first check whether the command can do the same thing with Claude's native tools.
+
+There is deliberately **no build step and no generated catalogue**. Frontmatter is the catalogue: it is already line-anchored, already required on every node, and cannot fall out of date with the files it describes.
 
 ### Layer priority for knowledge
 
@@ -108,6 +110,6 @@ Don't defer the bump to a "release PR" later — by the time later comes, multip
 ## Things to avoid
 
 - Don't add team-specific content (no internal company URLs or names, no MyApp.* namespaces outside generic placeholders). This is a deliberate fork-with-fresh-history of an internal plugin, kept generic for public distribution. Use generic placeholders (`payments`, `inventory`, `user-management`).
-- Don't hard-code domain lists or repo lists into commands. `/lore:prime` discovers domains from `_index.json`; `/lore:onboard` reads repos from `household.json`'s `repos` array (or legacy `repos_catalog` in the knowledge base's `knowledge.config.json`).
+- Don't hard-code domain lists or repo lists into commands. `/lore:prime` discovers domains by globbing `knowledge/domain/**/*.md`; `/lore:onboard` reads repos from `household.json`'s `repos` array (or legacy `repos_catalog` in the knowledge base's `knowledge.config.json`).
 - Don't add Node scripts to commands unless there's no native-tools alternative — see "Zero-runtime principle".
 - `docs/agent/`, `docs/plans/`, `docs/specs/` are gitignored — local-only artefacts. Don't reference them from committed files.

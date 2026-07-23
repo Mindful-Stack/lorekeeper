@@ -46,7 +46,7 @@ cannot tell a node that is *about* a topic from one that merely mentions it.
 Under ~100 nodes, pull the whole catalogue in one call:
 
 ```
-Grep  pattern: ^(title|description|tags):
+Grep  pattern: ^(title|description|tags|keywords):
       path: <knowledge-path>   glob: **/*.md   output_mode: content   -n: true
 ```
 

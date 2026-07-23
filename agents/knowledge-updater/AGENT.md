@@ -92,6 +92,12 @@ answering *whether it gets found*. Give every node all three, and prefer tags al
 that KB (`grep -rh '^tags:' <knowledge-path>`) over inventing new ones: a tag used once cannot
 cluster anything.
 
+**Keep each frontmatter value on the same line as its key.** Retrieval matches `^tags:`,
+`^description:` and so on, so a value pushed onto following lines — a YAML block list
+(`tags:` then `  - auth`) or a folded scalar (`description: >`) — leaves the matched line empty
+and drops the node out of search silently. Use inline forms: `tags: [auth, security]` and a
+single-line `description:`.
+
 ## Output
 
 Return:
@@ -102,7 +108,7 @@ Return:
 ## Important Rules
 
 1. **Always PR** — never commit directly to main. Main is protected.
-2. **Validate frontmatter** — ensure all required fields are present for the knowledge type. `title`, `description` and `tags` are what make a node findable at all, since retrieval greps them directly; a node missing any of the three is invisible to search.
+2. **Validate frontmatter** — ensure all required fields are present for the knowledge type, each with its value **inline on the key's own line**. `title`, `description` and `tags` are what make a node findable at all, since retrieval greps them directly; a node missing any of the three — or carrying it as a block list or folded scalar — is invisible to search.
 3. **Reuse existing tags** — check `grep -rh '^tags:' <knowledge-path>` before inventing one. Domain tags match domain file slugs, tech tags match framework/language directory names. A tag used once cannot cluster anything.
 4. **Atomic changes** — one concept per PR
 5. **Return to main after** — `git checkout main` after creating the PR to leave the repo clean

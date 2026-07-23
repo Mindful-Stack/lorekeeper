@@ -72,7 +72,7 @@ Pick a mode by KB size (use Glob `**/*.md` to gauge it):
 **Under ~100 nodes — pull the whole catalogue in one call:**
 
 ```
-Grep  pattern: ^(title|description|tags):
+Grep  pattern: ^(title|description|tags|keywords):
       path: <knowledge-path>   glob: **/*.md   output_mode: content   -n: true
 ```
 

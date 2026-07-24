@@ -82,7 +82,8 @@ Use Grep to search existing knowledge:
 - Path: `<knowledge-path>/`
 - Glob: `*.md`
 
-Also check `<knowledge-path>/_index.json` for matches in title, description, and tags.
+Also grep the frontmatter: `^(title|description|tags|keywords):.*<topic>` with `-i`. A
+frontmatter hit means the node is *about* the topic; a body hit may only mean it mentions it.
 
 ### Step 3: Draft the Change
 
@@ -156,7 +157,6 @@ Dispatch the **knowledge-updater** agent with:
 The knowledge-updater agent handles:
 - Creating a branch
 - Writing/modifying the file
-- Rebuilding the index
 - Committing
 - Creating a PR
 

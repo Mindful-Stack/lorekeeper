@@ -45,7 +45,9 @@ Use Grep to search knowledge files for the topic:
 - Path: `<knowledge-path>/`
 - Glob: `*.md`
 
-Also check `<knowledge-path>/_index.json` for matches in title, description, and tags to find related files.
+Also grep the frontmatter to find related files: `^(title|description|tags|keywords):.*<keyword>`
+with `-i`. A frontmatter hit means the node is *about* the topic; a body hit may only mean it
+mentions it.
 
 ### 2. Determine Update Type
 
@@ -126,7 +128,6 @@ Dispatch the **knowledge-updater** agent with:
 The knowledge-updater agent handles:
 - Creating a branch
 - Writing/modifying the file
-- Rebuilding the index
 - Committing
 - Creating a PR
 

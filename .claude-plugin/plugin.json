@@ -1,9 +1,16 @@
 {
   "name": "lore",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Lorekeeper — AI-assisted knowledge base plugin for Claude Code: docs-first development standards, domain context, and PR review",
   "author": {
     "name": "Lorekeeper Plugin Contributors"
   },
-  "keywords": ["knowledge-base", "review", "domain-driven-design", "code-review", "standards", "claude-code"]
+  "keywords": [
+    "knowledge-base",
+    "review",
+    "domain-driven-design",
+    "code-review",
+    "standards",
+    "claude-code"
+  ]
 }

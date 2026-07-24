@@ -86,7 +86,7 @@ Dispatch the **knowledge-updater** agent with:
 - **Content:** The approved learning file content from Step 3
 - **Action:** `create`
 
-The agent handles branching, writing the file, rebuilding the index, committing, and creating the PR.
+The agent handles branching, writing the file, committing, and creating the PR.
 
 Wait for the agent to return the PR URL.
 
@@ -103,4 +103,4 @@ Show the PR URL returned by the knowledge-updater agent:
 3. **Set source to `developer-input`**
 4. **Use today's date** for the date field
 5. **Always create a branch and PR** — never commit directly to main
-6. **Rebuild the index** after writing the file
+6. **Give it `title`, `description` and `tags`** — retrieval greps those, so a node missing any of them is invisible to search

@@ -26,8 +26,7 @@ Discover available knowledge without loading full files into context.
 The SessionStart hook injects one or more `Knowledge path:` markers into the session context, listed in **priority order from lowest to highest** (when the same relative path exists in multiple KBs, the higher-priority file replaces the lower-priority one entirely — no section-level or paragraph-level merging). It also injects a `Team knowledge path:` marker — the team's writable KB.
 
 When `<knowledge-path>` appears below, it refers to **any** of the configured knowledge paths:
-- Reading `_index.json`: read each path's `_index.json` and merge results.
-- Grepping across `**/*.md`: run one Grep per path and combine results.
+- Grepping or globbing across `**/*.md`: run one call per path and combine results.
 - For category listing: iterate all paths and aggregate nodes per category.
 
 If no `Knowledge path:` marker is present in the session context, tell the user:
@@ -38,9 +37,17 @@ for other options, then restart Claude Code."
 
 ### No Arguments -> List All
 
-If no arguments provided, use the Read tool to load `<knowledge-path>/_index.json`.
+If no arguments provided, pull every node's identity in one call per path:
 
-Parse the JSON and display nodes grouped by category:
+```
+Grep  pattern: ^(title|description):
+      path: <knowledge-path>   glob: **/*.md   output_mode: content   -n: true
+```
+
+A node's category is the top-level directory of its path, so group the results by that. Note
+categories may nest (`frameworks/dotnet/ef-core-patterns.md`) — keep the sub-path in the label.
+
+Display nodes grouped by category:
 
 ```
 ## Knowledge Base
@@ -63,11 +70,13 @@ Parse the JSON and display nodes grouped by category:
 - ...
 ```
 
-Use the `title` and `description` from each node in the index.
+Use the `title` and `description` grepped from each node's frontmatter.
 
 ### Argument Matches Category -> List That Category
 
-If the argument is one of: `domain`, `frameworks`, `languages`, `general` -- Read `<knowledge-path>/_index.json` and filter nodes where `category` matches the argument.
+If the argument is one of: `domain`, `frameworks`, `languages`, `general` -- Glob
+`<knowledge-path>/<argument>/**/*.md` and grep those files' `title`/`description`. The directory
+is the category, so no filtering is needed.
 
 ### Anything Else -> Search
 
@@ -76,7 +85,9 @@ Use Grep to search knowledge files:
 - Path: `<knowledge-path>/`
 - Glob: `*.md`
 
-Also check `<knowledge-path>/_index.json` for matches in title, description, and tags.
+Also grep the frontmatter for matches a body search would miss or rank poorly:
+`^(title|description|tags|keywords):.*{query}` with `-i`. A frontmatter hit means the node is
+*about* the query; a body hit may only mean it mentions it.
 
 Review matches and select the most relevant files based on context. Display matching files as a simple list:
 - File path

@@ -42,7 +42,7 @@ DISCOVER:
 The SessionStart hook injects one or more `Knowledge path:` markers into the session context, listed in **priority order from lowest to highest** (when the same relative path exists in multiple KBs, the higher-priority file replaces the lower-priority one entirely — no section-level or paragraph-level merging). It also injects a `Team knowledge path:` marker — the team's writable KB.
 
 When `<knowledge-path>` appears below, it refers to **any** of the configured knowledge paths:
-- Reading `_index.json`: read each path's `_index.json` and merge results (dedup by node path; later KB wins on conflict).
+- Listing or searching: run the Glob/Grep once per path and merge results (dedup by node path; later KB wins on conflict).
 - Resolving a `domain/...` argument: search all paths' domain nodes for matches.
 
 If no `Knowledge path:` marker is present in the session context, tell the user:
@@ -53,19 +53,24 @@ for other options, then restart Claude Code."
 
 The prime command does NOT use a hardcoded domain list. Instead it discovers domains dynamically.
 
+A node's category is the top-level directory it sits in, so the directory *is* the list — there
+is no separate catalogue to consult, and none to go stale. Note that categories may nest
+(`frameworks/dotnet/ef-core-patterns.md`), so recurse rather than listing one level.
+
 ### For `domains` argument:
-Read `<knowledge-path>/_index.json`, filter nodes where `category` is `domain`, list them with titles and descriptions.
+Glob `<knowledge-path>/domain/**/*.md`, then read each match's `title` and `description` with
+`Grep '^(title|description):'` and list them.
 
 ### For keyword arguments (no `/` in argument):
-1. Read `<knowledge-path>/_index.json`
-2. For each argument, search domain nodes by:
+1. Glob `<knowledge-path>/domain/**/*.md`
+2. For each argument, search those nodes by:
    - Exact filename match (e.g., argument `auth` matches node path `domain/auth-user-management`)
-   - Title contains keyword (case-insensitive)
-   - Tags contain keyword
-   - Keywords array contains keyword
+   - Title contains keyword (case-insensitive) — `Grep '^title:.*auth' -i`
+   - Tags contain keyword — `Grep '^tags:.*auth'`
+   - `keywords:` aliases contain keyword
 3. If exactly one match, load it
 4. If multiple matches, show them and ask user to pick
-5. If no domain match, fall back to grep search across all knowledge files
+5. If no domain match, fall back to a body grep across all knowledge files
 
 ## Steps
 
@@ -75,14 +80,14 @@ If no arguments provided, display the help text above and stop.
 
 ### 2. Handle `domains` Option
 
-If argument is `domains`, use the Read tool to load `<knowledge-path>/_index.json` and filter nodes where `category` is `domain`. List available domain files with their titles.
+If argument is `domains`, Glob `<knowledge-path>/domain/**/*.md` and list the matches with their titles.
 
 ### 3. Load Files
 
 For each argument provided:
 
 **If argument is a keyword (no `/`) -> dispatch knowledge-reader:**
-1. Read `<knowledge-path>/_index.json`
+1. Glob `<knowledge-path>/domain/**/*.md`
 2. Search domain nodes using the matching rules from Domain Discovery above
 3. If exactly one match: dispatch **knowledge-reader** agent with:
    "Load all knowledge for the {domain-name} domain. Include domain context, relevant standards, and learnings."

@@ -30,8 +30,8 @@ If no `Knowledge path:` marker is present, the hook already showed the user a "n
 
 It refers to **any** of the configured knowledge paths. When you encounter it in the steps:
 
-- **Reading `_index.json`** — read each path's `_index.json` and merge results.
-- **Grepping `**/*.md`** — run one Grep per path and combine results.
+- **Grepping `**/*.md`** — run one Grep per path and combine results. This applies to frontmatter
+  scans (Step 2) as well as body searches (Step 3).
 - **Reading specific files** — try the highest-priority path first (team KB), then earlier paths. If the same relative path exists in multiple KBs, the later one in the priority list wins.
 
 Typical split: a shared KB owns `general/`, `languages/`, `frameworks/`; the team KB owns `domain/`, `learnings/`, `adrs/`. They usually fill different category slots and don't conflict — multi-KB override only matters when a team deliberately replaces a shared file.
@@ -61,28 +61,46 @@ Detect the language and framework of the current project:
    - `typescript` in devDependencies → TypeScript detected
 3. Use Glob for `docs/standards/*.md` → repo-specific knowledge exists
 
-### Step 2: Search the Index
+### Step 2: Scan Frontmatter
 
-Read `<knowledge-path>/_index.json`.
+Every node declares `title`, `description` and `tags` in its frontmatter, so Grep over those
+lines is a precise, always-current node catalogue. Grepping the body instead is far noisier — it
+cannot tell a node that is *about* a topic from one that merely mentions it.
 
-For each node, check if the task context keywords match:
-- `title`
-- `description`
-- `tags`
+Pick a mode by KB size (use Glob `**/*.md` to gauge it):
 
-Score matches by relevance to the task. Keep the top 5-10 candidates.
+**Under ~100 nodes — pull the whole catalogue in one call:**
 
-Use the priority hints to weight results — if the caller says "prioritise testing standards", boost nodes with testing-related tags.
+```
+Grep  pattern: ^(title|description|tags|keywords):
+      path: <knowledge-path>   glob: **/*.md   output_mode: content   -n: true
+```
+
+**Larger — filter first**, expanding the task into terms and matching tags and titles:
+
+```
+Grep  pattern: ^tags:.*\b(testing|vitest|fixtures)\b
+      path: <knowledge-path>   glob: **/*.md   output_mode: files_with_matches
+```
+
+Then score by relevance and keep the top 5-10 candidates. Use the priority hints to weight
+results — if the caller says "prioritise testing standards", boost nodes with testing tags.
+
+**Expand the query before you grep.** The caller's words rarely match the KB's vocabulary. Turn
+"how do we handle payments" into an alternation — `pay|payment|spend|money|ledger|currency` — and
+match stems, `-i`, and both spellings of `authoriz|authoris`. You are the fuzzy matcher; the grep
+should be exact. Nodes may also carry a `keywords:` list of curated aliases for domain jargon
+whose meaning the words themselves don't reveal, so include it in frontmatter scans.
 
 ### Step 3: Grep for Keywords
 
 Use Grep to search `<knowledge-path>/**/*.md` for task-relevant keywords.
 
-This catches content not well-represented in the index.
+This catches content the frontmatter does not advertise.
 
 ### Step 4: Read Matching Files
 
-Read the top 3-5 most relevant files based on index + grep results.
+Read the top 3-5 most relevant files based on frontmatter + body results.
 
 If the caller requested thorough/comprehensive output (e.g., for reviews), read all matching files instead of filtering to the top matches.
 
@@ -133,9 +151,15 @@ architectural patterns. Only what's relevant, not entire files.]
 Only present if learnings exist for matching tags.]
 
 ## Sources
-- `domain/payments-context.md:15-30` - [section name]
+- `domain/payments-context.md` - [section name]
 - `learnings/ef-core-eager-loading.md` - [verified]
+- `src/Domain/Payments/PaymentService.cs:88-114` - [code this standard governs]
 ```
+
+Cite **knowledge files by path and section name, without line numbers** — a node's line numbers
+go stale on the next edit to it, and the section name survives. Cite **code with line ranges**:
+that output is regenerated on every invocation and read immediately, so it cannot go stale, and
+the range makes it a jump target.
 
 If no relevant knowledge is found, return:
 

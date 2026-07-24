@@ -35,7 +35,13 @@ Read `household.json` from the household root (walk up from CWD if needed). If i
 1. **Manifest cross-check** — the entry matches a `repos[].name`. If not: error, suggest adding the repo entry (with a `url` so `make setup` clones it) or removing the name from `shared_knowledge_bases`.
 2. **Presence** — `<household-root>/<name>/` exists. If not: error, suggest `make setup`.
 3. **Shape** — `<household-root>/<name>/knowledge/` exists. If not: error — the directory is not a knowledge base; the SessionStart hook will skip it.
-4. **Index** — `<household-root>/<name>/knowledge/_index.json` exists. If not: warning, suggest running the KB's own index build (e.g. `make build-index` inside that repo).
+4. **Retrievability** — every `.md` under `<household-root>/<name>/knowledge/` declares `title`,
+   `description` and `tags`. Grep `^(title|description|tags):` and compare the per-file counts
+   against the file list. A node missing any of the three is invisible to frontmatter search:
+   warning, naming the files.
+5. **Tag health** — collect tags with `grep -rh '^tags:'` and report how many are used exactly
+   once. Singletons cannot cluster anything, so a high proportion means tag search is weak:
+   informational, not an error.
 
 Also warn if an entry duplicates `knowledge_base` (the team KB must not be listed as shared — it would be read twice).
 
@@ -67,7 +73,7 @@ Display the tool's output verbatim. If there are errors (exit code 1):
 - For broken-wikilink errors: offer to run `/lore:update` to propose adding the missing node.
 - For frontmatter errors: print the file:line and suggest the fix.
 - For missing sibling errors: print `make setup` as the suggested fix.
-- For `_index.json` staleness: print `make build-index` as the suggested fix.
+- For a node missing `title`/`description`/`tags`: print the file and the missing field — the node is invisible to frontmatter search until it has all three.
 
 ### Step 6: Exit cleanly
 
@@ -76,4 +82,4 @@ End the response with a one-line summary: "X errors, Y warnings. <suggested next
 ## Notes
 
 - /lore:doctor never modifies files. It's read-only. This includes schema drift: doctor reports it but never applies it — `/lore:migrate` is the writer.
-- The diagnostic tool lives in the witan-household template under `lore/_tools/`. If the user's workspace was created before the tooling was added, `cli.js doctor` won't exist; in that case, suggest the user run `make build-index` from inside the new witan-household template they should adopt.
+- The diagnostic tool lives in the witan-household template under `lore/_tools/`. If the user's workspace was created before the tooling was added, `cli.js doctor` won't exist; in that case, suggest they adopt the current witan-household template, which ships it.

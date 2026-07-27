@@ -129,6 +129,19 @@ Use severity level indicators and be specific:
 - **[file:line]** Description
 ```
 
+### Step 6b: Posting to the PR (when asked)
+
+If the user wants the review left **on the PR** (not just printed in chat), post comments
+**inline / line-anchored**, never as one top-level dump. A top-level comment is only for a PR-wide
+summary or overall approval; every finding tied to specific code attaches to its line.
+
+- Bundle the summary body and all inline comments in **one** review call:
+  `POST /repos/{owner}/{repo}/pulls/{n}/reviews` with `body`, `event`, and a `comments[]` array of
+  `{ path, line, side: "RIGHT", body }`.
+- Anchor to the PR **head commit** and resolve each line from the *head version* of the file —
+  diff line numbers drift as the branch moves. Get the head SHA with
+  `gh pr view {n} --json headRefOid -q .headRefOid`, then grep the head file for the exact line.
+
 ## Layer Priority
 
 When knowledge conflicts, later layers override:
@@ -145,3 +158,4 @@ When knowledge conflicts, later layers override:
 3. **Use severity levels** - Critical/Important/Minor
 4. **Repo standards win** - Check for `docs/standards/` overrides
 5. **Actionable feedback** - Always explain how to fix
+6. **Inline over top-level** - When posting to a PR, anchor each finding to its file:line; reserve top-level comments for PR-wide remarks

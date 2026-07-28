@@ -131,16 +131,17 @@ Use severity level indicators and be specific:
 
 ### Step 6b: Posting to the PR (when asked)
 
-If the user wants the review left **on the PR** (not just printed in chat), post comments
-**inline / line-anchored**, never as one top-level dump. A top-level comment is only for a PR-wide
-summary or overall approval; every finding tied to specific code attaches to its line.
+If the user wants the review left **on the PR** (not just printed in chat):
 
-- Bundle the summary body and all inline comments in **one** review call:
-  `POST /repos/{owner}/{repo}/pulls/{n}/reviews` with `body`, `event`, and a `comments[]` array of
-  `{ path, line, side: "RIGHT", body }`.
-- Anchor to the PR **head commit** and resolve each line from the *head version* of the file —
-  diff line numbers drift as the branch moves. Get the head SHA with
-  `gh pr view {n} --json headRefOid -q .headRefOid`, then grep the head file for the exact line.
+- Post it as **one review** — a single summary/approval body plus an inline comment per
+  code-specific finding. Don't fire findings as separate top-level comments, and don't dump them
+  all into the summary body; the summary is only for the PR-wide overview.
+- Anchor each inline comment to a line **that is part of the diff** — a comment on an unchanged line
+  is silently dropped. If a finding is about code the PR didn't touch, put it in the summary body or
+  as a file-level comment instead.
+
+Work out the exact call (`gh` / the GitHub MCP tools) from context — the two things that matter are
+batching into one review and the diff-line constraint, not the endpoint shape.
 
 ## Layer Priority
 

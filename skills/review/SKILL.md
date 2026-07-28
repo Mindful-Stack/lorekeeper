@@ -129,6 +129,20 @@ Use severity level indicators and be specific:
 - **[file:line]** Description
 ```
 
+### Step 6b: Posting to the PR (when asked)
+
+If the user wants the review left **on the PR** (not just printed in chat):
+
+- Post it as **one review** — a single summary/approval body plus an inline comment per
+  code-specific finding. Don't fire findings as separate top-level comments, and don't dump them
+  all into the summary body; the summary is only for the PR-wide overview.
+- Anchor each inline comment to a line **that is part of the diff** — a comment on an unchanged line
+  is silently dropped. If a finding is about code the PR didn't touch, put it in the summary body or
+  as a file-level comment instead.
+
+Work out the exact call (`gh` / the GitHub MCP tools) from context — the two things that matter are
+batching into one review and the diff-line constraint, not the endpoint shape.
+
 ## Layer Priority
 
 When knowledge conflicts, later layers override:
@@ -145,3 +159,4 @@ When knowledge conflicts, later layers override:
 3. **Use severity levels** - Critical/Important/Minor
 4. **Repo standards win** - Check for `docs/standards/` overrides
 5. **Actionable feedback** - Always explain how to fix
+6. **Inline over top-level** - When posting to a PR, anchor each finding to its file:line; reserve top-level comments for PR-wide remarks

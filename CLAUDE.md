@@ -48,7 +48,7 @@ Touch `.knowledge-debug` in the knowledge-repo root (or in this plugin root), or
 Tiers 1 and 2 are explicit configuration: when set but broken, the hook surfaces the error instead of falling through.
 
 It then:
-- Checks git age in each knowledge repo and flags any older than `KNOWLEDGE_MAX_AGE_DAYS` (default 7)
+- Checks git age in each knowledge repo and flags any older than `KNOWLEDGE_MAX_AGE_DAYS` (default 7). Stale KBs are refreshed by the model unprompted; `KNOWLEDGE_AUTO_REFRESH=0` reverts to asking first
 - Nags about KBs listed in `household.json` that have no `knowledge/` directory
 - Emits a single JSON object using **both** SessionStart output channels:
   - `hookSpecificOutput.additionalContext` (**model-visible, hidden from the user**) — one `Knowledge path:` line per KB (priority order, lowest first), the `Team knowledge path:` write-target line, the "Skill Router", and any model-facing instruction (e.g. the stale-KB update offer). This is the channel the model actually reads the markers from.

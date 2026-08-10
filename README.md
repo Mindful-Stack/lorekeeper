@@ -83,6 +83,8 @@ export KNOWLEDGE_BASE_PATH="/home/you/source/my-workspace/lore"
 
 **Optional:** Set `KNOWLEDGE_MAX_AGE_DAYS` to control the staleness warning threshold (default: 7 days).
 
+**Optional:** Set `KNOWLEDGE_AUTO_REFRESH=0` to be asked before a stale knowledge base is refreshed. By default (`1`) Claude runs the refresh itself, once per session and at a natural break rather than mid-task. The refresh is fast-forward-only, and it leaves alone any KB with uncommitted changes or sitting on a non-default branch, so it cannot overwrite work in progress.
+
 ### 3. Verify Setup
 
 Restart Claude Code (env vars are read at startup), then:
@@ -440,12 +442,17 @@ Then run `/lore:help` to verify.
 
 ### Knowledge base is stale warning
 
-The plugin warns when the knowledge repo hasn't been updated in 7+ days (configurable via `KNOWLEDGE_MAX_AGE_DAYS`):
+The plugin warns when the knowledge repo hasn't been updated in 7+ days (configurable via `KNOWLEDGE_MAX_AGE_DAYS`). Claude refreshes it for you, so usually there is nothing to do.
+
+It will not refresh a KB that has uncommitted changes or is on a non-default branch — it says so and moves on. Sort that one out by hand:
 
 ```bash
 cd $KNOWLEDGE_BASE_PATH
-git pull
+git status          # commit, stash, or switch back to the default branch
+git pull --ff-only
 ```
+
+To be asked before any refresh, set `KNOWLEDGE_AUTO_REFRESH=0`.
 
 ### Commands not recognized
 

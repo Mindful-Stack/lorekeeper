@@ -152,19 +152,36 @@ test('path with a double-quote stays valid JSON (json_escape regression)', () =>
 
 // --- #3: staleness splits across the two channels -------------------------------
 
-test('stale KB: compact list to the user, update offer to the model', () =>
+test('stale KB: compact list to the user, refresh authorised on the model channel', () =>
     withTmp((tmp) => {
         const kb = mkKb(path.join(tmp, 'kb'));
         gitInit(kb, { committerDate: '2001-01-01T00:00:00 +0000' });
         const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb });
         assert.match(json.systemMessage, /may be stale/);
-        assert.match(json.systemMessage, /Claude will offer to update them/);
-        // Model channel carries the actual command to offer; never a bare `cd && git`.
+        assert.match(json.systemMessage, /Claude will refresh them/);
+        // Model channel carries the actual command; never a bare `cd && git`.
         assert.match(ctx(json), /git -C <kb-root> pull --ff-only/);
         assert.doesNotMatch(ctx(json), /cd .* && git pull/);
+        // Pre-authorised by default, and the guardrails ride along.
+        assert.match(ctx(json), /pre-authorised/);
+        assert.doesNotMatch(ctx(json), /without the user's go-ahead/);
+        assert.match(ctx(json), /uncommitted changes or sits on a non-default branch/);
     }));
 
-test('stale KB inside a household: offers the make target with a git fallback', () =>
+test('stale KB with KNOWLEDGE_AUTO_REFRESH=0: reverts to asking first', () =>
+    withTmp((tmp) => {
+        const kb = mkKb(path.join(tmp, 'kb'));
+        gitInit(kb, { committerDate: '2001-01-01T00:00:00 +0000' });
+        const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb, KNOWLEDGE_AUTO_REFRESH: '0' });
+        assert.match(json.systemMessage, /Claude will offer to update them/);
+        assert.match(ctx(json), /Offer ONCE/);
+        assert.match(ctx(json), /without the user's go-ahead/);
+        assert.doesNotMatch(ctx(json), /pre-authorised/);
+        // Same guardrails apply in both modes.
+        assert.match(ctx(json), /uncommitted changes or sits on a non-default branch/);
+    }));
+
+test('stale KB inside a household: names the make target with a git fallback', () =>
     withTmp((tmp) => {
         const lore = mkKb(path.join(tmp, 'lore'));
         gitInit(lore, { committerDate: '2001-01-01T00:00:00 +0000' });
@@ -172,7 +189,7 @@ test('stale KB inside a household: offers the make target with a git fallback', 
             JSON.stringify({ meta_repo: 'ws', knowledge_base: 'lore' }));
         const { json } = runHook(tmp);
         assert.match(ctx(json), /make -C .* update-kb/);
-        assert.match(ctx(json), /fall back to .*git -C <kb-root> pull --ff-only/);
+        assert.match(ctx(json), /falling back to .*git -C <kb-root> pull --ff-only/);
     }));
 
 test('fresh KB: no staleness warning on either channel', () =>

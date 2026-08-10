@@ -3,6 +3,10 @@ set -euo pipefail
 
 # --- Configuration ---
 KNOWLEDGE_MAX_AGE_DAYS="${KNOWLEDGE_MAX_AGE_DAYS:-7}"
+# Refresh a stale KB without asking first. The refresh is fast-forward-only and
+# read-only against the remote, so the blast radius is a changed working tree at
+# worst. Set to 0 to go back to asking for a go-ahead each session.
+KNOWLEDGE_AUTO_REFRESH="${KNOWLEDGE_AUTO_REFRESH:-1}"
 
 # --- Debug mode ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -244,20 +248,33 @@ if [ ${#KNOWLEDGE_PATHS[@]} -gt 0 ]; then
     fi
 
     # Staleness — two channels:
-    #   visible: a compact list + a note that Claude will offer to refresh them.
-    #   model:   a one-shot instruction to offer the refresh command, prompt-gated.
+    #   visible: a compact list + what Claude is about to do about it.
+    #   model:   a one-shot instruction to run the refresh (default) or to offer it
+    #            first (KNOWLEDGE_AUTO_REFRESH=0).
     STALE_INSTRUCTION=""
     if [ ${#STALE_ROOTS[@]} -gt 0 ]; then
         STALE_LIST=""
         for r in "${STALE_ROOTS[@]}"; do
             STALE_LIST="${STALE_LIST}\\n  - $(json_escape "$r")"
         done
-        SYS_MSG="${SYS_MSG}\\n\\n⚠️  ${#STALE_ROOTS[@]} knowledge base(s) may be stale (no commit in >= ${KNOWLEDGE_MAX_AGE_DAYS} days):${STALE_LIST}\\nClaude will offer to update them."
-
+        # The refresh command depends on whether this is a witan-household (whose make
+        # target walks every sibling KB) or a bare KB checkout.
         if [ -n "$HOUSEHOLD_ROOT" ]; then
-            STALE_INSTRUCTION="Stale knowledge base(s) detected: $(json_escape "${STALE_ROOTS[*]}"). At a natural moment (not mid-task), offer ONCE to refresh them by running \\\"make -C $(json_escape "$HOUSEHOLD_ROOT") update-kb\\\". If that make target does not exist, fall back to \\\"git -C <kb-root> pull --ff-only\\\" for each stale KB. Do not run it without the user's go-ahead, and do not raise this again this session."
+            REFRESH_CMD="\\\"make -C $(json_escape "$HOUSEHOLD_ROOT") update-kb\\\", falling back to \\\"git -C <kb-root> pull --ff-only\\\" per stale KB if that make target does not exist"
         else
-            STALE_INSTRUCTION="Stale knowledge base(s) detected: $(json_escape "${STALE_ROOTS[*]}"). At a natural moment (not mid-task), offer ONCE to refresh each by running \\\"git -C <kb-root> pull --ff-only\\\". Do not run it without the user's go-ahead, and do not raise this again this session."
+            REFRESH_CMD="\\\"git -C <kb-root> pull --ff-only\\\" for each stale KB"
+        fi
+
+        # Guardrails apply in both modes: a stale KB is worth a fast-forward, never
+        # worth reconciling someone's in-flight branch on their behalf.
+        STALE_GUARDS="Do this at a natural moment, not mid-task, and only once this session. If a stale KB has uncommitted changes or sits on a non-default branch, do not try to reconcile it: say so in one line and move on. Report the outcome briefly rather than narrating it."
+
+        if [ "$KNOWLEDGE_AUTO_REFRESH" = "1" ]; then
+            SYS_MSG="${SYS_MSG}\\n\\n⚠️  ${#STALE_ROOTS[@]} knowledge base(s) may be stale (no commit in >= ${KNOWLEDGE_MAX_AGE_DAYS} days):${STALE_LIST}\\nClaude will refresh them."
+            STALE_INSTRUCTION="Stale knowledge base(s) detected: $(json_escape "${STALE_ROOTS[*]}"). You are pre-authorised to refresh them yourself by running ${REFRESH_CMD}. No need to ask first: the pull is fast-forward-only, so it cannot rewrite local work. ${STALE_GUARDS}"
+        else
+            SYS_MSG="${SYS_MSG}\\n\\n⚠️  ${#STALE_ROOTS[@]} knowledge base(s) may be stale (no commit in >= ${KNOWLEDGE_MAX_AGE_DAYS} days):${STALE_LIST}\\nClaude will offer to update them."
+            STALE_INSTRUCTION="Stale knowledge base(s) detected: $(json_escape "${STALE_ROOTS[*]}"). Offer ONCE to refresh them by running ${REFRESH_CMD}. Do not run it without the user's go-ahead. ${STALE_GUARDS}"
         fi
     fi
 

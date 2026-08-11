@@ -162,10 +162,32 @@ test('stale KB: compact list to the user, refresh authorised on the model channe
         // Model channel carries the actual command; never a bare `cd && git`.
         assert.match(ctx(json), /git -C <kb-root> pull --ff-only/);
         assert.doesNotMatch(ctx(json), /cd .* && git pull/);
-        // Pre-authorised by default, and the guardrails ride along.
-        assert.match(ctx(json), /pre-authorised/);
+        // Acts by default, and is honest that a permission prompt may still appear:
+        // additionalContext is injected text, it cannot waive one.
+        assert.match(ctx(json), /without asking the user first/);
+        assert.doesNotMatch(ctx(json), /pre-authorised/);
         assert.doesNotMatch(ctx(json), /without the user's go-ahead/);
-        assert.match(ctx(json), /uncommitted changes or sits on a non-default branch/);
+        assert.match(ctx(json), /permission prompt may still appear/);
+        // The ff-only guarantee belongs to git, not to the make target.
+        assert.match(ctx(json), /"git pull --ff-only" refuses rather than merges/);
+        // The guardrail's test is spelled out, not left to the session to invent.
+        assert.match(ctx(json), /status --porcelain -uno/);
+        assert.match(ctx(json), /symbolic-ref --short refs\/remotes\/origin\/HEAD/);
+        assert.match(ctx(json), /if the symbolic-ref call fails/);
+        assert.match(ctx(json), /which KBs you skipped and why/);
+    }));
+
+test('stale KB: KNOWLEDGE_AUTO_REFRESH is an off-switch, not an exact =1 match', () =>
+    withTmp((tmp) => {
+        const kb = mkKb(path.join(tmp, 'kb'));
+        gitInit(kb, { committerDate: '2001-01-01T00:00:00 +0000' });
+        // Documented contract is "set to 0"; anything else must leave it on, so a
+        // plausible-looking `=true` cannot silently disable the feature.
+        for (const value of ['1', 'true', 'yes', '']) {
+            const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb, KNOWLEDGE_AUTO_REFRESH: value });
+            assert.match(ctx(json), /without asking the user first/,
+                `KNOWLEDGE_AUTO_REFRESH=${JSON.stringify(value)} should stay enabled`);
+        }
     }));
 
 test('stale KB with KNOWLEDGE_AUTO_REFRESH=0: reverts to asking first', () =>
@@ -174,11 +196,12 @@ test('stale KB with KNOWLEDGE_AUTO_REFRESH=0: reverts to asking first', () =>
         gitInit(kb, { committerDate: '2001-01-01T00:00:00 +0000' });
         const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb, KNOWLEDGE_AUTO_REFRESH: '0' });
         assert.match(json.systemMessage, /Claude will offer to update them/);
-        assert.match(ctx(json), /Offer ONCE/);
+        assert.match(ctx(json), /offer ONCE/);
         assert.match(ctx(json), /without the user's go-ahead/);
-        assert.doesNotMatch(ctx(json), /pre-authorised/);
-        // Same guardrails apply in both modes.
-        assert.match(ctx(json), /uncommitted changes or sits on a non-default branch/);
+        assert.doesNotMatch(ctx(json), /without asking the user first/);
+        // Same precheck and guardrails apply in both modes.
+        assert.match(ctx(json), /status --porcelain -uno/);
+        assert.match(ctx(json), /which KBs you skipped and why/);
     }));
 
 test('stale KB inside a household: names the make target with a git fallback', () =>
@@ -189,7 +212,19 @@ test('stale KB inside a household: names the make target with a git fallback', (
             JSON.stringify({ meta_repo: 'ws', knowledge_base: 'lore' }));
         const { json } = runHook(tmp);
         assert.match(ctx(json), /make -C .* update-kb/);
-        assert.match(ctx(json), /falling back to .*git -C <kb-root> pull --ff-only/);
+        // The make target is household-wide but the precheck is per-KB, so it is only
+        // correct when every stale KB passed; any skip hands over to the per-KB path.
+        assert.match(ctx(json), /only if every stale KB passed the check/);
+        assert.match(ctx(json), /git -C <kb-root> pull --ff-only" for each KB that passed/);
+    }));
+
+test('stale KB outside a household: per-KB git only, no make wording', () =>
+    withTmp((tmp) => {
+        const kb = mkKb(path.join(tmp, 'kb'));
+        gitInit(kb, { committerDate: '2001-01-01T00:00:00 +0000' });
+        const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb });
+        assert.match(ctx(json), /git -C <kb-root> pull --ff-only" for each stale KB that passed/);
+        assert.doesNotMatch(ctx(json), /make -C/);
     }));
 
 test('fresh KB: no staleness warning on either channel', () =>

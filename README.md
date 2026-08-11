@@ -83,7 +83,7 @@ export KNOWLEDGE_BASE_PATH="/home/you/source/my-workspace/lore"
 
 **Optional:** Set `KNOWLEDGE_MAX_AGE_DAYS` to control the staleness warning threshold (default: 7 days).
 
-**Optional:** Set `KNOWLEDGE_AUTO_REFRESH=0` to be asked before a stale knowledge base is refreshed. By default (`1`) Claude runs the refresh itself, once per session and at a natural break rather than mid-task. The refresh is fast-forward-only, and it leaves alone any KB with uncommitted changes or sitting on a non-default branch, so it cannot overwrite work in progress.
+**Optional:** Set `KNOWLEDGE_AUTO_REFRESH=0` to be asked before a stale knowledge base is refreshed. By default Claude runs the refresh itself, once per session and at a natural break rather than mid-task. The `git` path is fast-forward-only, and any KB with uncommitted tracked changes or sitting on a non-default branch is skipped, so it cannot overwrite work in progress. You may still see a permission prompt for the command itself — command permissions are enforced by Claude Code and no plugin can waive them.
 
 ### 3. Verify Setup
 
@@ -442,9 +442,9 @@ Then run `/lore:help` to verify.
 
 ### Knowledge base is stale warning
 
-The plugin warns when the knowledge repo hasn't been updated in 7+ days (configurable via `KNOWLEDGE_MAX_AGE_DAYS`). Claude refreshes it for you, so usually there is nothing to do.
+The plugin warns when the knowledge repo hasn't been updated in 7+ days (configurable via `KNOWLEDGE_MAX_AGE_DAYS`). Claude refreshes it for you instead of asking whether it should. You may still get a permission prompt for the command itself, since command permissions are enforced by Claude Code rather than by the plugin; allowlist `make` and `git pull` if you'd rather not see it.
 
-It will not refresh a KB that has uncommitted changes or is on a non-default branch — it says so and moves on. Sort that one out by hand:
+It will not refresh a KB that has uncommitted tracked changes or is on a non-default branch — it tells you which and why. Sort that one out by hand:
 
 ```bash
 cd $KNOWLEDGE_BASE_PATH

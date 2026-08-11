@@ -3,9 +3,10 @@ set -euo pipefail
 
 # --- Configuration ---
 KNOWLEDGE_MAX_AGE_DAYS="${KNOWLEDGE_MAX_AGE_DAYS:-7}"
-# Refresh a stale KB without asking first. The refresh is fast-forward-only and
-# read-only against the remote, so the blast radius is a changed working tree at
-# worst. Set to 0 to go back to asking for a go-ahead each session.
+# Refresh a stale KB without asking first, rather than offering and waiting. The
+# git path is fast-forward-only and read-only against the remote, so the blast
+# radius is a changed working tree at worst. An off-switch: set to 0 to go back
+# to asking for a go-ahead each session; any other value leaves it on.
 KNOWLEDGE_AUTO_REFRESH="${KNOWLEDGE_AUTO_REFRESH:-1}"
 
 # --- Debug mode ---
@@ -257,24 +258,40 @@ if [ ${#KNOWLEDGE_PATHS[@]} -gt 0 ]; then
         for r in "${STALE_ROOTS[@]}"; do
             STALE_LIST="${STALE_LIST}\\n  - $(json_escape "$r")"
         done
+        # The precondition for touching a KB at all. Spelled out as commands so every
+        # session runs the same check rather than inventing one: "non-default branch"
+        # has no obvious test, and guessing wrong flips the outcome for exactly the
+        # mid-PR repo this is meant to protect.
+        # -uno on purpose: untracked scratch files are normal in a KB and a
+        # fast-forward cannot clobber them, so they must not pin it into skip forever
+        # with no explanation.
+        STALE_PRECHECK="First check each stale KB: run \\\"git -C <kb-root> status --porcelain -uno\\\", and compare \\\"git -C <kb-root> rev-parse --abbrev-ref HEAD\\\" against \\\"git -C <kb-root> symbolic-ref --short refs/remotes/origin/HEAD\\\". Skip that KB if the status output is non-empty, if the two branches differ, or if the symbolic-ref call fails (origin/HEAD is not always set)."
+
         # The refresh command depends on whether this is a witan-household (whose make
         # target walks every sibling KB) or a bare KB checkout.
+        #
+        # The make target is household-wide while the check above is per-KB, so it is
+        # only the right tool when every stale KB passed. Any skip and the per-KB
+        # fallback takes over; that keeps the two consistent without this repo having
+        # to assert how the household Makefile behaves.
         if [ -n "$HOUSEHOLD_ROOT" ]; then
-            REFRESH_CMD="\\\"make -C $(json_escape "$HOUSEHOLD_ROOT") update-kb\\\", falling back to \\\"git -C <kb-root> pull --ff-only\\\" per stale KB if that make target does not exist"
+            REFRESH_CMD="\\\"make -C $(json_escape "$HOUSEHOLD_ROOT") update-kb\\\", which walks every sibling KB at once, but only if every stale KB passed the check. If any KB was skipped, or that make target does not exist, run \\\"git -C <kb-root> pull --ff-only\\\" for each KB that passed instead"
         else
-            REFRESH_CMD="\\\"git -C <kb-root> pull --ff-only\\\" for each stale KB"
+            REFRESH_CMD="\\\"git -C <kb-root> pull --ff-only\\\" for each stale KB that passed the check"
         fi
 
         # Guardrails apply in both modes: a stale KB is worth a fast-forward, never
         # worth reconciling someone's in-flight branch on their behalf.
-        STALE_GUARDS="Do this at a natural moment, not mid-task, and only once this session. If a stale KB has uncommitted changes or sits on a non-default branch, do not try to reconcile it: say so in one line and move on. Report the outcome briefly rather than narrating it."
+        STALE_GUARDS="Do this at a natural moment, not mid-task, and only once this session. Tell the user in one line which KBs you skipped and why, so a KB that stays stale is not a mystery. Report the outcome briefly rather than narrating it."
 
-        if [ "$KNOWLEDGE_AUTO_REFRESH" = "1" ]; then
+        # Off-switch, so anything that is not an explicit 0 leaves it on. An exact =1
+        # test would have KNOWLEDGE_AUTO_REFRESH=true silently disable it.
+        if [ "$KNOWLEDGE_AUTO_REFRESH" != "0" ]; then
             SYS_MSG="${SYS_MSG}\\n\\n⚠️  ${#STALE_ROOTS[@]} knowledge base(s) may be stale (no commit in >= ${KNOWLEDGE_MAX_AGE_DAYS} days):${STALE_LIST}\\nClaude will refresh them."
-            STALE_INSTRUCTION="Stale knowledge base(s) detected: $(json_escape "${STALE_ROOTS[*]}"). You are pre-authorised to refresh them yourself by running ${REFRESH_CMD}. No need to ask first: the pull is fast-forward-only, so it cannot rewrite local work. ${STALE_GUARDS}"
+            STALE_INSTRUCTION="Stale knowledge base(s) detected: $(json_escape "${STALE_ROOTS[*]}"). ${STALE_PRECHECK} Then refresh them yourself, without asking the user first: run ${REFRESH_CMD}. A permission prompt may still appear for the command itself; that is expected, just proceed. \\\"git pull --ff-only\\\" refuses rather than merges, so it cannot rewrite local work. ${STALE_GUARDS}"
         else
             SYS_MSG="${SYS_MSG}\\n\\n⚠️  ${#STALE_ROOTS[@]} knowledge base(s) may be stale (no commit in >= ${KNOWLEDGE_MAX_AGE_DAYS} days):${STALE_LIST}\\nClaude will offer to update them."
-            STALE_INSTRUCTION="Stale knowledge base(s) detected: $(json_escape "${STALE_ROOTS[*]}"). Offer ONCE to refresh them by running ${REFRESH_CMD}. Do not run it without the user's go-ahead. ${STALE_GUARDS}"
+            STALE_INSTRUCTION="Stale knowledge base(s) detected: $(json_escape "${STALE_ROOTS[*]}"). ${STALE_PRECHECK} Then offer ONCE to refresh them by running ${REFRESH_CMD}. Do not run it without the user's go-ahead. ${STALE_GUARDS}"
         fi
     fi
 

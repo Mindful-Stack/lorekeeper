@@ -1,6 +1,7 @@
-# Lorekeeper — Claude Code Plugin
+# Lorekeeper — Claude Code and Codex Plugin
 
-A Claude Code plugin that provides intelligent access to a team's knowledge base.
+An agent plugin that provides Claude Code and Codex with intelligent access to a
+team's knowledge base.
 
 ## Features
 
@@ -20,6 +21,25 @@ Lorekeeper is distributed via the [Witan marketplace](https://github.com/Mindful
 /plugin marketplace add Mindful-Stack/witan
 /plugin install lore@witan
 ```
+
+#### Codex
+
+Lorekeeper also ships a Codex manifest and Codex-native skill wrappers. From a
+terminal, add the Witan marketplace and install Lorekeeper:
+
+```bash
+codex plugin marketplace add Mindful-Stack/lorekeeper
+codex plugin add lore@lorekeeper
+```
+
+Start a new Codex session after installation. Invoke workflows with `$lore-help`,
+`$lore-prime`, `$lore-review`, and the other `$lore-*` skills, or ask for the
+same workflow in natural language.
+
+Codex resolves the knowledge-base path when a Lorekeeper workflow runs. Claude
+Code continues to preload it with the SessionStart hook. This on-demand fallback
+keeps Lorekeeper usable on Codex surfaces where hooks are disabled or
+unavailable.
 
 ### 2. Point at a Knowledge Base
 

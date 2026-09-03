@@ -1,0 +1,34 @@
+{
+  "name": "lore",
+  "version": "2.5.0",
+  "description": "Lorekeeper — AI-assisted knowledge-base workflows for Codex and Claude Code",
+  "author": {
+    "name": "Lorekeeper Plugin Contributors",
+    "url": "https://github.com/Mindful-Stack"
+  },
+  "homepage": "https://github.com/Mindful-Stack/lorekeeper",
+  "repository": "https://github.com/Mindful-Stack/lorekeeper",
+  "keywords": [
+    "knowledge-base",
+    "review",
+    "domain-driven-design",
+    "code-review",
+    "standards",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Lorekeeper",
+    "shortDescription": "Team knowledge, standards, and review workflows",
+    "longDescription": "Use a shared knowledge base for domain context, development standards, onboarding, learning capture, and code review.",
+    "developerName": "Mindful Stack",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://github.com/Mindful-Stack/lorekeeper",
+    "defaultPrompt": [
+      "Load the relevant team knowledge for this task.",
+      "Review these changes using our team standards.",
+      "Capture what we just learned in Lorekeeper."
+    ]
+  }
+}

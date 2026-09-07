@@ -1,0 +1,10 @@
+{
+  "schema_version": 2,
+  "meta_repo": "test-workspace",
+  "knowledge_base": "lore",
+  "repos": [
+    { "name": "test-workspace", "url": "git@github.com:example/test-workspace.git", "description": "Workspace meta-repo" },
+    { "name": "lore", "description": "Inline knowledge base" },
+    { "name": "backend", "url": "git@github.com:example/backend.git", "description": ".NET backend (CQRS)" }
+  ]
+}

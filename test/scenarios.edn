@@ -10,11 +10,11 @@
   :prompt "/lore:help"
   :workdir "."
   :expects ["Lorekeeper Status"
-            "lorekeeper:help"
-            "lorekeeper:explore"
-            "lorekeeper:prime"
-            "lorekeeper:review"
-            "lorekeeper:update"
+            "lore:help"
+            "lore:explore"
+            "lore:prime"
+            "lore:review"
+            "lore:update"
             "lore:adr"]}
 
  {:name "command-explore-all"

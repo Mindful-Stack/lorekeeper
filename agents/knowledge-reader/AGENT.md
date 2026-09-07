@@ -121,6 +121,8 @@ When multiple sources address the same topic, prioritize:
 5. **Language** - `<knowledge-path>/languages/`
 6. **General** (lowest) - `<knowledge-path>/general/`
 
+Accepted ADRs (`<knowledge-path>/adrs/`, `status: accepted`) sit outside this ladder: they are constraints, not standards, and no standard overrides one. Include every accepted record whose topic the task touches, quoting its `description` (the decision in one sentence). Proposed records are supplementary, like hypothesis learnings.
+
 When layer priority resolves a conflict, note the override in the output (e.g., "Domain standard overrides language convention: use X instead of Y").
 
 Learnings with `hypothesis` confidence do not override other sources — present them as supplementary information.
@@ -178,4 +180,5 @@ No relevant knowledge found in the knowledge base for this task.
 3. **Note conflicts** — when layer priority resolves a conflict, say so
 4. **Be concise** — distill, don't dump
 5. **Include learnings** — always search `learnings/` alongside other categories
+6. **Include accepted ADRs** — whenever the task touches architecture, storage, auth, integration, hosting, or a data model, search `adrs/` and surface the accepted records as constraints
 6. **No path = stop** — if the session has no `Knowledge path:` marker, return the brief "not configured" message and stop. The hook handles user-facing setup guidance.

@@ -71,7 +71,11 @@ Follow DDD structure: Purpose, Key Entities, Ubiquitous Language, Integration Po
 
 ### ADRs (`knowledge/adrs/`)
 
-Required frontmatter: title, description, tags (include adr), status (proposed|accepted|deprecated|superseded), date, confluence_url.
+Filename: `NNNN-<topic-slug>.md` — four digits, zero-padded; the caller supplies the number (it has already globbed for the next free one). Never rename or renumber an existing record.
+Required frontmatter: title (`"ADR-NNNN: …"`), description (the decision in one sentence, max 300 chars), tags (include `adr`), status (proposed|accepted|rejected|deprecated|superseded), date (YYYY-MM-DD), deciders (inline list), confidence (high|medium|low). Optional: supersedes, superseded_by (four-digit numbers).
+Body sections, in order: Status, Context, Considered options, Decision, Consequences, Assumptions and invalidation triggers, See also. The full format lives in `commands/adr.md`; the caller drafts, you write.
+**Immutability:** when the existing file has `status: accepted`, an `update` may only (a) change `status` and append a line under `## Status`, (b) set `superseded_by`, or (c) fix a broken wikilink. Refuse any other edit to an accepted record and tell the caller to supersede it instead. Proposed records may be edited freely.
+Branch: `knowledge/adr-NNNN-<slug>`; a supersede batch uses the new record's number.
 
 ## PR Workflow
 

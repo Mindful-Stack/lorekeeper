@@ -72,8 +72,8 @@ When auto-detecting (no explicit target): try `gh pr diff` first, fall back to `
 ### Step 3: Load Review Context
 
 Dispatch the **knowledge-reader** agent with the changed files/areas and hint:
-"Be thorough — include all standards, learnings, and review checklists that apply to these changes.
-Don't filter by relevance ranking, but scope to what was changed."
+"Be thorough — include all standards, learnings, accepted ADRs, and review checklists that apply
+to these changes. Don't filter by relevance ranking, but scope to what was changed."
 
 Include the reader's output in your review context.
 
@@ -101,6 +101,11 @@ git diff --staged
 ### Step 5: Review Against Knowledge
 
 Go through each changed file. Check against ALL loaded knowledge.
+
+An accepted ADR is a constraint, not a suggestion: a change that contradicts one is at least
+**Important**, cites the record (`adrs/NNNN-…`), and suggests either conforming or superseding
+the record with `/lore:adr supersede NNNN`. A change that makes a hard-to-reverse choice no record
+covers gets a **Minor** finding pointing at `/lore:adr`.
 
 **Categorize findings:**
 - **Critical** - Security vulnerabilities, data loss risks, must fix before merge

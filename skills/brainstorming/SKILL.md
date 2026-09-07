@@ -28,6 +28,9 @@ You MUST create a task for each of these items and complete them in order:
    Include the reader's output in your project context understanding.
 2. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 3. **Propose 2-3 approaches** — with trade-offs and your recommendation
+   If the chosen approach commits to a framework, datastore, auth scheme, API contract, integration
+   pattern, or data model, invoke the **recording-decisions** skill to draft a `proposed` ADR before
+   going on; link it from the spec. The spec describes the design, the record defends the decision.
 4. **Present design** — in sections scaled to their complexity, get user approval after each section
 5. **Write design doc** — save to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md` and commit
 6. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
@@ -139,5 +142,6 @@ Wait for the user's response. If they request changes, make them and re-run the 
 - **Multiple choice preferred** - Easier to answer than open-ended when possible
 - **YAGNI ruthlessly** - Remove unnecessary features from all designs
 - **Explore alternatives** - Always propose 2-3 approaches before settling
+- **Record hard-to-reverse choices** - A decision that costs more than a day to undo gets an ADR (recording-decisions skill) before code depends on it
 - **Incremental validation** - Present design, get approval before moving on
 - **Be flexible** - Go back and clarify when something doesn't make sense

@@ -83,6 +83,7 @@ Always display available commands:
 
 | Command | Description |
 |---------|-------------|
+| `/lore:adr [title\|list\|accept NNNN\|supersede NNNN\|discover]` | Record, list, accept, supersede, or discover architecture decision records |
 | `/lore:cultivate` | Cultivate a bounded-context domain — with arg: bootstrap/refine/audit; without arg: discover candidates + audit existing |
 | `/lore:doctor` | Run full workspace + KB diagnostic |
 | `/lore:explore [query]` | Browse and search knowledge nodes |
@@ -104,7 +105,7 @@ Always display available commands:
 | Frameworks | `frameworks/` | Framework-specific patterns |
 | Domain | `domain/` | Business domain contexts |
 | Learnings | `learnings/` | Team-captured gotchas, edge cases, and tribal knowledge |
-| ADRs | `adrs/` | Architecture Decision Records (exported from Confluence) |
+| ADRs | `adrs/` | Architecture decision records — numbered, one decision each, immutable once accepted (`/lore:adr`) |
 
 ## Available Skills (Auto-Triggered)
 
@@ -112,6 +113,7 @@ Always display available commands:
 |-------|---------------|
 | `pattern-identifier` | Questions about standards, patterns, conventions ("how do we...", "should I...") |
 | `brainstorming` | Creative work — features, components, new functionality |
+| `recording-decisions` | A hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) |
 | `writing-plans` | Multi-step tasks with spec/requirements |
 | `executing-plans` | Executing a written implementation plan |
 | `test-driven-development` | Implementing any feature or bugfix (default for all work) |
@@ -128,4 +130,5 @@ Always display available commands:
 2. **Need domain context?** → `/lore:prime <your-domain>`
 3. **Looking for something?** → `/lore:explore <topic>`
 4. **Review your work?** → `/lore:review`
+5. **Made a hard-to-reverse call?** → `/lore:adr <title>` (or `/lore:adr discover` for the ones already in the code)
 ```

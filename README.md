@@ -10,6 +10,7 @@ team's knowledge base.
 - **Knowledge Search**: Fast search across all knowledge nodes
 - **Pattern Identification**: Answer "how do we do X?" using docs-first approach
 - **Update Proposals**: Suggest knowledge base improvements
+- **Decision Records**: Record, list, accept, supersede, and discover architecture decision records (ADRs)
 
 ## Setup
 
@@ -161,6 +162,7 @@ new handle and need nothing.
 | Command | Description |
 |---------|-------------|
 | `/lore:help` | Show status and help |
+| `/lore:adr` | Record, list, accept, supersede, or discover architecture decision records |
 | `/lore:init` | Detect workspace state and scaffold or retrofit accordingly |
 | `/lore:migrate` | Bring household.json up to the schema the current plugin expects; optionally refresh template tooling |
 | `/lore:cultivate` | Cultivate a bounded-context domain. With a name: bootstrap/refine/audit. Without: discover candidate domains in the codebase + audit existing ones |
@@ -252,6 +254,30 @@ Propose updates to the knowledge base:
 /lore:update Add password-reset flow to user-management context
 ```
 
+### ADR
+
+Architecture decision records are first-class knowledge nodes under `adrs/`: one hard-to-reverse
+decision per record, numbered like `adr-tools` (`NNNN-<topic>.md`), reviewed through a PR, and
+immutable once code depends on them.
+
+```bash
+/lore:adr Use PostgreSQL as the primary datastore   # new record: triage → interview → draft → PR
+/lore:adr                                            # list records (rendered from frontmatter)
+/lore:adr list accepted                              # filter by status
+/lore:adr accept 0004                                # proposed → accepted (first code depends on it)
+/lore:adr supersede 0002 Move session state to JWTs  # new record + mark 0002 superseded, one PR
+/lore:adr discover                                   # find decisions already baked into the code
+```
+
+The record shape is Nygard's *Context / Decision / Consequences* with a short *Considered options*
+list and an *Assumptions and invalidation triggers* section, so every record says when it should be
+revisited. Frontmatter carries `status`, `date`, `deciders`, and `confidence`; the `description` is
+the decision in one sentence and is what listings and search show. There is no index file: the
+list is rendered from frontmatter on demand.
+
+The `recording-decisions` skill triggers automatically when a hard-to-reverse choice surfaces during
+brainstorming, planning, or review, and the review skill treats accepted records as constraints.
+
 ### Cultivate
 
 Cultivate a single bounded-context domain node:
@@ -293,6 +319,7 @@ These skills trigger automatically when relevant:
 | `review` | "Review my PR", "Check this code" |
 | `knowledge-update` | "Document this", finding knowledge gaps |
 | `brainstorming` | Creative work — features, components, new functionality |
+| `recording-decisions` | A hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) |
 | `writing-plans` | Multi-step tasks with spec/requirements |
 | `executing-plans` | Executing a written implementation plan |
 | `test-driven-development` | Implementing any feature or bugfix |
@@ -382,10 +409,12 @@ The `knowledge-question-answerer` agent:
 
 ```
 knowledge/
+├── adrs/          # Architecture decision records (numbered, immutable once accepted)
 ├── general/       # Cross-repo standards
 ├── domain/        # DDD bounded contexts
 ├── frameworks/    # Framework-specific patterns
-└── languages/     # Language-specific guidelines
+├── languages/     # Language-specific guidelines
+└── learnings/     # Captured gotchas and tribal knowledge
 ```
 
 Note: The `knowledge/` directory lives in your knowledge-base directory (typically `lore/` inside a witan-household workspace, or a standalone KB repo), not in this plugin repo. This plugin provides the commands, skills, agents, and hooks that interact with that knowledge.

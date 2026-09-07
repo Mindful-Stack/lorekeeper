@@ -18,6 +18,7 @@ Discover available knowledge without loading full files into context.
 /lore:explore                     # List all nodes grouped by category
 /lore:explore domain              # List nodes in the domain category
 /lore:explore frameworks          # List nodes in the frameworks category
+/lore:explore adrs                # List architecture decision records with their status
 /lore:explore error-handling      # Search for "error-handling"
 ```
 
@@ -68,15 +69,24 @@ Display nodes grouped by category:
 ### languages/
 - typescript/code-style - TypeScript conventions
 - ...
+
+### learnings/
+- ef-core-eager-loading - EF Core doesn't lazy-load the Device-Listener relationship
+- ...
+
+### adrs/
+- 0001-primary-datastore [accepted] - All transactional data lives in PostgreSQL because…
+- ...
 ```
 
 Use the `title` and `description` grepped from each node's frontmatter.
 
 ### Argument Matches Category -> List That Category
 
-If the argument is one of: `domain`, `frameworks`, `languages`, `general` -- Glob
+If the argument is one of: `domain`, `frameworks`, `languages`, `general`, `learnings`, `adrs` -- Glob
 `<knowledge-path>/<argument>/**/*.md` and grep those files' `title`/`description`. The directory
-is the category, so no filtering is needed.
+is the category, so no filtering is needed. For `adrs`, also grep `^status:` and show it in
+brackets after the number, sorted by number; `/lore:adr list` renders the same data as a table.
 
 ### Anything Else -> Search
 

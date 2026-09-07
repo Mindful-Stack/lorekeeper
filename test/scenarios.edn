@@ -47,6 +47,11 @@
   :workdir "."
   :expects ["Payment" "OrderPlaced|CheckoutCompleted|event"]}
 
+ {:name "skill-stack-triggers-on-dependent-prs"
+  :prompt "I have two PRs that depend on each other: a backend API change in the backend repo and a frontend change in the web repo that consumes it. How should I coordinate opening and merging them?"
+  :workdir "."
+  :expects ["## Stack|Stack \\(merge top to bottom\\)|stack" "merge order|top to bottom|← this PR"]}
+
  {:name "implementation-phase-loads-standards"
   :prompt "I have this implementation plan. Start implementing Task 1.
 

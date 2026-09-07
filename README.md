@@ -331,6 +331,7 @@ These skills trigger automatically when relevant:
 | `test-driven-development` | Implementing any feature or bugfix |
 | `systematic-debugging` | Bugs, test failures, unexpected behaviour |
 | `verification-before-completion` | Claiming work is complete or fixed |
+| `stack` | Opening 2+ dependent PRs, stacked PRs, merge order, coordinated changes across repos |
 | `subagent-driven-development` | Independent tasks from a plan (same session) |
 | `dispatching-parallel-agents` | Multiple independent problems |
 | `cultivate` / `cultivate-discovery` | Domain cultivation via `/lore:cultivate` |

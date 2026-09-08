@@ -7,7 +7,9 @@ description: Record, list, accept, supersede, or discover architecture decision 
 Architecture decision records are first-class knowledge: one hard-to-reverse decision per record,
 numbered, reviewed through a PR like every other node, and immutable once code depends on them.
 This command is the plugin's equivalent of `adr-tools` (`adr new`, `adr list`, `adr new -s`), plus
-a `discover` mode that recovers the decisions a codebase has already made implicitly.
+a `discover` mode that recovers the decisions a codebase has already made implicitly. Retrieval
+and scanning are delegated to the **architect** agent; this command owns everything that needs the
+user in the loop: triage, interview, drafting, and the PR.
 
 ## Usage
 
@@ -188,10 +190,13 @@ End with: `Use /lore:prime adrs/NNNN-… to load a record into context.`
    - **Tier 3 — no record** beyond the plan, the PR description, and the code.
    If the decision is Tier 2 or 3, say so, offer the lighter option, and stop unless the user
    insists.
-2. **Load context.** Run the `list` step to see existing records (a duplicate or a candidate to
-   supersede is common). Dispatch the **knowledge-reader** agent with the topic and hint:
-   "Prioritise accepted ADRs, domain context, and architecture patterns." Grep the codebase for
-   the thing being decided so the Context section rests on facts, not memory.
+2. **Load context.** Dispatch two agents in parallel (both Task calls in one message): the
+   **architect** agent in `bind` mode with the topic (returns the accepted records that already
+   constrain it, any trigger this decision fires, and duplicates or supersede candidates) and the
+   **knowledge-reader** agent with the hint "Prioritise domain context and architecture
+   patterns." If the architect reports a record that already covers the decision, stop and offer
+   `accept`, `supersede`, or nothing. Grep the codebase for the thing being decided so the Context
+   section rests on facts, not memory.
 3. **Interview, one question at a time.** Before drafting, ask the scoping questions that apply:
    who accesses this and at what boundaries; isolation and access-control requirements;
    read/write patterns and scale; retention and lifecycle; what adjacent planned work touches it;
@@ -260,55 +265,24 @@ End with: `Use /lore:prime adrs/NNNN-… to load a record into context.`
 ### `discover` -> Decision archaeology
 
 Recover the architecturally significant decisions a codebase has already made without writing
-them down. Every framework, datastore, auth scheme, or hosting model in a repository answers a
-requirement somebody once had; this mode finds those answers and offers to record them.
+them down. The scanning happens in the **architect** agent so the evidence never lands in this
+conversation; only the pick loop and the drafting do.
 
-1. **Inventory existing records** (the `list` step) so nothing already recorded is proposed again.
-2. **Scan for evidence**, bounded to the household's code repositories (from `household.json`'s
-   `repos`, excluding the knowledge base) or the current repo when there is no manifest:
-   - *Dependency manifests* (`*.csproj`, `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`,
-     `Gemfile`, `pom.xml`): web framework, UI framework, ORM and database driver, messaging,
-     auth libraries, test framework.
-   - *Infrastructure and delivery* (`Dockerfile*`, `docker-compose*`, `*.tf`, `k8s/`,
-     `.github/workflows/`, `Makefile`): hosting model, deploy pipeline, build strategy.
-   - *Code-level signals* (Grep): authentication scheme registration, real-time transports,
-     database provider calls, JSON-column usage, background job frameworks, feature-flag
-     libraries, API style (REST, GraphQL, RPC).
-   - *Documents already in the KB or repo* (`plans/`, `general/`, `docs/`): headings such as
-     "decision", "why", "chose", "alternatives", "trade-off", "summary of decisions". These are
-     the richest source: they often contain the reasoning verbatim.
-3. **Turn evidence into candidates.** For each, write: the requirement it answers, the choice
-   made, the evidence (file paths), and whether an alternative was visibly considered. Apply the
-   triage rule; drop Tier 2 and 3 items or fold them into a candidate they belong to. Cap the
-   list at fifteen.
-4. **Render** the survey, grouped and numbered:
-
-   ```
-   ## Decisions already made but not recorded (N found)
-
-   ### Foundation and stack
-   1. **<topic>** — <choice>; evidence: `<path>`, `<path>`; alternatives considered: <yes/no/unclear>.
-
-   ### Architecture and integration
-   ### Data and storage
-   ### Security and identity
-   ### Delivery and operations
-   ### Product and process
-
-   ## Already recorded (M)
-   - ADR-0001 <title> (accepted)
-   ```
-
-5. **Prioritise.** Ask in plain text (not `AskUserQuestion`, the list can exceed four options):
-   "Which should I record now? Reply with numbers or topics, comma-separated, or `none`. I will
-   take the first three." Parse, validate, de-duplicate, clip to three, then confirm the picks with
-   one `AskUserQuestion`.
-6. **Record each pick** with the **New record** flow in retrospective form: status `accepted`,
-   the retrospective Status line, Context reconstructed from the evidence, and the interview
-   shortened to confirming the reasons with the user. Where the alternatives were not visibly
-   considered at the time, say exactly that in *Considered options* rather than inventing a
-   debate. Pause between picks with an `AskUserQuestion` offering continue / stop.
-7. **Summarise**: records opened (with PR URLs), candidates left unrecorded, and a reminder that
+1. **Dispatch the architect agent** in `survey` mode, passing any scope the user gave (a repo or
+   area) or "the whole household". It returns the grouped candidate list (at most fifteen, each
+   with the requirement, the choice, evidence paths, and whether an alternative was weighed), the
+   records that already exist, and the scan scope.
+2. **Render its report verbatim**, then ask in plain text (not `AskUserQuestion`, the list can
+   exceed four options): "Which should I record now? Reply with numbers or topics,
+   comma-separated, or `none`. I will take the first three." Parse, validate, de-duplicate, clip
+   to three, then confirm the picks with one `AskUserQuestion`.
+3. **Record each pick** with the **New record** flow in retrospective form: status `accepted`,
+   the retrospective Status line, Context reconstructed from the evidence the agent cited, and the
+   interview shortened to confirming the reasons with the user. Where the alternatives were not
+   visibly weighed at the time, say exactly that in *Considered options* rather than inventing a
+   debate. Skip the agent dispatch in step 2 of the New flow; the survey already did it. Pause
+   between picks with an `AskUserQuestion` offering continue / stop.
+4. **Summarise**: records opened (with PR URLs), candidates left unrecorded, and a reminder that
    `/lore:adr discover` can be run again for the rest.
 
 ## Important Rules

@@ -275,8 +275,13 @@ revisited. Frontmatter carries `status`, `date`, `deciders`, and `confidence`; t
 the decision in one sentence and is what listings and search show. There is no index file: the
 list is rendered from frontmatter on demand.
 
-The `recording-decisions` skill triggers automatically when a hard-to-reverse choice surfaces during
-brainstorming, planning, or review, and the review skill treats accepted records as constraints.
+Retrieval is a separate, read-only **`architect`** agent: pattern-identifier, brainstorming, and
+review dispatch it in parallel with their usual agent, so "how do we do X?" also returns the
+decision behind X, a design that would fire a record's invalidation trigger is flagged before the
+spec is written, and a diff that contradicts an accepted record is reviewed as such. `/lore:adr
+discover` runs the agent's `survey` mode and keeps only the pick-and-draft loop in the
+conversation. The `recording-decisions` skill is the gate: record it as proposed before building
+on it.
 
 ### Cultivate
 
@@ -397,6 +402,7 @@ Subagents run in isolation to keep the main conversation context clean:
 | `knowledge-question-answerer` | Searches knowledge base, returns structured answers with sources and confidence |
 | `knowledge-reader` | Loads task-relevant knowledge (standards, patterns, gotchas) as a distilled summary |
 | `knowledge-updater` | Handles the full PR flow for knowledge base changes (branch, write, PR) |
+| `architect` | Read-only decision retrieval: `bind` (which accepted ADRs constrain a task), `survey` (decisions a codebase made without a record), `check` (where a diff contradicts a record). Dispatched in parallel with the other agents |
 | `plan-compliance-reviewer` | Verifies a completed implementation task against its original plan/spec |
 
 The `knowledge-question-answerer` agent:

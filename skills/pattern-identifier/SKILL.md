@@ -46,17 +46,23 @@ The knowledge base is the **source of truth**. The codebase shows how things are
 3. When codebase differs from docs, prefer docs
 4. Surface gaps so they can be documented
 
-## Step 1: Launch knowledge-question-answerer
+## Step 1: Launch knowledge-question-answerer and architect in parallel
 
-Use the Task tool to launch the knowledge-question-answerer agent:
+Use the Task tool to launch both agents **in the same message** — they are independent, and the
+answer to "how do we do X?" is often "because ADR-NNNN decided Y":
 
 ```
 Task tool:
   subagent_type: knowledge-question-answerer
   prompt: "Search the knowledge base to answer: [user's question]"
+
+Task tool:
+  subagent_type: architect
+  prompt: "bind: [user's question, restated as the task or area it concerns]"
 ```
 
-Wait for the agent to return its structured response.
+Wait for both. The answerer's confidence drives Steps 2–3; the architect's report is folded into
+Step 4 whenever it names a binding decision, a fired trigger, or a gap.
 
 ## Step 2: Evaluate Confidence
 
@@ -70,6 +76,8 @@ The knowledge base has a clear answer.
 
 ```markdown
 **[Answer from knowledge-question-answerer]**
+
+**Binding decisions:** [from the architect, if any — "ADR-0004 (accepted): <decision>. Rules: …"]
 
 Sources:
 - `file:lines` - description
@@ -121,6 +129,11 @@ Format the response based on what was found:
 [Explore findings - "Found X examples of Y pattern in Z locations"]
 [Note any differences between docs and practice]
 
+**Binding decisions:**
+[Architect findings, if any. A codebase practice that contradicts an accepted record is a
+deviation from the decision, not an alternative standard — say so and point at
+`/lore:adr supersede NNNN` if the practice is the one to keep.]
+
 **Recommendation:**
 [Combined guidance - prefer documented standard, note if codebase deviates]
 
@@ -163,6 +176,9 @@ Suggested documentation:
 > [1-2 sentence summary of what should be added]
 
 Use `/lore:update [suggested description]` to propose adding this to the knowledge base.
+
+If the architect reported a gap (a hard-to-reverse choice no record covers) and the question is
+about which way to go, suggest `/lore:adr [topic]` instead: the answer is a decision, not a standard.
 
 If the developer has context about the gap that could be captured as tribal knowledge
 (a gotcha, edge case, or non-obvious behaviour), also suggest:

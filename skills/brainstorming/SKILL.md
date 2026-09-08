@@ -23,9 +23,11 @@ Every project goes through this process. A todo list, a single-function utility,
 You MUST create a task for each of these items and complete them in order:
 
 1. **Explore project context** — check files, docs, recent commits
-   Also dispatch the **knowledge-reader** agent with the topic and hint:
-   "Prioritise domain context, architecture patterns, and ADRs."
-   Include the reader's output in your project context understanding.
+   Also dispatch, in parallel (both Task calls in one message), the **knowledge-reader** agent with
+   the topic and hint "Prioritise domain context and architecture patterns." and the **architect**
+   agent in `bind` mode with the topic. Include both outputs in your project context: the
+   architect's binding decisions constrain every approach you propose, and a fired trigger means
+   the design must supersede that record (recording-decisions skill) rather than quietly violate it.
 2. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 3. **Propose 2-3 approaches** — with trade-offs and your recommendation
    If the chosen approach commits to a framework, datastore, auth scheme, API contract, integration

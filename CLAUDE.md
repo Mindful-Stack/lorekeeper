@@ -81,7 +81,7 @@ Whenever multiple knowledge sources address the same topic, the agreed priority 
 
 Hypothesis-confidence learnings never override; they're supplementary.
 
-Accepted ADRs (`adrs/`, `status: accepted`) sit outside the ladder: they are constraints, not standards. No standard overrides one; the review skill flags contradictions and points at `/lore:adr supersede`. Accepted records are immutable — the knowledge-updater agent refuses body edits to them.
+Accepted ADRs (`adrs/`, `status: accepted`) sit outside the ladder: they are constraints, not standards, and no standard overrides one. Retrieval is the read-only `architect` agent (`bind` / `survey` / `check`), which pattern-identifier, brainstorming, and review dispatch in parallel with their usual agent; the reader and answerer stay ADR-agnostic. Authoring is `/lore:adr`; accepted records are immutable and the knowledge-updater agent refuses body edits to them.
 
 ### Skill router vs. user-installed superpowers
 

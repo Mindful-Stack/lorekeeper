@@ -71,11 +71,14 @@ When auto-detecting (no explicit target): try `gh pr diff` first, fall back to `
 
 ### Step 3: Load Review Context
 
-Dispatch the **knowledge-reader** agent with the changed files/areas and hint:
-"Be thorough — include all standards, learnings, accepted ADRs, and review checklists that apply
-to these changes. Don't filter by relevance ranking, but scope to what was changed."
+Dispatch two agents in parallel (both Task calls in one message):
 
-Include the reader's output in your review context.
+- the **knowledge-reader** agent with the changed files/areas and hint:
+  "Be thorough — include all standards, learnings, and review checklists that apply to these changes.
+  Don't filter by relevance ranking, but scope to what was changed."
+- the **architect** agent in `check` mode with the changed files and a summary of what the diff does.
+
+Include both outputs in your review context.
 
 Also check for repo-specific knowledge:
 - Use Glob for `docs/standards/*.md`
@@ -102,10 +105,10 @@ git diff --staged
 
 Go through each changed file. Check against ALL loaded knowledge.
 
-An accepted ADR is a constraint, not a suggestion: a change that contradicts one is at least
-**Important**, cites the record (`adrs/NNNN-…`), and suggests either conforming or superseding
-the record with `/lore:adr supersede NNNN`. A change that makes a hard-to-reverse choice no record
-covers gets a **Minor** finding pointing at `/lore:adr`.
+Fold the architect's report in as findings. A contradiction with an accepted record is at least
+**Important**, cites the record by path and section, and suggests either conforming or superseding
+it with `/lore:adr supersede NNNN`. A fired invalidation trigger is **Important** too. An uncovered
+hard-to-reverse choice is **Minor**, pointing at `/lore:adr <topic>`.
 
 **Categorize findings:**
 - **Critical** - Security vulnerabilities, data loss risks, must fix before merge

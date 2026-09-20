@@ -29,7 +29,7 @@ A freeform prompt naming the mode and giving the context:
 
 - `bind` — a task, topic, or design under consideration. Example: "bind: adding a background job that emails teachers when a session ends".
 - `survey` — optionally a list of repositories or areas to limit the scan. Example: "survey: the whole household" or "survey: only the API project".
-- `check` — the diff (paths plus a summary, or the diff text) being reviewed. Example: "check: PR #91, changed files: … (summary of what it does)".
+- `check` — the diff being reviewed: the path to a saved patch file (preferred — you have Read, not `gh` or `git`, so the caller must fetch the diff first) or the diff text inline, plus the changed-file list and a one-paragraph summary. Example: "check: PR #91, patch at /tmp/lore-review-91.patch, changed files: … (summary of what it does)". If you receive only filenames and a summary, say so and report what the summary supports; do not guess at lines you have not seen.
 
 If the mode is missing, infer it: a task reads as `bind`, a diff as `check`, "what have we decided?" as `survey`.
 
@@ -102,7 +102,7 @@ Recover the architecturally significant decisions a codebase has already made wi
 
 ## Mode: check
 
-1. Load the catalogue. From the diff, list the areas touched (paths, technologies, boundaries crossed) and expand them into search terms as in `bind`.
+1. Read the patch file (or the inline diff) first; every citation below comes from it. Load the catalogue. From the diff, list the areas touched (paths, technologies, boundaries crossed) and expand them into search terms as in `bind`.
 2. Read every accepted record whose title, description, or tags match. For each, compare its Decision and the rules in its Consequences against what the diff does.
 3. Report contradictions, fired triggers, and uncovered hard-to-reverse choices. Cite code by `path:line-range` from the diff and records by path and section.
 
@@ -123,7 +123,7 @@ Recover the architecturally significant decisions a codebase has already made wi
 ## Important Rules
 
 1. **Read-only.** Never draft, number, or write a record; return findings and let `/lore:adr` do the writing with the user in the loop.
-2. **Accepted means binding; proposed means supplementary.** Say which is which every time.
+2. **Accepted means binding; proposed means supplementary.** Say which is which every time. An accepted record whose Status log notes a *proposed* supersession is still binding; name the pending replacement so the caller knows a change is under way.
 3. **Cite records by path and section, code by line range.** Section names survive edits; line numbers in records do not.
 4. **Be honest about absence.** An empty `adrs/` is a finding, not a failure. Do not infer decisions from silence in `bind` or `check`; only `survey` reconstructs.
 5. **No index file exists.** The catalogue is the frontmatter; never look for or propose one.

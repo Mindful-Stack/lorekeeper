@@ -148,7 +148,9 @@ proposed → accepted → deprecated | superseded by NNNN
   `superseded_by` fields. To change the decision, write a new record that supersedes it.
 - **rejected** — considered and declined; kept for the audit trail.
 - **deprecated** — no longer applies and nothing replaces it.
-- **superseded** — replaced by a later record; both link to each other.
+- **superseded** — replaced by a later record; both link to each other. The flip happens when
+  the replacement is *accepted*, never when it is proposed: until then the old record stays
+  `accepted` and binding, with a Status line noting the pending replacement.
 
 There is no index file to maintain. Frontmatter is the catalogue: `list` renders it on demand.
 
@@ -247,20 +249,40 @@ End with: `Use /lore:prime adrs/NNNN-… to load a record into context.`
    flip, and it goes in the log.
 3. Change `status: proposed` to `status: accepted` and append to `## Status`:
    `Accepted YYYY-MM-DD. First dependent code: <PR or path>.` Nothing else changes.
-4. Present the diff, then dispatch **knowledge-updater** with Type `adr`, Action `update`, and
-   the file path. Confirm with the PR URL.
+4. **If the record carries `supersedes: NNNN`**, retire the predecessor in the same change:
+   `status: superseded`, `superseded_by: MMMM`, and a Status line
+   `Superseded YYYY-MM-DD by [[adrs/MMMM-…]].` Its body stays untouched. The two edits are one
+   atomic transition: there is never a moment when neither record is binding.
+5. Present the diff(s), then dispatch **knowledge-updater** with Type `adr`, Action `update`, and
+   the file path — or, when a predecessor is retired too, the **batch shape** (two `update`
+   entries) with `pr_title` `docs: accept ADR-MMMM, supersede ADR-NNNN - <title>`. Confirm with
+   the PR URL.
 
 ### `supersede NNNN <title>` -> Replace a record
 
+Superseding is two transitions, not one. This flow only *proposes* the replacement; NNNN stays
+`accepted` and binding until `accept MMMM` retires it (see the accept flow, step 4). Otherwise
+there would be a window where the old record is already superseded and the new one is still
+proposed, and nothing constrains the code.
+
 1. Read record NNNN. If it is `proposed`, ask whether the user would rather amend it (a proposed
    record is still a draft); only continue if they want a new record.
-2. Run the **New record** flow for the replacement. Its frontmatter carries
-   `supersedes: NNNN`; its Context opens with one sentence on what changed since NNNN, and its
-   *See also* links `[[adrs/NNNN-…]]`.
-3. Prepare the edit to the old record: `status: superseded`, `superseded_by: MMMM`, and a Status
-   line `Superseded YYYY-MM-DD by [[adrs/MMMM-…]].` The body stays untouched.
-4. Present both files, then dispatch **knowledge-updater** with the **batch shape** (one `create`,
-   one `update`) so both land in one PR titled `docs: supersede ADR-NNNN with ADR-MMMM - <title>`.
+2. Draft the replacement with the **drafting steps of the New record flow only — steps 1 to 7**.
+   Do not run its steps 8 and 9; publishing happens once, in step 4 below. Two adjustments:
+   - In step 2 the architect will report NNNN as already covering the decision. That is the
+     expected duplicate — do not stop on it. Stop only if it names a *different* accepted record
+     covering the same decision.
+   - The draft's status is `proposed`, its frontmatter carries `supersedes: NNNN`, its Context
+     opens with one sentence on what changed since NNNN, and its *See also* links
+     `[[adrs/NNNN-…]]`.
+3. Prepare the edit to the old record: **only** a Status line
+   `Supersession proposed YYYY-MM-DD by [[adrs/MMMM-…]]; this record remains binding until
+   ADR-MMMM is accepted.` Its `status` and body stay untouched — the Status log is the one part
+   of an accepted record that may change (rule 3).
+4. Present both files, then dispatch **knowledge-updater** once with the **batch shape** (one
+   `create`, one `update`) so both land in one PR titled
+   `docs: propose ADR-MMMM superseding ADR-NNNN - <title>`. Confirm with the PR URL and say
+   that `accept MMMM` will retire NNNN.
 
 ### `discover` -> Decision archaeology
 

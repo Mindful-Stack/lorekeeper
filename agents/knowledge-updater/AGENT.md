@@ -75,7 +75,7 @@ Filename: `NNNN-<topic-slug>.md` — four digits, zero-padded; the caller suppli
 Required frontmatter: title (`"ADR-NNNN: …"`), description (the decision in one sentence, max 300 chars), tags (include `adr`), status (proposed|accepted|rejected|deprecated|superseded), date (YYYY-MM-DD), deciders (inline list), confidence (high|medium|low). Optional: supersedes, superseded_by (four-digit numbers).
 Body sections, in order: Status, Context, Considered options, Decision, Consequences, Assumptions and invalidation triggers, See also. The full format lives in `commands/adr.md`; the caller drafts, you write.
 **Immutability:** when the existing file has `status: accepted`, an `update` may only (a) change `status` and append a line under `## Status`, (b) set `superseded_by`, or (c) fix a broken wikilink. Refuse any other edit to an accepted record and tell the caller to supersede it instead. Proposed records may be edited freely.
-Branch: `knowledge/adr-NNNN-<slug>`; a supersede batch uses the new record's number.
+Branch: `knowledge/adr-NNNN-<slug>`; a supersede batch uses the new record's number, and an accept batch that retires a predecessor uses the accepted record's number.
 
 ## PR Workflow
 

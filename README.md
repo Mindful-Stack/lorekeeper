@@ -265,7 +265,7 @@ immutable once code depends on them.
 /lore:adr                                            # list records (rendered from frontmatter)
 /lore:adr list accepted                              # filter by status
 /lore:adr accept 0004                                # proposed → accepted (first code depends on it)
-/lore:adr supersede 0002 Move session state to JWTs  # new record + mark 0002 superseded, one PR
+/lore:adr supersede 0002 Move session state to JWTs  # proposes the replacement; 0002 is retired when it is accepted
 /lore:adr discover                                   # find decisions already baked into the code
 ```
 

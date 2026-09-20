@@ -49,7 +49,7 @@ When you receive the batch shape, you:
 - Apply every `changes[i]` in order before committing.
 - Use `pr_title` and `pr_body` verbatim for the PR.
 - Commit all the changes together in one commit. There is nothing to rebuild afterwards.
-- Step 3's branch name becomes `cultivate/<domain-name>-<mode>` (e.g. `cultivate/grant-matching-bootstrap`); steps 7 and 8 use the supplied `pr_title` and `pr_body` verbatim instead of the single-change `<type>/<slug>/<action>/<title>` placeholders.
+- Step 3's branch name comes from the batch's caller: a `/lore:cultivate` batch uses `cultivate/<domain-name>-<mode>` (e.g. `cultivate/grant-matching-bootstrap`), an ADR batch uses the branch named in the ADR schema below, and any other batch keeps the single-change form. Steps 7 and 8 use the supplied `pr_title` and `pr_body` verbatim instead of the single-change `<type>/<slug>/<action>/<title>` placeholders.
 
 ## Knowledge Type Schemas
 
@@ -71,10 +71,10 @@ Follow DDD structure: Purpose, Key Entities, Ubiquitous Language, Integration Po
 
 ### ADRs (`knowledge/adrs/`)
 
-Filename: `NNNN-<topic-slug>.md` — four digits, zero-padded; the caller supplies the number (it has already globbed for the next free one). Never rename or renumber an existing record.
+Filename: `NNNN-<topic-slug>.md` — four digits, zero-padded; the caller supplies the number (it has already globbed for the next free one). Never renumber a record that already exists on the target branch. A draft still in an unmerged PR may be renumbered when the caller reports a collision: rename the file, update its `title`, and fix any `[[wikilinks]]` pointing at it, all in the same change.
 Required frontmatter: title (`"ADR-NNNN: …"`), description (the decision in one sentence, max 300 chars), tags (include `adr`), status (proposed|accepted|rejected|deprecated|superseded), date (YYYY-MM-DD), deciders (inline list), confidence (high|medium|low). Optional: supersedes, superseded_by (four-digit numbers).
 Body sections, in order: Status, Context, Considered options, Decision, Consequences, Assumptions and invalidation triggers, See also. The full format lives in `commands/adr.md`; the caller drafts, you write.
-**Immutability:** when the existing file has `status: accepted`, an `update` may only (a) change `status` and append a line under `## Status`, (b) set `superseded_by`, or (c) fix a broken wikilink. Refuse any other edit to an accepted record and tell the caller to supersede it instead. Proposed records may be edited freely.
+**Immutability:** a record **locks** once its `## Status` log records an acceptance, whatever `status` currently says — so `superseded` and `deprecated` records stay locked too. On a locked record an `update` may only (a) append a line to the `## Status` log, on its own or together with a status transition to `accepted`, `superseded`, or `deprecated`, (b) set `superseded_by`, or (c) repair a broken `[[wikilink]]`. It may never move a locked record back to `proposed` or `rejected`, and never changes any other body text. Refuse anything else and tell the caller to supersede the record instead. A record with no acceptance in its Status log may be edited freely.
 Branch: `knowledge/adr-NNNN-<slug>`; a supersede batch uses the new record's number, and an accept batch that retires a predecessor uses the accepted record's number.
 
 ## PR Workflow

@@ -40,8 +40,11 @@ lowest -> highest) and a `Team knowledge path:` marker (the team's writable KB).
 
 - **Read contexts** (listing, numbering, checking for duplicates): iterate over all
   `Knowledge path:` markers.
-- **Write contexts** (new files, status changes): always the `Team knowledge path:`. Decisions are
-  team-owned and never go to a shared KB.
+- **Write contexts** (new records, status changes): always the `Team knowledge path:`. Decisions
+  are team-owned, so this command creates and modifies records only there. A record that lives in
+  a shared KB belongs to another team: cite it as binding context, but never edit it and never
+  copy it into the team KB. If the user asks to accept or supersede one, say where it lives and
+  stop.
 
 If no `Knowledge path:` marker is present, tell the user:
 "No knowledge base configured — run `/lore:init` to set one up, or see the SessionStart message
@@ -143,9 +146,12 @@ proposed → accepted → deprecated | superseded by NNNN
 ```
 
 - **proposed** — a draft in its cooling period. Amend freely; nothing is built on it yet.
-- **accepted** — the first code depends on it. That dependency is what flips the status. From
-  then on the record is immutable except for the `## Status` log and the `status` /
-  `superseded_by` fields. To change the decision, write a new record that supersedes it.
+- **accepted** — the first code depends on it. That dependency is what flips the status, and it
+  **locks** the record. From then on the only permitted edits are an appended `## Status` line
+  (on its own, or with a transition to `accepted`, `superseded`, or `deprecated`), `superseded_by`,
+  and repairs to a broken `[[wikilink]]`. A locked record never returns to `proposed`, and
+  `superseded` and `deprecated` records stay locked. To change the decision, write a new record
+  that supersedes it.
 - **rejected** — considered and declined; kept for the audit trail.
 - **deprecated** — no longer applies and nothing replaces it.
 - **superseded** — replaced by a later record; both link to each other. The flip happens when
@@ -277,8 +283,8 @@ proposed, and nothing constrains the code.
      `[[adrs/NNNN-…]]`.
 3. Prepare the edit to the old record: **only** a Status line
    `Supersession proposed YYYY-MM-DD by [[adrs/MMMM-…]]; this record remains binding until
-   ADR-MMMM is accepted.` Its `status` and body stay untouched — the Status log is the one part
-   of an accepted record that may change (rule 3).
+   ADR-MMMM is accepted.` Its `status` and body stay untouched: appending to the Status log is a
+   permitted edit on a locked record (rule 3).
 4. Present both files, then dispatch **knowledge-updater** once with the **batch shape** (one
    `create`, one `update`) so both land in one PR titled
    `docs: propose ADR-MMMM superseding ADR-NNNN - <title>`. Confirm with the PR URL and say
@@ -302,8 +308,10 @@ conversation; only the pick loop and the drafting do.
    the retrospective Status line, Context reconstructed from the evidence the agent cited, and the
    interview shortened to confirming the reasons with the user. Where the alternatives were not
    visibly weighed at the time, say exactly that in *Considered options* rather than inventing a
-   debate. Skip the agent dispatch in step 2 of the New flow; the survey already did it. Pause
-   between picks with an `AskUserQuestion` offering continue / stop.
+   debate. In step 2 of the New flow, still dispatch the architect in `bind` mode for this
+   candidate: the survey listed choices nobody recorded, it never checked them against the
+   accepted records. The knowledge-reader dispatch can be skipped, since the survey already cited
+   the evidence. Pause between picks with an `AskUserQuestion` offering continue / stop.
 4. **Summarise**: records opened (with PR URLs), candidates left unrecorded, and a reminder that
    `/lore:adr discover` can be run again for the rest.
 
@@ -314,11 +322,15 @@ conversation; only the pick loop and the drafting do.
 2. **Record before building.** A decision that is about to be implemented gets a `proposed`
    record first; it flips to `accepted` when the code lands. Do not write records after the fact
    for new work and call them proposed.
-3. **Accepted records are immutable.** Never edit the body of an accepted record; supersede it.
-   The only permitted edits are the Status log, `status`, and `superseded_by`.
+3. **Accepted records are locked.** Acceptance is recorded in the `## Status` log and locks the
+   record for good, whatever its status later becomes. The only permitted edits are an appended
+   Status line (alone, or with a transition to `accepted`, `superseded`, or `deprecated`),
+   `superseded_by`, and repairs to a broken `[[wikilink]]`. Never edit anything else; supersede
+   instead.
 4. **Give every record `title`, `description`, and `tags`** — retrieval greps those, so a record
    missing any of them is invisible to search. The `description` must be the decision itself.
 5. **Numbers are never reused**, not even for rejected records. If two open PRs claim the same
-   number, the second to merge renumbers.
+   number, the one still unmerged renumbers its draft: filename, `title`, and inbound wikilinks.
+   A number already merged is never changed.
 6. **Never hard-code a category or repo list** — discover records by globbing `adrs/`, and repos
    from `household.json`.

@@ -323,7 +323,7 @@ These skills trigger automatically when relevant:
 | `pattern-identifier` | Questions about standards ("How do we...", "Should I...", "What's our pattern for...") |
 | `review` | "Review my PR", "Check this code" |
 | `knowledge-update` | "Document this", finding knowledge gaps |
-| `standards-import` | "Import the standards from <project>", "document our conventions", "check the standards against the code" |
+| `standards-curate` | "Document our conventions", "import the standards from <project>", "check the standards against the code" |
 | `brainstorming` | Creative work — features, components, new functionality |
 | `recording-decisions` | A hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) |
 | `writing-plans` | Multi-step tasks with spec/requirements |

@@ -122,7 +122,7 @@ Always display available commands:
 | `subagent-driven-development` | Independent tasks from a plan (same session) |
 | `dispatching-parallel-agents` | Multiple independent problems (e.g., unrelated test failures) |
 | `knowledge-update` | Outdated or missing knowledge detected |
-| `standards-import` | Importing or writing language/framework standards and checking them against the code |
+| `standards-curate` | Authoring, importing, auditing or reconciling language/framework standards against the code |
 | `review` | User asks to review PR, code, or changes |
 
 ## Quick Start

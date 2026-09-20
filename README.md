@@ -10,6 +10,7 @@ team's knowledge base.
 - **Knowledge Search**: Fast search across all knowledge nodes
 - **Pattern Identification**: Answer "how do we do X?" using docs-first approach
 - **Update Proposals**: Suggest knowledge base improvements
+- **Decision Records**: Record, list, accept, supersede, and discover architecture decision records (ADRs)
 
 ## Setup
 
@@ -161,6 +162,7 @@ new handle and need nothing.
 | Command | Description |
 |---------|-------------|
 | `/lore:help` | Show status and help |
+| `/lore:adr` | Record, list, accept, supersede, or discover architecture decision records |
 | `/lore:init` | Detect workspace state and scaffold or retrofit accordingly |
 | `/lore:migrate` | Bring household.json up to the schema the current plugin expects; optionally refresh template tooling |
 | `/lore:cultivate` | Cultivate a bounded-context domain. With a name: bootstrap/refine/audit. Without: discover candidate domains in the codebase + audit existing ones |
@@ -252,6 +254,35 @@ Propose updates to the knowledge base:
 /lore:update Add password-reset flow to user-management context
 ```
 
+### ADR
+
+Architecture decision records are first-class knowledge nodes under `adrs/`: one hard-to-reverse
+decision per record, numbered like `adr-tools` (`NNNN-<topic>.md`), reviewed through a PR, and
+immutable once code depends on them.
+
+```bash
+/lore:adr Use PostgreSQL as the primary datastore   # new record: triage → interview → draft → PR
+/lore:adr                                            # list records (rendered from frontmatter)
+/lore:adr list accepted                              # filter by status
+/lore:adr accept 0004                                # proposed → accepted (first code depends on it)
+/lore:adr supersede 0002 Move session state to JWTs  # proposes the replacement; 0002 is retired when it is accepted
+/lore:adr discover                                   # find decisions already baked into the code
+```
+
+The record shape is Nygard's *Context / Decision / Consequences* with a short *Considered options*
+list and an *Assumptions and invalidation triggers* section, so every record says when it should be
+revisited. Frontmatter carries `status`, `date`, `deciders`, and `confidence`; the `description` is
+the decision in one sentence and is what listings and search show. There is no index file: the
+list is rendered from frontmatter on demand.
+
+Retrieval is a separate, read-only **`architect`** agent: pattern-identifier, brainstorming, and
+review dispatch it in parallel with their usual agent, so "how do we do X?" also returns the
+decision behind X, a design that would fire a record's invalidation trigger is flagged before the
+spec is written, and a diff that contradicts an accepted record is reviewed as such. `/lore:adr
+discover` runs the agent's `survey` mode and keeps only the pick-and-draft loop in the
+conversation. The `recording-decisions` skill is the gate: record it as proposed before building
+on it.
+
 ### Cultivate
 
 Cultivate a single bounded-context domain node:
@@ -293,6 +324,7 @@ These skills trigger automatically when relevant:
 | `review` | "Review my PR", "Check this code" |
 | `knowledge-update` | "Document this", finding knowledge gaps |
 | `brainstorming` | Creative work — features, components, new functionality |
+| `recording-decisions` | A hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) |
 | `writing-plans` | Multi-step tasks with spec/requirements |
 | `executing-plans` | Executing a written implementation plan |
 | `test-driven-development` | Implementing any feature or bugfix |
@@ -370,6 +402,7 @@ Subagents run in isolation to keep the main conversation context clean:
 | `knowledge-question-answerer` | Searches knowledge base, returns structured answers with sources and confidence |
 | `knowledge-reader` | Loads task-relevant knowledge (standards, patterns, gotchas) as a distilled summary |
 | `knowledge-updater` | Handles the full PR flow for knowledge base changes (branch, write, PR) |
+| `architect` | Read-only decision retrieval: `bind` (which accepted ADRs constrain a task), `survey` (decisions a codebase made without a record), `check` (where a diff contradicts a record). Dispatched in parallel with the other agents |
 | `plan-compliance-reviewer` | Verifies a completed implementation task against its original plan/spec |
 
 The `knowledge-question-answerer` agent:
@@ -382,10 +415,12 @@ The `knowledge-question-answerer` agent:
 
 ```
 knowledge/
+├── adrs/          # Architecture decision records (numbered, immutable once accepted)
 ├── general/       # Cross-repo standards
 ├── domain/        # DDD bounded contexts
 ├── frameworks/    # Framework-specific patterns
-└── languages/     # Language-specific guidelines
+├── languages/     # Language-specific guidelines
+└── learnings/     # Captured gotchas and tribal knowledge
 ```
 
 Note: The `knowledge/` directory lives in your knowledge-base directory (typically `lore/` inside a witan-household workspace, or a standalone KB repo), not in this plugin repo. This plugin provides the commands, skills, agents, and hooks that interact with that knowledge.

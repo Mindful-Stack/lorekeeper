@@ -69,38 +69,54 @@ Detect the language and framework of the current project:
 
 When auto-detecting (no explicit target): try `gh pr diff` first, fall back to `git diff main...HEAD`.
 
-### Step 3: Load Review Context
+### Step 3: Get the Diff
 
-Dispatch the **knowledge-reader** agent with the changed files/areas and hint:
-"Be thorough — include all standards, learnings, and review checklists that apply to these changes.
-Don't filter by relevance ranking, but scope to what was changed."
+Fetch the diff **before** dispatching any agent: the architect agent has only Glob/Grep/Read and
+cannot run `gh` or `git` itself, so it must be handed the diff. Save it to a file in your
+scratchpad directory (or `/tmp`) and keep the path for Step 4.
 
-Include the reader's output in your review context.
+```bash
+# For PR (try first if user mentions "PR")
+gh pr diff [<number>] > <scratchpad>/lore-review-<target>.patch 2>/dev/null
+
+# For local changes (fallback)
+git diff main...HEAD > <scratchpad>/lore-review-changes.patch
+
+# For latest commit
+git show HEAD > <scratchpad>/lore-review-head.patch
+
+# For staged changes
+git diff --staged > <scratchpad>/lore-review-staged.patch
+```
+
+Read the saved patch so you have the changed-file list and can summarise what the change does.
+
+### Step 4: Load Review Context
+
+Dispatch two agents in parallel (both Task calls in one message):
+
+- the **knowledge-reader** agent with the changed files/areas and hint:
+  "Be thorough — include all standards, learnings, and review checklists that apply to these changes.
+  Don't filter by relevance ranking, but scope to what was changed."
+- the **architect** agent in `check` mode with the **path to the saved patch**, the changed-file
+  list, and a one-paragraph summary of what the diff does. It reads the patch itself and cites
+  changed lines from it; without the patch it can only echo your summary.
+
+Include both outputs in your review context.
 
 Also check for repo-specific knowledge:
 - Use Glob for `docs/standards/*.md`
 - If found, Read those files
 - Also Read `CLAUDE.md` if it exists
 
-### Step 4: Get the Diff
-
-```bash
-# For PR (try first if user mentions "PR")
-gh pr diff 2>/dev/null
-
-# For local changes (fallback)
-git diff main...HEAD
-
-# For latest commit
-git show HEAD
-
-# For staged changes
-git diff --staged
-```
-
 ### Step 5: Review Against Knowledge
 
 Go through each changed file. Check against ALL loaded knowledge.
+
+Fold the architect's report in as findings. A contradiction with an accepted record is at least
+**Important**, cites the record by path and section, and suggests either conforming or superseding
+it with `/lore:adr supersede NNNN`. A fired invalidation trigger is **Important** too. An uncovered
+hard-to-reverse choice is **Minor**, pointing at `/lore:adr <topic>`.
 
 **Categorize findings:**
 - **Critical** - Security vulnerabilities, data loss risks, must fix before merge

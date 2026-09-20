@@ -14,7 +14,8 @@
             "lorekeeper:explore"
             "lorekeeper:prime"
             "lorekeeper:review"
-            "lorekeeper:update"]}
+            "lorekeeper:update"
+            "lore:adr"]}
 
  {:name "command-explore-all"
   :prompt "/lore:explore"
@@ -105,6 +106,16 @@ git commit -m \"feat: add DeviceStatusDto\"
   :prompt "/lore:cultivate"
   :workdir "."
   :expects ["candidate|survey|discover|household.json|domain"]}
+
+ {:name "command-adr-list"
+  :prompt "/lore:adr list"
+  :workdir "."
+  :expects ["ADR|decision record|adrs/"]}
+
+ {:name "command-adr-new-triages-and-interviews"
+  :prompt "/lore:adr Use a message queue between the order and inventory services"
+  :workdir "."
+  :expects ["Tier|proposed|Context|Consequences"]}
 
  {:name "cultivate-bootstrap-prompts-for-purpose"
   :prompt "/lore:cultivate fresh-domain"

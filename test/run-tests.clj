@@ -12,9 +12,13 @@
 ;; Find the workspace root (parent of the plugin checkout)
 (defn find-workspace-root []
   (let [script-dir (-> *file* io/file .getParentFile .getCanonicalPath)
-        ;; Go up from lorekeeper/test to the workspace root that holds both
-        ;; the plugin and the knowledge-base checkout
-        root (-> script-dir (io/file "../..") .getCanonicalFile .getCanonicalPath)]
+        ;; Prefer the bundled fixture workspace (household.json + a small KB with
+        ;; payments/inventory/device domains). Fall back to the parent of the plugin
+        ;; checkout for setups that keep a real knowledge base as a sibling.
+        fixture (io/file script-dir "fixtures/workspace")
+        root (if (.isDirectory fixture)
+               (-> fixture .getCanonicalFile .getCanonicalPath)
+               (-> script-dir (io/file "../..") .getCanonicalFile .getCanonicalPath))]
     root))
 
 (def workspace-root (find-workspace-root))
@@ -23,14 +27,20 @@
 ;; but not used in automated tests. See scenarios.edn for details.
 ;; Future enhancement: implement file-based logging for deeper debugging.
 
-(defn run-test [{:keys [name prompt workdir expects]}]
-  (let [;; Always run from workspace root where settings.json has plugins enabled
+(defn plugin-root []
+  (-> *file* io/file .getParentFile (io/file "..") .getCanonicalFile .getCanonicalPath))
+
+(defn run-test [{:keys [name prompt workdir expects]} {:keys [workspace-root plugin-dir]}]
+  (let [;; Always run from workspace root where settings.json has plugins enabled.
+        ;; --plugin-dir loads this checkout's plugin code rather than the installed copy.
         _ (println (colorize :yellow "  Running:") prompt "(context:" workdir ")")
-        {:keys [out err exit]} (shell {:dir workspace-root
-                                        :out :string
-                                        :err :string
-                                        :continue true}
-                                       "claude" "--print" prompt)
+        {:keys [out err exit]} (apply shell {:dir workspace-root
+                                              :out :string
+                                              :err :string
+                                              :continue true}
+                                     (concat ["claude" "--print"]
+                                             (when plugin-dir ["--plugin-dir" plugin-dir])
+                                             [prompt]))
         output (str out err)
         missing (filter #(not (re-find (re-pattern %) output)) expects)]
     {:name name
@@ -77,11 +87,14 @@
         verbose (contains? opts :verbose)
         scenarios (cond->> (load-scenarios)
                     filter-name (filter #(str/includes? (:name %) filter-name)))
+        env {:workspace-root (or (:workspace-root opts) workspace-root)
+             :plugin-dir (or (:plugin-dir opts) (plugin-root))}
         _ (println "Running" (count scenarios) "tests...")
-        _ (println "Workspace root:" workspace-root)
+        _ (println "Workspace root:" (:workspace-root env))
+        _ (println "Plugin dir:" (:plugin-dir env))
         _ (println "")
         results (doall (map (fn [s]
-                              (let [r (run-test s)]
+                              (let [r (run-test s env)]
                                 (print-result r)
                                 (when (and verbose (not (:passed r)))
                                   (println "\n--- Output ---")

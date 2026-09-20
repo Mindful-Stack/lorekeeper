@@ -20,7 +20,7 @@ bb test/run-tests.clj --filter "command-help"  # filter by name substring
 bb test/run-tests.clj --verbose                # show full output on failures
 ```
 
-The test runner expects to find the lorekeeper checkout and a knowledge-base checkout as siblings under a shared workspace root (it derives `workspace-root` from `lorekeeper/test/../..`). Tests pass plugin context implicitly because they run from that workspace root.
+The runner executes `claude --print` from a workspace root, passing `--plugin-dir` for this checkout so the scenarios exercise the working tree rather than the installed plugin. The workspace root defaults to the bundled fixture `test/fixtures/workspace/` (manifest plus a small KB with `payments`/`inventory`/`device` domains); `--workspace-root` and `--plugin-dir` override it.
 
 ### Init-script tests (Node)
 

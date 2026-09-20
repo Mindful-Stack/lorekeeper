@@ -37,9 +37,15 @@ bb --version
 ### Run All Tests
 
 ```bash
-cd shared-knowledge/plugin
 bb test/run-tests.clj
 ```
+
+Each scenario runs `claude --print` from a workspace root with `--plugin-dir` pointing at
+this checkout, so the tests exercise the code in your working tree, not the installed
+plugin. The workspace root defaults to the bundled fixture in `test/fixtures/workspace/`
+(a `household.json` plus a small knowledge base with `payments`, `inventory`, and `device`
+domains that the scenarios assert against). Override either with
+`--workspace-root <dir>` or `--plugin-dir <dir>`.
 
 ### Filter by Name
 

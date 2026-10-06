@@ -114,7 +114,7 @@ Return:
 1. **Always PR** — never commit directly to main. Main is protected.
 2. **Validate frontmatter** — ensure all required fields are present for the knowledge type, each with its value **inline on the key's own line**. `title`, `description` and `tags` are what make a node findable at all, since retrieval greps them directly; a node missing any of the three — or carrying it as a block list or folded scalar — is invisible to search.
 3. **Reuse existing tags** — check `grep -rh '^tags:' <knowledge-path>` before inventing one. Domain tags match domain file slugs, tech tags match framework/language directory names. A tag used once cannot cluster anything.
-4. **Atomic changes** — one concept per PR
+4. **Atomic changes** — one concept per PR. Exception: a `/lore:adr discover` batch lands every record from one survey in one PR, because the developer reviewed them as one batch.
 5. **Return to main after** — `git checkout main` after creating the PR to leave the repo clean
 6. **Node body is the published artifact** — write rules plainly. No PR meta-commentary ("proposal under discussion", "discussion welcome", links back to the PR). For discussion context:
    - **PR description** — motivation, what changed, why now, open questions for reviewers.

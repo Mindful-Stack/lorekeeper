@@ -304,12 +304,13 @@ single batch: one bind check, one round of questions, one review, one PR.
 2. **Render its report verbatim**, then ask in plain text (not `AskUserQuestion`, the list can
    exceed four options): "Which should I record? Reply with numbers or topics, comma-separated,
    `all`, or `none`." Parse, validate, and de-duplicate. There is no cap; echo the resolved picks
-   in one line and go on without a separate confirmation.
+   in one line and go on without a separate confirmation. On `none`, skip to step 8.
 3. **Triage and split, once for the whole batch.** Drop any pick that is Tier 2 or 3 (say which
    and offer the lighter option in the summary). A candidate that bundles several decisions that
    break at different times becomes several records. Number the resulting records consecutively
    from the next free number, in candidate order, and list the plan (number, slug, one-line
-   decision) before drafting.
+   decision) before drafting. If no records remain after triage (or after step 4), skip to
+   step 8: there is nothing to draft and no PR to open.
 4. **One bind check for the batch.** Dispatch the architect once in `bind` mode with every planned
    topic: the survey listed choices nobody recorded, it never checked them against the accepted
    records. Drop or redirect (to `supersede`) any pick an accepted record already covers. Skip the
@@ -318,10 +319,11 @@ single batch: one bind check, one round of questions, one review, one PR.
 5. **Draft every record** with the **New record** format in retrospective form: status
    `accepted`, the retrospective Status line, Context reconstructed from the evidence the agent
    cited. Where the alternatives were not visibly weighed at the time, say exactly that in
-   *Considered options* rather than inventing a debate. For more than three records, fan the
-   drafting out to parallel subagents (a few records each, all in one message), each writing its
-   drafts to the scratchpad and returning the questions it could not answer from the evidence.
-   Run the self-check (New flow, step 6) on every draft.
+   *Considered options* rather than inventing a debate. Write every draft to a file in the session
+   scratchpad, never into the knowledge base, so the review in step 7 has a target to link. For
+   more than three records, fan the drafting out to parallel subagents (a few records each, all
+   in one message), each writing its drafts to the scratchpad and returning the questions it
+   could not answer from the evidence. Run the self-check (New flow, step 6) on every draft.
 6. **Ask once.** Collect the open questions from every draft (usually a reason that the evidence
    does not state, or whether an alternative was weighed) and ask them together, batched into as
    few `AskUserQuestion` calls as the four-question limit allows. Fold the answers into the drafts.
@@ -329,14 +331,17 @@ single batch: one bind check, one round of questions, one review, one PR.
    link to each draft file, rather than pasting every file inline, and ask for approval or
    amendments in one reply. Apply amendments, then dispatch **knowledge-updater** once with the
    **batch shape** (one `create` per record), branch `knowledge/adrs-NNNN-MMMM-discover`, and
-   `pr_title` `docs: record ADR-NNNN to ADR-MMMM (discover)`.
+   `pr_title` `docs: record ADR-NNNN to ADR-MMMM (discover)`. A batch of one record uses the
+   single-record branch and title instead. The batch is one PR on purpose: it is one review of
+   one survey, and the updater's one-concept-per-PR rule makes an exception for it.
 8. **Summarise**: the PR URL, the records it opens, picks dropped at triage or bind, candidates
    left unpicked, and a reminder that `/lore:adr discover` can be run again later.
 
 ## Important Rules
 
-1. **Always get developer approval** before writing any file, and **always create a branch and
-   PR** — never commit directly to main.
+1. **Always get developer approval** before writing any file to the knowledge base, and **always
+   create a branch and PR** — never commit directly to main. Drafts written to the session
+   scratchpad for review are not knowledge-base writes and need no approval first.
 2. **Record before building.** A decision that is about to be implemented gets a `proposed`
    record first; it flips to `accepted` when the code lands. Do not write records after the fact
    for new work and call them proposed.

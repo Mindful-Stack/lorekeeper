@@ -75,7 +75,7 @@ Filename: `NNNN-<topic-slug>.md` — four digits, zero-padded; the caller suppli
 Required frontmatter: title (`"ADR-NNNN: …"`), description (the decision in one sentence, max 300 chars), tags (include `adr`), status (proposed|accepted|rejected|deprecated|superseded), date (YYYY-MM-DD), deciders (inline list), confidence (high|medium|low). Optional: supersedes, superseded_by (four-digit numbers).
 Body sections, in order: Status, Context, Considered options, Decision, Consequences, Assumptions and invalidation triggers, See also. The full format lives in `commands/adr.md`; the caller drafts, you write.
 **Immutability:** a record **locks** once its `## Status` log records an acceptance, whatever `status` currently says — so `superseded` and `deprecated` records stay locked too. On a locked record an `update` may only (a) append a line to the `## Status` log, on its own or together with a status transition to `accepted`, `superseded`, or `deprecated`, (b) set `superseded_by`, or (c) repair a broken `[[wikilink]]`. It may never move a locked record back to `proposed` or `rejected`, and never changes any other body text. Refuse anything else and tell the caller to supersede the record instead. A record with no acceptance in its Status log may be edited freely.
-Branch: `knowledge/adr-NNNN-<slug>`; a supersede batch uses the new record's number, and an accept batch that retires a predecessor uses the accepted record's number.
+Branch: `knowledge/adr-NNNN-<slug>`; a supersede batch uses the new record's number, an accept batch that retires a predecessor uses the accepted record's number, and a discover batch uses `knowledge/adrs-NNNN-MMMM-discover` (first and last number).
 
 ## PR Workflow
 
@@ -114,7 +114,7 @@ Return:
 1. **Always PR** — never commit directly to main. Main is protected.
 2. **Validate frontmatter** — ensure all required fields are present for the knowledge type, each with its value **inline on the key's own line**. `title`, `description` and `tags` are what make a node findable at all, since retrieval greps them directly; a node missing any of the three — or carrying it as a block list or folded scalar — is invisible to search.
 3. **Reuse existing tags** — check `grep -rh '^tags:' <knowledge-path>` before inventing one. Domain tags match domain file slugs, tech tags match framework/language directory names. A tag used once cannot cluster anything.
-4. **Atomic changes** — one concept per PR
+4. **Atomic changes** — one concept per PR. Exception: a `/lore:adr discover` batch lands every record from one survey in one PR, because the developer reviewed them as one batch.
 5. **Return to main after** — `git checkout main` after creating the PR to leave the repo clean
 6. **Node body is the published artifact** — write rules plainly. No PR meta-commentary ("proposal under discussion", "discussion welcome", links back to the PR). For discussion context:
    - **PR description** — motivation, what changed, why now, open questions for reviewers.

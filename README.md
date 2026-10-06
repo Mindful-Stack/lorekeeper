@@ -279,9 +279,9 @@ Retrieval is a separate, read-only **`architect`** agent: pattern-identifier, br
 review dispatch it in parallel with their usual agent, so "how do we do X?" also returns the
 decision behind X, a design that would fire a record's invalidation trigger is flagged before the
 spec is written, and a diff that contradicts an accepted record is reviewed as such. `/lore:adr
-discover` runs the agent's `survey` mode and keeps only the pick-and-draft loop in the
-conversation. The `recording-decisions` skill is the gate: record it as proposed before building
-on it.
+discover` runs the agent's `survey` mode, then records every pick in one batch: one round of
+questions, one review, one PR. The `recording-decisions` skill is the gate: record it as
+proposed before building on it.
 
 ### Cultivate
 

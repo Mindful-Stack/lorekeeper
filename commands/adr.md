@@ -294,26 +294,44 @@ proposed, and nothing constrains the code.
 
 Recover the architecturally significant decisions a codebase has already made without writing
 them down. The scanning happens in the **architect** agent so the evidence never lands in this
-conversation; only the pick loop and the drafting do.
+conversation; only the pick, the drafting, and one review round do. Every pick is recorded in a
+single batch: one bind check, one round of questions, one review, one PR.
 
 1. **Dispatch the architect agent** in `survey` mode, passing any scope the user gave (a repo or
    area) or "the whole household". It returns the grouped candidate list (at most fifteen, each
    with the requirement, the choice, evidence paths, and whether an alternative was weighed), the
    records that already exist, and the scan scope.
 2. **Render its report verbatim**, then ask in plain text (not `AskUserQuestion`, the list can
-   exceed four options): "Which should I record now? Reply with numbers or topics,
-   comma-separated, or `none`. I will take the first three." Parse, validate, de-duplicate, clip
-   to three, then confirm the picks with one `AskUserQuestion`.
-3. **Record each pick** with the **New record** flow in retrospective form: status `accepted`,
-   the retrospective Status line, Context reconstructed from the evidence the agent cited, and the
-   interview shortened to confirming the reasons with the user. Where the alternatives were not
-   visibly weighed at the time, say exactly that in *Considered options* rather than inventing a
-   debate. In step 2 of the New flow, still dispatch the architect in `bind` mode for this
-   candidate: the survey listed choices nobody recorded, it never checked them against the
-   accepted records. The knowledge-reader dispatch can be skipped, since the survey already cited
-   the evidence. Pause between picks with an `AskUserQuestion` offering continue / stop.
-4. **Summarise**: records opened (with PR URLs), candidates left unrecorded, and a reminder that
-   `/lore:adr discover` can be run again for the rest.
+   exceed four options): "Which should I record? Reply with numbers or topics, comma-separated,
+   `all`, or `none`." Parse, validate, and de-duplicate. There is no cap; echo the resolved picks
+   in one line and go on without a separate confirmation.
+3. **Triage and split, once for the whole batch.** Drop any pick that is Tier 2 or 3 (say which
+   and offer the lighter option in the summary). A candidate that bundles several decisions that
+   break at different times becomes several records. Number the resulting records consecutively
+   from the next free number, in candidate order, and list the plan (number, slug, one-line
+   decision) before drafting.
+4. **One bind check for the batch.** Dispatch the architect once in `bind` mode with every planned
+   topic: the survey listed choices nobody recorded, it never checked them against the accepted
+   records. Drop or redirect (to `supersede`) any pick an accepted record already covers. Skip the
+   dispatch only when the survey reported no numbered records at all. The knowledge-reader
+   dispatch is skipped, since the survey already cited the evidence.
+5. **Draft every record** with the **New record** format in retrospective form: status
+   `accepted`, the retrospective Status line, Context reconstructed from the evidence the agent
+   cited. Where the alternatives were not visibly weighed at the time, say exactly that in
+   *Considered options* rather than inventing a debate. For more than three records, fan the
+   drafting out to parallel subagents (a few records each, all in one message), each writing its
+   drafts to the scratchpad and returning the questions it could not answer from the evidence.
+   Run the self-check (New flow, step 6) on every draft.
+6. **Ask once.** Collect the open questions from every draft (usually a reason that the evidence
+   does not state, or whether an alternative was weighed) and ask them together, batched into as
+   few `AskUserQuestion` calls as the four-question limit allows. Fold the answers into the drafts.
+7. **Review once.** Present a table of the batch (number, title, decision, confidence) with a
+   link to each draft file, rather than pasting every file inline, and ask for approval or
+   amendments in one reply. Apply amendments, then dispatch **knowledge-updater** once with the
+   **batch shape** (one `create` per record), branch `knowledge/adrs-NNNN-MMMM-discover`, and
+   `pr_title` `docs: record ADR-NNNN to ADR-MMMM (discover)`.
+8. **Summarise**: the PR URL, the records it opens, picks dropped at triage or bind, candidates
+   left unpicked, and a reminder that `/lore:adr discover` can be run again later.
 
 ## Important Rules
 

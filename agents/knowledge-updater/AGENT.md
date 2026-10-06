@@ -75,7 +75,7 @@ Filename: `NNNN-<topic-slug>.md` — four digits, zero-padded; the caller suppli
 Required frontmatter: title (`"ADR-NNNN: …"`), description (the decision in one sentence, max 300 chars), tags (include `adr`), status (proposed|accepted|rejected|deprecated|superseded), date (YYYY-MM-DD), deciders (inline list), confidence (high|medium|low). Optional: supersedes, superseded_by (four-digit numbers).
 Body sections, in order: Status, Context, Considered options, Decision, Consequences, Assumptions and invalidation triggers, See also. The full format lives in `commands/adr.md`; the caller drafts, you write.
 **Immutability:** a record **locks** once its `## Status` log records an acceptance, whatever `status` currently says — so `superseded` and `deprecated` records stay locked too. On a locked record an `update` may only (a) append a line to the `## Status` log, on its own or together with a status transition to `accepted`, `superseded`, or `deprecated`, (b) set `superseded_by`, or (c) repair a broken `[[wikilink]]`. It may never move a locked record back to `proposed` or `rejected`, and never changes any other body text. Refuse anything else and tell the caller to supersede the record instead. A record with no acceptance in its Status log may be edited freely.
-Branch: `knowledge/adr-NNNN-<slug>`; a supersede batch uses the new record's number, and an accept batch that retires a predecessor uses the accepted record's number.
+Branch: `knowledge/adr-NNNN-<slug>`; a supersede batch uses the new record's number, an accept batch that retires a predecessor uses the accepted record's number, and a discover batch uses `knowledge/adrs-NNNN-MMMM-discover` (first and last number).
 
 ## PR Workflow
 

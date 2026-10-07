@@ -224,25 +224,59 @@ proposed ──(/lore:adr accept, naming a human)──► accepted ──► su
   only on PR branches, never on the KB's default branch (the KB holds settled knowledge only).
 - **accepted** — a named human ratified it. Agents never set `accepted` on their own initiative:
   the only path is `/lore:adr accept` with the decider named by the user, which refuses an
-  agent-only identity. Acceptance locks the record: the only permitted edits are an appended
-  Status line, `superseded_by`, an appended Later-observations entry, and typo or link repair.
-  Anything else is a new superseding record.
-- **rejected** — kept, merged, and retrievable, so agents do not re-propose dead options.
+  agent-only identity. Acceptance **locks** the record (see *Amend or supersede*).
+- **rejected** — kept, merged, and retrievable, so agents do not re-propose dead options. Locked.
 - **superseded / deprecated** — locked.
 
-**Supersession within one home** flips the predecessor in the same PR that accepts the successor,
-so there is never a moment when neither binds.
+## Amend or supersede
 
-**Supersession or moves across homes** (local ⇄ shared) cannot be one PR. They run as a two-PR
+A **proposed** record is a draft: any part of it may change, as often as needed, until it is
+accepted or rejected.
+
+Once a record is **accepted**, it is locked, and stays locked whatever its later status
+(`superseded`, `deprecated`). A locked record is evidence of what was decided and what was known
+at the time, so its body is never rewritten. Exactly four kinds of edit are allowed:
+
+| # | Allowed edit | What it looks like |
+|---|---|---|
+| 1 | **Status line** | A line appended to `## Status` (and the matching `status:` value), for a transition to `superseded` or `deprecated`, or a note such as "Supersession proposed by kb/ADR-0012". Never a transition back to `proposed`. |
+| 2 | **Supersede link** | Setting `superseded_by:` (and, for a move, replacing the file with its stub). |
+| 3 | **Later observation** | A dated entry appended at the end of `## Later observations`. Earlier entries are never edited; a wrong one is corrected by a newer one. |
+| 4 | **Typo and link repair** | Spelling, formatting and broken links, where the meaning of every sentence stays the same. |
+
+**Everything else is a new record that supersedes the old one.** That includes changes to
+Context, Facts relied on, Considered options, Decision and its rules, Consequences, or
+Assumptions and triggers, and any change to the classification fields or `scope`.
+
+How common situations map onto the rule:
+
+| Situation | Action |
+|---|---|
+| A fact in Context or *Facts relied on* is no longer true, no trigger fired, the decision holds | Observation (3) |
+| A fact turns out to have been wrong when the record was written | Observation (3), saying so |
+| An invalidation trigger fired | Observation (3) naming the trigger, then a superseding record |
+| A rule needs to change, be added or be removed, however small | Superseding record |
+| The scope or classification was wrong | Superseding record |
+| The decision no longer applies and nothing replaces it | Status line (1): `deprecated` |
+| A typo, a broken link, a renamed file path in *See also* | Repair (4) |
+
+The validator enforces this mechanically: given `--base`, it diffs every locked record section by
+section and fails on any change outside the four allowed edits.
+
+**Observations** answer four things: when and where (date, PR or ticket), which statement
+(quoted, or a `F#` fact id), what is true now and its source, and what it means (no trigger fired
+and the decision holds, or trigger X fired and a superseding record follows).
+
+## Supersession
+
+**Within one home**, the PR that accepts the successor also flips the predecessor, so there is
+never a moment when neither binds.
+
+**Across homes** (local ⇄ shared), supersession and moves cannot be one PR. They run as a two-PR
 stack ordered by the `stack` skill: (1) the successor merges as accepted in its home, its Status
 line naming the follow-up; (2) the predecessor is flipped to `superseded` (or replaced by its
 stub, for a move) in the other home. Between the two merges both records are accepted; the
 architect treats the newer one as binding and reports the pair.
-
-**Observations** answer four things: when and where (date, PR or ticket), which statement
-(quoted, or a `F#` fact id), what is true now and its source, and what it means (no trigger fired
-and the decision holds, or trigger X fired and a superseding record follows). A wrong observation
-is corrected by a newer one, never edited.
 
 **Agent-drafted records** must not reference chat logs or sessions, must not attribute authorship
 to an AI, and must leave `decided_by` for the human to name.
@@ -302,8 +336,8 @@ or an explicit fetch). Checks:
   configured;
 - relations resolve and are symmetric within the home; references to another home are warnings
   when that home is not on disk, errors when it is; no supersession cycles;
-- **locked-record diff rule:** given `--base`, an accepted/superseded/deprecated record may only
-  differ by the permitted edits;
+- **locked-record diff rule:** given `--base`, a locked record may only differ by the four edits
+  in *Amend or supersede*;
 - no shared-home record with `status: proposed` on the default branch;
 - ride-along rule (above), given `--base` and the PR's changed files.
 

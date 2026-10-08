@@ -36,3 +36,13 @@ test('select sorts by codepoint, independent of locale', () => {
     const out = select({ candidates, repo: 'api', paths: ['x'], cited: [] });
     assert.deepEqual(out.map((o) => o.id), ['B/ADR-0001', 'a/ADR-0001', 'api-x/ADR-0001', 'api_x/ADR-0001']);
 });
+
+test('M7: parsePatchPaths reads mnemonic prefixes (diff.mnemonicPrefix)', () => {
+    const patch = 'diff --git i/src/a.cs w/src/a.cs\n--- i/src/a.cs\n+++ w/src/a.cs\ndiff --git c/src/b.cs w/src/b.cs\n--- c/src/b.cs\n+++ w/src/b.cs\n';
+    assert.deepEqual(parsePatchPaths(patch).sort(), ['src/a.cs', 'src/b.cs']);
+});
+
+test('M7: parsePatchPaths reads --no-prefix patches, including a top-level one-letter directory', () => {
+    const patch = 'diff --git src/a.cs src/a.cs\n--- src/a.cs\n+++ src/a.cs\ndiff --git a/x.cs a/x.cs\n--- a/x.cs\n+++ a/x.cs\n';
+    assert.deepEqual(parsePatchPaths(patch).sort(), ['a/x.cs', 'src/a.cs']);
+});

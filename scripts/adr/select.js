@@ -5,11 +5,24 @@
 
 const { matchesGlob } = require('./glob');
 
+// Paths on the --- / +++ lines. Prefixes are a heuristic, since a patch does not say which it
+// used: git's default `a/` `b/`, mnemonic prefixes (`i/` `w/` `c/` `o/`) and --no-prefix are
+// all read. A `diff --git X Y` header whose two sides start with *different* one-letter
+// prefixes marks a prefixed block; a header without them (or with the same letter on both
+// sides, as a top-level one-letter directory gives under --no-prefix) marks an unprefixed one.
+// Without a header, a leading `[a-z]/` is taken as a prefix.
 function parsePatchPaths(patch) {
     const paths = new Set();
+    let prefixed = true;
     for (const line of patch.replace(/\r\n/g, '\n').split('\n')) {
-        const m = /^(?:\+\+\+|---) (?:[ab]\/)(.+?)\t?$/.exec(line);
-        if (m && m[1] !== '/dev/null') paths.add(m[1]);
+        if (line.startsWith('diff --git ')) {
+            const h = /^diff --git ([a-z])\/.* ([a-z])\/.*$/.exec(line);
+            prefixed = !!h && h[1] !== h[2];
+            continue;
+        }
+        const m = /^(?:\+\+\+|---) (.+?)\t?$/.exec(line);
+        if (!m || m[1] === '/dev/null') continue;
+        paths.add(prefixed ? m[1].replace(/^[a-z]\//, '') : m[1]);
     }
     return [...paths];
 }

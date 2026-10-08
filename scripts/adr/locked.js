@@ -1,0 +1,142 @@
+'use strict';
+
+// The locked-record diff rule: a record that is locked on the base may differ from it only
+// by the five edits in the design's *Amend or supersede* table. Every check here is
+// mechanical; none judges whether a sentence kept its meaning.
+
+const { parseRecord, sections, isEmpty } = require('./frontmatter');
+const { BACKFILL_KEYS, isUnclassified, decidedBy } = require('./records');
+
+const APPEND_ONLY = new Set(['Status', 'Later observations']);
+const DATED_ENTRY = /^[-*+]\s+\**\s*\d{4}-\d{2}-\d{2}/;
+const STATUS_MOVES = { accepted: ['superseded', 'deprecated'], deprecated: ['superseded'] };
+
+// Edit 4: formatting and link targets may change; nothing else. Link text survives the
+// normalisation, so a changed link text is still a change.
+function normaliseForRepair(s) {
+    return s
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '[$1]()')
+        .replace(/\[\[[^\]|]*(\|[^\]]*)?\]\]/g, (_m, alias) => `[[${alias || ''}]]`)
+        .replace(/<https?:\/\/[^>]+>/g, '<>')
+        .replace(/^[ \t]*[-*+][ \t]+/gm, '- ')
+        .replace(/\*+/g, '')
+        .replace(/(^|[^A-Za-z0-9])_+|_+(?=[^A-Za-z0-9]|$)/g, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function same(a, b) {
+    return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+}
+
+function nonBlankLines(s) {
+    return s.split('\n').filter((l) => l.trim() !== '').length;
+}
+
+// The text appended to an append-only section, or null when the base text is not a prefix.
+function appended(baseContent, curContent) {
+    const b = baseContent.trimEnd();
+    const c = curContent.trimEnd();
+    if (!c.startsWith(b)) return null;
+    const extra = c.slice(b.length);
+    return extra === '' || b === '' || extra.startsWith('\n') ? extra : null;
+}
+
+// Top-level lines must be dated bullets; indented lines belong to the entry above them.
+function undatedObservation(text) {
+    const stripped = text.replace(/<!--[\s\S]*?-->/g, '');
+    const top = stripped.split('\n').filter((l) => l.trim() !== '' && !/^\s/.test(l));
+    return top.some((l) => !DATED_ENTRY.test(l));
+}
+
+function lockedDiff(baseText, curText) {
+    const b = parseRecord(baseText);
+    const c = parseRecord(curText);
+    const out = [];
+
+    // Edit 2, move: the file becomes a stub pointing at its new id.
+    if (isEmpty(b.fm.moved_to) && !isEmpty(c.fm.moved_to)) {
+        for (const key of new Set([...b.order, ...c.order])) {
+            if (key !== 'moved_to' && !same(b.fm[key], c.fm[key])) out.push(`a moved record keeps its frontmatter; ${key} changed`);
+        }
+        if (nonBlankLines(c.body) > 1) out.push('a moved record is a stub with a one-line body');
+        return out;
+    }
+
+    const backfillOpen = isUnclassified(b.fm);
+    const keys = [...new Set([...b.order, ...c.order])];
+    for (const key of keys) {
+        const bv = b.fm[key];
+        const cv = c.fm[key];
+        if (same(bv, cv)) continue;
+        if (key === 'status') {
+            if (!(STATUS_MOVES[bv] || []).includes(cv)) {
+                out.push(`status ${bv} -> ${cv} is not an allowed transition`);
+            }
+        } else if (key === 'superseded_by') {
+            if (!isEmpty(bv)) out.push('superseded_by is already set and cannot change');
+        } else if (key === 'decided_by' && decidedBy(b.fm).length && !same(decidedBy(b.fm), cv)) {
+            out.push('decided_by cannot replace the deciders already recorded');
+        } else if (BACKFILL_KEYS.includes(key)) {
+            if (!backfillOpen) out.push(`${key} cannot change once the record is classified; supersede instead`);
+            else if (!isEmpty(bv)) out.push(`${key} is set on the base and cannot change; supersede instead`);
+        } else {
+            out.push(`frontmatter ${key} changed; only status, superseded_by and backfilled keys may`);
+        }
+    }
+
+    // Classification is all-or-nothing: a half-classified record could never be completed.
+    if (backfillOpen && !(isEmpty(c.fm.reversibility) && isEmpty(c.fm.blast_radius))) {
+        if (isEmpty(c.fm.reversibility) || isEmpty(c.fm.blast_radius) || !('sensitivity' in c.fm) || !('scope' in c.fm)) {
+            out.push('classify a record in one change: reversibility, blast_radius, sensitivity and scope together');
+        }
+    }
+
+    const bs = sections(b.body);
+    const cs = sections(c.body);
+    const cByHeading = new Map(cs.map((s) => [s.heading, s]));
+    const bHeadings = bs.map((s) => s.heading);
+    const cHeadings = cs.map((s) => s.heading);
+    const added = cHeadings.filter((h) => !bHeadings.includes(h));
+    const cWithoutAdded = cHeadings.filter((h) => bHeadings.includes(h));
+    if (added.some((h) => h !== 'Later observations')) {
+        out.push(`sections added: ${added.filter((h) => h !== 'Later observations').join(', ')}`);
+    }
+    if (!same(cWithoutAdded, bHeadings.filter((h) => cHeadings.includes(h)))) {
+        out.push('sections were reordered');
+    }
+
+    let statusGrew = false;
+    for (const base of bs) {
+        const cur = cByHeading.get(base.heading);
+        const label = base.heading === null ? 'the title block' : `section "${base.heading}"`;
+        if (!cur) {
+            out.push(`${label} was removed`);
+            continue;
+        }
+        if (APPEND_ONLY.has(base.heading)) {
+            const extra = appended(base.content, cur.content);
+            if (extra === null) {
+                out.push(`${label} may only grow at the end`);
+            } else if (base.heading === 'Status') {
+                statusGrew = extra.trim() !== '';
+            } else if (extra.trim() !== '' && undatedObservation(extra)) {
+                out.push('each later observation is a bullet that starts with its date');
+            }
+        } else if (normaliseForRepair(base.content) !== normaliseForRepair(cur.content)) {
+            out.push(`${label} changed; only formatting and link targets may change on a locked record`);
+        }
+    }
+    if (added.includes('Later observations')) {
+        const obs = cByHeading.get('Later observations').content;
+        if (obs.trim() !== '' && undatedObservation(obs)) {
+            out.push('each later observation is a bullet that starts with its date');
+        }
+    }
+    if (!same(b.fm.status, c.fm.status) && !statusGrew) {
+        out.push('a status transition needs a line appended to ## Status');
+    }
+    return out;
+}
+
+module.exports = { lockedDiff, normaliseForRepair };

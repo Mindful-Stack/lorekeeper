@@ -220,3 +220,11 @@ test('M5: markdown link targets may change anywhere; bare wikilinks and autolink
         else assert.ok(elsewhere.some((m) => /Context" changed/.test(m)), `Context: ${before}`);
     }
 });
+
+test('M6: a change appends exactly one Status line', () => {
+    const two = makeRecord({
+        fm: { status: 'deprecated' },
+        sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSupersession proposed by kb/ADR-0002.\nDeprecated 2026-11-01.' },
+    });
+    assert.ok(lockedDiff(BASE, two).some((m) => /one line to ## Status per change/.test(m)));
+});

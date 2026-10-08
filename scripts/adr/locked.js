@@ -150,6 +150,7 @@ function lockedDiff(baseText, curText) {
                 out.push(`${label} may only grow at the end`);
             } else if (base.heading === 'Status') {
                 statusGrew = extra.trim() !== '';
+                if (nonBlankLines(extra) > 1) out.push('append one line to ## Status per change (a transition or a note)');
             } else if (extra.trim() !== '' && undatedObservation(extra)) {
                 out.push('each later observation is a bullet that starts with its date');
             }

@@ -26,8 +26,15 @@ exit codes: 0 ok (warnings allowed), 1 violations, 2 usage or environment error`
 class UsageError extends Error {}
 
 const BOOLEAN_FLAGS = new Set(['strict', 'single-home', 'dry-run']);
+const FLAGS = {
+    check: ['home', 'repo', 'single-home', 'base', 'strict', 'config'],
+    select: ['diff', 'repo', 'pr-body', 'cwd'],
+    backfill: ['home', 'repo', 'dry-run'],
+};
 
-function parseArgs(argv) {
+// `known` lists the flags the subcommand takes; any other flag is a usage error, so a typo
+// never silently drops a check.
+function parseArgs(argv, known) {
     const flags = {};
     const positional = [];
     for (let i = 0; i < argv.length; i++) {
@@ -37,6 +44,7 @@ function parseArgs(argv) {
             continue;
         }
         const name = a.slice(2);
+        if (known && !known.includes(name)) throw new UsageError(`unknown flag --${name}`);
         if (BOOLEAN_FLAGS.has(name)) flags[name] = true;
         else if (i + 1 < argv.length) flags[name] = argv[++i];
         else throw new UsageError(`--${name} needs a value`);
@@ -49,6 +57,23 @@ function display(file) {
     if (!path.isAbsolute(file)) return toPosix(file);
     const rel = path.relative(process.cwd(), file);
     return toPosix(rel.startsWith('..') ? file : rel);
+}
+
+// realpath of a path that may not exist yet: its nearest existing ancestor, resolved, plus
+// the rest. A home directory that does not exist is an empty home.
+function realpathLoose(p) {
+    const abs = path.resolve(p);
+    if (fs.existsSync(abs)) return fs.realpathSync(abs);
+    const parent = path.dirname(abs);
+    return parent === abs ? abs : path.join(realpathLoose(parent), path.basename(abs));
+}
+
+function readInput(file, flag) {
+    try {
+        return file === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(file, 'utf8');
+    } catch (e) {
+        throw new UsageError(`cannot read --${flag} ${file}: ${e.message}`);
+    }
 }
 
 // Works out which home `dir` is and the id prefix its records use.
@@ -81,8 +106,10 @@ function loadBase(dir, ref) {
         throw new UsageError(`base ref ${ref} not found; fetch it first (CI: fetch-depth: 0 or an explicit git fetch)`);
     }
     const mb = G.mergeBase(root, ref);
-    if (!mb) throw new UsageError(`no merge base between ${ref} and HEAD`);
-    const rel = toPosix(path.relative(fs.realpathSync(root), fs.realpathSync(dir)));
+    if (!mb) {
+        throw new UsageError(`no merge base between ${ref} and HEAD; fetch the full history (CI: fetch-depth: 0 or an explicit git fetch)`);
+    }
+    const rel = toPosix(path.relative(fs.realpathSync(root), realpathLoose(dir)));
     const relFile = (name) => (rel ? `${rel}/${name}` : name);
     const recordNames = (names) => names.filter((n) => R.FILE_RE.test(n));
     const baseNames = recordNames(G.listDir(root, mb, rel));
@@ -136,7 +163,6 @@ function readConfig(flags, homes) {
 function cmdCheck(flags, positional) {
     if (positional.length !== 1) throw new UsageError('check takes exactly one directory');
     const dir = path.resolve(positional[0]);
-    if (!fs.existsSync(dir)) throw new UsageError(`${display(dir)} does not exist`);
     const { homes, home } = locateHome(dir, flags);
     const { records, strays } = R.loadHome(dir);
     const violations = checkHome({
@@ -184,8 +210,8 @@ function cmdSelect(flags) {
     add(local.dir, 'local', repo);
     if (homes.sharedHome && !local.coinciding) add(homes.sharedHome, 'shared', 'kb');
 
-    const patch = flags.diff === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(flags.diff, 'utf8');
-    const prBody = flags['pr-body'] ? fs.readFileSync(flags['pr-body'], 'utf8') : '';
+    const patch = readInput(flags.diff, 'diff');
+    const prBody = flags['pr-body'] ? readInput(flags['pr-body'], 'pr-body') : '';
     const picked = select({ candidates, repo, paths: parsePatchPaths(patch), cited: parseCitedIds(prBody) });
     for (const p of picked) {
         console.log([p.id, p.status, p.file ? display(p.file) : '-', p.reasons.join(',')].join('\t'));
@@ -220,11 +246,11 @@ function cmdBackfill(flags, positional) {
 function main(argv) {
     const [cmd, ...rest] = argv.slice(2);
     try {
-        const { flags, positional } = parseArgs(rest);
+        if (!Object.prototype.hasOwnProperty.call(FLAGS, cmd)) throw new UsageError(cmd ? `unknown command ${cmd}` : 'missing command');
+        const { flags, positional } = parseArgs(rest, FLAGS[cmd]);
         if (cmd === 'check') return cmdCheck(flags, positional);
         if (cmd === 'select') return cmdSelect(flags);
-        if (cmd === 'backfill') return cmdBackfill(flags, positional);
-        throw new UsageError(cmd ? `unknown command ${cmd}` : 'missing command');
+        return cmdBackfill(flags, positional);
     } catch (e) {
         if (!(e instanceof UsageError)) throw e;
         console.error(`adr-lint: ${e.message}\n\n${USAGE}`);

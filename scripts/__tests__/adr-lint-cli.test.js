@@ -215,3 +215,52 @@ test('I3: --base: a record accepted on the base after branching cannot be rewrit
     const untouched = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
     assert.equal(untouched.code, 0, untouched.stdout);
 });
+
+test('M1: an unknown flag is a usage error for each subcommand', (t) => {
+    const w = workspace(t);
+    const patch = path.join(w.root, 'change.patch');
+    write(patch, '+++ b/x\n');
+    for (const args of [
+        ['check', '--bogus', w.shared],
+        ['check', '--diff', patch, w.shared],
+        ['select', '--repo', 'api', '--diff', patch, '--strict'],
+        ['backfill', '--base', 'main', w.shared],
+    ]) {
+        const r = runCli(w.root, w.env, ...args);
+        assert.equal(r.code, 2, `${args.join(' ')}: ${r.stdout}${r.stderr}`);
+        assert.match(r.stderr, /unknown flag/);
+    }
+});
+
+test('M2: a home directory that does not exist is empty, and deleting it is still checked', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    commitAll(w.kb, w.env, 'accept 0001');
+    fs.rmSync(w.shared, { recursive: true });
+    const plain = runCli(w.root, w.env, 'check', w.shared);
+    assert.equal(plain.code, 0, plain.stdout + plain.stderr);
+    const based = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(based.code, 1, based.stdout + based.stderr);
+    assert.match(based.stdout, /0001-session-storage\.md: locked: a locked record is never deleted/);
+});
+
+test('M3: an unreadable --diff or --pr-body is a usage error', (t) => {
+    const w = workspace(t);
+    const patch = path.join(w.root, 'change.patch');
+    write(patch, '+++ b/x\n');
+    const missing = path.join(w.root, 'nope');
+    assert.equal(runCli(w.api, w.env, 'select', '--repo', 'api', '--diff', missing).code, 2);
+    const r = runCli(w.api, w.env, 'select', '--repo', 'api', '--diff', patch, '--pr-body', missing);
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /cannot read --pr-body/);
+});
+
+test('M4: no merge base says to fetch, like a missing ref', (t) => {
+    const w = workspace(t);
+    commitAll(w.kb, w.env, 'main');
+    git(w.kb, w.env, 'checkout', '-q', '--orphan', 'other');
+    commitAll(w.kb, w.env, 'other');
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /no merge base between main and HEAD; fetch .*fetch-depth: 0/);
+});

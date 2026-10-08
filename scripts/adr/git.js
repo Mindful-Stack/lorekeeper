@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const { spawnSync } = require('child_process');
 
 // Output must not depend on the caller's git config: quotepath would escape non-ASCII
@@ -15,8 +17,12 @@ function lines(s) {
     return s === null ? [] : s.split('\n').filter((l) => l !== '');
 }
 
+// The repository holding `dir`, which need not exist yet (an empty home): git runs from its
+// nearest existing ancestor.
 function gitRoot(dir) {
-    const out = git(dir, ['rev-parse', '--show-toplevel']);
+    let cwd = path.resolve(dir);
+    while (!fs.existsSync(cwd) && path.dirname(cwd) !== cwd) cwd = path.dirname(cwd);
+    const out = git(cwd, ['rev-parse', '--show-toplevel']);
     return out === null ? null : out.trim();
 }
 

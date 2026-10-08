@@ -86,14 +86,20 @@ function loadBase(dir, ref) {
     const relFile = (name) => (rel ? `${rel}/${name}` : name);
     const recordNames = (names) => names.filter((n) => R.FILE_RE.test(n));
     const baseNames = recordNames(G.listDir(root, mb, rel));
-    const cache = new Map();
+    const tipNames = recordNames(G.listDir(root, ref, rel));
     const tipNumbers = new Map();
-    for (const name of recordNames(G.listDir(root, ref, rel))) tipNumbers.set(R.FILE_RE.exec(name)[1], name);
-    return {
-        textAt(name) {
-            if (!cache.has(name)) cache.set(name, baseNames.includes(name) ? G.showFile(root, mb, relFile(name)) : null);
+    for (const name of tipNames) tipNumbers.set(R.FILE_RE.exec(name)[1], name);
+    const reader = (rev, names) => {
+        const cache = new Map();
+        return (name) => {
+            if (!cache.has(name)) cache.set(name, names.includes(name) ? G.showFile(root, rev, relFile(name)) : null);
             return cache.get(name);
-        },
+        };
+    };
+    return {
+        ref,
+        textAt: reader(mb, baseNames),
+        tipTextAt: reader(ref, tipNames),
         baseNames,
         tipNumbers,
         // The records themselves are not code the change touches.

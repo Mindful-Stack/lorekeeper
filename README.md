@@ -286,6 +286,10 @@ node scripts/adr-lint.js select --repo api --diff change.patch  # records a diff
 node scripts/adr-lint.js backfill --dry-run <adr-dir>           # add id + classification keys
 ```
 
+The locked-record rule compares each record with the merge base, and a branch that edits a record
+accepted on the base since it forked fails until it is rebased. Repos that run the check in CI
+should also require branches to be up to date before merging, so what merges is what was checked.
+
 To run it before every commit in a repo with a local ADR home, add `.git/hooks/pre-commit`
 (executable):
 

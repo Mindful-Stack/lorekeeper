@@ -190,3 +190,23 @@ test('select infers the repo from the origin remote', (t) => {
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout, /^kb\/ADR-0001\taccepted\t/);
 });
+
+test('I3: --base: a record accepted on the base after branching cannot be rewritten', (t) => {
+    const w = workspace(t);
+    const file = path.join(w.local, '0001-session-storage.md');
+    const draft = (context) => makeRecord({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way', scope: [] }, sections: { Context: context } });
+    write(file, draft('Draft context.'));
+    commitAll(w.api, w.env, 'propose 0001');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'mine');
+    git(w.api, w.env, 'checkout', '-q', 'main');
+    write(file, makeRecord({ prefix: 'api', fm: { reversibility: 'two-way', scope: [] }, sections: { Context: 'Draft context.' } }));
+    commitAll(w.api, w.env, 'accept 0001');
+    git(w.api, w.env, 'checkout', '-q', 'mine');
+    write(file, draft('Rewritten context.'));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /0001-session-storage\.md: locked: accepted on main since this branch forked; rebase onto main/);
+    git(w.api, w.env, 'checkout', '-q', '--', '.');
+    const untouched = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(untouched.code, 0, untouched.stdout);
+});

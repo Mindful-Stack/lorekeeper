@@ -79,7 +79,9 @@ function describe(r, ctx) {
 //   strict      boolean
 //   resolveRef  (qualifiedId) -> { state: 'found'|'missing'|'unavailable', fm? }  (other homes only)
 //   base        null, or {
+//                 ref          string             (the base ref as given)
 //                 textAt(name) -> string | null   (record at the merge base; null if absent)
+//                 tipTextAt(name) -> string | null (record at the base tip; null if absent)
 //                 baseNames    string[]           (record files at the merge base)
 //                 tipNumbers   Map<NNNN, name>    (record files at the base tip)
 //                 changedFiles string[]           (repo-relative, since the merge base)
@@ -280,10 +282,21 @@ function checkAcrossRecords(home) {
     }
 }
 
-// Deleted locked records, numbers taken on the base tip, and ride-along.
+// Deleted locked records, records locked on the tip since the fork, numbers taken on the base
+// tip, and ride-along.
 function checkAgainstBase(home) {
     const { ctx, err } = home;
     const { records, base, home: h } = ctx;
+    // The locked diff runs against the merge base, so a record accepted on the base after this
+    // branch forked would otherwise be rewritable here: any change to it needs a rebase first.
+    for (const r of records) {
+        const tip = base.tipTextAt ? base.tipTextAt(r.name) : null;
+        const info = home.info.get(r);
+        if (!tip || info.lockedOnBase || !R.LOCKED.has(parseRecord(tip).fm.status)) continue;
+        if (info.baseText === null || lf(info.baseText) !== lf(r.text)) {
+            err(r.file, 'locked', `accepted on ${base.ref} since this branch forked; rebase onto ${base.ref}`);
+        }
+    }
     const names = new Set(records.map((r) => r.name));
     for (const name of base.baseNames) {
         if (names.has(name)) continue;

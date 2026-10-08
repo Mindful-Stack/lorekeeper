@@ -60,11 +60,16 @@ test('--base: the migration backfill passes against the base', (t) => {
     const w = workspace(t);
     const legacy = makeRecord({ fm: { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined, decided_by: undefined, deciders: ['Alex Doe'] } });
     write(path.join(w.shared, '0001-session-storage.md'), legacy);
+    // I6: a legacy proposal is classified when it is accepted, never by the backfill.
+    const proposal = makeRecord({ number: '0002', status: 'proposed', fm: { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined } });
+    write(path.join(w.shared, '0002-token-format.md'), proposal);
     commitAll(w.kb, w.env, 'legacy record');
     git(w.kb, w.env, 'checkout', '-q', '-b', 'migrate');
     const b = runCli(w.root, w.env, 'backfill', w.shared);
     assert.equal(b.code, 0, b.stderr);
-    assert.match(b.stdout, /added id, reversibility, blast_radius, sensitivity, scope/);
+    assert.match(b.stdout, /0001-session-storage\.md: added id, reversibility, blast_radius, sensitivity, scope/);
+    assert.match(b.stdout, /0002-token-format\.md: skipped: proposed \(classify on accept\)/);
+    assert.equal(fs.readFileSync(path.join(w.shared, '0002-token-format.md'), 'utf8'), proposal);
     const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
     assert.equal(r.code, 0, r.stdout);
     assert.match(r.stdout, /warning: reversibility is required/);

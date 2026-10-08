@@ -199,6 +199,12 @@ function cmdBackfill(flags, positional) {
     const { home } = locateHome(dir, flags);
     const { records } = R.loadHome(dir);
     for (const r of records) {
+        // A shared-home proposal is classified when it is accepted; touching it now would make
+        // the migration PR edit a proposal, which the check fails.
+        if (home.kind === 'shared' && !home.coinciding && r.fm.status === 'proposed') {
+            console.log(`${display(r.file)}: skipped: proposed (classify on accept)`);
+            continue;
+        }
         const res = backfill(r.text, R.impliedId(home.prefix, r.number));
         if (res.error) {
             console.log(`${display(r.file)}: skipped: ${res.error}`);

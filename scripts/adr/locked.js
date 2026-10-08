@@ -12,15 +12,38 @@ const DATED_ENTRY = /^[-*+]\s+\**\s*\d{4}-\d{2}-\d{2}/;
 const STATUS_MOVES = { accepted: ['superseded', 'deprecated'], deprecated: ['superseded'] };
 
 // Edit 4: formatting and link targets may change; nothing else. Link text survives the
-// normalisation, so a changed link text is still a change.
-function normaliseForRepair(s) {
-    return s
+// normalisation, so a changed link text is still a change. A markdown link or an aliased
+// wikilink has text apart from its target, so its target may change in any section. A bare
+// wikilink or autolink is its own text, so its target may change only in *See also*, where a
+// renamed file path is the expected repair.
+const EMPHASIS = [
+    /(^|[^A-Za-z0-9_*])\*\*(?=\S)([^\n]*?\S)\*\*(?![A-Za-z0-9_*])/g,
+    /(^|[^A-Za-z0-9_])__(?=\S)([^\n]*?\S)__(?![A-Za-z0-9_])/g,
+    /(^|[^A-Za-z0-9_*])\*(?=[^\s*])([^*\n]*?[^\s*])?\*(?![A-Za-z0-9_*])/g,
+    /(^|[^A-Za-z0-9_])_(?=[^\s_])([^_\n]*?[^\s_])?_(?![A-Za-z0-9_])/g,
+];
+
+// Strips paired emphasis outside code spans; a lone `**` (as in a glob) is text.
+function stripEmphasis(s) {
+    return s.split(/(`[^`\n]*`)/).map((part, i) => {
+        if (i % 2 === 1) return part;
+        let out = part;
+        for (const re of EMPHASIS) out = out.replace(re, (_m, pre, inner) => `${pre}${inner || ''}`);
+        return out;
+    }).join('');
+}
+
+function normaliseForRepair(s, seeAlso = false) {
+    let out = s
         .replace(/\[([^\]]*)\]\([^)]*\)/g, '[$1]()')
-        .replace(/\[\[[^\]|]*(\|[^\]]*)?\]\]/g, (_m, alias) => `[[${alias || ''}]]`)
-        .replace(/<https?:\/\/[^>]+>/g, '<>')
-        .replace(/^[ \t]*[-*+][ \t]+/gm, '- ')
-        .replace(/\*+/g, '')
-        .replace(/(^|[^A-Za-z0-9])_+|_+(?=[^A-Za-z0-9]|$)/g, '$1')
+        .replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, '[[|$1]]');
+    if (seeAlso) {
+        out = out
+            .replace(/\[\[[^\]|]*\]\]/g, '[[]]')
+            .replace(/<https?:\/\/[^>]+>/g, '<>');
+    }
+    out = out.replace(/^[ \t]*[-*+][ \t]+/gm, '- ');
+    return stripEmphasis(out)
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -130,7 +153,7 @@ function lockedDiff(baseText, curText) {
             } else if (extra.trim() !== '' && undatedObservation(extra)) {
                 out.push('each later observation is a bullet that starts with its date');
             }
-        } else if (normaliseForRepair(base.content) !== normaliseForRepair(cur.content)) {
+        } else if (normaliseForRepair(base.content, base.heading === 'See also') !== normaliseForRepair(cur.content, base.heading === 'See also')) {
             out.push(`${label} changed; only formatting and link targets may change on a locked record`);
         }
     }

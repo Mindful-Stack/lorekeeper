@@ -194,3 +194,29 @@ test('I4: an identical half-classified record passes (classification is checked 
     const half = backfill(legacy(), 'kb/ADR-0001').text.replace('blast_radius:', 'blast_radius: cross-service');
     assert.deepEqual(lockedDiff(half, half), []);
 });
+
+test('M5: only paired emphasis is formatting; a glob losing its ** is a change', () => {
+    const base = S({ Context: 'Applies to src/** and `lib/**` today.' });
+    assert.ok(lockedDiff(base, S({ Context: 'Applies to src/ and `lib/**` today.' })).some((m) => /Context" changed/.test(m)));
+    assert.ok(lockedDiff(base, S({ Context: 'Applies to src/** and `lib/` today.' })).some((m) => /Context" changed/.test(m)));
+    const plain = S({ Context: 'Sessions are stored in signed cookies today.' });
+    for (const marked of ['**signed**', '*signed*', '__signed__', '_signed_']) {
+        assert.deepEqual(lockedDiff(plain, S({ Context: `Sessions are stored in ${marked} cookies today.` })), [], marked);
+    }
+});
+
+test('M5: markdown link targets may change anywhere; bare wikilinks and autolinks only in See also', () => {
+    const at = (section, link) => S({ [section]: `- Read ${link} first.` });
+    const pairs = [
+        ['[the RFC](https://old.example/rfc)', '[the RFC](https://new.example/rfc)', true],
+        ['[[adrs/0002-old|ADR-0002]]', '[[adrs/0002-new|ADR-0002]]', true],
+        ['[[adrs/0002-old]]', '[[adrs/0002-new]]', false],
+        ['<https://old.example/rfc>', '<https://new.example/rfc>', false],
+    ];
+    for (const [before, after, anywhere] of pairs) {
+        assert.deepEqual(lockedDiff(at('See also', before), at('See also', after)), [], `See also: ${before}`);
+        const elsewhere = lockedDiff(at('Context', before), at('Context', after));
+        if (anywhere) assert.deepEqual(elsewhere, [], `Context: ${before}`);
+        else assert.ok(elsewhere.some((m) => /Context" changed/.test(m)), `Context: ${before}`);
+    }
+});

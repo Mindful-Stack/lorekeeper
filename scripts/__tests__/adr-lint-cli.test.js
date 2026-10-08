@@ -329,3 +329,19 @@ test('fix4-7: a declared team KB that is not checked out makes kb/ references wa
     assert.equal(unknown.code, 1, unknown.stdout);
     assert.match(unknown.stdout, /related nope\/ADR-0002 does not exist/);
 });
+
+test('fix4-8: a standalone checkout accepts a local-to-local move, warning that the destination is not on disk', (t) => {
+    const dir = tmpDir(t);
+    const env = gitEnv(dir);
+    initRepo(dir, env);
+    const adrs = path.join(dir, 'docs', 'adr');
+    const file = path.join(adrs, '0001-session-storage.md');
+    write(file, makeRecord({ prefix: 'api' }));
+    commitAll(dir, env, 'accept 0001');
+    git(dir, env, 'checkout', '-q', '-b', 'move');
+    const head = makeRecord({ prefix: 'api', fm: { moved_to: 'web/ADR-0004' } });
+    write(file, `${head.slice(0, head.indexOf('\n---\n') + 5)}Moved to web/ADR-0004.\n`);
+    const r = runCli(dir, env, 'check', '--home', 'local', '--repo', 'api', '--base', 'main', adrs);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /relations: warning: moved_to web\/ADR-0004: its home is not on disk/);
+});

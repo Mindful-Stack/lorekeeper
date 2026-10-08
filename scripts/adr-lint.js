@@ -171,7 +171,6 @@ function cmdCheck(flags, positional) {
         strays,
         config: readConfig(flags, homes),
         strict: !!flags.strict,
-        manifest: homes.mode === 'household',
         resolveRef: makeResolver(homes),
         base: flags.base ? loadBase(dir, flags.base) : null,
     });

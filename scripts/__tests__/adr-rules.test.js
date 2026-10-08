@@ -215,7 +215,7 @@ test('move: a stub must point at another home whose record lists the old id in a
     assert.deepEqual(errors(run([stub], { resolveRef: listed, base: base(original) })), []);
     assert.ok(has(run([stub], { base: base(original), resolveRef: () => ({ state: 'found', fm: { aliases: [] } }) }), 'move', /list kb\/ADR-0001 in its aliases/));
     const sameHome = loadRecord('/h/0001-session-storage.md', stubOf({}, 'kb/ADR-0002'));
-    assert.ok(has(run([sameHome, rec({ number: '0002', slug: 'other' })], { base: base(original) }), 'move', /goes to the other home/));
+    assert.ok(has(run([sameHome, rec({ number: '0002', slug: 'other' })], { base: base(original) }), 'move', /goes to another home/));
 });
 
 test('I1: only a record that exists on the base without moved_to can be moved', () => {
@@ -240,11 +240,14 @@ test('I1: a coinciding home has no other home to move to', () => {
     assert.ok(has(vs, 'move', /one ADR home/));
 });
 
-test('I1: a local record moves to kb/, a shared one to a repo; an unresolvable plausible target warns', () => {
+test('I1: a move goes to another home; an unresolvable target warns', () => {
     const unavailable = () => ({ state: 'unavailable' });
     const localBase = base({ '0001-session-storage.md': makeRecord({ prefix: 'api' }) });
+    // fix4-8: another repo's local home is a valid destination, manifest or not.
     const toRepo = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'web/ADR-0004'));
-    assert.ok(has(run([toRepo], { home: LOCAL, base: localBase, resolveRef: unavailable }), 'move', /local record moves to the shared home/));
+    const repoOk = run([toRepo], { home: LOCAL, base: localBase, resolveRef: unavailable });
+    assert.deepEqual(errors(repoOk), []);
+    assert.ok(has(repoOk, 'relations', /moved_to web\/ADR-0004: its home is not on disk/, 'warning'));
     const toKb = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'kb/ADR-0004'));
     const ok = run([toKb], { home: LOCAL, base: localBase, resolveRef: unavailable });
     assert.deepEqual(errors(ok), []);
@@ -384,17 +387,15 @@ test('I5: a CRLF working copy of an untouched locked pair still counts as untouc
     assert.deepEqual(errors(run(crlf, { base: b })), []);
 });
 
-test('fix2-2: with a manifest, a local record may move to another repo\'s local home or to kb/', () => {
+test('fix2-2: a local record may move to another repo\'s local home or to kb/, not to its own', () => {
     const localBase = base({ '0001-session-storage.md': makeRecord({ prefix: 'api' }) });
     const listed = () => ({ state: 'found', fm: { aliases: ['api/ADR-0001'] } });
     const toRepo = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'web/ADR-0004'));
-    assert.deepEqual(errors(run([toRepo], { home: LOCAL, base: localBase, resolveRef: listed, manifest: true })), []);
+    assert.deepEqual(errors(run([toRepo], { home: LOCAL, base: localBase, resolveRef: listed })), []);
     const toKb = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'kb/ADR-0004'));
-    assert.deepEqual(errors(run([toKb], { home: LOCAL, base: localBase, resolveRef: listed, manifest: true })), []);
+    assert.deepEqual(errors(run([toKb], { home: LOCAL, base: localBase, resolveRef: listed })), []);
     const toSelf = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'api/ADR-0004'));
-    assert.ok(has(run([toSelf], { home: LOCAL, base: localBase, resolveRef: listed, manifest: true }), 'move', /goes to the other home/));
-    // Without a manifest the other repo is not visible, so the move must go to kb/.
-    assert.ok(has(run([toRepo], { home: LOCAL, base: localBase, resolveRef: listed, manifest: false }), 'move', /local record moves to the shared home/));
+    assert.ok(has(run([toSelf], { home: LOCAL, base: localBase, resolveRef: listed }), 'move', /goes to another home/));
 });
 
 test('fix3-1a: frontmatter parse errors are warnings on a record the change leaves alone', () => {

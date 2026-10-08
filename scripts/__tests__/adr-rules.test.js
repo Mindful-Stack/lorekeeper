@@ -188,14 +188,56 @@ test('proposed in the shared home: warning locally, error when the change adds o
     assert.ok(has(run([p], { base: edited }), 'proposed-shared', /merges only/));
 });
 
+// A stub: the record's frontmatter plus moved_to, and a one-line body.
+function stubOf(opts, movedTo, body = `Moved to ${movedTo}.`) {
+    const head = makeRecord({ ...opts, fm: { ...(opts.fm || {}), moved_to: movedTo } });
+    return `${head.slice(0, head.indexOf('\n---\n') + 5)}${body}\n`;
+}
+
 test('move: a stub must point at another home whose record lists the old id in aliases', () => {
-    const stubText = makeRecord({ fm: { moved_to: 'api/ADR-0004' } });
-    const stub = loadRecord('/h/0001-session-storage.md', stubText);
+    const original = { '0001-session-storage.md': makeRecord() };
+    const stub = loadRecord('/h/0001-session-storage.md', stubOf({}, 'api/ADR-0004'));
     const listed = () => ({ state: 'found', fm: { aliases: ['kb/ADR-0001'] } });
-    assert.deepEqual(errors(run([stub], { resolveRef: listed })), []);
-    assert.ok(has(run([stub], { resolveRef: () => ({ state: 'found', fm: { aliases: [] } }) }), 'move', /list kb\/ADR-0001 in its aliases/));
-    const sameHome = loadRecord('/h/0001-session-storage.md', makeRecord({ fm: { moved_to: 'kb/ADR-0002' } }));
-    assert.ok(has(run([sameHome, rec({ number: '0002', slug: 'other' })]), 'move', /goes to the other home/));
+    assert.deepEqual(errors(run([stub], { resolveRef: listed, base: base(original) })), []);
+    assert.ok(has(run([stub], { base: base(original), resolveRef: () => ({ state: 'found', fm: { aliases: [] } }) }), 'move', /list kb\/ADR-0001 in its aliases/));
+    const sameHome = loadRecord('/h/0001-session-storage.md', stubOf({}, 'kb/ADR-0002'));
+    assert.ok(has(run([sameHome, rec({ number: '0002', slug: 'other' })], { base: base(original) }), 'move', /goes to the other home/));
+});
+
+test('I1: only a record that exists on the base without moved_to can be moved', () => {
+    const fresh = loadRecord('/h/0001-session-storage.md', stubOf({}, 'api/ADR-0004'));
+    assert.ok(has(run([fresh], { base: base({}) }), 'move', /only an existing record can be moved/));
+    const draft = { '0001-session-storage.md': stubOf({ status: 'proposed' }, 'api/ADR-0004') };
+    const redirected = loadRecord('/h/0001-session-storage.md', stubOf({ status: 'proposed' }, 'api/ADR-0005'));
+    assert.ok(has(run([redirected], { base: base(draft) }), 'move', /only an existing record can be moved/));
+});
+
+test('I1: a stub has a one-line body, with or without a base', () => {
+    const long = loadRecord('/h/0001-session-storage.md', stubOf({ status: 'proposed' }, 'api/ADR-0004', 'Moved.\nAnd more.'));
+    assert.ok(has(run([long], { base: null }), 'move', /one-line body/));
+    const draft = { '0001-session-storage.md': makeRecord({ status: 'proposed' }) };
+    assert.ok(has(run([long], { base: base(draft) }), 'move', /one-line body/));
+});
+
+test('I1: a coinciding home has no other home to move to', () => {
+    const one = { kind: 'local', prefix: 'api', repo: 'api', coinciding: true };
+    const stub = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'kb/ADR-0004'));
+    const vs = run([stub], { home: one, base: base({ '0001-session-storage.md': makeRecord({ prefix: 'api' }) }) });
+    assert.ok(has(vs, 'move', /one ADR home/));
+});
+
+test('I1: a local record moves to kb/, a shared one to a repo; an unresolvable plausible target warns', () => {
+    const unavailable = () => ({ state: 'unavailable' });
+    const localBase = base({ '0001-session-storage.md': makeRecord({ prefix: 'api' }) });
+    const toRepo = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'web/ADR-0004'));
+    assert.ok(has(run([toRepo], { home: LOCAL, base: localBase, resolveRef: unavailable }), 'move', /local record moves to the shared home/));
+    const toKb = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'kb/ADR-0004'));
+    const ok = run([toKb], { home: LOCAL, base: localBase, resolveRef: unavailable });
+    assert.deepEqual(errors(ok), []);
+    assert.ok(has(ok, 'relations', /moved_to kb\/ADR-0004: its home is not on disk/, 'warning'));
+    const shared = loadRecord('/h/0001-session-storage.md', stubOf({}, 'api/ADR-0004'));
+    const sharedOk = run([shared], { base: base({ '0001-session-storage.md': makeRecord() }), resolveRef: unavailable });
+    assert.deepEqual(errors(sharedOk), []);
 });
 
 test('base: editing a locked record fails; editing a proposed one does not', () => {

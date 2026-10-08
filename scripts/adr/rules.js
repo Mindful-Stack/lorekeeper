@@ -63,6 +63,7 @@ function describe(r, ctx) {
     else if (!ctx.base && R.LOCKED.has(r.fm.status)) mode = 'warn';
     return {
         baseText,
+        baseFm: b ? b.fm : null,
         lockedOnBase,
         // Locked on the base and identical to it: nothing in this change can fix a finding here.
         untouched: lockedOnBase && lf(baseText) === lf(r.text),
@@ -130,7 +131,8 @@ function checkRecord(home, r) {
     // A moved record is a stub pointing at its new id in another home, which names the
     // old id in its aliases.
     if (!isEmpty(fm.moved_to)) {
-        if (!frozen.keys.has('moved_to')) checkMove(home, r, fm.moved_to);
+        const info = home.info.get(r);
+        if (!info.baseFm || !same(info.baseFm.moved_to, fm.moved_to)) checkMove(home, r, info);
         return;
     }
 
@@ -318,12 +320,26 @@ function checkRef(home, r, ref, key) {
     return found;
 }
 
-function checkMove(home, r, ref) {
+// A move is legal only on a record the base holds without moved_to, and only from a local
+// home to the shared home or back. lockedDiff checks a locked stub's frontmatter and body; a
+// stub that is not locked on the base has its body checked here.
+function checkMove(home, r, info) {
     const { ctx, err, ownId } = home;
-    const { prefix } = ctx.home;
+    const { prefix, kind, coinciding } = ctx.home;
+    const ref = r.fm.moved_to;
+    if (coinciding) return err(r.file, 'move', 'this repo has one ADR home, so there is no other home to move to');
+    if (info.baseText !== undefined && (info.baseText === null || !isEmpty(info.baseFm.moved_to))) {
+        err(r.file, 'move', 'only an existing record can be moved');
+    }
+    if (!info.lockedOnBase && r.body.split('\n').filter((l) => l.trim() !== '').length > 1) {
+        err(r.file, 'move', 'a moved record is a stub with a one-line body');
+    }
     const id = R.qualify(ref, prefix);
     if (!id) return err(r.file, 'move', `moved_to ${ref} is not a qualified id`);
     if (id.startsWith(`${prefix}/`)) return err(r.file, 'move', 'moved_to names this home; a move goes to the other home');
+    if (kind === 'local' && !id.startsWith('kb/')) {
+        return err(r.file, 'move', `a local record moves to the shared home (kb/ADR-NNNN), got ${id}`);
+    }
     const found = checkRef(home, r, id, 'moved_to');
     if (found && found.state === 'found' && !asList(found.fm && found.fm.aliases).includes(ownId(r))) {
         err(r.file, 'move', `${id} must list ${ownId(r)} in its aliases`);

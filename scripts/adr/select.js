@@ -11,23 +11,41 @@ const { matchesGlob } = require('./glob');
 // prefixes marks a prefixed block; a header without them (or with the same letter on both
 // sides, as a top-level one-letter directory gives under --no-prefix) marks an unprefixed one.
 // Without a header, a leading `[a-z]/` is taken as a prefix.
-// `---` / `+++` lines are file headers only before the first `@@` of a file: inside a hunk they
-// are a removed `-- …` or added `++ …` line. A header-less patch has headers only before its
-// first `@@`.
+// `---` / `+++` lines are file headers only outside hunks. Each `@@ -a,b +c,d @@` header gives
+// the hunk's old and new line counts (1 when `,b` / `,d` is omitted), so a removed `-- …` or
+// added `++ …` line inside a hunk is content, and the next file's headers are read even in a
+// patch without `diff` lines. Any `diff ` line ends a hunk. A tab and what follows it (the
+// timestamp `diff -u` writes) is not part of the path.
 function parsePatchPaths(patch) {
     const paths = new Set();
     let prefixed = true;
-    let inHunk = false;
+    let oldLeft = 0;
+    let newLeft = 0;
     for (const line of patch.replace(/\r\n/g, '\n').split('\n')) {
-        if (line.startsWith('diff --git ')) {
+        if (line.startsWith('diff ')) {
             const h = /^diff --git ([a-z])\/.* ([a-z])\/.*$/.exec(line);
-            prefixed = !!h && h[1] !== h[2];
-            inHunk = false;
+            prefixed = line.startsWith('diff --git ') ? !!h && h[1] !== h[2] : true;
+            oldLeft = 0;
+            newLeft = 0;
             continue;
         }
-        if (line.startsWith('@@')) inHunk = true;
-        if (inHunk) continue;
-        const m = /^(?:\+\+\+|---) (.+?)\t?$/.exec(line);
+        if (oldLeft > 0 || newLeft > 0) {
+            if (line.startsWith('-')) oldLeft--;
+            else if (line.startsWith('+')) newLeft--;
+            else if (!line.startsWith('\\')) {
+                oldLeft--;
+                newLeft--;
+            }
+            continue;
+        }
+        if (line.startsWith('@@')) {
+            const m = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
+            // A malformed hunk header: treat the rest of the file as hunk content.
+            oldLeft = m ? (m[1] === undefined ? 1 : Number(m[1])) : Infinity;
+            newLeft = m ? (m[2] === undefined ? 1 : Number(m[2])) : Infinity;
+            continue;
+        }
+        const m = /^(?:\+\+\+|---) ([^\t]+)/.exec(line);
         if (!m || m[1] === '/dev/null') continue;
         paths.add(prefixed ? m[1].replace(/^[a-z]\//, '') : m[1]);
     }

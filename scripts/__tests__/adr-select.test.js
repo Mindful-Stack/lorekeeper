@@ -50,8 +50,24 @@ test('M7: parsePatchPaths reads --no-prefix patches, including a top-level one-l
 test('fix2-3: --- and +++ lines inside a hunk are content, not file headers', () => {
     const withHeader = 'diff --git a/db/init.sql b/db/init.sql\n--- a/db/init.sql\n+++ b/db/init.sql\n@@ -1,2 +1,2 @@\n--- comment\n+++ x\n context\n';
     assert.deepEqual(parsePatchPaths(withHeader), ['db/init.sql']);
-    const headerless = '--- a/db/init.sql\n+++ b/db/init.sql\n@@ -1,2 +1,2 @@\n--- comment\n+++ x\n--- a/src/b.cs\n';
-    assert.deepEqual(parsePatchPaths(headerless), ['db/init.sql']);
     const next = `${withHeader}diff --git a/src/b.cs b/src/b.cs\n--- a/src/b.cs\n+++ b/src/b.cs\n@@ -1 +1 @@\n`;
     assert.deepEqual(parsePatchPaths(next).sort(), ['db/init.sql', 'src/b.cs']);
+});
+
+test('fix3-7: both files of a two-file diff -u patch are read, hunk lines counted, timestamps stripped', () => {
+    const patch = [
+        '--- a/db/init.sql\t2026-10-01 10:00:00.000000000 +0000',
+        '+++ b/db/init.sql\t2026-10-02 10:00:00.000000000 +0000',
+        '@@ -1,2 +1,2 @@',
+        '--- comment',
+        '+++ x',
+        ' context',
+        '--- a/src/b.cs\t2026-10-01 10:00:00.000000000 +0000',
+        '+++ b/src/b.cs\t2026-10-02 10:00:00.000000000 +0000',
+        '@@ -1 +1 @@',
+        '-old',
+        '+new',
+        '',
+    ].join('\n');
+    assert.deepEqual(parsePatchPaths(patch).sort(), ['db/init.sql', 'src/b.cs']);
 });

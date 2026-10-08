@@ -57,8 +57,9 @@ function resolveHomes(start, env = process.env) {
         const kbName = m.knowledge_base || 'lore';
         const shared = m.shared_knowledge_bases || [];
         const skip = new Set([m.meta_repo, kbName, ...shared]);
-        const team = knowledgeDir(path.join(household, kbName));
-        const sharedHome = team ? path.join(team, config.sharedDir) : null;
+        // The manifest declares the team KB, so its home is known even when it is not checked
+        // out; references into it then resolve as unavailable (a warning), not missing.
+        const sharedHome = path.join(household, kbName, 'knowledge', config.sharedDir);
         const localHomes = (m.repos || [])
             .filter((r) => r && r.name && !skip.has(r.name))
             .map((r) => ({

@@ -312,3 +312,20 @@ test('fix4-4: --base: deleting a record accepted on the base since the fork fail
     assert.equal(r.code, 1, r.stdout);
     assert.match(r.stdout, /0001-session-storage\.md: locked: accepted on main since this branch forked; rebase onto main/);
 });
+
+test('fix4-7: a declared team KB that is not checked out makes kb/ references warnings', (t) => {
+    const w = workspace(t);
+    fs.rmSync(w.kb, { recursive: true });
+    write(path.join(w.api, 'README.md'), 'api\n');
+    commitAll(w.api, w.env, 'init');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'feature');
+    write(path.join(w.local, '0001-session-storage.md'), makeRecord({ prefix: 'api', fm: { reversibility: 'two-way', related: ['kb/ADR-0002'] } }));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /relations: warning: related kb\/ADR-0002: its home is not on disk/);
+    // A prefix the household does not declare is still an error.
+    write(path.join(w.local, '0001-session-storage.md'), makeRecord({ prefix: 'api', fm: { reversibility: 'two-way', related: ['nope/ADR-0002'] } }));
+    const unknown = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(unknown.code, 1, unknown.stdout);
+    assert.match(unknown.stdout, /related nope\/ADR-0002 does not exist/);
+});

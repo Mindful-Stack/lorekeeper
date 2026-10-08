@@ -264,3 +264,14 @@ test('M4: no merge base says to fetch, like a missing ref', (t) => {
     assert.equal(r.code, 2);
     assert.match(r.stderr, /no merge base between main and HEAD; fetch .*fetch-depth: 0/);
 });
+
+test('M8 (decision 17): a proposed record whose scope covers its own home does not ride along', (t) => {
+    const w = workspace(t);
+    write(path.join(w.api, 'README.md'), 'api\n');
+    commitAll(w.api, w.env, 'init');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'propose');
+    write(path.join(w.local, '0001-docs-layout.md'), makeRecord({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way', scope: ['docs/**'] } }));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(r.code, 0, r.stdout);
+    assert.doesNotMatch(r.stdout, /ride-along/);
+});

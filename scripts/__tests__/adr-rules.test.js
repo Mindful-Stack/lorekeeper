@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { checkHome } = require('../adr/rules');
 const { loadRecord } = require('../adr/records');
+const { backfill } = require('../adr/backfill');
 const { makeRecord } = require('./helpers/adr-fixtures');
 
 const SHARED = { kind: 'shared', prefix: 'kb', coinciding: false };
@@ -138,10 +139,19 @@ test('locked on the base: classifying a legacy record leaves the home green afte
         sections: { 'Assumptions and invalidation triggers': '- Assumes nothing.', 'Considered options': '- **Only one**' },
         fm: { ...LEGACY_FM, decided_by: undefined, deciders: ['Alex Doe'] },
     };
-    const classified = rec({ ...thin, fm: { ...thin.fm, id: 'kb/ADR-0001', reversibility: 'one-way', blast_radius: 'cross-service', sensitivity: [], scope: [] } });
+    const backfilled = backfill(makeRecord(thin), 'kb/ADR-0001').text;
+    const classifiedText = backfilled
+        .replace(/^reversibility:.*$/m, 'reversibility: one-way')
+        .replace(/^blast_radius:.*$/m, 'blast_radius: cross-service');
+    assert.notEqual(classifiedText, backfilled);
     const config = { decisionOwners: ['@arch-team'], deciders: [] };
-    const vs = run([classified], { config, base: base({ '0001-session-storage.md': classified.text }) });
-    assert.deepEqual(errors(vs), []);
+    const name = '0001-session-storage.md';
+    // The classifying change itself: base is the backfilled legacy record.
+    const classified = loadRecord(`/h/${name}`, classifiedText);
+    assert.deepEqual(errors(run([classified], { config, base: base({ [name]: backfilled }) })), []);
+    // A later, unrelated change to the home: base is the classified record.
+    const later = rec({ number: '0002', slug: 'other', fm: { decided_by: ['arch-team'] } });
+    assert.deepEqual(errors(run([classified, later], { config, base: base({ [name]: classifiedText }) })), []);
 });
 
 test('relations: an unknown same-home id is an error; another home unavailable is a warning', () => {
@@ -277,7 +287,6 @@ test('strays and duplicate numbers are reported', () => {
 });
 
 // C1: freezing covers only what the change leaves alone; values it writes are always checked.
-const { backfill } = require('../adr/backfill');
 const BACKFILLED = () => backfill(makeRecord({ fm: { ...LEGACY_FM, decided_by: undefined, deciders: ['Alex Doe'] } }), 'kb/ADR-0001').text;
 
 function classify(text, values) {

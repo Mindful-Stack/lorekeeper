@@ -19,6 +19,11 @@ test('the template parses cleanly and carries exactly the known keys', () => {
     assert.deepEqual([...t.order].sort(), expected);
 });
 
+test('a proposed fixture records only its proposal in Status', () => {
+    const status = sections(parseRecord(makeRecord({ status: 'proposed' })).body).find((s) => s.heading === 'Status');
+    assert.equal(status.content.trim(), 'Proposed 2026-09-30.');
+});
+
 test('the fixture uses the template frontmatter keys and sections, in order', () => {
     const t = parseRecord(TEMPLATE);
     const f = parseRecord(makeRecord());

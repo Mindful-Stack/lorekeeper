@@ -70,7 +70,9 @@ function makeRecord(opts = {}) {
     }
     if (opts.extraFrontmatter) lines.push(opts.extraFrontmatter);
     lines.push('---', '', `# ADR-${number}: Store sessions server-side`, '');
-    const sections = { ...SECTIONS, ...(opts.sections || {}) };
+    // A proposed record has not been ratified, so its Status holds only the proposal line.
+    const defaults = status === 'proposed' ? { ...SECTIONS, Status: 'Proposed 2026-09-30.' } : SECTIONS;
+    const sections = { ...defaults, ...(opts.sections || {}) };
     for (const [h, body] of Object.entries(sections)) {
         if (body === undefined) continue;
         lines.push(`## ${h}`, body, '');

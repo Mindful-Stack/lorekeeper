@@ -267,3 +267,13 @@ test('fix4-1: literal and chomped block scalars decode; an unreadable form must 
     assert.deepEqual(lockedDiff(indented, indented), []);
     assert.ok(lockedDiff(indented, indented.replace('rfc: >2\n  one\n  two', 'rfc: one two')).some((m) => /cannot read, so it must stay byte-identical/.test(m)));
 });
+
+test('edit 5 repair: a literal block rewritten inline matches with or without its trailing newline', () => {
+    const block = makeRecord({ fm: { rfc: undefined }, extraFrontmatter: 'rfc: |\n  line one\n  line two' });
+    for (const inline of ['"line one\\nline two\\n"', '"line one\\nline two"']) {
+        const cur = makeRecord({ fm: { rfc: undefined }, extraFrontmatter: `rfc: ${inline}` });
+        assert.deepEqual(lockedDiff(block, cur), [], inline);
+    }
+    const changed = makeRecord({ fm: { rfc: undefined }, extraFrontmatter: 'rfc: "line one\\nline 2"' });
+    assert.ok(lockedDiff(block, changed).some((m) => /rfc changed/.test(m)));
+});

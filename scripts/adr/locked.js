@@ -79,7 +79,9 @@ function blockKeyChange(b, c, key) {
     const meant = decodeBlock(was);
     if (!meant.ok) return `${key} is written in a block form the validator cannot read, so it must stay byte-identical`;
     const value = now ? decodeBlock(now) : { ok: key in c.fm, value: c.fm[key] };
-    if (!value.ok || !same(meant.value, value.value)) return `${key} changed; rewritten inline it must keep the value its block form had`;
+    // decodeBlock drops trailing newlines whatever the chomping, so the inline side does too.
+    const tidy = (v) => (typeof v === 'string' ? v.replace(/\n+$/, '') : v);
+    if (!value.ok || !same(tidy(meant.value), tidy(value.value))) return `${key} changed; rewritten inline it must keep the value its block form had`;
     return null;
 }
 

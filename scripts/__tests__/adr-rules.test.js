@@ -28,9 +28,13 @@ function run(records, extra = {}) {
     });
 }
 
+// `opts.tip` maps names to their text at the base tip (default: the same as the merge base).
 function base(map, opts = {}) {
+    const tip = opts.tip || map;
     return {
+        ref: 'main',
         textAt: (name) => (name in map ? map[name] : null),
+        tipTextAt: (name) => (name in tip ? tip[name] : null),
         baseNames: Object.keys(map),
         tipNumbers: opts.tipNumbers || new Map(Object.keys(map).map((n) => [n.slice(0, 4), n])),
         changedFiles: opts.changedFiles || [],
@@ -325,7 +329,9 @@ test('C1: a correct classification of a locked legacy record is clean', () => {
 test('C1: two records with the same explicit id are an error', () => {
     const a = rec();
     const b = rec({ number: '0002', slug: 'other', fm: { id: 'kb/ADR-0001' } });
-    assert.ok(has(run([a, b]), 'id', /kb\/ADR-0001 is also used by 0001-session-storage.md/));
+    // a is locked and untouched on the base; b is new, so the change caused the clash.
+    const locked = base({ '0001-session-storage.md': a.text });
+    assert.ok(has(run([a, b], { base: locked }), 'id', /kb\/ADR-0001 is also used by 0001-session-storage.md/));
 });
 
 // I4: a home the change does not touch never fails. Every record below is on the base exactly
@@ -479,4 +485,13 @@ test('fix3-5: findings between records the change leaves unchanged warn, whateve
     const vs = run([loadRecord('/h/0001-a.md', draft), loadRecord('/h/0001-b.md', draft)], { base: b });
     assert.deepEqual(errors(vs), []);
     assert.ok(has(vs, 'number', /also used by 0001-a.md/, 'warning'));
+});
+
+test('fix3-9 (I3): a record accepted on the base tip since the fork cannot be edited here', () => {
+    const name = '0001-session-storage.md';
+    const draft = makeRecord({ status: 'proposed' });
+    const b = base({ [name]: draft }, { tip: { [name]: makeRecord() } });
+    const edited = loadRecord(`/h/${name}`, makeRecord({ status: 'proposed', sections: { Context: 'Rewritten.' } }));
+    assert.ok(has(run([edited], { base: b }), 'locked', /accepted on main since this branch forked; rebase onto main/));
+    assert.ok(!run([loadRecord(`/h/${name}`, draft)], { base: b }).some((v) => v.rule === 'locked'));
 });

@@ -216,10 +216,12 @@ function checkRecord(home, r) {
         }
     }
 
-    // Relations. On a record locked on the base only a newly set superseded_by can change.
+    // Relations. On a record locked on the base only a newly set superseded_by can change; a
+    // reference it keeps is still checked, so deleting its target is caught, but a reference
+    // already broken on the base only warns.
     for (const key of RELATION_KEYS) {
-        if (lockedOnBase && frozen.keys.has(key)) continue;
-        for (const ref of asList(fm[key])) checkRef(home, r, ref, key);
+        const kept = lockedOnBase && frozen.keys.has(key);
+        for (const ref of asList(fm[key])) checkRef(home, r, ref, key, kept);
     }
     if (!isEmpty(fm.superseded_by)) {
         if (fm.status !== 'superseded') fix(['superseded_by', 'status'], 'relations', 'superseded_by is set, so status must be superseded');
@@ -348,18 +350,26 @@ function checkSuccessorAccepted(home, r) {
     }
 }
 
-function checkRef(home, r, ref, key) {
+// `kept`: the reference is unchanged on a record locked on the base. Its findings are warnings,
+// except a same-home target that existed on the merge base and is gone now: this change
+// deleted it. (Another home's base is not visible, so a missing target there only warns.)
+function checkRef(home, r, ref, key, kept = false) {
     const { ctx, err, warn, ownId, byId } = home;
     const { prefix } = ctx.home;
+    const report = kept ? warn : err;
     const id = R.qualify(ref, prefix);
-    if (!id) return err(r.file, 'relations', `${key} ${ref} is not a qualified id (<home>/ADR-NNNN)`);
-    if (id === ownId(r)) return err(r.file, 'relations', `${key} points at the record itself`);
+    if (!id) return report(r.file, 'relations', `${key} ${ref} is not a qualified id (<home>/ADR-NNNN)`);
+    if (id === ownId(r)) return report(r.file, 'relations', `${key} points at the record itself`);
     if (id.startsWith(`${prefix}/`)) {
-        if (!byId.has(id)) err(r.file, 'relations', `${key} ${id} does not exist in this home`);
+        if (!byId.has(id)) {
+            const number = R.ID_RE.exec(id)[2];
+            const deleted = kept && ctx.base.baseNames.some((n) => n.startsWith(`${number}-`));
+            (deleted || !kept ? err : warn)(r.file, 'relations', `${key} ${id} does not exist in this home`);
+        }
         return undefined;
     }
     const found = ctx.resolveRef ? ctx.resolveRef(id) : { state: 'unavailable' };
-    if (found.state === 'missing') err(r.file, 'relations', `${key} ${id} does not exist`);
+    if (found.state === 'missing') report(r.file, 'relations', `${key} ${id} does not exist`);
     else if (found.state === 'unavailable') warn(r.file, 'relations', `${key} ${id}: its home is not on disk, so it was not checked`);
     return found;
 }

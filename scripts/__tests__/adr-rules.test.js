@@ -440,3 +440,20 @@ test('fix3-2: a newly set superseded_by needs an accepted successor', () => {
     assert.deepEqual(errors(away), []);
     assert.ok(has(away, 'relations', /superseded_by api\/ADR-0002: its home is not on disk/, 'warning'));
 });
+
+test('fix3-3: deleting a record a locked record points at is an error', () => {
+    const aText = makeRecord({ fm: { related: ['kb/ADR-0002'] } });
+    const b = base({ '0001-session-storage.md': aText, '0002-other.md': makeRecord({ number: '0002', status: 'proposed' }) });
+    const vs = run([loadRecord('/h/0001-session-storage.md', aText)], { base: b });
+    assert.ok(has(vs, 'relations', /related kb\/ADR-0002 does not exist in this home/));
+});
+
+test('fix3-3: a frozen reference already broken on the base is a warning', () => {
+    const aText = makeRecord({ fm: { related: ['kb/ADR-0009', 'not-an-id'], depends_on: ['web/ADR-0001'] } });
+    const b = base({ '0001-session-storage.md': aText });
+    const vs = run([loadRecord('/h/0001-session-storage.md', aText)], { base: b, resolveRef: () => ({ state: 'missing' }) });
+    assert.deepEqual(errors(vs), []);
+    assert.ok(has(vs, 'relations', /related kb\/ADR-0009 does not exist in this home/, 'warning'));
+    assert.ok(has(vs, 'relations', /not-an-id is not a qualified id/, 'warning'));
+    assert.ok(has(vs, 'relations', /depends_on web\/ADR-0001 does not exist/, 'warning'));
+});

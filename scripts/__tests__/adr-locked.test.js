@@ -41,10 +41,15 @@ test('edit 1: rewriting an earlier Status line fails', () => {
     assert.ok(lockedDiff(BASE, cur).some((m) => /Status" may only grow/.test(m)));
 });
 
-test('edit 2: setting superseded_by passes; changing it once set fails', () => {
-    const set = makeRecord({ fm: { superseded_by: 'kb/ADR-0002' }, sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSupersession proposed by kb/ADR-0002.' } });
+test('edit 2: superseded_by is set only with the superseded transition, and never changes', () => {
+    const noted = 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSupersession proposed by kb/ADR-0002.';
+    assert.deepEqual(lockedDiff(BASE, makeRecord({ sections: { Status: noted } })), []);
+    const early = makeRecord({ fm: { superseded_by: 'kb/ADR-0002' }, sections: { Status: noted } });
+    assert.ok(lockedDiff(BASE, early).some((m) => /superseded_by is set only together with status: superseded/.test(m)));
+    const flipped = 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSuperseded 2026-11-01 by kb/ADR-0002.';
+    const set = makeRecord({ fm: { status: 'superseded', superseded_by: 'kb/ADR-0002' }, sections: { Status: flipped } });
     assert.deepEqual(lockedDiff(BASE, set), []);
-    const changed = makeRecord({ fm: { superseded_by: 'kb/ADR-0003' }, sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSupersession proposed by kb/ADR-0002.' } });
+    const changed = makeRecord({ fm: { status: 'superseded', superseded_by: 'kb/ADR-0003' }, sections: { Status: flipped } });
     assert.ok(lockedDiff(set, changed).some((m) => /superseded_by is already set/.test(m)));
 });
 

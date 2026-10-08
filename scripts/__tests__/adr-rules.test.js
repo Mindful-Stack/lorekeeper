@@ -233,3 +233,46 @@ test('strays and duplicate numbers are reported', () => {
     assert.ok(has(vs, 'filename', /NNNN-<problem-slug>/));
     assert.ok(has(vs, 'number', /also used by/));
 });
+
+// C1: freezing covers only what the change leaves alone; values it writes are always checked.
+const { backfill } = require('../adr/backfill');
+const BACKFILLED = () => backfill(makeRecord({ fm: { ...LEGACY_FM, decided_by: undefined, deciders: ['Alex Doe'] } }), 'kb/ADR-0001').text;
+
+function classify(text, values) {
+    let out = text;
+    for (const [k, v] of Object.entries(values)) out = out.replace(new RegExp(`^${k}:.*$`, 'm'), `${k}: ${v}`);
+    return out;
+}
+
+test('C1: values a change writes on a locked record are checked (enums, scope syntax)', () => {
+    const b = base({ '0001-session-storage.md': BACKFILLED() });
+    const cur = loadRecord('/h/0001-session-storage.md', classify(BACKFILLED(), { reversibility: 'banana', blast_radius: 'galaxy', scope: '[src/**]' }));
+    const vs = run([cur], { base: b });
+    assert.ok(has(vs, 'schema', /reversibility must be one of/));
+    assert.ok(has(vs, 'schema', /blast_radius must be one of/));
+    assert.ok(has(vs, 'scope', /<repo>:<glob>/));
+});
+
+test('C1: a backfilled id must equal the implied id', () => {
+    const legacy = makeRecord({ fm: { ...LEGACY_FM, decided_by: undefined, deciders: ['Alex Doe'] } });
+    const cur = loadRecord('/h/0001-session-storage.md', backfill(legacy, 'kb/ADR-0007').text);
+    assert.ok(has(run([cur], { base: base({ '0001-session-storage.md': legacy }) }), 'id', /must be kb\/ADR-0001/));
+});
+
+test('C1: a backfilled blast_radius that belongs in the other home is an error', () => {
+    const b = base({ '0001-session-storage.md': BACKFILLED() });
+    const cur = loadRecord('/h/0001-session-storage.md', classify(BACKFILLED(), { reversibility: 'two-way', blast_radius: 'service', scope: '[api:src/**]' }));
+    assert.ok(has(run([cur], { base: b }), 'home', /belongs in the local home/));
+});
+
+test('C1: a correct classification of a locked legacy record is clean', () => {
+    const b = base({ '0001-session-storage.md': BACKFILLED() });
+    const cur = loadRecord('/h/0001-session-storage.md', classify(BACKFILLED(), { reversibility: 'two-way', blast_radius: 'cross-service', scope: '[api:src/Sessions/**]' }));
+    assert.deepEqual(run([cur], { base: b }), []);
+});
+
+test('C1: two records with the same explicit id are an error', () => {
+    const a = rec();
+    const b = rec({ number: '0002', slug: 'other', fm: { id: 'kb/ADR-0001' } });
+    assert.ok(has(run([a, b]), 'id', /kb\/ADR-0001 is also used by 0001-session-storage.md/));
+});

@@ -363,7 +363,7 @@ classification field, `scope` or `decided_by` is a warning, and an error under `
 every other record it is an error (subject to the high-tier extras). An unclassified
 grandfathered record is treated as high tier wherever tier is read.
 
-A record locked on the base is only held to rules an allowed edit can satisfy.
+A record locked on the base is only held to rules an allowed edit can satisfy; values the change writes are always checked.
 
 Exit non-zero with one line per violation (`path: rule: message`). Tests in
 `scripts/__tests__/adr-*.test.js`.

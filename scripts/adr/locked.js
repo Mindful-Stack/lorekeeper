@@ -98,9 +98,10 @@ function lockedDiff(baseText, curText) {
             }
         } else if (key === 'superseded_by') {
             if (!isEmpty(bv)) out.push('superseded_by is already set and cannot change');
-            else if (b.fm.status === 'superseded' || c.fm.status !== 'superseded') {
+            else if (c.fm.status !== 'superseded') {
                 // A proposed supersession is a Status note only: a link set early could never
-                // be corrected if the successor were rejected.
+                // be corrected if the successor were rejected. A record already superseded
+                // on the base (a legacy one without its link) may gain the link alone.
                 out.push('superseded_by is set only together with status: superseded');
             }
         } else if (key === 'decided_by' && decidedBy(b.fm).length && !same(decidedBy(b.fm), cv)) {

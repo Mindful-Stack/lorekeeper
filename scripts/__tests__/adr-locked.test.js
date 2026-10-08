@@ -228,3 +228,12 @@ test('M6: a change appends exactly one Status line', () => {
     });
     assert.ok(lockedDiff(BASE, two).some((m) => /one line to ## Status per change/.test(m)));
 });
+
+test('fix2-1: a record already superseded with an empty link may gain it once', () => {
+    const legacySup = makeRecord({ fm: { status: 'superseded' }, sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSuperseded 2026-11-01.' } });
+    const linked = legacySup.replace(/^superseded_by:.*$/m, 'superseded_by: kb/ADR-0002');
+    assert.notEqual(linked, legacySup);
+    assert.deepEqual(lockedDiff(legacySup, linked), []);
+    const relinked = linked.replace('superseded_by: kb/ADR-0002', 'superseded_by: kb/ADR-0003');
+    assert.ok(lockedDiff(linked, relinked).some((m) => /superseded_by is already set/.test(m)));
+});

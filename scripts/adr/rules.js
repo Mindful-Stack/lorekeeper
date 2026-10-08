@@ -411,6 +411,9 @@ function checkMove(home, r, info) {
     if (found && found.state === 'found' && !asList(found.fm && found.fm.aliases).includes(ownId(r))) {
         err(r.file, 'move', `${id} must list ${ownId(r)} in its aliases`);
     }
+    // As with supersession, the stub replaces the record only once its new copy binds.
+    const status = found && found.state === 'found' && found.fm ? found.fm.status : null;
+    if (status && status !== 'accepted') err(r.file, 'move', `destination ${id} is ${status}; it must be accepted before the record is moved`);
     return undefined;
 }
 

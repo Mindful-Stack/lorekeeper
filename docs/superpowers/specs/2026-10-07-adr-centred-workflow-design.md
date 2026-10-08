@@ -115,7 +115,7 @@ change. `.lorekeeper/config.json` nests the same keys under `adr`.
   links). A merged number never changes.
 - A record moved between homes gets a new id in its new home, keeps its old id in `aliases:`, and
   leaves a stub file at the old path (frontmatter `status` unchanged, `moved_to: <new id>`, body one
-  line).
+  line). The stub replaces the record only once the new record is accepted.
 
 ## The record
 

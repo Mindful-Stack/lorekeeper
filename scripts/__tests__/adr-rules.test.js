@@ -519,3 +519,15 @@ test('fix4-2: a locked high-tier record missing sections it can never add is not
     // A new record still needs them.
     assert.ok(has(run([loadRecord(`/h/${name}`, text)]), 'high-tier', /two considered options/));
 });
+
+test('fix4-3: a move needs an accepted destination', () => {
+    const original = { '0001-session-storage.md': makeRecord() };
+    const stub = loadRecord('/h/0001-session-storage.md', stubOf({}, 'api/ADR-0002'));
+    const dest = (status) => () => ({ state: 'found', fm: { status, aliases: ['kb/ADR-0001'] } });
+    assert.ok(has(run([stub], { base: base(original), resolveRef: dest('proposed') }), 'move', /destination api\/ADR-0002 is proposed; it must be accepted/));
+    assert.ok(has(run([stub], { base: base(original), resolveRef: dest('rejected') }), 'move', /is rejected/));
+    assert.deepEqual(errors(run([stub], { base: base(original), resolveRef: dest('accepted') })), []);
+    const away = run([stub], { base: base(original), resolveRef: () => ({ state: 'unavailable' }) });
+    assert.deepEqual(errors(away), []);
+    assert.ok(has(away, 'relations', /moved_to api\/ADR-0002: its home is not on disk/, 'warning'));
+});

@@ -531,3 +531,10 @@ test('fix4-3: a move needs an accepted destination', () => {
     assert.deepEqual(errors(away), []);
     assert.ok(has(away, 'relations', /moved_to api\/ADR-0002: its home is not on disk/, 'warning'));
 });
+
+test('fix4-4: a deleted record locked on the base tip since the fork needs a rebase', () => {
+    const name = '0001-session-storage.md';
+    const b = base({ [name]: makeRecord({ status: 'proposed' }) }, { tip: { [name]: makeRecord() } });
+    assert.ok(has(run([], { base: b }), 'locked', /accepted on main since this branch forked/));
+    assert.ok(!run([], { base: base({ [name]: makeRecord({ status: 'proposed' }) }) }).some((v) => v.level === 'error'));
+});

@@ -325,7 +325,14 @@ function checkAgainstBase(home) {
     for (const name of base.baseNames) {
         if (names.has(name)) continue;
         const b = parseRecord(base.textAt(name) || '').fm;
-        if (R.LOCKED.has(b.status)) err(name, 'locked', 'a locked record is never deleted or renamed');
+        if (R.LOCKED.has(b.status)) {
+            err(name, 'locked', 'a locked record is never deleted or renamed');
+            continue;
+        }
+        const tip = base.tipTextAt ? base.tipTextAt(name) : null;
+        if (tip && R.LOCKED.has(parseRecord(tip).fm.status)) {
+            err(name, 'locked', `accepted on ${base.ref} since this branch forked; rebase onto ${base.ref}`);
+        }
     }
     // Only a record new on this branch takes a number; one already on the merge base is
     // covered by the duplicate-number check above.

@@ -296,3 +296,19 @@ test('fix2-2: in a household, a local record may move to another repo, with or w
     const named = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', '--base', 'main', w.local);
     assert.equal(named.code, 0, named.stdout + named.stderr);
 });
+
+test('fix4-4: --base: deleting a record accepted on the base since the fork fails', (t) => {
+    const w = workspace(t);
+    const file = path.join(w.local, '0001-session-storage.md');
+    write(file, makeRecord({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way', scope: [] } }));
+    commitAll(w.api, w.env, 'propose 0001');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'feature');
+    git(w.api, w.env, 'checkout', '-q', 'main');
+    write(file, makeRecord({ prefix: 'api', fm: { reversibility: 'two-way', scope: [] } }));
+    commitAll(w.api, w.env, 'accept 0001');
+    git(w.api, w.env, 'checkout', '-q', 'feature');
+    fs.rmSync(file);
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /0001-session-storage\.md: locked: accepted on main since this branch forked; rebase onto main/);
+});

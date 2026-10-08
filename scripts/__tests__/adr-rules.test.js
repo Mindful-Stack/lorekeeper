@@ -457,3 +457,18 @@ test('fix3-3: a frozen reference already broken on the base is a warning', () =>
     assert.ok(has(vs, 'relations', /not-an-id is not a qualified id/, 'warning'));
     assert.ok(has(vs, 'relations', /depends_on web\/ADR-0001 does not exist/, 'warning'));
 });
+
+test('fix3-4: linking a legacy predecessor to a locked successor without supersedes warns', () => {
+    const predBase = makeRecord({ fm: { status: 'superseded' }, sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSuperseded 2026-11-01.' } });
+    const predNow = predBase.replace(/^superseded_by:.*$/m, 'superseded_by: kb/ADR-0002');
+    const succText = makeRecord({ number: '0002', fm: { supersedes: undefined } });
+    const b = base({ '0001-session-storage.md': predBase, '0002-other.md': succText });
+    const records = [loadRecord('/h/0001-session-storage.md', predNow), loadRecord('/h/0002-other.md', succText)];
+    const vs = run(records, { base: b });
+    assert.deepEqual(errors(vs), []);
+    assert.ok(has(vs, 'relations', /does not list kb\/ADR-0001 in supersedes/, 'warning'));
+    // A successor that lists other predecessors, or one this change edits, can be made symmetric.
+    const listsOther = makeRecord({ number: '0002', fm: { supersedes: ['kb/ADR-0005'] } });
+    const b2 = base({ '0001-session-storage.md': predBase, '0002-other.md': listsOther });
+    assert.ok(has(run([records[0], loadRecord('/h/0002-other.md', listsOther)], { base: b2, resolveRef: () => ({ state: 'found', fm: {} }) }), 'relations', /does not list kb\/ADR-0001/));
+});

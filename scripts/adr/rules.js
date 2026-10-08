@@ -265,7 +265,11 @@ function checkAcrossRecords(home) {
         if (succ && byId.has(succ)) {
             const s = byId.get(succ);
             if (!asList(s.fm.supersedes).map((x) => R.qualify(x, h.prefix)).includes(ownId(r))) {
-                between([r, s], r.file, 'relations', `superseded_by ${succ}, but ${succ} does not list ${ownId(r)} in supersedes`);
+                const message = `superseded_by ${succ}, but ${succ} does not list ${ownId(r)} in supersedes`;
+                // A locked, untouched successor with no supersedes at all is a legacy record that
+                // can never gain the key; linking its predecessor is still right, so this warns.
+                if (home.info.get(s).untouched && isEmpty(s.fm.supersedes)) home.warn(r.file, 'relations', message);
+                else between([r, s], r.file, 'relations', message);
             }
         }
         if (R.RATIFIED.has(r.fm.status)) {

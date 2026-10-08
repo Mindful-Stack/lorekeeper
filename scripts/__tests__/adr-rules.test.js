@@ -510,3 +510,12 @@ test('fix4-1: a locked record with an unreadable block key it keeps can still ta
         'description is a block scalar (> or |): put the value on one line',
     ]);
 });
+
+test('fix4-2: a locked high-tier record missing sections it can never add is not failed for them', () => {
+    const name = '0001-session-storage.md';
+    const text = makeRecord({ sections: { 'Considered options': undefined, 'Assumptions and invalidation triggers': undefined } });
+    const vs = run([loadRecord(`/h/${name}`, text)], { base: base({ [name]: text }) });
+    assert.deepEqual(errors(vs), []);
+    // A new record still needs them.
+    assert.ok(has(run([loadRecord(`/h/${name}`, text)]), 'high-tier', /two considered options/));
+});

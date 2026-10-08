@@ -9,6 +9,8 @@ const SHARED_SCOPE = /^[A-Za-z0-9._-]+:[^:]/;
 const PREFIXED = /^[A-Za-z0-9._-]+:/;
 const TIER_KEYS = ['reversibility', 'blast_radius', 'sensitivity'];
 const RELATION_KEYS = ['supersedes', 'depends_on', 'related', 'superseded_by'];
+// Sections a rule can ask for (the high-tier extras).
+const RULE_SECTIONS = ['Considered options', 'Assumptions and invalidation triggers'];
 
 function handle(s) {
     return String(s).trim().replace(/^@/, '').toLowerCase();
@@ -57,6 +59,9 @@ function describe(r, ctx) {
         }
         const bSections = new Map(sections(b.body).map((s) => [s.heading, s.content]));
         for (const s of r.sections) if (bSections.get(s.heading) === s.content) keys.add(`§${s.heading}`);
+        // A section absent from both is frozen too: lockedDiff forbids adding it.
+        const present = new Set([...bSections.keys(), ...r.sections.map((s) => s.heading)]);
+        for (const h of RULE_SECTIONS) if (!present.has(h)) keys.add(`§${h}`);
     }
     let mode = 'none';
     if (lockedOnBase) mode = 'base';

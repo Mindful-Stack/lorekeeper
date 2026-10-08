@@ -406,3 +406,37 @@ test('fix3-1: rewriting a locked block-YAML record inline leaves the home green'
     const b = base({ '0001-session-storage.md': blockYamlLegacy() });
     assert.deepEqual(errors(run([loadRecord('/h/0001-session-storage.md', blockYamlLegacy({ inline: true }))], { base: b })), []);
 });
+
+test('fix3-2: superseded_by requires status superseded, unless the change leaves it as it was', () => {
+    const early = rec({ fm: { superseded_by: 'kb/ADR-0002' } });
+    const succ = rec({ number: '0002', slug: 'other', fm: { supersedes: ['kb/ADR-0001'] } });
+    assert.ok(has(run([early, succ]), 'relations', /superseded_by is set, so status must be superseded/));
+    const legacyText = makeRecord({ fm: { superseded_by: 'kb/ADR-0002' } });
+    const legacy = loadRecord('/h/0001-session-storage.md', legacyText);
+    const succText = makeRecord({ number: '0002', fm: { supersedes: ['kb/ADR-0001'] } });
+    const b = base({ '0001-session-storage.md': legacyText, '0002-other.md': succText });
+    assert.ok(!run([legacy, loadRecord('/h/0002-other.md', succText)], { base: b }).some((v) => /status must be superseded/.test(v.message)));
+});
+
+test('fix3-2: a newly set superseded_by needs an accepted successor', () => {
+    const name = '0001-session-storage.md';
+    const b = base({ [name]: makeRecord() });
+    const flipped = loadRecord(`/h/${name}`, makeRecord({
+        fm: { status: 'superseded', superseded_by: 'kb/ADR-0002' },
+        sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSuperseded 2026-11-01 by kb/ADR-0002.' },
+    }));
+    const proposed = rec({ number: '0002', slug: 'other', status: 'proposed', fm: { supersedes: ['kb/ADR-0001'] } });
+    assert.ok(has(run([flipped, proposed], { base: b }), 'relations', /successor kb\/ADR-0002 is proposed; it must be accepted/));
+    const accepted = rec({ number: '0002', slug: 'other', fm: { supersedes: ['kb/ADR-0001'] } });
+    assert.deepEqual(errors(run([flipped, accepted], { base: b })), []);
+    // Across homes the successor merged earlier; the resolver reports its status.
+    const across = loadRecord(`/h/${name}`, makeRecord({
+        fm: { status: 'superseded', superseded_by: 'api/ADR-0002' },
+        sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSuperseded 2026-11-01 by api/ADR-0002.' },
+    }));
+    assert.ok(has(run([across], { base: b, resolveRef: () => ({ state: 'found', fm: { status: 'proposed' } }) }), 'relations', /successor api\/ADR-0002 is proposed/));
+    assert.deepEqual(errors(run([across], { base: b, resolveRef: () => ({ state: 'found', fm: { status: 'accepted' } }) })), []);
+    const away = run([across], { base: b, resolveRef: () => ({ state: 'unavailable' }) });
+    assert.deepEqual(errors(away), []);
+    assert.ok(has(away, 'relations', /superseded_by api\/ADR-0002: its home is not on disk/, 'warning'));
+});

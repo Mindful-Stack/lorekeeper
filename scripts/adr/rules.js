@@ -221,6 +221,12 @@ function checkRecord(home, r) {
         if (lockedOnBase && frozen.keys.has(key)) continue;
         for (const ref of asList(fm[key])) checkRef(home, r, ref, key);
     }
+    if (!isEmpty(fm.superseded_by)) {
+        if (fm.status !== 'superseded') fix(['superseded_by', 'status'], 'relations', 'superseded_by is set, so status must be superseded');
+        const info = home.info.get(r);
+        const newlySet = ctx.base && (!info.baseFm || isEmpty(info.baseFm.superseded_by));
+        if (newlySet) checkSuccessorAccepted(home, r);
+    }
 
     // An unchanged legacy proposal on the default branch predates this rule: warn only.
     if (h.kind === 'shared' && !h.coinciding && fm.status === 'proposed') {
@@ -318,6 +324,27 @@ function checkAgainstBase(home) {
         const scope = asList(r.fm.scope);
         const hit = base.changedFiles.find((f) => scope.some((g) => matchesGlob(f, g)));
         if (hit) err(r.file, 'ride-along', `this change touches ${hit} in its scope, so the record must be accepted before merge`);
+    }
+}
+
+// A predecessor is flipped only once its successor binds: accepted in the same change within
+// a home, or merged earlier in another home. An unavailable home is already a warning from
+// checkRef, so it is not reported again here.
+function checkSuccessorAccepted(home, r) {
+    const { ctx, err, byId } = home;
+    const { prefix } = ctx.home;
+    const id = R.qualify(r.fm.superseded_by, prefix);
+    if (!id || id === home.ownId(r)) return;
+    let status = null;
+    if (id.startsWith(`${prefix}/`)) {
+        const s = byId.get(id);
+        status = s ? s.fm.status : null;
+    } else {
+        const found = ctx.resolveRef ? ctx.resolveRef(id) : { state: 'unavailable' };
+        status = found.state === 'found' && found.fm ? found.fm.status : null;
+    }
+    if (status && status !== 'accepted') {
+        err(r.file, 'relations', `successor ${id} is ${status}; it must be accepted before this record is superseded`);
     }
 }
 

@@ -333,8 +333,9 @@ collected from exemptions and fed back.
 `select`. Run by the skill after every write, available as a pre-commit hook, and in CI.
 
 `check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>] [--strict] [--config
-<file>] <dir>`. The home is inferred from the path when it ends in a configured `sharedDir` under
-a KB, else given; CI passes it because the manifest is not checked out there. `--single-home`
+<file>] <dir>`. The home is inferred from the path for any home the resolution above finds (a
+household's homes, or a single repo's local home and its KB); a standalone KB checkout needs
+`--home shared`, and CI passes `--home` because the manifest is not checked out there. `--single-home`
 marks a repo with no KB (one coinciding home) when `--home` is passed; `--config` supplies
 `decisionOwners`/`deciders` where no manifest or config file is checked out. `--base` needs the
 base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:

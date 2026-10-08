@@ -281,10 +281,15 @@ locked record may (a Status line, a supersede link, a dated observation, a forma
 repair, a schema backfill). It has no dependencies:
 
 ```bash
-node scripts/adr-lint.js check --base origin/main <adr-dir>     # CI: fetch-depth: 0
-node scripts/adr-lint.js select --repo api --diff change.patch  # records a diff touches
-node scripts/adr-lint.js backfill --dry-run <adr-dir>           # add id + classification keys
+node scripts/adr-lint.js check --home local --base origin/main docs/adr  # CI: fetch-depth: 0
+node scripts/adr-lint.js select --repo api --diff change.patch           # records a diff touches
+node scripts/adr-lint.js backfill --dry-run <adr-dir>                    # add id + classification keys
 ```
+
+CI has no `household.json`, so it names the home: `--home local` in a code repo, `--home shared`
+in a knowledge-base repo. Without `--home`, a code repo with no knowledge base on disk counts as
+a single coinciding home, which turns off the check that each record sits in the home its
+`blast_radius` belongs to. Pass `--single-home` only in a repo that has no knowledge base at all.
 
 The locked-record rule compares each record with the merge base, and a branch that edits a record
 accepted on the base since it forked fails until it is rebased. Repos that run the check in CI
@@ -297,7 +302,7 @@ To run it before every commit in a repo with a local ADR home, add `.git/hooks/p
 #!/bin/sh
 # Validate ADRs against the default branch before committing.
 plugin="${LOREKEEPER_PLUGIN_DIR:?set LOREKEEPER_PLUGIN_DIR to the lorekeeper checkout}"
-exec node "$plugin/scripts/adr-lint.js" check --base origin/main docs/adr
+exec node "$plugin/scripts/adr-lint.js" check --home local --base origin/main docs/adr
 ```
 
 The canonical record template is `references/adr-template.md`.

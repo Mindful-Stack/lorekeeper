@@ -472,3 +472,11 @@ test('fix3-4: linking a legacy predecessor to a locked successor without superse
     const b2 = base({ '0001-session-storage.md': predBase, '0002-other.md': listsOther });
     assert.ok(has(run([records[0], loadRecord('/h/0002-other.md', listsOther)], { base: b2, resolveRef: () => ({ state: 'found', fm: {} }) }), 'relations', /does not list kb\/ADR-0001/));
 });
+
+test('fix3-5: findings between records the change leaves unchanged warn, whatever their status', () => {
+    const draft = makeRecord({ status: 'proposed', fm: LEGACY_FM });
+    const b = base({ '0001-a.md': draft, '0001-b.md': draft });
+    const vs = run([loadRecord('/h/0001-a.md', draft), loadRecord('/h/0001-b.md', draft)], { base: b });
+    assert.deepEqual(errors(vs), []);
+    assert.ok(has(vs, 'number', /also used by 0001-a.md/, 'warning'));
+});

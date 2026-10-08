@@ -65,10 +65,9 @@ function describe(r, ctx) {
         baseText,
         baseFm: b ? b.fm : null,
         lockedOnBase,
-        // Locked on the base and identical to it: nothing in this change can fix a finding here.
-        untouched: lockedOnBase && lf(baseText) === lf(r.text),
-        // On the base and identical to it, whatever its status.
-        unchanged: !!baseText && lf(baseText) === lf(r.text),
+        // On the base and identical to it, whatever its status: this change did not cause a
+        // finding here.
+        untouched: !!baseText && lf(baseText) === lf(r.text),
         gf: grandfathered(r, baseText),
         frozen: { mode, keys },
     };
@@ -102,8 +101,8 @@ function checkHome(ctx) {
         err: (file, rule, message) => out.push({ file, rule, level: 'error', message }),
         warn: (file, rule, message) => out.push({ file, rule, level: 'warning', message }),
     };
-    // A finding between records the change leaves locked and untouched is a warning: an error
-    // would block every later change to the home, and no allowed edit could clear it.
+    // A finding between records the change leaves untouched is a warning: the change did not
+    // cause it, and for locked records no allowed edit could clear it.
     home.between = (involved, file, rule, message) => out.push({
         file, rule, message,
         level: involved.every((x) => x && home.info.get(x).untouched) ? 'warning' : 'error',
@@ -117,9 +116,9 @@ function checkHome(ctx) {
 function checkRecord(home, r) {
     const { ctx, err, warn } = home;
     const fm = r.fm;
-    const { baseText, lockedOnBase, gf, frozen, unchanged } = home.info.get(r);
+    const { baseText, lockedOnBase, gf, frozen, untouched } = home.info.get(r);
     // A record the change leaves as it was cannot be blamed on it: its parse errors warn.
-    for (const e of r.errors) (unchanged ? warn : err)(r.file, 'frontmatter', e);
+    for (const e of r.errors) (untouched ? warn : err)(r.file, 'frontmatter', e);
     if (r.errors.length && Object.keys(fm).length === 0) return;
 
     // `keys` names the frontmatter keys (and §sections) a finding is about.
@@ -268,7 +267,7 @@ function checkAcrossRecords(home) {
                 const message = `superseded_by ${succ}, but ${succ} does not list ${ownId(r)} in supersedes`;
                 // A locked, untouched successor with no supersedes at all is a legacy record that
                 // can never gain the key; linking its predecessor is still right, so this warns.
-                if (home.info.get(s).untouched && isEmpty(s.fm.supersedes)) home.warn(r.file, 'relations', message);
+                if (home.info.get(s).lockedOnBase && home.info.get(s).untouched && isEmpty(s.fm.supersedes)) home.warn(r.file, 'relations', message);
                 else between([r, s], r.file, 'relations', message);
             }
         }

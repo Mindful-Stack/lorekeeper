@@ -275,6 +275,38 @@ revisited. Frontmatter carries `status`, `date`, `deciders`, and `confidence`; t
 the decision in one sentence and is what listings and search show. There is no index file: the
 list is rendered from frontmatter on demand.
 
+`scripts/adr-lint.js` validates records mechanically: frontmatter schema, id and home, scope
+syntax, relations, and, given a base branch, that an accepted record changed only in the ways a
+locked record may (a Status line, a supersede link, a dated observation, a format or link
+repair, a schema backfill). It has no dependencies:
+
+```bash
+node scripts/adr-lint.js check --home local --base origin/main docs/adr  # CI: fetch-depth: 0
+node scripts/adr-lint.js select --repo api --diff change.patch           # records a diff touches
+node scripts/adr-lint.js backfill --dry-run <adr-dir>                    # add id + classification keys
+```
+
+CI has no `household.json`, so it names the home: `--home local` in a code repo, `--home shared`
+in a knowledge-base repo. Without `--home`, a code repo with no knowledge base on disk counts as
+a single coinciding home, which turns off the check that each record sits in the home its
+`blast_radius` belongs to. Pass `--single-home` only in a repo that has no knowledge base at all.
+
+The locked-record rule compares each record with the merge base, and a branch that edits a record
+accepted on the base since it forked fails until it is rebased. Repos that run the check in CI
+should also require branches to be up to date before merging, so what merges is what was checked.
+
+To run it before every commit in a repo with a local ADR home, add `.git/hooks/pre-commit`
+(executable):
+
+```sh
+#!/bin/sh
+# Validate ADRs against the default branch before committing.
+plugin="${LOREKEEPER_PLUGIN_DIR:?set LOREKEEPER_PLUGIN_DIR to the lorekeeper checkout}"
+exec node "$plugin/scripts/adr-lint.js" check --home local --base origin/main docs/adr
+```
+
+The canonical record template is `references/adr-template.md`.
+
 Retrieval is a separate, read-only **`architect`** agent: pattern-identifier, brainstorming, and
 review dispatch it in parallel with their usual agent, so "how do we do X?" also returns the
 decision behind X, a design that would fire a record's invalidation trigger is flagged before the
@@ -474,7 +506,8 @@ lorekeeper/
 ├── agents/            # Subagent definitions
 ├── commands/          # Slash command definitions
 ├── hooks/             # Lifecycle hooks (SessionStart, etc.)
-├── scripts/           # Build scripts (index generation)
+├── references/        # Canonical templates (adr-template.md)
+├── scripts/           # Detection, migration, and the ADR validator (adr-lint)
 ├── skills/            # Auto-invoked skill definitions
 └── test/              # Tests
 ```

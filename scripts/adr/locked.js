@@ -86,7 +86,9 @@ function lockedDiff(baseText, curText) {
     }
 
     // Classification is all-or-nothing: a half-classified record could never be completed.
-    if (backfillOpen && !(isEmpty(c.fm.reversibility) && isEmpty(c.fm.blast_radius))) {
+    // Checked only when this change writes it, so an untouched record always passes.
+    const classifying = !same(b.fm.reversibility, c.fm.reversibility) || !same(b.fm.blast_radius, c.fm.blast_radius);
+    if (backfillOpen && classifying && !(isEmpty(c.fm.reversibility) && isEmpty(c.fm.blast_radius))) {
         if (isEmpty(c.fm.reversibility) || isEmpty(c.fm.blast_radius) || !('sensitivity' in c.fm) || !('scope' in c.fm)) {
             out.push('classify a record in one change: reversibility, blast_radius, sensitivity and scope together');
         }

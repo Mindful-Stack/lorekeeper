@@ -276,3 +276,37 @@ test('C1: two records with the same explicit id are an error', () => {
     const b = rec({ number: '0002', slug: 'other', fm: { id: 'kb/ADR-0001' } });
     assert.ok(has(run([a, b]), 'id', /kb\/ADR-0001 is also used by 0001-session-storage.md/));
 });
+
+// I4: a home the change does not touch never fails. Every record below is on the base exactly
+// as it is now; any error would block every later change to the home.
+test('I4: an identical base and current produce no errors, whatever shape the home is in', () => {
+    const legacyFm = { ...LEGACY_FM, decided_by: undefined, deciders: ['Alex Doe'] };
+    const half = BACKFILLED().replace('blast_radius:', 'blast_radius: cross-service');
+    const head = makeRecord({ fm: { moved_to: 'api/ADR-0004' } });
+    const stubText = `${head.slice(0, head.indexOf('\n---\n') + 5)}Moved to api/ADR-0004.\n`;
+    const shapes = {
+        'legacy accepted': [makeRecord({ fm: legacyFm })],
+        'half-classified': [half],
+        'superseded with an asymmetric link': [
+            makeRecord({ fm: { status: 'superseded', superseded_by: 'kb/ADR-0002' } }),
+            makeRecord({ number: '0002' }),
+        ],
+        'duplicate-number pair': [makeRecord(), makeRecord()],
+        'legacy proposal': [makeRecord({ status: 'proposed', fm: LEGACY_FM })],
+        'moved stub': [stubText],
+    };
+    for (const [shape, texts] of Object.entries(shapes)) {
+        const map = {};
+        const records = texts.map((text, i) => {
+            const name = `${parseNumber(text)}-shape-${i}.md`;
+            map[name] = text;
+            return loadRecord(`/h/${name}`, text);
+        });
+        const vs = run(records, { base: base(map) });
+        assert.deepEqual(errors(vs), [], `${shape}: ${JSON.stringify(errors(vs))}`);
+    }
+});
+
+function parseNumber(text) {
+    return /^title: "?ADR-(\d{4})/m.exec(text)[1];
+}

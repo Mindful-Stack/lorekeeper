@@ -59,6 +59,8 @@ function describe(r, ctx) {
     return {
         baseText,
         lockedOnBase,
+        // Locked on the base and identical to it: nothing in this change can fix a finding here.
+        untouched: lockedOnBase && baseText.replace(/\r\n/g, '\n') === r.text.replace(/\r\n/g, '\n'),
         gf: grandfathered(r, baseText),
         frozen: { mode, keys },
     };
@@ -89,6 +91,12 @@ function checkHome(ctx) {
         err: (file, rule, message) => out.push({ file, rule, level: 'error', message }),
         warn: (file, rule, message) => out.push({ file, rule, level: 'warning', message }),
     };
+    // A finding between records the change leaves locked and untouched is a warning: an error
+    // would block every later change to the home, and no allowed edit could clear it.
+    home.between = (involved, file, rule, message) => out.push({
+        file, rule, message,
+        level: involved.every((x) => x && home.info.get(x).untouched) ? 'warning' : 'error',
+    });
     for (const r of ctx.records) checkRecord(home, r);
     checkAcrossRecords(home);
     if (ctx.base) checkAgainstBase(home);
@@ -213,7 +221,7 @@ function checkRecord(home, r) {
 
 // Strays, duplicate numbers and ids, supersession symmetry and cycles.
 function checkAcrossRecords(home) {
-    const { ctx, err, ownId, byId } = home;
+    const { ctx, err, between, ownId, byId } = home;
     const { records, home: h } = ctx;
     for (const file of ctx.strays || []) {
         err(file, 'filename', 'record files are named NNNN-<problem-slug>.md (prefix with _ to exclude)');
@@ -222,10 +230,12 @@ function checkAcrossRecords(home) {
     const byNumber = new Map();
     const byExplicitId = new Map();
     for (const r of records) {
-        if (byNumber.has(r.number)) err(r.file, 'number', `number ${r.number} is also used by ${byNumber.get(r.number).name}`);
+        const other = byNumber.get(r.number);
+        if (other) between([r, other], r.file, 'number', `number ${r.number} is also used by ${other.name}`);
         else byNumber.set(r.number, r);
         if (isEmpty(r.fm.id)) continue;
-        if (byExplicitId.has(r.fm.id)) err(r.file, 'id', `id ${r.fm.id} is also used by ${byExplicitId.get(r.fm.id).name}`);
+        const twin = byExplicitId.get(r.fm.id);
+        if (twin) between([r, twin], r.file, 'id', `id ${r.fm.id} is also used by ${twin.name}`);
         else byExplicitId.set(r.fm.id, r);
     }
 
@@ -234,29 +244,31 @@ function checkAcrossRecords(home) {
         if (succ && byId.has(succ)) {
             const s = byId.get(succ);
             if (!asList(s.fm.supersedes).map((x) => R.qualify(x, h.prefix)).includes(ownId(r))) {
-                err(r.file, 'relations', `superseded_by ${succ}, but ${succ} does not list ${ownId(r)} in supersedes`);
+                between([r, s], r.file, 'relations', `superseded_by ${succ}, but ${succ} does not list ${ownId(r)} in supersedes`);
             }
         }
         if (R.RATIFIED.has(r.fm.status)) {
             for (const ref of asList(r.fm.supersedes)) {
                 const pred = byId.get(R.qualify(ref, h.prefix));
                 if (pred && (pred.fm.status !== 'superseded' || R.qualify(pred.fm.superseded_by || '', h.prefix) !== ownId(r))) {
-                    err(r.file, 'relations', `${ownId(pred)} must be flipped to superseded_by ${ownId(r)} in the same change`);
+                    between([r, pred], r.file, 'relations', `${ownId(pred)} must be flipped to superseded_by ${ownId(r)} in the same change`);
                 }
             }
         }
     }
     for (const r of records) {
         const seen = new Set([ownId(r)]);
+        const path = [r];
         let cur = r;
         while (cur && !isEmpty(cur.fm.superseded_by)) {
             const next = R.qualify(cur.fm.superseded_by, h.prefix);
             if (seen.has(next)) {
-                err(r.file, 'cycle', `supersession cycle through ${next}`);
+                between(path, r.file, 'cycle', `supersession cycle through ${next}`);
                 break;
             }
             seen.add(next);
             cur = byId.get(next);
+            path.push(cur);
         }
     }
 }
@@ -271,8 +283,10 @@ function checkAgainstBase(home) {
         const b = parseRecord(base.textAt(name) || '').fm;
         if (R.LOCKED.has(b.status)) err(name, 'locked', 'a locked record is never deleted or renamed');
     }
+    // Only a record new on this branch takes a number; one already on the merge base is
+    // covered by the duplicate-number check above.
     for (const r of records) {
-        const owner = base.tipNumbers.get(r.number);
+        const owner = base.textAt(r.name) === null && base.tipNumbers.get(r.number);
         if (owner && owner !== r.name) err(r.file, 'number', `ADR-${r.number} is already ${owner} on the base branch; renumber this record`);
     }
     for (const r of records) {

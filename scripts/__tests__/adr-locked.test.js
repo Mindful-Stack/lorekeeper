@@ -184,3 +184,8 @@ test('adding, removing or reordering sections fails', () => {
     const moved = BASE.replace(/## Consequences\n[^\n]*\n\n/, '') + '## Consequences\n- Every instance needs the store, so a store outage logs everyone out.\n';
     assert.ok(lockedDiff(BASE, moved).some((m) => /reordered/.test(m)));
 });
+
+test('I4: an identical half-classified record passes (classification is checked only when it changes)', () => {
+    const half = backfill(legacy(), 'kb/ADR-0001').text.replace('blast_radius:', 'blast_radius: cross-service');
+    assert.deepEqual(lockedDiff(half, half), []);
+});

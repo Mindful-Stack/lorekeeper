@@ -6,6 +6,43 @@
 const { matchesGlob } = require('./glob');
 
 const PREFIX = /^[a-z]\//;
+const C_ESCAPES = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
+
+// git C-quotes a path with special characters (core.quotepath, on by default): "a/src/\303\251.cs".
+// Reads such a string at the start of `s` and returns { value, rest }, or null when `s` does
+// not start with one. Octal escapes are bytes, so a multi-byte UTF-8 character decodes whole.
+function readQuoted(s) {
+    if (s[0] !== '"') return null;
+    const bytes = [];
+    let i = 1;
+    while (i < s.length) {
+        const c = s[i];
+        if (c === '"') return { value: Buffer.from(bytes).toString('utf8'), rest: s.slice(i + 1) };
+        if (c === '\\') {
+            const oct = /^[0-7]{1,3}/.exec(s.slice(i + 1));
+            if (oct) {
+                bytes.push(parseInt(oct[0], 8));
+                i += 1 + oct[0].length;
+            } else {
+                const e = s[i + 1];
+                if (e in C_ESCAPES) bytes.push(C_ESCAPES[e]);
+                else bytes.push(...Buffer.from(e || '', 'utf8'));
+                i += 2;
+            }
+            continue;
+        }
+        const run = /^[^"\\]+/.exec(s.slice(i))[0];
+        bytes.push(...Buffer.from(run, 'utf8'));
+        i += run.length;
+    }
+    return null;
+}
+
+// A whole path token: C-quoted, or taken as it is.
+function pathToken(s) {
+    const q = readQuoted(s);
+    return q && q.rest === '' ? q.value : s;
+}
 
 // A `diff --git X Y` pair is prefixed when both sides start with *different* one-letter
 // prefixes (`a/` `b/`, or mnemonic `i/` `w/` `c/` `o/`); the same letter on both sides is a
@@ -19,18 +56,26 @@ function isPrefixed(x, y) {
 // Of the possible splits, the one whose two sides name the same path wins; a single space is
 // the only split there is.
 function splitGitHeader(rest) {
-    const spaces = [];
-    for (let i = 0; i < rest.length; i++) if (rest[i] === ' ') spaces.push(i);
-    const splits = spaces.map((i) => {
-        const x = rest.slice(0, i);
-        const y = rest.slice(i + 1);
+    const side = (x, y) => {
         const prefixed = isPrefixed(x, y);
         return { prefixed, from: prefixed ? x.slice(2) : x, to: prefixed ? y.slice(2) : y };
-    });
+    };
+    const first = readQuoted(rest);
+    if (first && first.rest.startsWith(' ')) return side(first.value, pathToken(first.rest.slice(1)));
+    if (rest.endsWith('"')) {
+        for (let i = 0; i < rest.length; i++) {
+            const q = rest[i] === ' ' && readQuoted(rest.slice(i + 1));
+            if (q && q.rest === '') return side(rest.slice(0, i), q.value);
+        }
+    }
+    const spaces = [];
+    for (let i = 0; i < rest.length; i++) if (rest[i] === ' ') spaces.push(i);
+    const splits = spaces.map((i) => side(rest.slice(0, i), rest.slice(i + 1)));
     return splits.find((sp) => sp.from === sp.to) || (splits.length === 1 ? splits[0] : null);
 }
 
-// Every path a patch touches, for matching scope globs. Read from file headers only:
+// Every path a patch touches, for matching scope globs, with git C-quoted paths decoded
+// (readQuoted). Read from file headers only:
 //   - `diff --git X Y` (both sides), so renames, binary and mode-only changes count;
 //   - `rename from` / `rename to` / `copy from` / `copy to` in the extended header;
 //   - `---` / `+++` lines, which also cover patches with no `diff` lines (`diff -u`).
@@ -81,12 +126,15 @@ function parsePatchPaths(patch) {
         }
         const moved = /^(?:rename|copy) (?:from|to) (.+)$/.exec(line);
         if (moved) {
-            paths.add(moved[1]);
+            paths.add(pathToken(moved[1]));
             continue;
         }
-        const m = /^(?:\+\+\+|---) ([^\t]+)/.exec(line);
-        if (!m || m[1] === '/dev/null') continue;
-        paths.add(prefixed ? m[1].replace(PREFIX, '') : m[1]);
+        const m = /^(?:\+\+\+|---) (.+)$/.exec(line);
+        if (!m) continue;
+        const q = readQuoted(m[1]);
+        const file = q ? q.value : m[1].replace(/\t.*$/, '');
+        if (file === '/dev/null') continue;
+        paths.add(prefixed ? file.replace(PREFIX, '') : file);
     }
     return [...paths];
 }

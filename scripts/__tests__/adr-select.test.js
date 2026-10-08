@@ -88,3 +88,28 @@ test('fix4-5: renames, copies, binary and mode-only changes are read from the fi
     const same = 'diff --git a/src/my file.cs b/src/my file.cs\nold mode 100644\nnew mode 100755\n';
     assert.deepEqual(parsePatchPaths(same), ['src/my file.cs']);
 });
+
+test('fix4-6: git C-quoted paths are decoded (Unicode, quote, tab, backslash)', () => {
+    // Headers as git writes them with core.quotepath on (its default).
+    const patch = [
+        'diff --git "a/src/a\\tb.cs" "b/src/a\\tb.cs"',
+        '--- "a/src/a\\tb.cs"',
+        '+++ "b/src/a\\tb.cs"',
+        'diff --git "a/src/a\\"b.cs" "b/src/a\\"b.cs"',
+        '--- "a/src/a\\"b.cs"',
+        '+++ "b/src/a\\"b.cs"',
+        'diff --git "a/src/a\\\\b.cs" "b/src/a\\\\b.cs"',
+        '--- "a/src/a\\\\b.cs"',
+        '+++ "b/src/a\\\\b.cs"',
+        'diff --git "a/src/\\303\\251.cs" "b/src/\\303\\274.cs"',
+        'rename from "src/\\303\\251.cs"',
+        'rename to "src/\\303\\274.cs"',
+        '--- "a/src/\\303\\251.cs"',
+        '+++ "b/src/\\303\\274.cs"',
+        '',
+    ].join('\n');
+    assert.deepEqual(parsePatchPaths(patch).sort(), ['src/a\tb.cs', 'src/a"b.cs', 'src/a\\b.cs', 'src/é.cs', 'src/ü.cs'].sort());
+    // One side quoted, the other not (a rename from a plain name to a quoted one).
+    const mixed = 'diff --git a/src/plain.cs "b/src/\\303\\251.cs"\nrename from src/plain.cs\nrename to "src/\\303\\251.cs"\n';
+    assert.deepEqual(parsePatchPaths(mixed).sort(), ['src/plain.cs', 'src/é.cs']);
+});

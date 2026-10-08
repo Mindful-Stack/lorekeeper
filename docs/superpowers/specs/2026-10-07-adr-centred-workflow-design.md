@@ -355,6 +355,12 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
   edits a locked one;
 - **locked-record diff rule:** given `--base`, a locked record may only differ by the five edits
   in *Amend or supersede*;
+- given `--base`, a record locked on the base tip but not at the merge base (accepted on the base
+  since this branch forked) must be unchanged from the merge base; any edit to it fails with
+  "rebase onto <base>";
+- a finding between records (duplicate numbers or ids, supersession asymmetry, cycles) whose
+  records are all present on the base and unchanged by this change is a warning, not an error:
+  the change did not cause it, and a locked record could not clear it;
 - a shared-home record with `status: proposed` is an error when the change adds or edits it; an
   untouched legacy proposal is a warning;
 - ride-along rule (above), given `--base` and the PR's changed files.

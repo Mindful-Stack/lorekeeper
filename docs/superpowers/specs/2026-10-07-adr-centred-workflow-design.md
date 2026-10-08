@@ -4,8 +4,7 @@
 **Status:** approved design, ready for implementation plans (three, see *Delivery*)
 **Touches:** `commands/adr.md`, `skills/lore-adr`, `skills/recording-decisions`, `agents/architect`,
 `agents/knowledge-updater`, `skills/brainstorming`, `skills/writing-plans`, `skills/review`,
-`commands/doctor.md`, `scripts/` (new validator), `scripts/manifest-schema.json`,
-`scripts/migrate-manifest.js`, `README.md`
+`commands/doctor.md`, `scripts/` (new validator), `references/adr-template.md`, `README.md`
 
 ## Goal
 
@@ -102,8 +101,8 @@ ids `<kb-dir>/ADR-NNNN`, never edited (unchanged rule). `kb/` always means the t
 
 plus a per-repo `repos[].adrDir` override. `.lorekeeper/config.json` accepts the same keys for
 single-repo setups. `decisionOwners` and `deciders` are people or code-host team handles; an empty
-list disables the matching check. `scripts/manifest-schema.json` and `migrate-manifest.js` learn
-the block; every key is optional, so no schema-version bump.
+list disables the matching check. Every key is optional, so the manifest schema version does not
+change. `.lorekeeper/config.json` nests the same keys under `adr`.
 
 ## Identity and numbering
 
@@ -220,8 +219,10 @@ proposed ──(/lore:adr accept, naming a human)──► accepted ──► su
     └────────────────────────────────────────► rejected
 ```
 
-- **proposed** — draft. Amend freely. Code must not depend on it. Shared-home proposals exist
-  only on PR branches, never on the KB's default branch (the KB holds settled knowledge only).
+- **proposed** — draft. Amend freely. Code must not depend on it. A new shared-home proposal
+  exists only on PR branches, never on the KB's default branch (the KB holds settled knowledge
+  only); a proposal already on the default branch from before this rule is a grandfathered
+  legacy proposal (see *The validator*), not a violation.
 - **accepted** — a named human ratified it. Agents never set `accepted` on their own initiative:
   the only path is `/lore:adr accept` with the decider named by the user, which refuses an
   agent-only identity. Acceptance **locks** the record (see *Amend or supersede*).
@@ -240,11 +241,11 @@ checkable by the validator without judging meaning:
 
 | # | Allowed edit | What it looks like |
 |---|---|---|
-| 1 | **Status line** | A line appended to `## Status` (and the matching `status:` value), for a transition to `superseded` or `deprecated`, or a note such as "Supersession proposed by kb/ADR-0012". Never a transition back to `proposed`. |
-| 2 | **Supersede link** | Setting `superseded_by:` (and, for a move, replacing the file with its stub). |
+| 1 | **Status line** | A line appended to `## Status` (and the matching `status:` value), for a transition to `superseded` or `deprecated` (including `deprecated` → `superseded`), or a note such as "Supersession proposed by kb/ADR-0012". Never a transition back to `proposed`. |
+| 2 | **Supersede link** | Setting `superseded_by:` (and, for a move, replacing the file with its stub, which keeps the record's frontmatter and adds only `moved_to`, naming the other home; the new record lists the old id in `aliases`). |
 | 3 | **Later observation** | A dated entry appended at the end of `## Later observations`. Earlier entries are never edited; a wrong one is corrected by a newer one. |
 | 4 | **Format and link repair** | Formatting only (the section text is identical after normalising whitespace, emphasis markers and list bullets), or a link target only (the URL, path or wikilink target changes; the link text does not). |
-| 5 | **Schema backfill** | Adding a frontmatter key this design introduces (`id`, `reversibility`, `blast_radius`, `sensitivity`, `scope`, `decided_by`) that is absent on the base, or filling one that is empty on the base. `id` must equal the value its home and filename imply. A filled value is never changed again. The body is untouched. |
+| 5 | **Schema backfill** | Adding a frontmatter key this design introduces (`id`, `reversibility`, `blast_radius`, `sensitivity`, `scope`, `decided_by`) that is absent or empty on the base, allowed only while the base record is unclassified (no `reversibility`): every classification key is filled in one PR, all-or-nothing. `id` must equal the value its home and filename imply. `decided_by` is not added over an existing `deciders` value. A filled value is never changed again. The body is untouched. |
 
 Spelling is not repairable. A typo in a locked record costs nothing; one that changes meaning is a
 wrong statement and gets an observation (3).
@@ -331,18 +332,20 @@ collected from exemptions and fed back.
 `scripts/adr-lint.js` (Node, no dependencies, cross-platform), with subcommands `check` and
 `select`. Run by the skill after every write, available as a pre-commit hook, and in CI.
 
-`check [--home local|shared] [--repo <name>] [--base <ref>] [--strict] <dir>`. The home is inferred
-from the path when it ends in a configured `sharedDir` under a KB, else given; CI passes it because
-the manifest is not checked out there. `--base` needs the base ref fetched (CI: `fetch-depth: 0`
-or an explicit fetch). Checks:
+`check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>] [--strict] [--config
+<file>] <dir>`. The home is inferred from the path when it ends in a configured `sharedDir` under
+a KB, else given; CI passes it because the manifest is not checked out there. `--single-home`
+marks a repo with no KB (one coinciding home) when `--home` is passed; `--config` supplies
+`decisionOwners`/`deciders` where no manifest or config file is checked out. `--base` needs the
+base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
 
 - frontmatter schema: required keys, enum values, inline values only;
 - id matches home and filename; number unique against `--base`;
 - home matches `blast_radius` (skipped for coinciding homes); `scope` syntax matches the home;
 - high-tier extras; `accepted` requires non-empty `decided_by`; owner/decider membership when
   configured;
-- relations resolve; references to another home are warnings when that home is not on disk,
-  errors when it is; no supersession cycles;
+- relations resolve; references to another home are warnings when that home is not on disk or
+  not resolvable without a manifest, errors when it is; no supersession cycles;
 - `supersedes` / `superseded_by` are symmetric within the home (edit 2 makes the reverse side
   writable). `related` and `depends_on` are stored only on the record that declares them; their
   reverse links ("related from", "depended on by") are computed on read by `index`, the
@@ -350,15 +353,20 @@ or an explicit fetch). Checks:
   edits a locked one;
 - **locked-record diff rule:** given `--base`, a locked record may only differ by the five edits
   in *Amend or supersede*;
-- no shared-home record with `status: proposed` on the default branch;
+- a shared-home record with `status: proposed` is an error when the change adds or edits it; an
+  untouched legacy proposal is a warning;
 - ride-along rule (above), given `--base` and the PR's changed files.
 
-**Grandfathered records** are those already `accepted` (or later) on the base branch without the
-fields this design introduces. On them, a missing *or empty* classification field, `scope` or
-`decided_by` is a warning, and an error under `--strict`. On every other record it is an error
-(subject to the high-tier extras). An unclassified grandfathered record is treated as high tier
-wherever tier is read. Exit non-zero with one line per violation (`path: rule: message`). Tests in
-`scripts/__tests__/adr-lint.test.js`.
+**Grandfathered records** are records unclassified (no `reversibility`) on the base branch whose
+status this change does not move, including legacy proposals. On them, a missing *or empty*
+classification field, `scope` or `decided_by` is a warning, and an error under `--strict`. On
+every other record it is an error (subject to the high-tier extras). An unclassified
+grandfathered record is treated as high tier wherever tier is read.
+
+A record locked on the base is only held to rules an allowed edit can satisfy.
+
+Exit non-zero with one line per violation (`path: rule: message`). Tests in
+`scripts/__tests__/adr-*.test.js`.
 
 ## Command and agent changes
 
@@ -398,15 +406,16 @@ wherever tier is read. Exit non-zero with one line per violation (`path: rule: m
   records. Every change it makes is a schema backfill (edit 5), so the migration PR passes the
   locked-record diff rule. It never renames `deciders` to `decided_by` (a rename would change an
   existing value); the old key stays and is read.
-- Release as a **major** version: `accept` semantics and the required `id` change behaviour for
-  existing users.
+- Plan A (this validator, the template, and the optional migrate step) only adds, so it ships as
+  a **minor** version. Release as a **major** version once Plan B lands and `accept` semantics
+  change: the required `id` and the new `accept` rule change behaviour for existing users.
 
 ## Delivery
 
 Three implementation plans, in order:
 
 - **A. Record format, homes and validator** — template, configuration and resolution, `adr-lint`
-  `check` and `select`, tests, manifest schema, migrate step.
+  `check` and `select`, tests, migrate step (no manifest schema change; see *Configuration*).
 - **B. Writing records** — `/lore:adr` modes, `knowledge-updater`, `architect` catalogue and
   `select` integration, `doctor`.
 - **C. Workflow enforcement** — `review` severity mapping and escape hatch, `recording-decisions`,

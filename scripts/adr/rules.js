@@ -22,6 +22,11 @@ function countTriggers(content) {
     return content === null ? 0 : content.split('\n').filter((l) => /Trigger:/i.test(l)).length;
 }
 
+// Texts are compared with LF endings: a CRLF checkout of an unchanged file is not an edit.
+function lf(text) {
+    return text.replace(/\r\n/g, '\n');
+}
+
 function same(a, b) {
     return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
 }
@@ -60,7 +65,7 @@ function describe(r, ctx) {
         baseText,
         lockedOnBase,
         // Locked on the base and identical to it: nothing in this change can fix a finding here.
-        untouched: lockedOnBase && baseText.replace(/\r\n/g, '\n') === r.text.replace(/\r\n/g, '\n'),
+        untouched: lockedOnBase && lf(baseText) === lf(r.text),
         gf: grandfathered(r, baseText),
         frozen: { mode, keys },
     };
@@ -211,7 +216,7 @@ function checkRecord(home, r) {
 
     // An unchanged legacy proposal on the default branch predates this rule: warn only.
     if (h.kind === 'shared' && !h.coinciding && fm.status === 'proposed') {
-        const touched = ctx.base && (baseText === null || baseText !== r.text);
+        const touched = ctx.base && (baseText === null || lf(baseText) !== lf(r.text));
         home.out.push({
             file: r.file, rule: 'proposed-shared', level: touched ? 'error' : 'warning',
             message: 'a shared-home record merges only as accepted or rejected',

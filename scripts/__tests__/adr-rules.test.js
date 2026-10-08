@@ -310,3 +310,18 @@ test('I4: an identical base and current produce no errors, whatever shape the ho
 function parseNumber(text) {
     return /^title: "?ADR-(\d{4})/m.exec(text)[1];
 }
+
+test('I5: a CRLF working copy of a committed proposal is not an edit', () => {
+    const committed = makeRecord({ status: 'proposed' });
+    const crlf = loadRecord('/h/0001-session-storage.md', committed.replace(/\n/g, '\r\n'));
+    const vs = run([crlf], { base: base({ '0001-session-storage.md': committed }) });
+    assert.deepEqual(errors(vs), []);
+    assert.ok(has(vs, 'proposed-shared', /merges only/, 'warning'));
+});
+
+test('I5: a CRLF working copy of an untouched locked pair still counts as untouched', () => {
+    const a = makeRecord();
+    const b = base({ '0001-a.md': a, '0001-b.md': a }, { tipNumbers: new Map() });
+    const crlf = [loadRecord('/h/0001-a.md', a.replace(/\n/g, '\r\n')), loadRecord('/h/0001-b.md', a.replace(/\n/g, '\r\n'))];
+    assert.deepEqual(errors(run(crlf, { base: b })), []);
+});

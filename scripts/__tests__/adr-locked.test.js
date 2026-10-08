@@ -237,3 +237,13 @@ test('fix2-1: a record already superseded with an empty link may gain it once', 
     const relinked = linked.replace('superseded_by: kb/ADR-0002', 'superseded_by: kb/ADR-0003');
     assert.ok(lockedDiff(linked, relinked).some((m) => /superseded_by is already set/.test(m)));
 });
+
+test('fix3-1b: a locked block-YAML record may have its values rewritten inline', () => {
+    const { blockYamlLegacy } = require('./helpers/adr-fixtures');
+    assert.deepEqual(lockedDiff(blockYamlLegacy(), blockYamlLegacy({ inline: true })), []);
+    // Keys the base parsed are still compared, and the body rules still apply.
+    const retitled = blockYamlLegacy({ inline: true }).replace(/^title: .*$/m, 'title: "ADR-0001: Other"');
+    assert.ok(lockedDiff(blockYamlLegacy(), retitled).some((m) => /frontmatter title changed/.test(m)));
+    const rewritten = blockYamlLegacy({ inline: true }).replace('Cookies cap at 4 KB.', 'Cookies cap at 8 KB.');
+    assert.ok(lockedDiff(blockYamlLegacy(), rewritten).some((m) => /Context" changed/.test(m)));
+});

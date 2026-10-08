@@ -67,6 +67,8 @@ function describe(r, ctx) {
         lockedOnBase,
         // Locked on the base and identical to it: nothing in this change can fix a finding here.
         untouched: lockedOnBase && lf(baseText) === lf(r.text),
+        // On the base and identical to it, whatever its status.
+        unchanged: !!baseText && lf(baseText) === lf(r.text),
         gf: grandfathered(r, baseText),
         frozen: { mode, keys },
     };
@@ -115,10 +117,11 @@ function checkHome(ctx) {
 function checkRecord(home, r) {
     const { ctx, err, warn } = home;
     const fm = r.fm;
-    for (const e of r.errors) err(r.file, 'frontmatter', e);
+    const { baseText, lockedOnBase, gf, frozen, unchanged } = home.info.get(r);
+    // A record the change leaves as it was cannot be blamed on it: its parse errors warn.
+    for (const e of r.errors) (unchanged ? warn : err)(r.file, 'frontmatter', e);
     if (r.errors.length && Object.keys(fm).length === 0) return;
 
-    const { baseText, lockedOnBase, gf, frozen } = home.info.get(r);
     // `keys` names the frontmatter keys (and §sections) a finding is about.
     const fix = (keys, rule, message) => {
         if (frozen.mode === 'base' && keys.every((k) => frozen.keys.has(k))) return;

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { checkHome } = require('../adr/rules');
 const { loadRecord } = require('../adr/records');
 const { backfill } = require('../adr/backfill');
-const { makeRecord } = require('./helpers/adr-fixtures');
+const { makeRecord, blockYamlLegacy } = require('./helpers/adr-fixtures');
 
 const SHARED = { kind: 'shared', prefix: 'kb', coinciding: false };
 const LOCAL = { kind: 'local', prefix: 'api', repo: 'api', coinciding: false };
@@ -345,6 +345,7 @@ test('I4: an identical base and current produce no errors, whatever shape the ho
         'duplicate-number pair': [makeRecord(), makeRecord()],
         'legacy proposal': [makeRecord({ status: 'proposed', fm: LEGACY_FM })],
         'moved stub': [stubText],
+        'legacy block YAML': [blockYamlLegacy()],
     };
     for (const [shape, texts] of Object.entries(shapes)) {
         const map = {};
@@ -388,4 +389,20 @@ test('fix2-2: with a manifest, a local record may move to another repo\'s local 
     assert.ok(has(run([toSelf], { home: LOCAL, base: localBase, resolveRef: listed, manifest: true }), 'move', /goes to the other home/));
     // Without a manifest the other repo is not visible, so the move must go to kb/.
     assert.ok(has(run([toRepo], { home: LOCAL, base: localBase, resolveRef: listed, manifest: false }), 'move', /local record moves to the shared home/));
+});
+
+test('fix3-1a: frontmatter parse errors are warnings on a record the change leaves alone', () => {
+    const legacy = blockYamlLegacy();
+    const b = base({ '0001-session-storage.md': legacy });
+    const vs = run([loadRecord('/h/0001-session-storage.md', legacy)], { base: b });
+    assert.deepEqual(errors(vs), []);
+    assert.ok(has(vs, 'frontmatter', /block value under "tags"/, 'warning'));
+    const edited = loadRecord('/h/0001-session-storage.md', legacy.replace('Cookies cap at 4 KB.', 'Cookies cap at 8 KB.'));
+    assert.ok(has(run([edited], { base: b }), 'frontmatter', /block value under "tags"/));
+    assert.ok(has(run([loadRecord('/h/0001-session-storage.md', legacy)], { base: base({}) }), 'frontmatter', /block value/));
+});
+
+test('fix3-1: rewriting a locked block-YAML record inline leaves the home green', () => {
+    const b = base({ '0001-session-storage.md': blockYamlLegacy() });
+    assert.deepEqual(errors(run([loadRecord('/h/0001-session-storage.md', blockYamlLegacy({ inline: true }))], { base: b })), []);
 });

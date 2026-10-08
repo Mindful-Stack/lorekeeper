@@ -22,7 +22,8 @@ test('strips a trailing comment but keeps # inside values', () => {
 test('reports block scalars, block lists and duplicate keys', () => {
     const r = parseRecord('---\ndescription: >\n  folded\ntags:\n  - adr\ntags: [adr]\n---\n');
     assert.ok(r.errors.some((e) => /description is a block scalar/.test(e)));
-    assert.ok(r.errors.some((e) => /block value under "description"/.test(e)));
+    assert.ok(r.errors.some((e) => /block value under "tags"/.test(e)));
+    assert.ok(!r.errors.some((e) => /block value under "description"/.test(e)), 'one message per key');
     assert.ok(r.errors.some((e) => /duplicate key: tags/.test(e)));
 });
 
@@ -47,4 +48,12 @@ test('sections split on level-2 headings outside code fences', () => {
 test('isEmpty treats absent, empty string and empty list alike', () => {
     assert.ok(isEmpty(undefined) && isEmpty('') && isEmpty([]));
     assert.ok(!isEmpty('x') && !isEmpty(['x']));
+});
+
+test('fix3-1c: a block value is reported once per key, and its key is named in blockKeys', () => {
+    const r = parseRecord('---\ntitle: x\ntags:\n  - adr\n  - y\ndescription: >\n  long\n  text\nstatus: accepted\n---\nbody');
+    assert.equal(r.errors.length, 2, r.errors.join('\n'));
+    assert.match(r.errors[0], /block value under "tags"/);
+    assert.match(r.errors[1], /description is a block scalar/);
+    assert.deepEqual(r.blockKeys, ['tags', 'description']);
 });

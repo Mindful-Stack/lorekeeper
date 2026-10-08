@@ -80,6 +80,18 @@ function makeRecord(opts = {}) {
     return lines.join('\n');
 }
 
+// A record accepted before this design, written with block YAML (a block list and a folded
+// scalar), as older tooling did. `inline` gives the same record with every value inline.
+function blockYamlLegacy({ inline = false } = {}) {
+    const text = makeRecord({
+        fm: { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined, decided_by: undefined, deciders: ['Alex Doe'] },
+    });
+    if (inline) return text;
+    return text
+        .replace('tags: [adr, sessions]', 'tags:\n  - adr\n  - sessions')
+        .replace(/^description: .*$/m, 'description: >\n  The API stores sessions server-side\n  because payloads outgrow cookies.');
+}
+
 function tmpDir(t) {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'adr-lint-')));
     if (t) t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -132,4 +144,4 @@ function runCli(cwd, env, ...args) {
     return { code: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
-module.exports = { makeRecord, tmpDir, write, gitEnv, git, initRepo, commitAll, runCli };
+module.exports = { makeRecord, blockYamlLegacy, tmpDir, write, gitEnv, git, initRepo, commitAll, runCli };

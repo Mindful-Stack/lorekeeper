@@ -65,11 +65,12 @@ function parseValue(raw) {
     return { value: unquote(v) };
 }
 
-// Returns { found, fm, order, errors, body }. `fm` maps key -> string | string[]
-// ('' for an empty value); `order` lists keys as written.
+// Returns { found, fm, order, errors, blockKeys, body }. `fm` maps key -> string | string[]
+// ('' for an empty value); `order` lists keys as written; `blockKeys` lists keys whose value
+// was written as block YAML (reported once each in `errors`, and not parsed).
 function parseRecord(text) {
     const lines = text.replace(/\r\n/g, '\n').split('\n');
-    const result = { found: false, fm: Object.create(null), order: [], errors: [], body: '' };
+    const result = { found: false, fm: Object.create(null), order: [], errors: [], blockKeys: [], body: '' };
     if (lines[0] !== '---') {
         result.errors.push('no frontmatter: the file must start with ---');
         result.body = lines.join('\n');
@@ -86,7 +87,10 @@ function parseRecord(text) {
     for (const line of lines.slice(1, end)) {
         if (line.trim() === '' || /^\s*#/.test(line)) continue;
         if (/^\s/.test(line) || line.startsWith('- ')) {
-            result.errors.push(`block value under "${prevKey}": every value must be inline on the key's line`);
+            if (!result.blockKeys.includes(prevKey)) {
+                result.blockKeys.push(prevKey);
+                result.errors.push(`block value under "${prevKey}": every value must be inline on the key's line`);
+            }
             continue;
         }
         const m = KEY_LINE.exec(line);
@@ -98,6 +102,7 @@ function parseRecord(text) {
         const raw = stripComment(m[2] || '');
         prevKey = key;
         if (/^[>|][+-]?\s*$/.test(raw.trim())) {
+            result.blockKeys.push(key);
             result.errors.push(`${key} is a block scalar (> or |): put the value on one line`);
             continue;
         }

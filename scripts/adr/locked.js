@@ -89,6 +89,10 @@ function lockedDiff(baseText, curText) {
     const backfillOpen = isUnclassified(b.fm);
     const keys = [...new Set([...b.order, ...c.order])];
     for (const key of keys) {
+        // A key the base wrote as block YAML never parsed, so there is no base value to hold
+        // it to: rewriting it inline is allowed, and its value is not checked against the base.
+        // Keys the base did parse are compared as usual, and the body rules still apply.
+        if (b.blockKeys.includes(key)) continue;
         const bv = b.fm[key];
         const cv = c.fm[key];
         if (same(bv, cv)) continue;

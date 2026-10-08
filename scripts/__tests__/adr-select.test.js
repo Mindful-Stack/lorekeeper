@@ -71,3 +71,20 @@ test('fix3-7: both files of a two-file diff -u patch are read, hunk lines counte
     ].join('\n');
     assert.deepEqual(parsePatchPaths(patch).sort(), ['db/init.sql', 'src/b.cs']);
 });
+
+test('fix4-5: renames, copies, binary and mode-only changes are read from the file headers', () => {
+    const rename = 'diff --git a/src/old.cs b/src/new.cs\nsimilarity index 100%\nrename from src/old.cs\nrename to src/new.cs\n';
+    assert.deepEqual(parsePatchPaths(rename).sort(), ['src/new.cs', 'src/old.cs']);
+    const copy = 'diff --git a/src/a.cs b/src/b.cs\nsimilarity index 100%\ncopy from src/a.cs\ncopy to src/b.cs\n';
+    assert.deepEqual(parsePatchPaths(copy).sort(), ['src/a.cs', 'src/b.cs']);
+    const binary = 'diff --git a/img/logo.png b/img/logo.png\nindex 1111111..2222222 100644\nBinary files a/img/logo.png and b/img/logo.png differ\n';
+    assert.deepEqual(parsePatchPaths(binary), ['img/logo.png']);
+    const mode = 'diff --git a/bin/run.sh b/bin/run.sh\nold mode 100644\nnew mode 100755\n';
+    assert.deepEqual(parsePatchPaths(mode), ['bin/run.sh']);
+    // A rename whose paths contain spaces: the header is ambiguous, the rename lines are not.
+    const spaced = 'diff --git a/src/my old.cs b/src/my new.cs\nrename from src/my old.cs\nrename to src/my new.cs\n';
+    assert.deepEqual(parsePatchPaths(spaced).sort(), ['src/my new.cs', 'src/my old.cs']);
+    // Same path with a space on both sides: the header split is the one where both sides agree.
+    const same = 'diff --git a/src/my file.cs b/src/my file.cs\nold mode 100644\nnew mode 100755\n';
+    assert.deepEqual(parsePatchPaths(same), ['src/my file.cs']);
+});

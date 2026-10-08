@@ -5,17 +5,41 @@
 
 const { matchesGlob } = require('./glob');
 
-// Paths on the --- / +++ lines. Prefixes are a heuristic, since a patch does not say which it
-// used: git's default `a/` `b/`, mnemonic prefixes (`i/` `w/` `c/` `o/`) and --no-prefix are
-// all read. A `diff --git X Y` header whose two sides start with *different* one-letter
-// prefixes marks a prefixed block; a header without them (or with the same letter on both
-// sides, as a top-level one-letter directory gives under --no-prefix) marks an unprefixed one.
-// Without a header, a leading `[a-z]/` is taken as a prefix.
-// `---` / `+++` lines are file headers only outside hunks. Each `@@ -a,b +c,d @@` header gives
-// the hunk's old and new line counts (1 when `,b` / `,d` is omitted), so a removed `-- …` or
-// added `++ …` line inside a hunk is content, and the next file's headers are read even in a
-// patch without `diff` lines. Any `diff ` line ends a hunk. A tab and what follows it (the
-// timestamp `diff -u` writes) is not part of the path.
+const PREFIX = /^[a-z]\//;
+
+// A `diff --git X Y` pair is prefixed when both sides start with *different* one-letter
+// prefixes (`a/` `b/`, or mnemonic `i/` `w/` `c/` `o/`); the same letter on both sides is a
+// top-level one-letter directory under --no-prefix.
+function isPrefixed(x, y) {
+    return PREFIX.test(x) && PREFIX.test(y) && x[0] !== y[0];
+}
+
+// The two paths of a `diff --git X Y` header, or null when spaces make the split ambiguous
+// (a rename between paths with spaces; its `rename from` / `rename to` lines say it plainly).
+// Of the possible splits, the one whose two sides name the same path wins; a single space is
+// the only split there is.
+function splitGitHeader(rest) {
+    const spaces = [];
+    for (let i = 0; i < rest.length; i++) if (rest[i] === ' ') spaces.push(i);
+    const splits = spaces.map((i) => {
+        const x = rest.slice(0, i);
+        const y = rest.slice(i + 1);
+        const prefixed = isPrefixed(x, y);
+        return { prefixed, from: prefixed ? x.slice(2) : x, to: prefixed ? y.slice(2) : y };
+    });
+    return splits.find((sp) => sp.from === sp.to) || (splits.length === 1 ? splits[0] : null);
+}
+
+// Every path a patch touches, for matching scope globs. Read from file headers only:
+//   - `diff --git X Y` (both sides), so renames, binary and mode-only changes count;
+//   - `rename from` / `rename to` / `copy from` / `copy to` in the extended header;
+//   - `---` / `+++` lines, which also cover patches with no `diff` lines (`diff -u`).
+// Prefixes are a heuristic, since a patch does not say which it used: the `diff --git` header
+// decides for its block (see isPrefixed); without one, a leading `[a-z]/` is a prefix.
+// Each `@@ -a,b +c,d @@` header gives the hunk's old and new line counts (1 when `,b` / `,d` is
+// omitted), so a removed `-- …` or added `++ …` line inside a hunk is content, and the next
+// file's headers are read even without `diff` lines. Any `diff ` line ends a hunk. A tab and
+// what follows it (the timestamp `diff -u` writes) is not part of a `---` / `+++` path.
 function parsePatchPaths(patch) {
     const paths = new Set();
     let prefixed = true;
@@ -23,10 +47,20 @@ function parsePatchPaths(patch) {
     let newLeft = 0;
     for (const line of patch.replace(/\r\n/g, '\n').split('\n')) {
         if (line.startsWith('diff ')) {
-            const h = /^diff --git ([a-z])\/.* ([a-z])\/.*$/.exec(line);
-            prefixed = line.startsWith('diff --git ') ? !!h && h[1] !== h[2] : true;
             oldLeft = 0;
             newLeft = 0;
+            prefixed = true;
+            if (line.startsWith('diff --git ')) {
+                const sp = splitGitHeader(line.slice('diff --git '.length));
+                if (sp) {
+                    prefixed = sp.prefixed;
+                    paths.add(sp.from);
+                    paths.add(sp.to);
+                } else {
+                    const h = /^diff --git ([a-z])\/.* ([a-z])\/.*$/.exec(line);
+                    prefixed = !!h && h[1] !== h[2];
+                }
+            }
             continue;
         }
         if (oldLeft > 0 || newLeft > 0) {
@@ -45,9 +79,14 @@ function parsePatchPaths(patch) {
             newLeft = m ? (m[2] === undefined ? 1 : Number(m[2])) : Infinity;
             continue;
         }
+        const moved = /^(?:rename|copy) (?:from|to) (.+)$/.exec(line);
+        if (moved) {
+            paths.add(moved[1]);
+            continue;
+        }
         const m = /^(?:\+\+\+|---) ([^\t]+)/.exec(line);
         if (!m || m[1] === '/dev/null') continue;
-        paths.add(prefixed ? m[1].replace(/^[a-z]\//, '') : m[1]);
+        paths.add(prefixed ? m[1].replace(PREFIX, '') : m[1]);
     }
     return [...paths];
 }

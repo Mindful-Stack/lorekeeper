@@ -77,6 +77,7 @@ function describe(r, ctx) {
 //   records     loadHome(...).records       strays   loadHome(...).strays
 //   config      { decisionOwners: [], deciders: [] }
 //   strict      boolean
+//   manifest    boolean: homes came from a household manifest, so every repo's home is known
 //   resolveRef  (qualifiedId) -> { state: 'found'|'missing'|'unavailable', fm? }  (other homes only)
 //   base        null, or {
 //                 ref          string             (the base ref as given)
@@ -333,8 +334,9 @@ function checkRef(home, r, ref, key) {
     return found;
 }
 
-// A move is legal only on a record the base holds without moved_to, and only from a local
-// home to the shared home or back. lockedDiff checks a locked stub's frontmatter and body; a
+// A move is legal only on a record the base holds without moved_to. Without a manifest the
+// only other home visible is the shared one, so a local record moves to kb/; with one, it may
+// also move to another repo's local home. lockedDiff checks a locked stub's frontmatter and body; a
 // stub that is not locked on the base has its body checked here.
 function checkMove(home, r, info) {
     const { ctx, err, ownId } = home;
@@ -350,7 +352,7 @@ function checkMove(home, r, info) {
     const id = R.qualify(ref, prefix);
     if (!id) return err(r.file, 'move', `moved_to ${ref} is not a qualified id`);
     if (id.startsWith(`${prefix}/`)) return err(r.file, 'move', 'moved_to names this home; a move goes to the other home');
-    if (kind === 'local' && !id.startsWith('kb/')) {
+    if (kind === 'local' && !ctx.manifest && !id.startsWith('kb/')) {
         return err(r.file, 'move', `a local record moves to the shared home (kb/ADR-NNNN), got ${id}`);
     }
     const found = checkRef(home, r, id, 'moved_to');

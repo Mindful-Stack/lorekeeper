@@ -275,3 +275,24 @@ test('M8 (decision 17): a proposed record whose scope covers its own home does n
     assert.equal(r.code, 0, r.stdout);
     assert.doesNotMatch(r.stdout, /ride-along/);
 });
+
+test('fix2-2: in a household, a local record may move to another repo; with --home it may not', (t) => {
+    const w = workspace(t);
+    const manifest = JSON.parse(fs.readFileSync(path.join(w.root, 'household.json'), 'utf8'));
+    manifest.repos.push({ name: 'web' });
+    write(path.join(w.root, 'household.json'), JSON.stringify(manifest));
+    const web = path.join(w.root, 'web');
+    initRepo(web, w.env);
+    write(path.join(web, 'docs', 'adr', '0004-session-storage.md'), makeRecord({ number: '0004', prefix: 'web', fm: { aliases: ['api/ADR-0001'] } }));
+    const file = path.join(w.local, '0001-session-storage.md');
+    write(file, makeRecord({ prefix: 'api' }));
+    commitAll(w.api, w.env, 'accept 0001');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'move');
+    const head = makeRecord({ prefix: 'api', fm: { moved_to: 'web/ADR-0004' } });
+    write(file, `${head.slice(0, head.indexOf('\n---\n') + 5)}Moved to web/ADR-0004.\n`);
+    const ok = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(ok.code, 0, ok.stdout + ok.stderr);
+    const ci = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', '--base', 'main', w.local);
+    assert.equal(ci.code, 1, ci.stdout);
+    assert.match(ci.stdout, /move: a local record moves to the shared home/);
+});

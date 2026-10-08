@@ -376,3 +376,16 @@ test('I5: a CRLF working copy of an untouched locked pair still counts as untouc
     const crlf = [loadRecord('/h/0001-a.md', a.replace(/\n/g, '\r\n')), loadRecord('/h/0001-b.md', a.replace(/\n/g, '\r\n'))];
     assert.deepEqual(errors(run(crlf, { base: b })), []);
 });
+
+test('fix2-2: with a manifest, a local record may move to another repo\'s local home or to kb/', () => {
+    const localBase = base({ '0001-session-storage.md': makeRecord({ prefix: 'api' }) });
+    const listed = () => ({ state: 'found', fm: { aliases: ['api/ADR-0001'] } });
+    const toRepo = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'web/ADR-0004'));
+    assert.deepEqual(errors(run([toRepo], { home: LOCAL, base: localBase, resolveRef: listed, manifest: true })), []);
+    const toKb = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'kb/ADR-0004'));
+    assert.deepEqual(errors(run([toKb], { home: LOCAL, base: localBase, resolveRef: listed, manifest: true })), []);
+    const toSelf = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'api/ADR-0004'));
+    assert.ok(has(run([toSelf], { home: LOCAL, base: localBase, resolveRef: listed, manifest: true }), 'move', /goes to the other home/));
+    // Without a manifest the other repo is not visible, so the move must go to kb/.
+    assert.ok(has(run([toRepo], { home: LOCAL, base: localBase, resolveRef: listed, manifest: false }), 'move', /local record moves to the shared home/));
+});

@@ -11,15 +11,22 @@ const { matchesGlob } = require('./glob');
 // prefixes marks a prefixed block; a header without them (or with the same letter on both
 // sides, as a top-level one-letter directory gives under --no-prefix) marks an unprefixed one.
 // Without a header, a leading `[a-z]/` is taken as a prefix.
+// `---` / `+++` lines are file headers only before the first `@@` of a file: inside a hunk they
+// are a removed `-- …` or added `++ …` line. A header-less patch has headers only before its
+// first `@@`.
 function parsePatchPaths(patch) {
     const paths = new Set();
     let prefixed = true;
+    let inHunk = false;
     for (const line of patch.replace(/\r\n/g, '\n').split('\n')) {
         if (line.startsWith('diff --git ')) {
             const h = /^diff --git ([a-z])\/.* ([a-z])\/.*$/.exec(line);
             prefixed = !!h && h[1] !== h[2];
+            inHunk = false;
             continue;
         }
+        if (line.startsWith('@@')) inHunk = true;
+        if (inHunk) continue;
         const m = /^(?:\+\+\+|---) (.+?)\t?$/.exec(line);
         if (!m || m[1] === '/dev/null') continue;
         paths.add(prefixed ? m[1].replace(/^[a-z]\//, '') : m[1]);

@@ -46,3 +46,12 @@ test('M7: parsePatchPaths reads --no-prefix patches, including a top-level one-l
     const patch = 'diff --git src/a.cs src/a.cs\n--- src/a.cs\n+++ src/a.cs\ndiff --git a/x.cs a/x.cs\n--- a/x.cs\n+++ a/x.cs\n';
     assert.deepEqual(parsePatchPaths(patch).sort(), ['a/x.cs', 'src/a.cs']);
 });
+
+test('fix2-3: --- and +++ lines inside a hunk are content, not file headers', () => {
+    const withHeader = 'diff --git a/db/init.sql b/db/init.sql\n--- a/db/init.sql\n+++ b/db/init.sql\n@@ -1,2 +1,2 @@\n--- comment\n+++ x\n context\n';
+    assert.deepEqual(parsePatchPaths(withHeader), ['db/init.sql']);
+    const headerless = '--- a/db/init.sql\n+++ b/db/init.sql\n@@ -1,2 +1,2 @@\n--- comment\n+++ x\n--- a/src/b.cs\n';
+    assert.deepEqual(parsePatchPaths(headerless), ['db/init.sql']);
+    const next = `${withHeader}diff --git a/src/b.cs b/src/b.cs\n--- a/src/b.cs\n+++ b/src/b.cs\n@@ -1 +1 @@\n`;
+    assert.deepEqual(parsePatchPaths(next).sort(), ['db/init.sql', 'src/b.cs']);
+});

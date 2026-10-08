@@ -4,7 +4,7 @@
 // by the five edits in the design's *Amend or supersede* table. Every check here is
 // mechanical; none judges whether a sentence kept its meaning.
 
-const { parseRecord, sections, isEmpty } = require('./frontmatter');
+const { parseRecord, decodeBlock, sections, isEmpty } = require('./frontmatter');
 const { BACKFILL_KEYS, isUnclassified, decidedBy } = require('./records');
 
 const APPEND_ONLY = new Set(['Status', 'Later observations']);
@@ -72,6 +72,17 @@ function undatedObservation(text) {
     return top.some((l) => !DATED_ENTRY.test(l));
 }
 
+function blockKeyChange(b, c, key) {
+    const was = b.blockRaw[key];
+    const now = c.blockRaw[key];
+    if (now && same(was, now)) return null;
+    const meant = decodeBlock(was);
+    if (!meant.ok) return `${key} is written in a block form the validator cannot read, so it must stay byte-identical`;
+    const value = now ? decodeBlock(now) : { ok: key in c.fm, value: c.fm[key] };
+    if (!value.ok || !same(meant.value, value.value)) return `${key} changed; rewritten inline it must keep the value its block form had`;
+    return null;
+}
+
 function lockedDiff(baseText, curText) {
     const b = parseRecord(baseText);
     const c = parseRecord(curText);
@@ -87,12 +98,15 @@ function lockedDiff(baseText, curText) {
     }
 
     const backfillOpen = isUnclassified(b.fm);
-    const keys = [...new Set([...b.order, ...c.order])];
+    const keys = [...new Set([...b.order, ...b.blockKeys, ...c.order])];
     for (const key of keys) {
-        // A key the base wrote as block YAML never parsed, so there is no base value to hold
-        // it to: rewriting it inline is allowed, and its value is not checked against the base.
-        // Keys the base did parse are compared as usual, and the body rules still apply.
-        if (b.blockKeys.includes(key)) continue;
+        // A key the base wrote as block YAML may be rewritten inline only to the value the block
+        // meant; a block form decodeBlock cannot read must stay exactly as it was.
+        if (b.blockKeys.includes(key)) {
+            const msg = blockKeyChange(b, c, key);
+            if (msg) out.push(msg);
+            continue;
+        }
         const bv = b.fm[key];
         const cv = c.fm[key];
         if (same(bv, cv)) continue;

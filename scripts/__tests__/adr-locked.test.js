@@ -247,3 +247,23 @@ test('fix3-1b: a locked block-YAML record may have its values rewritten inline',
     const rewritten = blockYamlLegacy({ inline: true }).replace('Cookies cap at 4 KB.', 'Cookies cap at 8 KB.');
     assert.ok(lockedDiff(blockYamlLegacy(), rewritten).some((m) => /Context" changed/.test(m)));
 });
+
+test('fix4-1: an inline rewrite must keep the value the block form meant', () => {
+    const { blockYamlLegacy } = require('./helpers/adr-fixtures');
+    const reworded = blockYamlLegacy({ inline: true }).replace(/^description: .*$/m, 'description: "Sessions live in cookies."');
+    assert.ok(lockedDiff(blockYamlLegacy(), reworded).some((m) => /description changed/.test(m)));
+    const retagged = blockYamlLegacy({ inline: true }).replace('tags: [adr, sessions]', 'tags: [adr, cookies]');
+    assert.ok(lockedDiff(blockYamlLegacy(), retagged).some((m) => /tags changed/.test(m)));
+});
+
+test('fix4-1: literal and chomped block scalars decode; an unreadable form must stay byte-identical', () => {
+    const { blockYamlLegacy } = require('./helpers/adr-fixtures');
+    const withRfc = (v) => blockYamlLegacy().replace(/^rfc:.*$/m, v);
+    const literal = withRfc('rfc: |-\n  line one\n  line two');
+    assert.deepEqual(lockedDiff(literal, literal.replace('rfc: |-\n  line one\n  line two', 'rfc: "line one\\nline two"')), []);
+    const folded = withRfc('rfc: >+\n  one\n  two');
+    assert.deepEqual(lockedDiff(folded, folded.replace('rfc: >+\n  one\n  two', 'rfc: one two')), []);
+    const indented = withRfc('rfc: >2\n  one\n  two');
+    assert.deepEqual(lockedDiff(indented, indented), []);
+    assert.ok(lockedDiff(indented, indented.replace('rfc: >2\n  one\n  two', 'rfc: one two')).some((m) => /cannot read, so it must stay byte-identical/.test(m)));
+});

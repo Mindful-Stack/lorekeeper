@@ -23,7 +23,8 @@ function stripComment(raw) {
 
 function unquote(s) {
     if (s.length >= 2 && s[0] === '"' && s[s.length - 1] === '"') {
-        return s.slice(1, -1).replace(/\\(.)/g, '$1');
+        // YAML double-quoted escapes: \n and \t are characters, any other \x is x.
+        return s.slice(1, -1).replace(/\\(.)/g, (_m, c) => ({ n: '\n', t: '\t' }[c] || c));
     }
     if (s.length >= 2 && s[0] === "'" && s[s.length - 1] === "'") {
         return s.slice(1, -1).replace(/''/g, "'");
@@ -65,37 +66,59 @@ function parseValue(raw) {
     return { value: unquote(v) };
 }
 
-// Returns { found, fm, order, errors, blockKeys, body }. `fm` maps key -> string | string[]
-// ('' for an empty value); `order` lists keys as written; `blockKeys` lists keys whose value
-// was written as block YAML (reported once each in `errors`, and not parsed).
+// Returns { found, fm, order, errors, errorKeys, blockKeys, blockRaw, body }. `fm` maps
+// key -> string | string[] ('' for an empty value); `order` lists keys as written. `errorKeys[i]`
+// is the key `errors[i]` is about, or null. `blockKeys` lists keys whose value was written as
+// block YAML (reported once each in `errors`, and not parsed into `fm`); `blockRaw[key]` keeps
+// that block as written ({ indicator, lines }) so decodeBlock can read the legacy forms.
 function parseRecord(text) {
     const lines = text.replace(/\r\n/g, '\n').split('\n');
-    const result = { found: false, fm: Object.create(null), order: [], errors: [], blockKeys: [], body: '' };
+    const result = {
+        found: false, fm: Object.create(null), order: [], errors: [], errorKeys: [],
+        blockKeys: [], blockRaw: Object.create(null), body: '',
+    };
+    const fail = (message, key = null) => {
+        result.errors.push(message);
+        result.errorKeys.push(key);
+    };
     if (lines[0] !== '---') {
-        result.errors.push('no frontmatter: the file must start with ---');
+        fail('no frontmatter: the file must start with ---');
         result.body = lines.join('\n');
         return result;
     }
     const end = lines.indexOf('---', 1);
     if (end === -1) {
-        result.errors.push('frontmatter is not closed with ---');
+        fail('frontmatter is not closed with ---');
         return result;
     }
     result.found = true;
     result.body = lines.slice(end + 1).join('\n');
     let prevKey = null;
+    let open = null;
     for (const line of lines.slice(1, end)) {
-        if (line.trim() === '' || /^\s*#/.test(line)) continue;
-        if (/^\s/.test(line) || line.startsWith('- ')) {
-            if (!result.blockKeys.includes(prevKey)) {
-                result.blockKeys.push(prevKey);
-                result.errors.push(`block value under "${prevKey}": every value must be inline on the key's line`);
-            }
+        const blockLine = /^\s/.test(line) || line.startsWith('- ');
+        if (open !== null && (blockLine || line.trim() === '')) {
+            result.blockRaw[open].lines.push(line);
             continue;
         }
+        if (line.trim() === '' || /^\s*#/.test(line)) continue;
+        if (blockLine) {
+            if (!result.blockKeys.includes(prevKey)) {
+                result.blockKeys.push(prevKey);
+                fail(`block value under "${prevKey}": every value must be inline on the key's line`, prevKey);
+            }
+            if (!result.blockRaw[prevKey]) {
+                // A block list hangs off an empty value; anything else is a form decodeBlock refuses.
+                result.blockRaw[prevKey] = { indicator: result.fm[prevKey] === '' ? '' : '?', lines: [] };
+            }
+            result.blockRaw[prevKey].lines.push(line);
+            open = prevKey;
+            continue;
+        }
+        open = null;
         const m = KEY_LINE.exec(line);
         if (!m) {
-            result.errors.push(`unparseable frontmatter line: ${line}`);
+            fail(`unparseable frontmatter line: ${line}`);
             continue;
         }
         const key = m[1];
@@ -103,22 +126,52 @@ function parseRecord(text) {
         prevKey = key;
         if (/^[>|][+-]?\s*$/.test(raw.trim())) {
             result.blockKeys.push(key);
-            result.errors.push(`${key} is a block scalar (> or |): put the value on one line`);
+            result.blockRaw[key] = { indicator: raw.trim(), lines: [] };
+            open = key;
+            fail(`${key} is a block scalar (> or |): put the value on one line`, key);
             continue;
         }
         if (key in result.fm) {
-            result.errors.push(`duplicate key: ${key}`);
+            fail(`duplicate key: ${key}`, key);
             continue;
         }
         const parsed = parseValue(raw);
         if (parsed.error) {
-            result.errors.push(`${key}: ${parsed.error}`);
+            fail(`${key}: ${parsed.error}`, key);
             continue;
         }
         result.fm[key] = parsed.value;
         result.order.push(key);
     }
     return result;
+}
+
+// The value a legacy block form means, for the forms older tooling wrote: a folded scalar (`>`,
+// lines joined with single spaces), a literal scalar (`|`, lines joined with newlines), either
+// with a `+`/`-` chomping indicator (the trailing newline is dropped either way), and a block
+// list of plain or quoted `- item` lines. Returns { ok: true, value } or { ok: false } for any
+// other form (indentation indicators, folded paragraphs, nested items, ...).
+function decodeBlock(raw) {
+    if (!raw) return { ok: false };
+    const lines = raw.lines.slice();
+    while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+    if (lines.length === 0) return { ok: false };
+    if (raw.indicator === '') {
+        if (!lines.every((l) => /^\s*- \S/.test(l))) return { ok: false };
+        const items = lines.map((l) => stripComment(l.replace(/^\s*- /, '')).trim());
+        if (items.some((i) => i === '' || /^[[{&*!|>]/.test(i) || /:(\s|$)/.test(i))) return { ok: false };
+        return { ok: true, value: items.map(unquote) };
+    }
+    const m = /^([>|])[+-]?$/.exec(raw.indicator);
+    if (!m) return { ok: false };
+    const indent = Math.min(...lines.filter((l) => l.trim() !== '').map((l) => /^\s*/.exec(l)[0].length));
+    if (indent === 0) return { ok: false };
+    const body = lines.map((l) => l.slice(indent));
+    if (m[1] === '>') {
+        if (body.some((l) => l.trim() === '' || /^\s/.test(l))) return { ok: false };
+        return { ok: true, value: body.join(' ') };
+    }
+    return { ok: true, value: body.join('\n') };
 }
 
 function isEmpty(v) {
@@ -144,4 +197,4 @@ function sections(body) {
     return out.map((s) => ({ heading: s.heading, content: s.lines.join('\n') }));
 }
 
-module.exports = { parseRecord, sections, isEmpty, asList };
+module.exports = { parseRecord, decodeBlock, sections, isEmpty, asList };

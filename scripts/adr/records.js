@@ -38,6 +38,8 @@ function loadRecord(file, text) {
         fm: parsed.fm,
         order: parsed.order,
         errors: parsed.errors,
+        errorKeys: parsed.errorKeys,
+        blockRaw: parsed.blockRaw,
         sections: sections(parsed.body),
         body: parsed.body,
     };

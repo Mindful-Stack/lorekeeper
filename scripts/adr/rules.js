@@ -1,6 +1,6 @@
 'use strict';
 
-const { isEmpty, asList, parseRecord, sections } = require('./frontmatter');
+const { isEmpty, asList, parseRecord, decodeBlock, sections } = require('./frontmatter');
 const { matchesGlob } = require('./glob');
 const { lockedDiff } = require('./locked');
 const R = require('./records');
@@ -64,6 +64,7 @@ function describe(r, ctx) {
     return {
         baseText,
         baseFm: b ? b.fm : null,
+        baseBlockRaw: b ? b.blockRaw : {},
         lockedOnBase,
         // On the base and identical to it, whatever its status: this change did not cause a
         // finding here.
@@ -116,9 +117,14 @@ function checkHome(ctx) {
 function checkRecord(home, r) {
     const { ctx, err, warn } = home;
     const fm = r.fm;
-    const { baseText, lockedOnBase, gf, frozen, untouched } = home.info.get(r);
-    // A record the change leaves as it was cannot be blamed on it: its parse errors warn.
-    for (const e of r.errors) (untouched ? warn : err)(r.file, 'frontmatter', e);
+    const info = home.info.get(r);
+    const { baseText, lockedOnBase, gf, frozen, untouched } = info;
+    // A record the change leaves as it was cannot be blamed on it: its parse errors warn. So
+    // does a block key a locked record keeps as it was in a form decodeBlock cannot read:
+    // lockedDiff requires it byte-identical, so no allowed edit could clear the error.
+    const stuck = (key) => lockedOnBase && key !== null && r.blockRaw && r.blockRaw[key]
+        && !decodeBlock(r.blockRaw[key]).ok && same(r.blockRaw[key], info.baseBlockRaw[key]);
+    r.errors.forEach((e, i) => (untouched || stuck(r.errorKeys[i]) ? warn : err)(r.file, 'frontmatter', e));
     if (r.errors.length && Object.keys(fm).length === 0) return;
 
     // `keys` names the frontmatter keys (and §sections) a finding is about.
@@ -136,7 +142,6 @@ function checkRecord(home, r) {
     // A moved record is a stub pointing at its new id in another home, which names the
     // old id in its aliases.
     if (!isEmpty(fm.moved_to)) {
-        const info = home.info.get(r);
         if (!info.baseFm || !same(info.baseFm.moved_to, fm.moved_to)) checkMove(home, r, info);
         return;
     }
@@ -224,7 +229,6 @@ function checkRecord(home, r) {
     }
     if (!isEmpty(fm.superseded_by)) {
         if (fm.status !== 'superseded') fix(['superseded_by', 'status'], 'relations', 'superseded_by is set, so status must be superseded');
-        const info = home.info.get(r);
         const newlySet = ctx.base && (!info.baseFm || isEmpty(info.baseFm.superseded_by));
         if (newlySet) checkSuccessorAccepted(home, r);
     }

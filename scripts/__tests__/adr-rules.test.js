@@ -495,3 +495,18 @@ test('fix3-9 (I3): a record accepted on the base tip since the fork cannot be ed
     assert.ok(has(run([edited], { base: b }), 'locked', /accepted on main since this branch forked; rebase onto main/));
     assert.ok(!run([loadRecord(`/h/${name}`, draft)], { base: b }).some((v) => v.rule === 'locked'));
 });
+
+test('fix4-1: a locked record with an unreadable block key it keeps can still take an allowed edit', () => {
+    const name = '0001-session-storage.md';
+    const was = blockYamlLegacy().replace(/^rfc:.*$/m, 'rfc: >2\n  one\n  two');
+    const deprecated = was
+        .replace('status: accepted', 'status: deprecated')
+        .replace('Accepted 2026-10-01 by Alex Doe.', 'Accepted 2026-10-01 by Alex Doe.\nDeprecated 2026-11-01.');
+    const vs = run([loadRecord(`/h/${name}`, deprecated)], { base: base({ [name]: was }) });
+    assert.ok(has(vs, 'frontmatter', /block value under "rfc"/, 'warning'));
+    // The readable block keys can be rewritten inline, so they stay errors; nothing else fails.
+    assert.deepEqual(errors(vs).map((v) => v.message).sort(), [
+        'block value under "tags": every value must be inline on the key\'s line',
+        'description is a block scalar (> or |): put the value on one line',
+    ]);
+});

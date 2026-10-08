@@ -235,18 +235,23 @@ accepted or rejected.
 
 Once a record is **accepted**, it is locked, and stays locked whatever its later status
 (`superseded`, `deprecated`). A locked record is evidence of what was decided and what was known
-at the time, so its body is never rewritten. Exactly four kinds of edit are allowed:
+at the time, so its body is never rewritten. Exactly five kinds of edit are allowed, each one
+checkable by the validator without judging meaning:
 
 | # | Allowed edit | What it looks like |
 |---|---|---|
 | 1 | **Status line** | A line appended to `## Status` (and the matching `status:` value), for a transition to `superseded` or `deprecated`, or a note such as "Supersession proposed by kb/ADR-0012". Never a transition back to `proposed`. |
 | 2 | **Supersede link** | Setting `superseded_by:` (and, for a move, replacing the file with its stub). |
 | 3 | **Later observation** | A dated entry appended at the end of `## Later observations`. Earlier entries are never edited; a wrong one is corrected by a newer one. |
-| 4 | **Typo and link repair** | Spelling, formatting and broken links, where the meaning of every sentence stays the same. |
+| 4 | **Format and link repair** | Formatting only (the section text is identical after normalising whitespace, emphasis markers and list bullets), or a link target only (the URL, path or wikilink target changes; the link text does not). |
+| 5 | **Schema backfill** | Adding a frontmatter key this design introduces (`id`, `reversibility`, `blast_radius`, `sensitivity`, `scope`, `decided_by`) that is absent on the base, or filling one that is empty on the base. `id` must equal the value its home and filename imply. A filled value is never changed again. The body is untouched. |
+
+Spelling is not repairable. A typo in a locked record costs nothing; one that changes meaning is a
+wrong statement and gets an observation (3).
 
 **Everything else is a new record that supersedes the old one.** That includes changes to
 Context, Facts relied on, Considered options, Decision and its rules, Consequences, or
-Assumptions and triggers, and any change to the classification fields or `scope`.
+Assumptions and triggers, and any change to a non-empty classification field or `scope`.
 
 How common situations map onto the rule:
 
@@ -258,10 +263,12 @@ How common situations map onto the rule:
 | A rule needs to change, be added or be removed, however small | Superseding record |
 | The scope or classification was wrong | Superseding record |
 | The decision no longer applies and nothing replaces it | Status line (1): `deprecated` |
-| A typo, a broken link, a renamed file path in *See also* | Repair (4) |
+| A broken link, a renamed file path in *See also*, mangled formatting | Repair (4) |
+| A record accepted before this design lacks `id` or classification | Backfill (5) |
+| A new record relates to or depends on an accepted one | Nothing: reverse links are computed (see *The validator*) |
 
 The validator enforces this mechanically: given `--base`, it diffs every locked record section by
-section and fails on any change outside the four allowed edits.
+section and fails on any change outside the five allowed edits.
 
 **Observations** answer four things: when and where (date, PR or ticket), which statement
 (quoted, or a `F#` fact id), what is true now and its source, and what it means (no trigger fired
@@ -334,15 +341,23 @@ or an explicit fetch). Checks:
 - home matches `blast_radius` (skipped for coinciding homes); `scope` syntax matches the home;
 - high-tier extras; `accepted` requires non-empty `decided_by`; owner/decider membership when
   configured;
-- relations resolve and are symmetric within the home; references to another home are warnings
-  when that home is not on disk, errors when it is; no supersession cycles;
-- **locked-record diff rule:** given `--base`, a locked record may only differ by the four edits
+- relations resolve; references to another home are warnings when that home is not on disk,
+  errors when it is; no supersession cycles;
+- `supersedes` / `superseded_by` are symmetric within the home (edit 2 makes the reverse side
+  writable). `related` and `depends_on` are stored only on the record that declares them; their
+  reverse links ("related from", "depended on by") are computed on read by `index`, the
+  architect's catalogue load and `doctor`, never written into the target, so a new record never
+  edits a locked one;
+- **locked-record diff rule:** given `--base`, a locked record may only differ by the five edits
   in *Amend or supersede*;
 - no shared-home record with `status: proposed` on the default branch;
 - ride-along rule (above), given `--base` and the PR's changed files.
 
-Without `--strict`, missing classification fields and `decided_by` on records accepted under the
-old rule are warnings. Exit non-zero with one line per violation (`path: rule: message`). Tests in
+**Grandfathered records** are those already `accepted` (or later) on the base branch without the
+fields this design introduces. On them, a missing *or empty* classification field, `scope` or
+`decided_by` is a warning, and an error under `--strict`. On every other record it is an error
+(subject to the high-tier extras). An unclassified grandfathered record is treated as high tier
+wherever tier is read. Exit non-zero with one line per violation (`path: rule: message`). Tests in
 `scripts/__tests__/adr-lint.test.js`.
 
 ## Command and agent changes
@@ -359,7 +374,7 @@ old rule are warnings. Exit non-zero with one line per violation (`path: rule: m
 **`knowledge-updater` agent**
 - ADR schema: `id`, `decided_by` (reads `deciders`), the new fields, the *Facts relied on* and
   *Later observations* sections.
-- Locked-record rule gains appended observations and typo/link repair.
+- Locked-record rule gains appended observations, format/link repair and schema backfill.
 - Local-home records are written in the code repo, not the KB: a high-tier record gets its own
   branch off the repo's default branch (never the user's working branch); a low-tier ride-along is
   staged on the current branch when the user says so.
@@ -380,7 +395,9 @@ old rule are warnings. Exit non-zero with one line per violation (`path: rule: m
 - `accept` semantics change from "first dependent code" to "human ratification". Records accepted
   under the old rule stay accepted.
 - `/lore:migrate` gains an optional step that adds `id` and empty classification keys to existing
-  records.
+  records. Every change it makes is a schema backfill (edit 5), so the migration PR passes the
+  locked-record diff rule. It never renames `deciders` to `decided_by` (a rename would change an
+  existing value); the old key stays and is read.
 - Release as a **major** version: `accept` semantics and the required `id` change behaviour for
   existing users.
 
@@ -398,7 +415,9 @@ Three implementation plans, in order:
 ## Testing
 
 - `adr-lint` unit tests: one fixture per rule, valid and invalid, including coinciding homes,
-  cross-home warnings, and the ride-along rule.
+  cross-home warnings, the ride-along rule, each of the five locked-record edits (and a
+  spelling change rejected), a migration backfill passing against `--base`, and a `related` link
+  to an accepted record passing without a reverse edit.
 - Babashka scenarios: `/lore:adr` new (local vs shared home by blast radius), `accept` refusing
   without a named decider, `observe` on an accepted record, `check` reporting Critical on a
   contradiction and on an uncovered choice, `ADR-Exempt` downgrade. The fixture workspace gains a

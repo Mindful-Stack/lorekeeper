@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { gitRoot } = require('./git');
+const { gitRoot, repoName } = require('./git');
 
 const DEFAULTS = { localDir: 'docs/adr', sharedDir: 'adrs', decisionOwners: [], deciders: [] };
 // Mirrors the SessionStart hook's tier-4 sibling fallback.
@@ -83,7 +83,8 @@ function resolveHomes(start, env = process.env) {
         };
     }
 
-    const root = gitRoot(start) || path.resolve(start);
+    const top = gitRoot(start);
+    const root = top || path.resolve(start);
     const file = readJson(path.join(root, '.lorekeeper', 'config.json')) || {};
     const config = { ...DEFAULTS, ...(file.adr || {}) };
     let kbRoot = null;
@@ -94,7 +95,7 @@ function resolveHomes(start, env = process.env) {
     const sharedHome = team ? path.join(team, config.sharedDir) : null;
     const localDir = path.join(root, config.localDir);
     const coinciding = sharedHome === null || sameDir(localDir, sharedHome);
-    const local = { repo: path.basename(root), dir: localDir, present: true, coinciding };
+    const local = { repo: top ? repoName(top) : path.basename(root), dir: localDir, present: true, coinciding };
     return {
         mode: 'single',
         root,

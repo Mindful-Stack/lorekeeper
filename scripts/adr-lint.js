@@ -89,7 +89,7 @@ function locateHome(dir, flags) {
     const homes = H.resolveHomes(dir);
     const inferredRepo = () => {
         const root = G.gitRoot(dir);
-        return H.repoFromRemote(homes, root && G.originUrl(root)) || path.basename(root || dir);
+        return H.repoFromRemote(homes, root && G.originUrl(root)) || (root ? G.repoName(root) : path.basename(dir));
     };
     if (flags.home) {
         if (flags.home !== 'local' && flags.home !== 'shared') throw new UsageError('--home is local or shared');
@@ -200,7 +200,7 @@ function cmdSelect(flags) {
     const repo = flags.repo
         || H.repoFromRemote(homes, root && G.originUrl(root))
         || (homes.mode === 'single' ? homes.localHomes[0].repo : null)
-        || (root && homes.localHomes.some((h) => h.repo === path.basename(root)) ? path.basename(root) : null);
+        || (root ? [G.repoName(root), path.basename(root)].find((n) => homes.localHomes.some((h) => h.repo === n)) : null);
     if (!repo) throw new UsageError('cannot tell which repo this is; pass --repo <name>');
     const local = homes.mode === 'single' ? homes.localHomes[0] : homes.localHomes.find((h) => h.repo === repo);
     if (!local) throw new UsageError(`repo ${repo} is not in household.json`);

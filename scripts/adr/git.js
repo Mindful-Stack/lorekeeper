@@ -57,6 +57,18 @@ function originUrl(root) {
     return out === null ? null : out.trim();
 }
 
+// The repository's name, the same from every worktree: origin's last path segment, else the
+// main worktree's directory (a linked worktree's own name is arbitrary), else `root`'s name.
+function repoName(root) {
+    const url = originUrl(root);
+    const fromUrl = url && url.replace(/[/\\]+$/, '').replace(/\.git$/, '').split(/[/:\\]/).pop();
+    if (fromUrl) return fromUrl;
+    const common = git(root, ['rev-parse', '--git-common-dir']);
+    const dir = common === null ? null : path.resolve(root, common.trim());
+    if (dir && path.basename(dir) === '.git') return path.basename(path.dirname(dir));
+    return path.basename(root);
+}
+
 // The remote default branch's name, or null. `origin/HEAD` is often unset in a clone, so fall
 // back to whichever of origin/main and origin/master exists.
 function defaultBranch(root) {
@@ -66,4 +78,6 @@ function defaultBranch(root) {
     return null;
 }
 
-module.exports = { gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, originUrl, defaultBranch };
+module.exports = {
+    gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, originUrl, repoName, defaultBranch,
+};

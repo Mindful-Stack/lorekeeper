@@ -113,29 +113,36 @@ deprecated or rejected. An `update` to a locked record may only be one of:
 Refuse anything else and tell the caller to supersede the record. A proposed record may be edited
 freely. `adr-lint check --base` enforces the same list, so a refused edit would also fail CI.
 
-**Placement.** Every ADR change names one:
+**Placement.** Every ADR change names one. Shell variables do not survive between Bash calls,
+so a worktree path is never held in one: run `mktemp -d`, note the absolute path it prints, and
+write that literal path, plus `/<branch-dir>`, as `<worktree>` in every later command and file
+write. `<branch-dir>` is the branch name with each `/` replaced by `-`. Before every commit and
+push, `git -C <worktree> rev-parse --show-toplevel` must print `<worktree>` exactly; if it does
+not, stop. `gh` has no `-C`: run `gh pr create` with `--head <branch>` and `--repo` taken from
+`git -C <worktree> remote get-url origin`.
 
 - `own-pr` — a new branch off the home repo's default branch, worked in a temporary worktree so
   the user's checkout is never touched. `<default>` is the home's `defaultBranch` from the homes
   JSON (`sharedDefaultBranch` for the KB), or `main` when it is `null`:
   ```bash
   git -C <repo> fetch origin
-  wt=$(mktemp -d)/<branch-dir>
-  git -C <repo> worktree add -b <branch> "$wt" origin/<default>
+  mktemp -d          # prints <tmp>; <worktree> is <tmp>/<branch-dir>
+  git -C <repo> worktree add -b <branch> <worktree> origin/<default>
   ```
-  Write the files in the worktree, validate (below), commit, `git -C "$wt" push -u origin
-  <branch>`, `gh pr create` from the worktree, then `git -C <repo> worktree remove "$wt"` and
-  `git -C <repo> branch -D <branch>` (the branch lives on in the remote and the PR).
+  Write the files in the worktree, validate (below), commit, `git -C <worktree> push -u origin
+  <branch>`, `gh pr create --repo <owner/name> --head <branch>`, then
+  `git -C <repo> worktree remove <worktree>` and `git -C <repo> branch -D <branch>` (the branch
+  lives on in the remote and the PR).
 - `pr-branch <branch>` — the record is on an open PR branch (`accept`, `reject`, amending a
   proposal under review). If `<branch>` is the branch checked out in the user's repo, do exactly
   what `ride-along` does instead. Otherwise work from the remote branch, never a stale local one:
   ```bash
   git -C <repo> fetch origin <branch>
-  wt=$(mktemp -d)/<branch-dir>
-  git -C <repo> worktree add --detach "$wt" origin/<branch>
+  mktemp -d          # prints <tmp>; <worktree> is <tmp>/<branch-dir>
+  git -C <repo> worktree add --detach <worktree> origin/<branch>
   ```
-  Edit, validate, commit, `git -C "$wt" push origin HEAD:<branch>`, and remove the worktree. No
-  new PR.
+  Edit, validate, commit, `git -C <worktree> push origin HEAD:<branch>`, and remove the worktree.
+  No new PR.
 - `ride-along` — local homes only, for a low-tier record the user chose to ship with their
   current change: write the file into the user's working tree on their current branch and `git
   add` it. Do not commit or push; the user's own commit carries it. Confirm the branch name back

@@ -290,30 +290,39 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
 
 ### `accept <ref> [by <name>, …]` → Ratify
 
-1. **Find the record and its placement.** Stop unless its `status` is `proposed`.
-   - In the working tree of its home, on the branch the user has checked out: Placement
-     `ride-along` (the user commits the edit with their change).
-   - In the working tree, on the home repo's default branch (a proposal from before this
-     format, still on the default branch): Placement `own-pr`.
-   - Not in the working tree: it is on an unmerged branch. Find the PR with `gh pr list` in the
-     home's repo (search the filename or `ADR-NNNN`), or ask for the PR number; read the record
-     with `git show origin/<branch>:<path>` after a fetch. Placement `pr-branch <branch>`.
-2. **Name the decider.** Use the names after `by`; otherwise ask "Who is ratifying this
+1. **Find the record and its placement.** Stop unless its `status` is `proposed`. After
+   `git -C <repo> fetch origin`, test in this order:
+   1. `git -C <repo> cat-file -e origin/<default-branch>:<path>` succeeds (a proposal from before
+      this format, merged on the default branch): Placement `own-pr`.
+   2. Otherwise, the file is in the working tree of its home: if the checked-out branch is the
+      default branch, stop and say the proposal is on the default branch but not on
+      `origin/<default-branch>`, so it must be pushed on a branch first; otherwise Placement
+      `ride-along` (the user commits the edit with their change).
+   3. Otherwise it is on an unmerged branch. Find the PR with `gh pr list --repo <owner/name>`
+      (from `git -C <repo> remote get-url origin`) in the home's repo (search the filename or
+      `ADR-NNNN`), or ask for the PR number; read the record with
+      `git -C <repo> show origin/<branch>:<path>` after a fetch. Placement `pr-branch <branch>`.
+2. **Make it acceptable before asking anyone to decide.** A proposal is still a draft, so fix it
+   now, as a draft amendment, rather than after the decider has been named:
+   - **Unclassified** (a proposal from before this format, no `reversibility`): accepting it ends
+     its grace period, so it needs `id`, the classification and `scope`. Propose them from its
+     content, as in the New record interview.
+   - **High tier** (unclassified counts as high tier until classified): it needs at least two
+     considered options, at least one invalidation trigger, and a non-empty `scope`. If the body
+     lacks them, draft the amendment.
+   - Present any classification and any body amendment (new options, triggers, scope) and get
+     the user's confirmation before going on. If there is one to confirm and the run is
+     non-interactive, show it and stop here.
+   - Lint the result as in New record step 7 (`check --draft` in a scratch copy).
+3. **Name the decider.** Use the names after `by`; otherwise ask "Who is ratifying this
    decision?" Never infer a name from git config, the session, or the PR author, and never
    proceed without one: in a non-interactive run, stop and say a named human decider is
    required. Refuse any name that identifies an agent or bot (Claude, Codex, Copilot, an AI or
    assistant, anything ending in `[bot]`): an agent cannot ratify.
-3. **Check the decider.** The pool is `config.decisionOwners` for a high-tier record and
-   `config.deciders` otherwise; when that list is non-empty, at least one named decider must be
-   in it (case-insensitive, `@` ignored). If not, say who may decide and stop.
-4. **Make it acceptable before asking anyone to decide.** A proposal is still a draft, so fix it
-   now, as a draft amendment, rather than after the decider has been named:
-   - **Unclassified** (a proposal from before this format, no `reversibility`): accepting it ends
-     its grace period, so it needs `id`, the classification and `scope`. Propose them from its
-     content and confirm with the user, as in the New record interview.
-   - **High tier** (unclassified counts as high tier): it needs at least two considered options,
-     at least one invalidation trigger, and a non-empty `scope`. If the body lacks them, amend it.
-   - Lint the result as in New record step 7 (`check --draft` in a scratch copy).
+4. **Check the decider.** The pool follows the tier as classified in step 2:
+   `config.decisionOwners` for a high-tier record and `config.deciders` otherwise; when that list
+   is non-empty, at least one named decider must be in it (case-insensitive, `@` ignored). If
+   not, say who may decide and stop.
 5. **Edit:** `status: accepted`, `decided_by: [<names>]`, and append to `## Status`:
    `Accepted YYYY-MM-DD by <names>.` Nothing else changes.
 6. **Predecessors.** For each id in `supersedes`:
@@ -326,13 +335,13 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    - **another home** — leave it. Add to this record's Status line: `Supersedes <id> once
      retired there.` After this PR merges, the user runs `/lore:adr retire <id> by <this id>` for
      the second PR (use the `stack` skill to show the order).
-7. **Apply** with knowledge-updater, Action `update` (a batch when a predecessor is flipped), with
+7. **Apply** with knowledge-updater, Action `update` (a batch when a predecessor changes), with
    the Placement from step 1. Confirm what was committed, or staged, and that the PR can merge once
    checks pass.
 
 ### `reject <ref> [by <name>, …]` → Decline a proposal
 
-As `accept` steps 1, 2, 4 (classification only: a rejected record has no tier extras) and 7, but
+As `accept` steps 1, 2 (classification only: a rejected record has no tier extras), 3 and 7, but
 the edit is `status: rejected`, `decided_by: [<names>]`, and
 `Rejected YYYY-MM-DD by <names>: <one-line reason>.` A rejected record merges and stays, so the
 reason is worth a sentence. A rejected record never flips a predecessor. If the record supersedes

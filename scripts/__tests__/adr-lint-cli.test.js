@@ -448,3 +448,59 @@ test('B4f: backfill skips a frontmatter-less record and says to convert it by re
     assert.match(r.stdout, /0001-session-storage\.md: skipped: no frontmatter: convert it by rewriting \(legacy records may be rewritten in place\)/);
     assert.equal(fs.readFileSync(path.join(w.shared, '0001-session-storage.md'), 'utf8'), LEGACY_BARE);
 });
+
+// B5: an edit of an existing record is validated only by the knowledge-updater, in a worktree
+// against the real base with its flags; a scratch copy (no base) misjudges these two cases.
+function updaterWorktree(t, w, repo, branch, start) {
+    const wt = path.join(tmpDir(t), 'wt');
+    git(repo, w.env, 'update-ref', 'refs/remotes/origin/main', 'main');
+    if (branch) git(repo, w.env, 'update-ref', `refs/remotes/origin/${branch}`, branch);
+    git(repo, w.env, 'worktree', 'add', '-q', ...(start ? ['-b', 'adr-edit', wt, start] : ['--detach', wt, `origin/${branch}`]));
+    return wt;
+}
+
+test('B5a: reject on a pr-branch: an incomplete high-tier proposal passes once in its final rejected form', (t) => {
+    const w = workspace(t);
+    commitAll(w.kb, w.env, 'empty');
+    git(w.kb, w.env, 'checkout', '-q', '-b', 'knowledge/adr-0001-session-storage');
+    const incomplete = {
+        'Considered options': '- **Server-side store** — sessions can grow without a size cap.',
+        'Assumptions and invalidation triggers': '- Assumes nothing.',
+    };
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord({ status: 'proposed', sections: incomplete }));
+    commitAll(w.kb, w.env, 'propose 0001');
+    git(w.kb, w.env, 'checkout', '-q', 'main');
+    const wt = updaterWorktree(t, w, w.kb, 'knowledge/adr-0001-session-storage');
+    const home = path.join(wt, 'knowledge', 'adrs');
+    const check = () => runCli(w.root, w.env, 'check', '--home', 'shared', '--draft', '--base', 'origin/main', home);
+    const before = check();
+    assert.equal(before.code, 1, 'still proposed, the tier rules apply');
+    assert.match(before.stdout, /high-tier:/);
+    write(path.join(home, '0001-session-storage.md'), makeRecord({
+        status: 'rejected',
+        sections: { ...incomplete, Status: 'Proposed 2026-09-30.\nRejected 2026-10-09 by Alex Doe: cookies suffice for now.' },
+    }));
+    const r = check();
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+});
+
+test('B5b: accepting an unclassified legacy proposal as cross-service in its local home passes against the base, with a home warning', (t) => {
+    const w = workspace(t);
+    const legacy = makeRecord({ prefix: 'api', status: 'proposed', fm: { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined } });
+    write(path.join(w.local, '0001-session-storage.md'), legacy);
+    commitAll(w.api, w.env, 'legacy proposal');
+    const converted = makeRecord({ prefix: 'api', fm: { blast_radius: 'cross-service' } });
+    // The old accept step 2 linted the classified, still-proposed record in a scratch copy, which
+    // has no base, so it cannot see the record is legacy: the wrong home is an error there.
+    const scratch = path.join(tmpDir(t), 'adr');
+    write(path.join(scratch, '0001-session-storage.md'), makeRecord({ prefix: 'api', status: 'proposed', fm: { blast_radius: 'cross-service' } }));
+    const lost = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', '--draft', scratch);
+    assert.equal(lost.code, 1, lost.stdout);
+    assert.match(lost.stdout, /home: blast_radius cross-service belongs in the shared home/);
+    const wt = updaterWorktree(t, w, w.api, null, 'origin/main');
+    const file = path.join(wt, 'docs', 'adr', '0001-session-storage.md');
+    write(file, converted);
+    const r = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', '--base', 'origin/main', path.dirname(file));
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /home: warning: blast_radius cross-service belongs in the shared home; move it/);
+});

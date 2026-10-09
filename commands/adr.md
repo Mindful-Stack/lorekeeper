@@ -357,8 +357,11 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    - Present any classification and any body amendment (new options, triggers, scope) and get
      the user's confirmation before going on. If there is one to confirm and the run is
      non-interactive, show it and stop here.
-   - Lint the result as in New record step 7 (`check --draft` in a scratch copy of its home,
-     with the `--home`, `--repo` and `--single-home` flags given there).
+   - Do not lint it in a scratch copy (New record step 7 is for new files only): a copy loses
+     the record's base, such as the version on the default branch that makes a legacy
+     conversion permitted, so it misjudges an edit of an existing record. The gate is the
+     knowledge-updater's validation against the real base in step 7, which returns any finding
+     before anything is committed.
 3. **Name the decider.** Use the names after `by`; otherwise ask "Who is ratifying this
    decision?" Never infer a name from git config, the session, or the PR author, and never
    proceed without one: in a non-interactive run, stop and say a named human decider is
@@ -382,15 +385,20 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    - **another home** — leave it. Add to this record's Status line: `Supersedes <id> once
      retired there.` After this PR merges, the user runs `/lore:adr retire <id> by <this id>` for
      the second PR (use the `stack` skill to show the order).
-7. **Apply** with knowledge-updater, Action `update` (a batch when a predecessor changes), with
-   the Placement from step 1 and the Approval line from step 4. Confirm what was committed, or
-   staged, the Approval line, and that the PR can merge once checks pass.
+7. **Apply.** Present the edit, then dispatch knowledge-updater with Action `update` (a batch
+   when a predecessor changes), the Placement from step 1 and the Approval line from step 4. It
+   validates the result against `origin/<default-branch>` (with `--draft` for `pr-branch` and
+   `ride-along`) before committing; if it returns findings, show them, fix them with the user,
+   and apply again. Confirm what was committed, or staged, the Approval line, and that the PR can
+   merge once checks pass.
 
 ### `reject <ref> [by <name>, …]` → Decline a proposal
 
 As `accept` steps 1, 2 (`id`, classification and scope only; no tier extras), 3 and 7, but
 the edit is `status: rejected`, `decided_by: [<names>]`, and
-`Rejected YYYY-MM-DD by <names>: <one-line reason>.` A rejected record merges and stays, so the
+`Rejected YYYY-MM-DD by <names>: <one-line reason>.` Build the edit in that final form before
+step 7's validation: a proposal still marked `proposed` would fail tier rules a rejected record
+is exempt from. A rejected record merges and stays, so the
 reason is worth a sentence. A rejected record never flips a predecessor. If the record supersedes
 one in the same home and this PR added the `Supersession proposed … by <this id>` note to that
 predecessor (the line is absent from `origin/<default-branch>`), **remove** the note in the same

@@ -237,11 +237,12 @@ function checkRecord(home, r) {
         if (newlySet) checkSuccessorAccepted(home, r);
     }
 
-    // An unchanged legacy proposal on the default branch predates this rule: warn only.
+    // An unchanged legacy proposal on the default branch predates this rule: warn only. A draft
+    // check (--draft) is the writer validating a proposal that will be reviewed before merge.
     if (h.kind === 'shared' && !h.coinciding && fm.status === 'proposed') {
         const touched = ctx.base && (baseText === null || lf(baseText) !== lf(r.text));
         home.out.push({
-            file: r.file, rule: 'proposed-shared', level: touched ? 'error' : 'warning',
+            file: r.file, rule: 'proposed-shared', level: touched && !ctx.draft ? 'error' : 'warning',
             message: 'a shared-home record merges only as accepted or rejected',
         });
     }
@@ -343,7 +344,10 @@ function checkAgainstBase(home) {
         if (base.textAt(r.name) !== null || r.fm.status !== 'proposed' || h.kind !== 'local') continue;
         const scope = asList(r.fm.scope);
         const hit = base.changedFiles.find((f) => scope.some((g) => matchesGlob(f, g)));
-        if (hit) err(r.file, 'ride-along', `this change touches ${hit} in its scope, so the record must be accepted before merge`);
+        if (!hit) continue;
+        const message = `this change touches ${hit} in its scope, so the record must be accepted before merge`;
+        if (ctx.draft) home.warn(r.file, 'ride-along', message);
+        else err(r.file, 'ride-along', message);
     }
 }
 

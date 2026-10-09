@@ -57,4 +57,13 @@ function originUrl(root) {
     return out === null ? null : out.trim();
 }
 
-module.exports = { gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, originUrl };
+// The remote default branch's name, or null. `origin/HEAD` is often unset in a clone, so fall
+// back to whichever of origin/main and origin/master exists.
+function defaultBranch(root) {
+    const head = git(root, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
+    if (head !== null && head.trim().startsWith('origin/')) return head.trim().slice('origin/'.length);
+    for (const name of ['main', 'master']) if (revExists(root, `origin/${name}`)) return name;
+    return null;
+}
+
+module.exports = { gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, originUrl, defaultBranch };

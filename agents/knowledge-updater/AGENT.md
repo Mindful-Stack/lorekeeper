@@ -143,10 +143,11 @@ not, stop. `gh` has no `-C`: run `gh pr create` with `--head <branch>` and `--re
   ```
   Edit, validate, commit, `git -C <worktree> push origin HEAD:<branch>`, and remove the worktree.
   No new PR.
-- `ride-along` — local homes only, for a low-tier record the user chose to ship with their
-  current change: write the file into the user's working tree on their current branch and `git
+- `ride-along` — write the file into the user's working tree on their current branch and `git
   add` it. Do not commit or push; the user's own commit carries it. Confirm the branch name back
-  to the caller.
+  to the caller. *Creating* a record this way is for local homes only, for a low-tier record the
+  user chose to ship with their current change. An edit (accept, reject, observe) may ride along
+  in whichever home repo the user has checked out on a non-default branch.
 
 **Branch names.** Shared home: `knowledge/adr-NNNN-<slug>`. Local home:
 `adr/<repo>-NNNN-<slug>`. A supersede batch uses the new record's number; an accept batch that

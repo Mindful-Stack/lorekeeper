@@ -193,7 +193,9 @@ own: `ADR lint: ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js` written out as an abs
   `accept` and `reject` of a proposal under review use this. When that branch is the one checked
   out in the user's repo, it behaves as `ride-along` instead.
 - `ride-along` — write into the user's working tree on their current branch and stage it, without
-  committing. Only for a low-tier record in a local home, and only when the user chooses it.
+  committing. Creating a record this way is only for a low-tier record in a local home, and only
+  when the user chooses it; an edit (`accept`, `reject`, `observe`) may ride along in any home
+  repo the user has checked out on a non-default branch.
 
 The agent runs `adr-lint check` on the result before it commits; a failing check stops the write.
 A proposal under review is expected to fail CI's check until it is accepted (a shared-home
@@ -367,8 +369,9 @@ change, leaving the predecessor as it is on the default branch.
 3. Append it at the end of `## Later observations` (add that section before *See also* if a
    legacy record lacks it). Nothing else changes.
 4. If the observation says a trigger fired, say so and offer `/lore:adr supersede <ref>`.
-5. Present, then apply: Placement `ride-along` when it belongs to the change the user is making
-   in that repo and they agree, else `own-pr`.
+5. Present, then apply: Placement `ride-along` only when the record's home repo is the one the
+   user is working in, on a non-default branch, and the observation belongs to that change and
+   they agree; else `own-pr`.
 
 ### `supersede <ref> <title>` → Propose a replacement
 

@@ -94,7 +94,7 @@ locked record allows.
    ```
    Expected: exit 0 with `warning:` lines only. Any error means stop and report it, never
    commit.
-5. **List legacy proposals in the shared home** (`status: proposed` on the default branch, which the old `accept` rule allowed). The backfill leaves them alone and prints `skipped: proposed (classify on accept)` for each. They are warnings now, but a human must accept or reject each one: say which, and point at `/lore:adr accept NNNN`. Accepting one requires classifying it in the same change.
+5. **List legacy proposals in the shared home** (`status: proposed` on the default branch, which the old `accept` rule allowed). The backfill leaves them alone and prints `skipped: proposed (classify on accept)` for each. They are warnings now, but a human must accept or reject each one: say which, and point at `/lore:adr accept <id> by <name>` (the qualified id, `kb/ADR-NNNN`). Accepting one requires classifying it in the same change.
 6. **Offer to commit and open a PR** per repo (`chore: backfill ADR ids and classification
    keys`). Never commit to the default branch; the KB's main is protected. Filling in the
    classification values is a human review step for each record: say so, and that the values

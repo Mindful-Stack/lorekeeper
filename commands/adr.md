@@ -68,9 +68,13 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js homes
 It prints JSON: `mode` (`household` or `single`), `root`, `governedRepo` (the repo whose checkout
 contains the CWD, or `null` at the household root), `config` (`localDir`, `sharedDir`,
 `decisionOwners`, `deciders`), `localHomes` (`repo`, `dir`, `present`, `exists`, `coinciding`,
-`defaultBranch`), `sharedHome`, `sharedHomeExists` and `sharedDefaultBranch`, and `otherKbs`.
-Wherever this file says `<default-branch>`, use the home's `defaultBranch` (or
-`sharedDefaultBranch`), and `main` when it is `null`. A repo with `present: false` is not checked
+`repoRoot`, `relDir`, `defaultBranch`), `sharedHome`, `sharedHomeExists`, `sharedRoot`,
+`sharedRepoRoot`, `sharedRelDir` and `sharedDefaultBranch`, and `otherKbs`. `repoRoot` is the git
+repository holding the home (for a KB folder inside a code repo, that code repo) and `relDir` the
+home's path inside it; both are `null` when the repo is not checked out. Wherever this file says
+`<repo>` in a git command, use the home's `repoRoot` (or `sharedRepoRoot`); wherever it says
+`<default-branch>`, use the home's `defaultBranch` (or `sharedDefaultBranch`), and `main` when it
+is `null`. A repo with `present: false` is not checked
 out: say so when it matters, never guess its contents. The **governed repo** for a new local
 record is `governedRepo`; when it is `null`, ask which repo the record governs (the only "where"
 question, and only then).
@@ -173,7 +177,7 @@ it. The validator checks each one mechanically against the base branch.
 | 1 | One new line appended to `## Status`, with a transition to `superseded`/`deprecated` or a note | `deprecate`, `accept` (predecessor flip), `retire` |
 | 2 | Setting `superseded_by` with the flip to `superseded` (successor already accepted); a move stub | `accept`, `retire` |
 | 3 | A dated bullet appended to `## Later observations` | `observe` |
-| 4 | Formatting or a link target (bare wikilinks only in *See also*) | by hand, via `/lore:update` |
+| 4 | Formatting or a link target (bare wikilinks only in *See also*) | a by-hand PR (format or link target); `adr-lint check --base` confirms it |
 | 5 | Backfilling `id` and empty classification keys on a record from before this format | `/lore:migrate` |
 
 Spelling fixes are not repairs. A wrong fact is an observation; a wrong rule, scope or
@@ -189,19 +193,23 @@ own: `ADR lint: ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js` written out as an abs
 - `own-pr` — a new branch off the home repo's default branch and a PR. The agent works in a
   temporary git worktree, so the user's checkout and branch are never touched. High-tier records
   always use this.
-- `pr-branch <branch>` — commit onto the open PR branch that already carries the record and push.
-  `accept` and `reject` of a proposal under review use this. When that branch is the one checked
-  out in the user's repo, it behaves as `ride-along` instead.
+- `pr-branch <branch> (PR <n>)` — commit onto the open PR branch that already carries the record
+  and push. `accept` and `reject` of a proposal under review use this. When that branch is the one
+  checked out in the user's repo, it behaves as `ride-along` instead. A PR from a fork cannot take
+  this placement (see `accept` step 1).
 - `ride-along` — write into the user's working tree on their current branch and stage it, without
   committing. Creating a record this way is only for a low-tier record in a local home, and only
   when the user chooses it; an edit (`accept`, `reject`, `observe`) may ride along in any home
-  repo the user has checked out on a non-default branch.
+  repo the user has checked out on a non-default branch. Either way the user must be working in
+  the record's home repo, on a branch other than its default; otherwise it is `own-pr`.
 
-The agent runs `adr-lint check` on the result before it commits; a failing check stops the write.
-A proposal under review is expected to fail CI's check until it is accepted (a shared-home
-proposal never merges as proposed, and a ride-along must be accepted before its PR merges), so the
-agent validates a change that proposes a record with `--draft`, which reports those two findings
-as warnings.
+The agent runs `adr-lint check` on the result before it commits; any nonzero exit stops the
+write. A proposal under review is expected to fail CI's check until it is accepted (a shared-home
+proposal never merges as proposed, and a ride-along must be accepted before its PR merges), and a
+shared PR from `discover` may still hold other proposals when one of them is accepted. So the
+agent validates every `pr-branch` and `ride-along` change, and an `own-pr` change that proposes a
+record, with `--draft`, which reports those two findings as warnings. CI runs without it and
+stays the merge gate.
 
 ## Implementation
 
@@ -234,8 +242,9 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    variable does not survive between commands). Write the catalogue to a scratch file with
    `adr-lint index --json > <scratch>/adr-index.json`. Dispatch two agents in parallel: the
    **architect** in `bind` mode with the topic, the homes JSON, and the catalogue path (plus
-   `adr-lint select --repo <repo> --paths <path,path,…>` output, a comma-separated list, when the
-   code paths are known), and the **knowledge-reader** with "Prioritise domain context and architecture patterns." If the
+   `adr-lint select --repo <repo> --paths <path,path,…>` output, a comma-separated list of paths
+   relative to that repo's root, such as `src/Billing/Invoice.cs`, when the code paths are known;
+   a path from the household root or an absolute path matches nothing), and the **knowledge-reader** with "Prioritise domain context and architecture patterns." If the
    architect names a record that already covers the decision, stop and offer `accept`,
    `supersede`, or nothing. Grep the code for the thing being decided so Context and *Facts
    relied on* rest on evidence.
@@ -263,12 +272,14 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    - Is `scope` non-empty for a high-tier record, and in the home's syntax?
    - Every frontmatter value inline, `description` the decision itself, `decided_by` empty, no
      mention of sessions or AI authorship?
-   Then lint it without touching the user's checkout: copy the home directory and the draft into
-   `<scratch>/<home-dir-name>` and run `adr-lint check --draft` on that copy with the home spelt
-   out, since the copy sits outside the household: `--home shared` for the shared home, or
-   `--home local --repo <repo>` for a local home, plus `--single-home` when `homes` reports it as
-   `coinciding`. Add `--config <root>/household.json` when one exists, so the decider pools
-   apply. Fix every error before presenting.
+   Then lint it without touching the user's checkout. For each lint, run `mktemp -d` and use the
+   new directory it prints (never one from an earlier lint, so a copy cannot nest or go stale):
+   copy the home directory's files and the draft into `<lint-dir>/<home-dir-name>` and run
+   `adr-lint check --draft` on that copy with the home spelt out, since the copy sits outside the
+   household: `--home shared` for the shared home, or `--home local --repo <repo>` for a local
+   home, plus `--single-home` when `homes` reports it as `coinciding`. Add `--config` with
+   `<root>/household.json` when one exists, or else the repo's `.lorekeeper/config.json` when it
+   has one, so the decider pools apply. Fix every error before presenting.
 8. **Present** the file with its path, tier and PR shape:
 
    > **Proposed ADR** — `billing-api/ADR-0003` (low tier: two-way, service)
@@ -280,8 +291,9 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    > ```
    >
    > High tier: "It gets its own ADR-only PR; implementation waits until it is accepted."
-   > Low tier, local home: "Ride along in your current branch (accepted before merge by the
-   > approver), or its own PR?"
+   > Low tier, local home, and the user is working in that repo on a non-default branch: "Ride
+   > along in your current branch (accepted before merge by the approver), or its own PR?"
+   > Otherwise: "It gets its own PR."
    >
    > Does this look right? I can adjust any section, the classification, or the status first.
 
@@ -303,12 +315,19 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
       this format, merged on the default branch): Placement `own-pr`.
    2. Otherwise, the file is in the working tree of its home: if the checked-out branch is the
       default branch, stop and say the proposal is on the default branch but not on
-      `origin/<default-branch>`, so it must be pushed on a branch first; otherwise Placement
-      `ride-along` (the user commits the edit with their change).
+      `origin/<default-branch>`, so it must be pushed on a branch first. If the user is working
+      in that repo (the session's git toplevel is the home's `repoRoot`), Placement `ride-along`
+      (the user commits the edit with their change); if not, go on to test 3, and if no PR
+      carries the record, stop and say to run the accept from that repo.
    3. Otherwise it is on an unmerged branch. Find the PR with `gh pr list --repo <owner/name>`
       (from `git -C <repo> remote get-url origin`) in the home's repo (search the filename or
-      `ADR-NNNN`), or ask for the PR number; read the record with
-      `git -C <repo> show origin/<branch>:<path>` after a fetch. Placement `pr-branch <branch>`.
+      `ADR-NNNN`), or ask for the PR number. Then run
+      `gh pr view <n> --repo <owner/name> --json isCrossRepository,headRefName`: if
+      `isCrossRepository` is true, stop and say "this PR comes from a fork; its author must apply
+      the edit", and show the edit (steps 2–6, once a decider is named) for the user to hand over.
+      Otherwise `<branch>` is `headRefName`; read the record with
+      `git -C <repo> show origin/<branch>:<path>` after a fetch. Placement
+      `pr-branch <branch> (PR <n>)`.
 2. **Make it acceptable before asking anyone to decide.** A proposal is still a draft, so fix it
    now, as a draft amendment, rather than after the decider has been named:
    - **Unclassified** (a proposal from before this format, no `reversibility`): accepting it ends
@@ -349,7 +368,7 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
 
 ### `reject <ref> [by <name>, …]` → Decline a proposal
 
-As `accept` steps 1, 2 (classification only: a rejected record has no tier extras), 3 and 7, but
+As `accept` steps 1, 2 (`id`, classification and scope only; no tier extras), 3 and 7, but
 the edit is `status: rejected`, `decided_by: [<names>]`, and
 `Rejected YYYY-MM-DD by <names>: <one-line reason>.` A rejected record merges and stays, so the
 reason is worth a sentence. A rejected record never flips a predecessor. If the record supersedes
@@ -378,7 +397,12 @@ change, leaving the predecessor as it is on the default branch.
 Superseding is two transitions: this flow proposes the successor; the predecessor stays accepted
 and binding until the successor is accepted (`accept` step 6).
 
-1. Read `<ref>`. If it is `proposed`, offer to amend it instead.
+1. Read `<ref>`. Only an `accepted` or `deprecated` record can be superseded:
+   - `proposed`: offer to amend it instead;
+   - `superseded`: say which record superseded it (its `superseded_by`) and offer to supersede
+     that one instead;
+   - `rejected`: do not supersede it. Offer a new record (the New record flow) carrying
+     `related: [<ref>]`, whose Context says why the rejected option is back.
 2. Run the **New record** flow steps 1–8 with these adjustments: the architect will report
    `<ref>` as covering the decision — that is expected, stop only for a *different* record;
    the draft carries `supersedes: [<ref>]`, its Context opens with what changed since `<ref>`,
@@ -437,10 +461,16 @@ does not change: if the scope or classification changes, that is a `supersede`.
 For the local homes and the shared home with `exists: true` (not `otherKbs`), run
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check [--base origin/<default-branch>] <home-dir>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home flags> [--config <config-file>] \
+  [--base origin/<default-branch>] <home-dir>
 ```
 
-with `--base` when that repo has the ref (`git -C <repo> rev-parse --verify origin/<branch>`).
+`<home flags>` are `--home shared` for the shared home, and `--home local --repo <repo>` (the
+home's `repo`) for a local home, plus `--single-home` when it is `coinciding`: spelt out, the
+check never has to re-resolve the homes from inside a KB that sits outside the code repo.
+`--config` is `<root>/household.json` when one exists, or else the repo's
+`.lorekeeper/config.json` when it has one. Add `--base` when that repo has the ref
+(`git -C <repo> rev-parse --verify origin/<default-branch>`).
 Report per home: errors, warnings, and the exit code; group findings by rule. Warnings on records
 from before this format (missing `id` or classification) point at `/lore:migrate`. Read-only.
 

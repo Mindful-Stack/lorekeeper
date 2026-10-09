@@ -72,3 +72,32 @@ test('same-home reject in the supersede PR: removing the note leaves the predece
     const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
     assert.equal(r.code, 0, r.stdout + r.stderr);
 });
+
+// A discover batch opens one PR with several shared proposals; accepting one of them on that
+// PR's branch leaves the others proposed, so the writer validates with --draft (CI does not).
+test('pr-branch accept of one record in a two-proposal shared PR passes only with --draft', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    write(path.join(root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore', repos: [{ name: 'ws' }, { name: 'lore' }],
+    }));
+    const kb = path.join(root, 'lore');
+    initRepo(kb, env);
+    const shared = path.join(kb, 'knowledge', 'adrs');
+    write(path.join(shared, '0001-session-storage.md'), makeRecord());
+    commitAll(kb, env, 'accept 0001');
+    git(kb, env, 'checkout', '-q', '-b', 'knowledge/adrs-0002-0003-discover');
+    write(path.join(shared, '0002-cache.md'), makeRecord({ number: '0002', status: 'proposed' }));
+    write(path.join(shared, '0003-queue.md'), makeRecord({ number: '0003', status: 'proposed' }));
+    commitAll(kb, env, 'propose 0002 and 0003');
+    write(path.join(shared, '0002-cache.md'), makeRecord({
+        number: '0002',
+        sections: { Status: 'Proposed 2026-10-08.\nAccepted 2026-10-09 by Alex Doe.' },
+    }));
+    const strict = runCli(root, env, 'check', '--home', 'shared', '--base', 'main', shared);
+    assert.equal(strict.code, 1, strict.stdout);
+    assert.match(strict.stdout, /0003-queue\.md: proposed-shared: /);
+    const draft = runCli(root, env, 'check', '--home', 'shared', '--base', 'main', '--draft', shared);
+    assert.equal(draft.code, 0, draft.stdout + draft.stderr);
+    assert.match(draft.stdout, /0003-queue\.md: proposed-shared: warning:/);
+});

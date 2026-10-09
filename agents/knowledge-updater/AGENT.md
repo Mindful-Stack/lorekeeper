@@ -28,7 +28,7 @@ The KB repo root is the parent directory of `knowledge/` (i.e., one level up fro
 
 If no `Team knowledge path:` marker is present, the hook already showed the user a "not configured" message. Return that message and stop — unless the change is an ADR for a local home, which needs no knowledge base (see *ADRs*).
 
-**ADRs route by home, not by these rules.** An ADR change names its Home: `shared` is the team KB's ADR home, `local:<repo>` is that repo's local home (`docs/adr/` or its configured directory) inside the code repo itself. The caller passes the `homes` JSON (directories and each repo's `defaultBranch`) and an `ADR lint:` line with the absolute path of `adr-lint.js`. That path is `<ADR lint>`: every `adr-lint` command below runs as `node <ADR lint> …`. Only if the caller passed none, fall back to `${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js` as `<ADR lint>` and run its `homes` subcommand yourself.
+**ADRs route by home, not by these rules.** An ADR change names its Home: `shared` is the team KB's ADR home, `local:<repo>` is that repo's local home (`docs/adr/` or its configured directory) inside the code repo itself. The caller passes the `homes` JSON (each home's directory, `repoRoot`, `relDir` and `defaultBranch`; `sharedRepoRoot`, `sharedRelDir` and `sharedDefaultBranch` for the KB) and an `ADR lint:` line with the absolute path of `adr-lint.js`. That path is `<ADR lint>`: every `adr-lint` command below runs as `node <ADR lint> …`. Only if the caller passed none, fall back to `${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js` as `<ADR lint>` and run its `homes` subcommand yourself.
 
 ## Input
 
@@ -115,10 +115,16 @@ deprecated or rejected. An `update` to a locked record may only be one of:
 Refuse anything else and tell the caller to supersede the record. A proposed record may be edited
 freely. `adr-lint check --base` enforces the same list, so a refused edit would also fail CI.
 
-**Placement.** Every ADR change names one. Shell variables do not survive between Bash calls,
-so a worktree path is never held in one: run `mktemp -d`, note the absolute path it prints, and
-write that literal path, plus `/<branch-dir>`, as `<worktree>` in every later command and file
-write. `<branch-dir>` is the branch name with each `/` replaced by `-`. Right after `worktree
+**Placement.** Every ADR change names one. `<repo>` below is the home's `repoRoot` from the homes
+JSON (`sharedRepoRoot` for the shared home): the git repository holding the home, which for a KB
+inside a code repo is that code repo, not the KB folder. If it is `null`, the home's repo is not
+checked out: stop and say so. In a worktree the home directory is `<worktree>/<relDir>`
+(`sharedRelDir` for the shared home); write and validate there, never at a path assumed from the
+KB layout. Never force-push: a rejected push means stop and report it.
+
+Shell variables do not survive between Bash calls, so a worktree path is never held in one: run
+`mktemp -d`, note the absolute path it prints, and write that literal path, plus `/<branch-dir>`,
+as `<worktree>` in every later command and file write. `<branch-dir>` is the branch name with each `/` replaced by `-`. Right after `worktree
 add`, run `git -C <worktree> rev-parse --show-toplevel` once and use the path it prints as
 `<worktree>` from then on (it resolves symlinks such as macOS's `/var` → `/private/var`). Before
 every commit and push, the same command must print that path exactly; if it does not, stop. `gh` has no `-C`: run `gh pr create` with `--head <branch>` and `--repo` taken from
@@ -129,6 +135,7 @@ every commit and push, the same command must print that path exactly; if it does
   JSON (`sharedDefaultBranch` for the KB), or `main` when it is `null`:
   ```bash
   git -C <repo> fetch origin
+  git -C <repo> ls-remote --heads origin <branch>   # must print nothing (see Branch names)
   mktemp -d          # prints <tmp>; <worktree> is <tmp>/<branch-dir>
   git -C <repo> worktree add -b <branch> <worktree> origin/<default>
   ```
@@ -136,9 +143,14 @@ every commit and push, the same command must print that path exactly; if it does
   <branch>`, `gh pr create --repo <owner/name> --head <branch>`, then
   `git -C <repo> worktree remove <worktree>` and `git -C <repo> branch -D <branch>` (the branch
   lives on in the remote and the PR).
-- `pr-branch <branch>` — the record is on an open PR branch (`accept`, `reject`, amending a
-  proposal under review). If `<branch>` is the branch checked out in the user's repo, do exactly
-  what `ride-along` does instead. Otherwise work from the remote branch, never a stale local one:
+- `pr-branch <branch> (PR <n>)` — the record is on an open PR branch (`accept`, `reject`,
+  amending a proposal under review). First confirm the PR's head is a branch of `origin`, not a
+  fork, where an `origin` branch of the same name would be the wrong one:
+  `gh pr view <n> --repo <owner/name> --json isCrossRepository,headRefName`. If
+  `isCrossRepository` is true, or `headRefName` is not `<branch>`, stop: "this PR comes from a
+  fork; its author must apply the edit", and return the edit for the caller to hand over. If
+  `<branch>` is the branch checked out in the user's repo, do exactly what `ride-along` does
+  instead. Otherwise work from the remote branch, never a stale local one:
   ```bash
   git -C <repo> fetch origin <branch>
   mktemp -d          # prints <tmp>; <worktree> is <tmp>/<branch-dir>
@@ -152,30 +164,61 @@ every commit and push, the same command must print that path exactly; if it does
   user chose to ship with their current change. An edit (accept, reject, observe) may ride along
   in whichever home repo the user has checked out on a non-default branch.
 
-**Branch names.** Shared home: `knowledge/adr-NNNN-<slug>`. Local home:
-`adr/<repo>-NNNN-<slug>`. A supersede batch uses the new record's number; an accept batch that
-flips a predecessor uses the accepted record's number; a discover batch uses
-`knowledge/adrs-NNNN-MMMM-discover` or `adr/<repo>-NNNN-MMMM-discover`.
+  Before every ride-along write, create or edit, check both: the repo the user is working in
+  (`git rev-parse --show-toplevel` from the session's working directory) is the record's home
+  repo `<repo>`, and its current branch (`git -C <repo> branch --show-current`) is neither empty
+  nor the home's default branch. If either fails, do not write: a `pr-branch` change takes its
+  worktree flow, and a new record or an observation takes `own-pr`, saying so in your output; an
+  accept or reject of a record that exists only on that branch stops and reports why. Before writing, note whether
+  the file exists and, if it does, copy it into a fresh `mktemp -d` directory. Write, validate, and `git add` only after validation passes. If
+  validation fails, put the user's tree back: delete a file you created, or copy the original
+  back over a file you edited, so nothing of the failed write is left staged or on disk.
 
-**Validate before committing.** Run the validator on the home directory as it will be committed:
+**Branch names.** A change that proposes a record (a new record, a supersede's successor, a move
+copy) uses the record's number and slug: `knowledge/adr-NNNN-<slug>` in the shared home,
+`adr/<repo>-NNNN-<slug>` in a local home. A supersede batch uses the new record's number; a
+discover batch uses `knowledge/adrs-NNNN-MMMM-discover` or `adr/<repo>-NNNN-MMMM-discover`.
+Every later `own-pr` edit of an existing record adds the mode and today's date instead of the
+slug, because the proposal's branch usually survives its merge on the remote:
+`knowledge/adr-0002-observe-20261011`, `adr/<repo>-0002-accept-20261011` (likewise `reject`,
+`deprecate`, `retire`, and an accept batch that flips a predecessor, named after the accepted
+record). Before `worktree add -b`, `git -C <repo> ls-remote --heads origin <branch>` must print
+nothing and `git -C <repo> rev-parse --verify --quiet refs/heads/<branch>` must fail; otherwise
+append `-2` (then `-3`, …) until both hold. Never force-push.
+
+**Validate before committing.** Fetch the default branch so `origin/<default>` exists even in a
+single-branch clone, then run the validator on the home directory as it will be committed
+(`<checkout>` is `<worktree>`, or `<repo>` for `ride-along`; `<home-dir>` is
+`<checkout>/<relDir>`):
 
 ```bash
-node <ADR lint> check --home shared|local [--repo <repo>] \
-  --base origin/<default> --config <household-root>/household.json <home-dir>
+git -C <checkout> fetch origin +refs/heads/<default>:refs/remotes/origin/<default>
+node <ADR lint> check --home shared|local [--repo <repo-name>] [--single-home] [--draft] \
+  --base origin/<default> [--config <config-file>] <home-dir>
 ```
 
-Pass `--home local --repo <repo>` for a local home (plus `--single-home` when `homes` reports
-it as `coinciding`) and `--home shared` for the KB, because a worktree sits outside the household
-and the home cannot be inferred there. Pass `--config` when a
-`household.json` exists (it carries `decisionOwners`/`deciders`), and `--base` for every placement:
-for `pr-branch` it is still the default branch. Add `--draft` when the change proposes a record
-(its result has `status: proposed`) or the placement is `ride-along`: a proposal under review is
-expected to fail CI's `proposed-shared` and `ride-along` rules until it is accepted, and `--draft`
-reports those two as warnings while every other rule stays an error.
+Pass `--home local --repo <repo-name>` for a local home (the home's `repo` in the homes JSON),
+plus `--single-home` when `homes` reports it as `coinciding`, and `--home shared` for the KB,
+because a worktree sits outside the household and the home cannot be inferred there. Pass
+`--config` with `<household-root>/household.json` when one exists, or else the code repo's
+`.lorekeeper/config.json` when it has one (either carries `decisionOwners`/`deciders`). Pass
+`--base` for every placement: for `pr-branch` it is still the default branch. Pass `--draft` for
+every `pr-branch` and `ride-along` change, and for an `own-pr` change that proposes a record (its
+result has `status: proposed`): a shared PR may still hold other proposals while one of them is
+accepted, and a proposal under review fails CI's `proposed-shared` and `ride-along` rules until
+it is accepted. `--draft` reports those two as warnings while every other rule stays an error;
+CI runs without it, so it stays the merge gate.
 
-Exit 1 means stop: do not commit, return the findings to the caller, and clean up — remove the
-worktree and, for `own-pr`, delete the new local branch, so a retry starts clean. Warnings are
-reported, not blocking.
+Any nonzero exit means stop: 1 is a finding, 2 a usage or environment error (a ref that would
+not fetch, a bad flag). Do not commit; return the output to the caller and clean up — remove
+the worktree and, for `own-pr`, delete the new local branch, so a retry starts clean; for
+`ride-along`, put the user's file back as above. Warnings are reported, not blocking.
+
+A worktree sits outside the household, so references into other homes resolve as "unavailable"
+warnings there, not errors: the retire-by check that the successor is accepted and the move
+check that the destination lists the old id in `aliases` are not enforced in this run. The
+caller checks those before asking you to write, and the household's `adr-lint check` (CI, or
+`/lore:adr lint`) after the merge is the mechanical check.
 
 **Commit and PR titles.** `docs: propose ADR-NNNN - <title>`, `docs: accept ADR-NNNN`,
 `docs: reject ADR-NNNN`, `docs: observe ADR-NNNN`, `docs: deprecate ADR-NNNN`,

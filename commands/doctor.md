@@ -79,8 +79,14 @@ For the local homes and the shared home with `exists: true` (not `otherKbs`: oth
 theirs to check), run the validator without a base (doctor diffs nothing):
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home-dir>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home flags> [--config <config-file>] <home-dir>
 ```
+
+`<home flags>` are `--home shared` for the shared home, and `--home local --repo <repo>` (the
+home's `repo`) for a local home, plus `--single-home` when `homes` reports it as `coinciding`.
+`--config` is `<root>/household.json` when one exists, or else the repo's
+`.lorekeeper/config.json` when it has one. Spelt out, the check never has to re-resolve the homes
+from inside a KB that sits outside the code repo, which loses that repo's configuration.
 
 Report per home: the number of records, errors and warnings, grouped by rule. Then:
 
@@ -89,14 +95,15 @@ Report per home: the number of records, errors and warnings, grouped by rule. Th
   renumbered or deleted record, or a typo); a supersession that is not symmetric (`superseded_by`
   set on one record while its successor does not list it in `supersedes`); or a flip left undone
   (an accepted record whose predecessor in the same home is not yet `superseded` by it, or a
-  `superseded_by` without `status: superseded`, or a record flipped to a successor that is not
-  accepted).
+  `superseded_by` without `status: superseded`).
 - **Warnings on records from before the ADR-centred format** (`id`, `reversibility` or the other
   classification keys missing) — one summary line per home, suggesting `/lore:migrate` for the
   backfill. Do not list every record.
-- **Legacy proposals** (`proposed-shared` warnings in the shared home) — list each by its
+- **Open proposals** (`proposed-shared` warnings in the shared home) — list each by its
   qualified id (`kb/ADR-NNNN`, from its home and number): each needs
-  `/lore:adr accept <id> by <name>` or `/lore:adr reject <id> by <name>`.
+  `/lore:adr accept <id> by <name>` or `/lore:adr reject <id> by <name>`. Call one a *legacy*
+  proposal only when it is also unclassified (no `reversibility`): the KB checkout may simply be
+  on a branch carrying a fresh one.
 - **Repos not checked out** (`present: false`) — name them: their local records could not be
   checked, and references into them show up as warnings, not errors.
 - A home that does not exist yet is not a problem: say "no records yet".

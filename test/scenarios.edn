@@ -154,7 +154,7 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "command-adr-observe-appends-dated-entry"
   :prompt "/lore:adr observe kb/ADR-0001 The payment provider now supports webhooks v2, so F2 no longer holds. No trigger fired. Do not ask me questions. Stop after presenting the observation: do not write files, branch, or open a PR."
   :workdir "."
-  :expects ["Later observations" "(?m)^\\s*[-*]\\s+\\**\\d{4}-\\d{2}-\\d{2}.*F2"]}
+  :expects ["Later observations" "(?m)^[\\s>]*[-*]\\s+\\**\\d{4}-\\d{2}-\\d{2}.*F2"]}
 
  {:name "command-doctor-reports-adr-homes"
   :prompt "/lore:doctor"

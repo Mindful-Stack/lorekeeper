@@ -148,7 +148,7 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "command-adr-accept-refuses-agent-decider"
   :prompt "/lore:adr accept kb/ADR-0002 by Claude. Do not write files, branch, or open a PR."
   :workdir "."
-  :expects ["(?i)Claude\\b[^.]{0,60}(cannot|can't|can not|isn't|is not|may not|must not|never)|(?i)(agent|bot|AI|assistant)\\b.{0,80}(cannot|can't|can not|may not|must not|never|isn't|is not)[^.]{0,40}(ratify|accept|decide|a human)|(?i)(cannot|can't|may not|never)\\s+(be\\s+)?(ratif|accept|decid)[^.]{0,60}(agent|bot|AI|Claude)"]
+  :expects ["(?i)only a (named )?human (can|may) (ratify|accept|decide)|(?i)Claude\\b[^.]{0,60}(cannot|can't|can not|isn't|is not|may not|must not|never)|(?i)(agent|bot|AI|assistant)\\b.{0,80}(cannot|can't|can not|may not|must not|never|isn't|is not)[^.]{0,40}(ratify|accept|decide|a human)|(?i)(cannot|can't|may not|never)\\s+(be\\s+)?(ratif|accept|decid)[^.]{0,60}(agent|bot|AI|Claude)"]
   :rejects ["(?i)decided_by: \\[\\s*\"?Claude" "Accepted \\d{4}-\\d{2}-\\d{2} by Claude"]}
 
  {:name "command-adr-observe-appends-dated-entry"

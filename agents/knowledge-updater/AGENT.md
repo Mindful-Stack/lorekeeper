@@ -118,9 +118,10 @@ freely. `adr-lint check --base` enforces the same list, so a refused edit would 
 **Placement.** Every ADR change names one. Shell variables do not survive between Bash calls,
 so a worktree path is never held in one: run `mktemp -d`, note the absolute path it prints, and
 write that literal path, plus `/<branch-dir>`, as `<worktree>` in every later command and file
-write. `<branch-dir>` is the branch name with each `/` replaced by `-`. Before every commit and
-push, `git -C <worktree> rev-parse --show-toplevel` must print `<worktree>` exactly; if it does
-not, stop. `gh` has no `-C`: run `gh pr create` with `--head <branch>` and `--repo` taken from
+write. `<branch-dir>` is the branch name with each `/` replaced by `-`. Right after `worktree
+add`, run `git -C <worktree> rev-parse --show-toplevel` once and use the path it prints as
+`<worktree>` from then on (it resolves symlinks such as macOS's `/var` → `/private/var`). Before
+every commit and push, the same command must print that path exactly; if it does not, stop. `gh` has no `-C`: run `gh pr create` with `--head <branch>` and `--repo` taken from
 `git -C <worktree> remote get-url origin`.
 
 - `own-pr` — a new branch off the home repo's default branch, worked in a temporary worktree so

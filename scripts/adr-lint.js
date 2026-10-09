@@ -18,7 +18,7 @@ const C = require('./adr/catalogue');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
-                 [--strict] [--draft] [--config <file>] <dir>
+                 [--strict] [--draft] <dir>
   adr-lint select (--diff <patch-file|-> | --paths <path,...>) [--repo <name>] [--pr-body <file>]
                   [--cwd <dir>]
   adr-lint backfill [--home local|shared] [--repo <name>] [--dry-run] <dir>
@@ -32,7 +32,7 @@ class UsageError extends Error {}
 
 const BOOLEAN_FLAGS = new Set(['strict', 'single-home', 'dry-run', 'json', 'draft']);
 const FLAGS = {
-    check: ['home', 'repo', 'single-home', 'base', 'strict', 'draft', 'config'],
+    check: ['home', 'repo', 'single-home', 'base', 'strict', 'draft'],
     select: ['diff', 'paths', 'repo', 'pr-body', 'cwd'],
     backfill: ['home', 'repo', 'dry-run'],
     homes: ['cwd'],
@@ -157,17 +157,6 @@ function makeResolver(homes) {
     };
 }
 
-function readConfig(flags, homes) {
-    if (!flags.config) return homes.config;
-    let json;
-    try {
-        json = JSON.parse(fs.readFileSync(flags.config, 'utf8'));
-    } catch (e) {
-        throw new UsageError(`cannot read --config ${flags.config}: ${e.message}`);
-    }
-    return { ...H.DEFAULTS, ...(json.adr || json) };
-}
-
 function cmdCheck(flags, positional) {
     if (positional.length !== 1) throw new UsageError('check takes exactly one directory');
     const dir = path.resolve(positional[0]);
@@ -177,7 +166,6 @@ function cmdCheck(flags, positional) {
         home,
         records,
         strays,
-        config: readConfig(flags, homes),
         strict: !!flags.strict,
         // A writer validating a proposal before review: proposed-shared and ride-along warn.
         draft: !!flags.draft,

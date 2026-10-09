@@ -20,7 +20,6 @@ function run(records, extra = {}) {
         home: SHARED,
         records,
         strays: [],
-        config: { decisionOwners: [], deciders: [] },
         strict: false,
         resolveRef: () => ({ state: 'found', fm: {} }),
         base: base({}),
@@ -112,14 +111,6 @@ test('accepted needs decided_by; legacy deciders counts', () => {
     assert.deepEqual(run([rec({ fm: { decided_by: undefined, deciders: ['Alex Doe'] } })]), []);
 });
 
-test('owner rule: high tier needs a decisionOwner, low tier a decider', () => {
-    const config = { decisionOwners: ['@arch-team'], deciders: ['Sam Roe'] };
-    assert.ok(has(run([rec()], { config }), 'decided-by', /decisionOwners/));
-    assert.deepEqual(run([rec({ fm: { decided_by: ['Arch-Team'] } })], { config }), []);
-    const low = rec({ prefix: 'api', fm: { reversibility: 'two-way' } });
-    assert.ok(has(run([low], { home: LOCAL, config }), 'decided-by', /deciders/));
-});
-
 const LEGACY_FM = { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined };
 
 test('grandfathered: missing new fields warn, and fail under --strict', () => {
@@ -161,14 +152,13 @@ test('locked on the base: classifying a legacy record leaves the home green afte
         .replace(/^reversibility:.*$/m, 'reversibility: one-way')
         .replace(/^blast_radius:.*$/m, 'blast_radius: cross-service');
     assert.notEqual(classifiedText, backfilled);
-    const config = { decisionOwners: ['@arch-team'], deciders: [] };
     const name = '0001-session-storage.md';
     // The classifying change itself: base is the backfilled legacy record.
     const classified = loadRecord(`/h/${name}`, classifiedText);
-    assert.deepEqual(errors(run([classified], { config, base: base({ [name]: backfilled }) })), []);
+    assert.deepEqual(errors(run([classified], { base: base({ [name]: backfilled }) })), []);
     // A later, unrelated change to the home: base is the classified record.
     const later = rec({ number: '0002', slug: 'other', fm: { decided_by: ['arch-team'] } });
-    assert.deepEqual(errors(run([classified, later], { config, base: base({ [name]: classifiedText }) })), []);
+    assert.deepEqual(errors(run([classified, later], { base: base({ [name]: classifiedText }) })), []);
 });
 
 test('relations: an unknown same-home id is an error; another home unavailable is a warning', () => {

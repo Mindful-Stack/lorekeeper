@@ -4,7 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const { gitRoot, repoName } = require('./git');
 
-const DEFAULTS = { localDir: 'docs/adr', sharedDir: 'adrs', decisionOwners: [], deciders: [] };
+const DEFAULTS = { localDir: 'docs/adr', sharedDir: 'adrs' };
+// Only the ADR dirs are read; who approves a record is not configured (the PR names it).
+function adrConfig(adr) {
+    const a = adr || {};
+    return { localDir: a.localDir || DEFAULTS.localDir, sharedDir: a.sharedDir || DEFAULTS.sharedDir };
+}
 // Mirrors the SessionStart hook's tier-4 sibling fallback.
 const KB_FALLBACKS = ['lore', 'docs/lore', 'docs/shared-knowledge', 'shared-knowledge', 'knowledge'];
 
@@ -55,7 +60,7 @@ function resolveHomes(start, env = process.env) {
     const household = findHousehold(start);
     if (household) {
         const m = readJson(path.join(household, 'household.json')) || {};
-        const config = { ...DEFAULTS, ...(m.adr || {}) };
+        const config = adrConfig(m.adr);
         const kbName = m.knowledge_base || 'lore';
         const shared = m.shared_knowledge_bases || [];
         const skip = new Set([m.meta_repo, kbName, ...shared]);
@@ -89,7 +94,7 @@ function resolveHomes(start, env = process.env) {
     const top = gitRoot(start);
     const root = top || path.resolve(start);
     const file = readJson(path.join(root, '.lorekeeper', 'config.json')) || {};
-    const config = { ...DEFAULTS, ...(file.adr || {}) };
+    const config = adrConfig(file.adr);
     let kbRoot = null;
     if (file.knowledgeBasePath) kbRoot = path.resolve(root, file.knowledgeBasePath);
     else if (env.KNOWLEDGE_BASE_PATH) kbRoot = path.resolve(root, env.KNOWLEDGE_BASE_PATH);

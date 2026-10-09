@@ -12,10 +12,6 @@ const RELATION_KEYS = ['supersedes', 'depends_on', 'related', 'superseded_by'];
 // Sections a rule can ask for (the high-tier extras).
 const RULE_SECTIONS = ['Considered options', 'Assumptions and invalidation triggers'];
 
-function handle(s) {
-    return String(s).trim().replace(/^@/, '').toLowerCase();
-}
-
 function countBullets(content) {
     return content === null ? 0 : content.split('\n').filter((l) => /^[-*+]\s/.test(l)).length;
 }
@@ -82,7 +78,6 @@ function describe(r, ctx) {
 // ctx:
 //   home        { kind: 'local'|'shared', prefix, coinciding }
 //   records     loadHome(...).records       strays   loadHome(...).strays
-//   config      { decisionOwners: [], deciders: [] }
 //   strict      boolean
 //   resolveRef  (qualifiedId) -> { state: 'found'|'missing'|'unavailable', fm? }  (other homes only)
 //   base        null, or {
@@ -181,7 +176,7 @@ function checkRecord(home, r) {
     if (!('scope' in fm)) need(['scope'], 'schema', 'scope is required (use [] when the record governs no paths)');
 
     // Identity.
-    const { home: h, config } = ctx;
+    const { home: h } = ctx;
     const expected = R.impliedId(h.prefix, r.number);
     if (!isEmpty(fm.id) && fm.id !== expected) fix(['id'], 'id', `id must be ${expected} (home and filename)`);
     if (!isEmpty(fm.title) && !String(fm.title).startsWith(`ADR-${r.number}:`)) fix(['title'], 'id', `title must start with "ADR-${r.number}:"`);
@@ -203,7 +198,7 @@ function checkRecord(home, r) {
         }
     }
 
-    // Tier extras and deciders. Grandfathered records are exempt: they predate tiers. A rejected
+    // Tier extras and decided_by. Grandfathered records are exempt: they predate tiers. A rejected
     // record is exempt from the extras: a declined proposal need not be completed to be declined.
     const high = R.isHighTier(fm);
     if (high && !gf && fm.status !== 'rejected') {
@@ -215,14 +210,8 @@ function checkRecord(home, r) {
     }
     const deciders = R.decidedBy(fm);
     if (R.RATIFIED.has(fm.status)) {
+        // Who should approve is not configured: the PR names it and the team's review handles it.
         if (deciders.length === 0) need(['decided_by', 'deciders'], 'decided-by', `${fm.status} requires a named human in decided_by`);
-        const pool = asList(high ? config.decisionOwners : config.deciders);
-        if (!gf && deciders.length && pool.length) {
-            const allowed = new Set(pool.map(handle));
-            if (!deciders.some((d) => allowed.has(handle(d)))) {
-                fix(['decided_by', 'deciders', ...TIER_KEYS], 'decided-by', `decided_by must include one of the ${high ? 'decisionOwners' : 'deciders'}: ${pool.join(', ')}`);
-            }
-        }
     }
 
     // Relations. On a record locked on the base only a newly set superseded_by can change; a

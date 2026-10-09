@@ -223,6 +223,7 @@ test('M1: an unknown flag is a usage error for each subcommand', (t) => {
     for (const args of [
         ['check', '--bogus', w.shared],
         ['check', '--diff', patch, w.shared],
+        ['check', '--config', patch, w.shared],
         ['select', '--repo', 'api', '--diff', patch, '--strict'],
         ['backfill', '--base', 'main', w.shared],
     ]) {
@@ -230,6 +231,20 @@ test('M1: an unknown flag is a usage error for each subcommand', (t) => {
         assert.equal(r.code, 2, `${args.join(' ')}: ${r.stdout}${r.stderr}`);
         assert.match(r.stderr, /unknown flag/);
     }
+});
+
+test('b3: who approves is not configured: an old adr.decisionOwners is ignored, not an error', (t) => {
+    const w = workspace(t);
+    const manifest = JSON.parse(fs.readFileSync(path.join(w.root, 'household.json'), 'utf8'));
+    manifest.adr = { decisionOwners: ['@arch-team'], deciders: ['Sam Roe'] };
+    write(path.join(w.root, 'household.json'), JSON.stringify(manifest));
+    // An accepted high-tier record decided by someone in no list.
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord({ fm: { decided_by: ['Anyone Else'] } }));
+    const r = runCli(w.root, w.env, 'check', w.shared);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /decided-by/);
+    const homes = JSON.parse(runCli(w.root, w.env, 'homes').stdout);
+    assert.deepEqual(homes.config, { localDir: 'docs/adr', sharedDir: 'adrs' });
 });
 
 test('M2: a home directory that does not exist is empty, and deleting it is still checked', (t) => {

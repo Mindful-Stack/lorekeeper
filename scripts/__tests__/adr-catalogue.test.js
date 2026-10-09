@@ -239,3 +239,33 @@ test('CLI homes finds the KB repo\'s branch under a nested sharedDir, and nulls 
     assert.equal(out.sharedDefaultBranch, 'develop');
     assert.deepEqual(out.localHomes.map((x) => [x.repo, x.repoRoot, x.relDir]), [['api', api, 'docs/adr'], ['web', null, null]]);
 });
+
+test('another team\'s KB keeps its own kb/ ids apart from the team KB\'s', (t) => {
+    const h = household(t);
+    write(path.join(h.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(h.other, '0001-tenancy.md'), makeRecord()); // its own id: kb/ADR-0001
+    write(path.join(h.other, '0002-billing.md'), makeRecord({ number: '0002', fm: { related: ['kb/ADR-0001'] } }));
+    write(path.join(h.local, '0002-cache.md'), makeRecord({ prefix: 'api', number: '0002', fm: { related: ['kb/ADR-0001'] } }));
+    const cat = buildCatalogue(resolveHomes(h.root, NO_ENV));
+    assert.deepEqual(cat.records.map((e) => e.id), ['api/ADR-0002', 'kb/ADR-0001', 'platform-kb/ADR-0001', 'platform-kb/ADR-0002']);
+    assert.deepEqual(cat.records.find((e) => e.id === 'kb/ADR-0001').relatedFrom, ['api/ADR-0002']);
+    const theirs = cat.records.find((e) => e.id === 'platform-kb/ADR-0001');
+    assert.deepEqual(theirs.relatedFrom, ['platform-kb/ADR-0002']);
+    assert.deepEqual(cat.records.find((e) => e.id === 'platform-kb/ADR-0002').related, ['platform-kb/ADR-0001']);
+});
+
+test('a moved stub lists as moved and its reverse links go to the record it moved to', (t) => {
+    const h = household(t);
+    write(path.join(h.local, '0001-cache.md'), makeRecord({ prefix: 'api', fm: { moved_to: 'kb/ADR-0002' } }));
+    write(path.join(h.shared, '0002-cache.md'), makeRecord({ number: '0002', fm: { aliases: ['api/ADR-0001'] } }));
+    write(path.join(h.local, '0003-reader.md'), makeRecord({ prefix: 'api', number: '0003', fm: { depends_on: ['api/ADR-0001'], related: ['api/ADR-0001'] } }));
+    const cat = buildCatalogue(resolveHomes(h.root, NO_ENV));
+    const target = cat.records.find((e) => e.id === 'kb/ADR-0002');
+    assert.deepEqual([target.dependedOnBy, target.relatedFrom], [['api/ADR-0003'], ['api/ADR-0003']]);
+    const stub = cat.records.find((e) => e.id === 'api/ADR-0001');
+    assert.deepEqual([stub.dependedOnBy, stub.relatedFrom], [[], []]);
+    assert.match(renderMarkdown(cat), /\| api\/ADR-0001 \| api \| .* \| moved \|/);
+    assert.doesNotMatch(renderMarkdown(cat, 'accepted'), /\| api\/ADR-0001 \|/);
+    const json = JSON.parse(runCli(h.root, gitEnv(h.root), 'index', '--json', '--status', 'accepted').stdout);
+    assert.deepEqual(json.records.map((e) => e.id), ['api/ADR-0003', 'kb/ADR-0002']);
+});

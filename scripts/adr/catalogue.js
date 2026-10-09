@@ -28,10 +28,13 @@ function listHomes(homes) {
 
 function entry(home, r) {
     const fm = r.fm;
-    const own = (ref) => R.qualify(ref, home.prefix);
+    // Another team's KB calls its own records kb/; here that prefix is the team KB's, so its
+    // ids and its own kb/ references take the KB's directory name instead.
+    const local = (id) => (id && home.kind === 'other' ? id.replace(/^kb\//, `${home.prefix}/`) : id);
+    const own = (ref) => local(R.qualify(ref, home.prefix));
     const refs = (key) => asList(fm[key]).map(own).filter(Boolean);
     return {
-        id: isEmpty(fm.id) ? R.impliedId(home.prefix, r.number) : fm.id,
+        id: isEmpty(fm.id) ? R.impliedId(home.prefix, r.number) : local(String(fm.id)),
         home: home.prefix,
         kind: home.kind,
         number: r.number,
@@ -71,9 +74,19 @@ function buildCatalogue(homes) {
     }
     const byId = new Map(records.map((e) => [e.id, e]));
     for (const e of records) for (const a of e.aliases) if (!byId.has(a)) byId.set(a, e);
+    // A link to a moved record's old id belongs to the record it moved to.
+    const live = (id) => {
+        let e = byId.get(id);
+        const seen = new Set();
+        while (e && e.movedTo && byId.has(e.movedTo) && !seen.has(e)) {
+            seen.add(e);
+            e = byId.get(e.movedTo);
+        }
+        return e;
+    };
     for (const e of records) {
-        for (const id of e.related) if (byId.has(id)) byId.get(id).relatedFrom.push(e.id);
-        for (const id of e.dependsOn) if (byId.has(id)) byId.get(id).dependedOnBy.push(e.id);
+        for (const id of e.related) if (live(id)) live(id).relatedFrom.push(e.id);
+        for (const id of e.dependsOn) if (live(id)) live(id).dependedOnBy.push(e.id);
     }
     const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
     records.sort((a, b) => order(a.id, b.id));
@@ -100,14 +113,19 @@ function cell(s) {
     return String(s).replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
 }
 
+// The status a listing shows and filters on: a moved stub is `moved`, whatever it kept.
+function listedStatus(e) {
+    return e.movedTo ? 'moved' : e.status;
+}
+
 // Markdown rendering: one table across homes, then the relations each record has.
 function renderMarkdown(cat, statusFilter) {
-    const rows = cat.records.filter((e) => !statusFilter || e.status === statusFilter);
+    const rows = cat.records.filter((e) => !statusFilter || listedStatus(e) === statusFilter);
     const lines = [`## Architecture decision records (${rows.length})`, ''];
     lines.push('| ID | Home | Title | Decision | Status | Date |', '|---|---|---|---|---|---|');
     for (const e of rows) {
         const title = cell(e.title.replace(/^ADR-\d{4}:\s*/, ''));
-        lines.push(`| ${e.id} | ${e.home} | ${title} | ${cell(e.description)} | ${e.status} | ${e.date} |`);
+        lines.push(`| ${e.id} | ${e.home} | ${title} | ${cell(e.description)} | ${listedStatus(e)} | ${e.date} |`);
     }
     const rel = rows.filter((e) => e.supersedes.length || e.supersededBy || e.dependsOn.length
         || e.related.length || e.relatedFrom.length || e.dependedOnBy.length || e.movedTo);
@@ -132,4 +150,4 @@ function renderMarkdown(cat, statusFilter) {
     return lines.join('\n');
 }
 
-module.exports = { listHomes, buildCatalogue, nextNumber, renderMarkdown };
+module.exports = { listHomes, buildCatalogue, nextNumber, listedStatus, renderMarkdown };

@@ -311,11 +311,12 @@ function cmdHomes(flags) {
 function cmdIndex(flags) {
     const cwd = path.resolve(flags.cwd || process.cwd());
     const cat = C.buildCatalogue(H.resolveHomes(cwd));
-    if (flags.status && !R.STATUSES.includes(flags.status)) {
-        throw new UsageError(`--status is one of ${R.STATUSES.join(', ')}`);
+    const statuses = [...R.STATUSES, 'moved'];
+    if (flags.status && !statuses.includes(flags.status)) {
+        throw new UsageError(`--status is one of ${statuses.join(', ')}`);
     }
     if (flags.json) {
-        const records = cat.records.filter((e) => !flags.status || e.status === flags.status);
+        const records = cat.records.filter((e) => !flags.status || C.listedStatus(e) === flags.status);
         console.log(JSON.stringify({ homes: cat.homes, records }, null, 2));
     } else {
         console.log(C.renderMarkdown(cat, flags.status));

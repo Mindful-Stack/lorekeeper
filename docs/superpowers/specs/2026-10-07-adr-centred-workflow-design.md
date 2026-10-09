@@ -100,12 +100,12 @@ another KB's own `kb/` ids and references read as `<kb-dir>/`.
 `household.json` gains an optional `adr` block:
 
 ```json
-"adr": { "localDir": "docs/adr", "sharedDir": "adrs", "decisionOwners": [], "deciders": [] }
+"adr": { "localDir": "docs/adr", "sharedDir": "adrs" }
 ```
 
 plus a per-repo `repos[].adrDir` override. `.lorekeeper/config.json` accepts the same keys for
-single-repo setups. `decisionOwners` and `deciders` are people or code-host team handles; an empty
-list disables the matching check. Every key is optional, so the manifest schema version does not
+single-repo setups. Who approves a record is not configured: the PR names it and the team's
+review handles it. Every key is optional, so the manifest schema version does not
 change. `.lorekeeper/config.json` nests the same keys under `adr`.
 
 ## Identity and numbering
@@ -206,7 +206,7 @@ them; the human reviewer confirms, and a wrong classification is itself a review
 
 | | High tier | Otherwise |
 |---|---|---|
-| Who decides | `decided_by` ∩ `decisionOwners` ≠ ∅ | `decided_by` ∩ `deciders` ≠ ∅ (owners informed) |
+| Who decides | the PR names who should approve (the decider; the area's owners via the team's normal review); no mechanical check | the PR names who should approve (the decider); no mechanical check |
 | PR venue | its own ADR-only PR, merged as `accepted` before implementation PRs | may ride in the implementation PR |
 | Validator extras (not for `rejected` records) | ≥1 invalidation trigger, ≥2 considered options, `scope` non-empty | — |
 
@@ -349,20 +349,19 @@ base tip with `--base`). Run by the skill after every write, available as a pre-
 in CI.
 
 `check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>] [--strict] [--draft]
-[--config <file>] <dir>`. `--draft` is for the writer validating a proposal it is about to commit
+<dir>`. `--draft` is for the writer validating a proposal it is about to commit
 for review: the `proposed-shared` and ride-along findings, which are expected until the record is
 accepted, are reported as warnings. CI never passes it. The home is inferred from the path for any home the resolution above finds (a
 household's homes, or a single repo's local home and its KB); a standalone KB checkout needs
 `--home shared`, and CI passes `--home` because the manifest is not checked out there. `--single-home`
-marks a repo with no KB (one coinciding home) when `--home` is passed; `--config` supplies
-`decisionOwners`/`deciders` where no manifest or config file is checked out. `--base` needs the
+marks a repo with no KB (one coinciding home) when `--home` is passed. `--base` needs the
 base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
 
 - frontmatter schema: required keys, enum values, inline values only;
 - id matches home and filename; number unique against `--base`;
 - home matches `blast_radius` (skipped for coinciding homes); `scope` syntax matches the home;
-- high-tier extras; `accepted` requires non-empty `decided_by`; owner/decider membership when
-  configured;
+- high-tier extras; `accepted` requires non-empty `decided_by` (any named human: who should
+  approve is named in the PR, not checked against a list);
 - relations resolve; references to another home are warnings when that home is not on disk or
   not resolvable without a manifest, errors when it is; no supersession cycles;
 - `supersedes` / `superseded_by` are symmetric within the home (edit 2 makes the reverse side
@@ -399,7 +398,8 @@ Exit non-zero with one line per violation (`path: rule: message`). Tests in
 - Resolves homes as above; `new` derives the home from the interview's `blast_radius` answer.
 - Interview adds classification, `scope`, and facts relied on; the tier sets the PR shape.
 - `accept NNNN` requires the user to name the decider(s), refuses an agent-only identity, writes
-  `decided_by` and the ratification Status line, and checks the owner/decider rule.
+  `decided_by` and the ratification Status line, and names who should approve in the PR's
+  **Approval** line.
 - New modes: `observe NNNN`, `lint` (runs the validator), `index` (renders the catalogue across all
   homes on demand; never committed), `move NNNN` (cross-home move as a two-PR stack), plus `reject`
   (a named human declines a proposal), `deprecate`, and `retire <ref> by|to <id>` (the second PR

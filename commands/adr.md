@@ -66,8 +66,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js homes
 ```
 
 It prints JSON: `mode` (`household` or `single`), `root`, `governedRepo` (the repo whose checkout
-contains the CWD, or `null` at the household root), `config` (`localDir`, `sharedDir`,
-`decisionOwners`, `deciders`), `localHomes` (`repo`, `dir`, `present`, `exists`, `coinciding`,
+contains the CWD, or `null` at the household root), `config` (`localDir`, `sharedDir`),
+`localHomes` (`repo`, `dir`, `present`, `exists`, `coinciding`,
 `repoRoot`, `relDir`, `defaultBranch`), `sharedHome`, `sharedHomeExists`, `sharedRoot`,
 `sharedRepoRoot`, `sharedRelDir` and `sharedDefaultBranch`, and `otherKbs`. `repoRoot` is the git
 repository holding the home (for a KB folder inside a code repo, that code repo) and `relDir` the
@@ -107,10 +107,10 @@ drafting and keep its frontmatter keys and section order exactly. The file lives
   - `sensitivity`: any of `security`, `privacy`, `billing`, `legal`, `contract`; `[]` for none.
 - **High tier** = `one-way`, or `cross-service`/`customer`, or any sensitivity tag. A high-tier
   record needs at least two considered options, at least one invalidation trigger, and a
-  non-empty `scope`; it is decided by someone in `config.decisionOwners` (when configured) and
-  gets its own ADR-only PR, merged as accepted before any implementation PR. A low-tier record is
-  decided by someone in `config.deciders` (when configured) and may ride along in the
-  implementation PR.
+  non-empty `scope`; it gets its own ADR-only PR, merged as accepted before any implementation
+  PR, and that PR asks the owners of the area to review it. A low-tier record may ride along in
+  the implementation PR. Who approves is not configured and nothing checks it mechanically: the
+  PR names who should approve and the team's normal review handles it.
 - `scope`: globs for the code the decision governs. In a local record they are relative to the
   repo root (`src/Billing/**`); in a shared record each is prefixed with the repo name
   (`billing-api:src/Billing/**`). Reviews select records by scope, so a record with no scope is
@@ -277,9 +277,8 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    copy the home directory's files and the draft into `<lint-dir>/<home-dir-name>` and run
    `adr-lint check --draft` on that copy with the home spelt out, since the copy sits outside the
    household: `--home shared` for the shared home, or `--home local --repo <repo>` for a local
-   home, plus `--single-home` when `homes` reports it as `coinciding`. Add `--config` with
-   `<root>/household.json` when one exists, or else the repo's `.lorekeeper/config.json` when it
-   has one, so the decider pools apply. Fix every error before presenting.
+   home, plus `--single-home` when `homes` reports it as `coinciding`. Fix every error before
+   presenting.
 8. **Present** the file with its path, tier and PR shape:
 
    > **Proposed ADR** — `billing-api/ADR-0003` (low tier: two-way, service)
@@ -299,9 +298,13 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
 
 9. **Apply** on confirmation: dispatch **knowledge-updater** with Type `adr`, Action `create`,
    the file, Home, Placement (`own-pr` for high tier; the user's choice for low tier), the
-   `ADR lint:` path and the homes JSON. For several records from one interview, use the batch
+   `ADR lint:` path, the homes JSON, and the **Approval** line for the PR description: who should
+   approve — the people the user names, or "a decider named at accept"; for high tier add "should
+   be reviewed by the owners of the area (the team's usual review; CODEOWNERS on the ADR folder
+   where a repo uses it)". For several records from one interview, use the batch
    shape: one batch per home.
-10. **Confirm** with the PR URL (or "staged on <branch>") and the next step. High tier: "its PR
+10. **Confirm** with the PR URL (or "staged on <branch>"), the Approval line its description
+    carries, and the next step. High tier: "its PR
     stays red on the ADR check until it is accepted: get it reviewed, then
     `/lore:adr accept <id> by <name>`". Ride-along: "once the approver approves the PR, run
     `/lore:adr accept <id> by <approver>` before merging". If the decision implies a standing
@@ -346,10 +349,11 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    proceed without one: in a non-interactive run, stop and say a named human decider is
    required. Refuse any name that identifies an agent or bot (Claude, Codex, Copilot, an AI or
    assistant, anything ending in `[bot]`): an agent cannot ratify.
-4. **Check the decider.** The pool follows the tier as classified in step 2:
-   `config.decisionOwners` for a high-tier record and `config.deciders` otherwise; when that list
-   is non-empty, at least one named decider must be in it (case-insensitive, `@` ignored). If
-   not, say who may decide and stop.
+4. **State who should approve.** Nothing checks the decider against a list. The PR description
+   carries an **Approval** line naming who should approve: the named decider(s), and for a
+   high-tier record (tier as classified in step 2) "should be reviewed by the owners of the area
+   (the team's usual review; CODEOWNERS on the ADR folder where a repo uses it)". The PR author
+   and reviewer are responsible for involving them.
 5. **Edit:** `status: accepted`, `decided_by: [<names>]`, and append to `## Status`:
    `Accepted YYYY-MM-DD by <names>.` Nothing else changes.
 6. **Predecessors.** For each id in `supersedes`:
@@ -363,8 +367,8 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
      retired there.` After this PR merges, the user runs `/lore:adr retire <id> by <this id>` for
      the second PR (use the `stack` skill to show the order).
 7. **Apply** with knowledge-updater, Action `update` (a batch when a predecessor changes), with
-   the Placement from step 1. Confirm what was committed, or staged, and that the PR can merge once
-   checks pass.
+   the Placement from step 1 and the Approval line from step 4. Confirm what was committed, or
+   staged, the Approval line, and that the PR can merge once checks pass.
 
 ### `reject <ref> [by <name>, …]` → Decline a proposal
 
@@ -437,8 +441,8 @@ does not change: if the scope or classification changes, that is a `supersede`.
    `aliases: [<old id>]`. The Status log is copied with one line appended:
    `Moved YYYY-MM-DD from <old id>.` Classify it now if it predates classification.
 3. **Lint the copy** as in New record step 7 (`check --draft` in a scratch copy of the target
-   home, with that home's flags and `--config`). If it fails on `high-tier` (tier extras) or
-   `decided-by` (the decider pool), stop: say the record cannot move as-is and needs a supersede
+   home, with that home's flags). If it fails on `high-tier` (tier extras) or `decided-by` (no
+   named human), stop: say the record cannot move as-is and needs a supersede
    (a new decision record) instead. Otherwise apply with Placement `own-pr`, telling the
    knowledge-updater it is a move copy of `<old id>` (it writes `accepted` without a new decider
    only for that).
@@ -461,15 +465,13 @@ does not change: if the scope or classification changes, that is a `supersede`.
 For the local homes and the shared home with `exists: true` (not `otherKbs`), run
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home flags> [--config <config-file>] \
-  [--base origin/<default-branch>] <home-dir>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home flags> [--base origin/<default-branch>] <home-dir>
 ```
 
 `<home flags>` are `--home shared` for the shared home, and `--home local --repo <repo>` (the
 home's `repo`) for a local home, plus `--single-home` when it is `coinciding`: spelt out, the
 check never has to re-resolve the homes from inside a KB that sits outside the code repo.
-`--config` is `<root>/household.json` when one exists, or else the repo's
-`.lorekeeper/config.json` when it has one. Add `--base` when that repo has the ref
+Add `--base` when that repo has the ref
 (`git -C <repo> rev-parse --verify origin/<default-branch>`).
 Report per home: errors, warnings, and the exit code; group findings by rule. Warnings on records
 from before this format (missing `id` or classification) point at `/lore:migrate`. Read-only.

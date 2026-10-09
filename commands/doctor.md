@@ -79,14 +79,13 @@ For the local homes and the shared home with `exists: true` (not `otherKbs`: oth
 theirs to check), run the validator without a base (doctor diffs nothing):
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home flags> [--config <config-file>] <home-dir>
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home flags> <home-dir>
 ```
 
 `<home flags>` are `--home shared` for the shared home, and `--home local --repo <repo>` (the
 home's `repo`) for a local home, plus `--single-home` when `homes` reports it as `coinciding`.
-`--config` is `<root>/household.json` when one exists, or else the repo's
-`.lorekeeper/config.json` when it has one. Spelt out, the check never has to re-resolve the homes
-from inside a KB that sits outside the code repo, which loses that repo's configuration.
+Spelt out, the check never has to re-resolve the homes from inside a KB that sits outside the
+code repo.
 
 Report per home: the number of records, errors and warnings, grouped by rule. Then:
 

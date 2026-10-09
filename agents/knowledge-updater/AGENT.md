@@ -194,14 +194,12 @@ single-branch clone, then run the validator on the home directory as it will be 
 ```bash
 git -C <checkout> fetch origin +refs/heads/<default>:refs/remotes/origin/<default>
 node <ADR lint> check --home shared|local [--repo <repo-name>] [--single-home] [--draft] \
-  --base origin/<default> [--config <config-file>] <home-dir>
+  --base origin/<default> <home-dir>
 ```
 
 Pass `--home local --repo <repo-name>` for a local home (the home's `repo` in the homes JSON),
 plus `--single-home` when `homes` reports it as `coinciding`, and `--home shared` for the KB,
 because a worktree sits outside the household and the home cannot be inferred there. Pass
-`--config` with `<household-root>/household.json` when one exists, or else the code repo's
-`.lorekeeper/config.json` when it has one (either carries `decisionOwners`/`deciders`). Pass
 `--base` for every placement: for `pr-branch` it is still the default branch. Pass `--draft` for
 every `pr-branch` and `ride-along` change, and for an `own-pr` change that proposes a record (its
 result has `status: proposed`): a shared PR may still hold other proposals while one of them is
@@ -224,6 +222,11 @@ caller checks those before asking you to write, and the household's `adr-lint ch
 `docs: reject ADR-NNNN`, `docs: observe ADR-NNNN`, `docs: deprecate ADR-NNNN`,
 `docs: supersede ADR-NNNN with <id>`, `docs: move ADR-NNNN to <id>`; a batch uses the caller's
 `pr_title`.
+
+**Approval line.** For an ADR proposal or accept, the caller supplies an **Approval** line naming
+who should approve. Put it verbatim in the body of the PR you open. When there is no new PR
+(`pr-branch`, `ride-along`), return it to the caller so the user can add it to the PR
+description. Nothing checks it: the PR author and reviewer involve the people it names.
 
 ## PR Workflow
 

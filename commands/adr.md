@@ -319,6 +319,10 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
 6. **Predecessors.** For each id in `supersedes`:
    - **same home** — flip it in the same change: `status: superseded`, `superseded_by: <this
      id>`, and append `Superseded YYYY-MM-DD by <this id>.` to its Status. Its body stays as is.
+     A locked record gains one Status line per PR, so when its last Status line is the
+     `Supersession proposed … by <this id>` note and that line is absent from
+     `origin/<default-branch>` (this same PR added it), **replace** the note with the
+     `Superseded` line instead of appending.
    - **another home** — leave it. Add to this record's Status line: `Supersedes <id> once
      retired there.` After this PR merges, the user runs `/lore:adr retire <id> by <this id>` for
      the second PR (use the `stack` skill to show the order).
@@ -331,7 +335,10 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
 As `accept` steps 1, 2, 4 (classification only: a rejected record has no tier extras) and 7, but
 the edit is `status: rejected`, `decided_by: [<names>]`, and
 `Rejected YYYY-MM-DD by <names>: <one-line reason>.` A rejected record merges and stays, so the
-reason is worth a sentence. A rejected record never flips a predecessor.
+reason is worth a sentence. A rejected record never flips a predecessor. If the record supersedes
+one in the same home and this PR added the `Supersession proposed … by <this id>` note to that
+predecessor (the line is absent from `origin/<default-branch>`), **remove** the note in the same
+change, leaving the predecessor as it is on the default branch.
 
 ### `observe <ref> <what changed>` → Append an observation
 

@@ -98,7 +98,10 @@ may carry `deciders` instead of `decided_by`; read it as `decided_by` and never 
 deprecated or rejected. An `update` to a locked record may only be one of:
 
 1. one new line appended to `## Status`, with a transition to `superseded` or `deprecated`
-   (including `deprecated` → `superseded`) or a note — never back to `proposed`;
+   (including `deprecated` → `superseded`) or a note — never back to `proposed`. The count is
+   against the default branch: replacing this PR's own unmerged note (the `Supersession proposed`
+   line, absent from `origin/<default>`) with the `Superseded` line counts as the one line, and
+   removing that note when the successor is rejected restores the record as it was;
 2. setting `superseded_by` together with the flip to `superseded`, naming an accepted successor;
    or, for a move, replacing the file with its stub (same frontmatter plus `moved_to`, one-line
    body);

@@ -20,7 +20,7 @@ bb test/run-tests.clj --filter "command-help"  # filter by name substring
 bb test/run-tests.clj --verbose                # show full output on failures
 ```
 
-The runner executes `claude --print` from a workspace root, passing `--plugin-dir` for this checkout so the scenarios exercise the working tree rather than the installed plugin. The workspace root defaults to the bundled fixture `test/fixtures/workspace/` (manifest plus a small KB with `payments`/`inventory`/`device` domains); `--workspace-root` and `--plugin-dir` override it.
+The runner executes `claude --print` from a workspace root, passing `--plugin-dir` for this checkout so the scenarios exercise the working tree rather than the installed plugin. The workspace root defaults to a fresh copy of the bundled fixture `test/fixtures/workspace/` (manifest plus a small KB with `payments`/`inventory`/`device` domains), made in a temp directory outside any git repo for each run and deleted afterwards; `--workspace-root` (used in place) and `--plugin-dir` override it.
 
 ### Init-script tests (Node)
 

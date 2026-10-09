@@ -330,11 +330,18 @@ collected from exemptions and fed back.
 
 ## The validator
 
-`scripts/adr-lint.js` (Node, no dependencies, cross-platform), with subcommands `check` and
-`select`. Run by the skill after every write, available as a pre-commit hook, and in CI.
+`scripts/adr-lint.js` (Node, no dependencies, cross-platform), with subcommands `check`,
+`select` (from a patch with `--diff`, or from planned paths with `--paths`), `backfill`, and three
+read-only helpers the commands use instead of re-deriving the rules in prose: `homes` (the
+resolved homes, the governed repo, and each home repo's default branch, as JSON), `index` (the catalogue across homes with computed
+reverse links, as a table or `--json`), and `next` (the next free number in a home, counting the
+base tip with `--base`). Run by the skill after every write, available as a pre-commit hook, and
+in CI.
 
-`check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>] [--strict] [--config
-<file>] <dir>`. The home is inferred from the path for any home the resolution above finds (a
+`check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>] [--strict] [--draft]
+[--config <file>] <dir>`. `--draft` is for the writer validating a proposal it is about to commit
+for review: the `proposed-shared` and ride-along findings, which are expected until the record is
+accepted, are reported as warnings. CI never passes it. The home is inferred from the path for any home the resolution above finds (a
 household's homes, or a single repo's local home and its KB); a standalone KB checkout needs
 `--home shared`, and CI passes `--home` because the manifest is not checked out there. `--single-home`
 marks a repo with no KB (one coinciding home) when `--home` is passed; `--config` supplies
@@ -384,8 +391,12 @@ Exit non-zero with one line per violation (`path: rule: message`). Tests in
 - `accept NNNN` requires the user to name the decider(s), refuses an agent-only identity, writes
   `decided_by` and the ratification Status line, and checks the owner/decider rule.
 - New modes: `observe NNNN`, `lint` (runs the validator), `index` (renders the catalogue across all
-  homes on demand; never committed), `move NNNN` (cross-home move as a two-PR stack).
+  homes on demand; never committed), `move NNNN` (cross-home move as a two-PR stack), plus `reject`
+  (a named human declines a proposal), `deprecate`, and `retire <ref> by|to <id>` (the second PR
+  of a cross-home supersede or move, once the successor has merged).
 - `discover` unchanged in shape; retrospective records arrive `proposed` and go through `accept`.
+- A bare number resolves in the governed repo's local home first, then the shared home; when both
+  have it the command asks.
 
 **`knowledge-updater` agent**
 - ADR schema: `id`, `decided_by` (reads `deciders`), the new fields, the *Facts relied on* and
@@ -394,12 +405,20 @@ Exit non-zero with one line per violation (`path: rule: message`). Tests in
 - Local-home records are written in the code repo, not the KB: a high-tier record gets its own
   branch off the repo's default branch (never the user's working branch); a low-tier ride-along is
   staged on the current branch when the user says so.
+- Every ADR change names a placement: `own-pr` (a new branch off the default branch, worked in a
+  temporary git worktree so the user's checkout is untouched), `pr-branch <branch>` (commit onto
+  the open PR that carries the record — `accept` and `reject` of a proposal under review), or
+  `ride-along` (stage on the user's current branch, never commit). It runs `adr-lint check --base`
+  before committing and stops on errors.
 
 **`architect` agent**
 - Catalogue load greps every resolved local home, the team KB and shared KBs.
 - `bind` and `check` take the `select` output first, then synonym expansion.
-- `check` returns the four finding classes with severities; reports `rejected` and `superseded`
-  records in the area as "already ruled out" and in-flight cross-home pairs.
+- `check` returns the four finding classes (contradiction, fired trigger, stale fact, uncovered
+  choice); the review that dispatches it assigns their severities (Plan C). It reports `rejected`
+  and `superseded` records in the area as "already ruled out" and in-flight cross-home pairs.
+- With no tools beyond Glob, Grep and Read, the architect takes the catalogue (`adr-lint index
+  --json`) and `select` output from its caller, and falls back to resolving the homes itself.
 
 **`review`, `recording-decisions`, `brainstorming`, `writing-plans`, `doctor`** — the hooks above;
 `doctor` learns local homes and the qualified-id references.
@@ -425,9 +444,11 @@ Three implementation plans, in order:
 - **A. Record format, homes and validator** — template, configuration and resolution, `adr-lint`
   `check` and `select`, tests, migrate step (no manifest schema change; see *Configuration*).
 - **B. Writing records** — `/lore:adr` modes, `knowledge-updater`, `architect` catalogue and
-  `select` integration, `doctor`.
-- **C. Workflow enforcement** — `review` severity mapping and escape hatch, `recording-decisions`,
-  `brainstorming` terminal state, `writing-plans` header, plan-compliance review.
+  `select` integration, `doctor`, and the `adr-lint` helpers they call (`homes`, `index`, `next`,
+  `select --paths`).
+- **C. Workflow enforcement** — `review` severity mapping (for the architect's four classes) and
+  escape hatch, `recording-decisions`, `brainstorming` terminal state, `writing-plans` header,
+  plan-compliance review.
 
 ## Testing
 

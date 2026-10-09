@@ -256,24 +256,32 @@ Propose updates to the knowledge base:
 
 ### ADR
 
-Architecture decision records are first-class knowledge nodes under `adrs/`: one hard-to-reverse
-decision per record, numbered like `adr-tools` (`NNNN-<topic>.md`), reviewed through a PR, and
-immutable once code depends on them.
+Architecture decision records are first-class knowledge: one hard-to-reverse decision per record,
+numbered per home (`NNNN-<problem>.md`), reviewed through a PR, binding once a named human accepts
+it, and locked from then on. A record lives in one of two **homes**, chosen by its `blast_radius`:
+the governed repo's `docs/adr/` for a decision that stays inside one service (`<repo>/ADR-NNNN`),
+or the team knowledge base's `adrs/` for cross-service and customer-facing ones (`kb/ADR-NNNN`).
 
 ```bash
 /lore:adr Use PostgreSQL as the primary datastore   # new record: triage → interview → draft → PR
-/lore:adr                                            # list records (rendered from frontmatter)
-/lore:adr list accepted                              # filter by status
-/lore:adr accept 0004                                # proposed → accepted (first code depends on it)
-/lore:adr supersede 0002 Move session state to JWTs  # proposes the replacement; 0002 is retired when it is accepted
+/lore:adr                                            # list records across every home
+/lore:adr index                                      # plus relations and computed reverse links
+/lore:adr accept kb/ADR-0004 by Alex Doe             # a named human ratifies a proposal
+/lore:adr observe api/ADR-0002 Invoices now exceed F2's 10k/day   # dated note on a locked record
+/lore:adr supersede 0002 Move session state to JWTs  # proposes the replacement; 0002 retires when it is accepted
+/lore:adr move kb/ADR-0006                           # refile in another home (two-PR stack)
+/lore:adr lint                                       # run the validator over every home
 /lore:adr discover                                   # find decisions already baked into the code
 ```
 
-The record shape is Nygard's *Context / Decision / Consequences* with a short *Considered options*
-list and an *Assumptions and invalidation triggers* section, so every record says when it should be
-revisited. Frontmatter carries `status`, `date`, `deciders`, and `confidence`; the `description` is
-the decision in one sentence and is what listings and search show. There is no index file: the
-list is rendered from frontmatter on demand.
+The record (`references/adr-template.md`) is MADR-shaped: Context, *Facts relied on*, Considered
+options, a Decision with numbered MUST/MUST NOT rules (`kb/ADR-0007.R2`), Consequences,
+*Assumptions and invalidation triggers*, and append-only *Later observations*. Frontmatter carries
+the classification (`reversibility`, `blast_radius`, `sensitivity`) that decides the home and the
+tier, a `scope` of globs that reviews select records by, and the people in `decided_by`.
+High-tier records (one-way, cross-service or customer, or sensitive) get their own ADR-only PR and
+are accepted before implementation; low-tier ones may ride along in the implementation PR. There is
+no index file: the list is rendered on demand.
 
 `scripts/adr-lint.js` validates records mechanically: frontmatter schema, id and home, scope
 syntax, relations, and, given a base branch, that an accepted record changed only in the ways a
@@ -307,13 +315,14 @@ exec node "$plugin/scripts/adr-lint.js" check --home local --base origin/main do
 
 The canonical record template is `references/adr-template.md`.
 
-Retrieval is a separate, read-only **`architect`** agent: pattern-identifier, brainstorming, and
-review dispatch it in parallel with their usual agent, so "how do we do X?" also returns the
-decision behind X, a design that would fire a record's invalidation trigger is flagged before the
-spec is written, and a diff that contradicts an accepted record is reviewed as such. `/lore:adr
-discover` runs the agent's `survey` mode, then records every pick in one batch: one round of
-questions, one review, one PR. The `recording-decisions` skill is the gate: record it as
-proposed before building on it.
+Retrieval is a separate, read-only **`architect`** agent that reads every home: pattern-identifier,
+brainstorming, and review dispatch it in parallel with their usual agent, so "how do we do X?" also
+returns the decision behind X, a design that would fire a record's invalidation trigger is flagged
+before the spec is written, and a diff that contradicts an accepted rule, falsifies a relied-on
+fact, or makes an unrecorded hard-to-reverse choice is reviewed as such. `/lore:adr discover` runs
+the agent's `survey` mode and drafts every pick as a proposal in one batch per home; each is then
+accepted by a named human. The `recording-decisions` skill is the gate: record it as proposed
+before building on it.
 
 ### Cultivate
 

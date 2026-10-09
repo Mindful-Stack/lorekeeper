@@ -83,7 +83,7 @@ Always display available commands:
 
 | Command | Description |
 |---------|-------------|
-| `/lore:adr [title\|list\|accept NNNN\|supersede NNNN\|discover]` | Record, list, accept, supersede, or discover architecture decision records |
+| `/lore:adr [title\|list\|index\|accept\|reject\|observe\|supersede\|deprecate\|move\|retire\|lint\|discover]` | Record, list, ratify, observe, supersede, move, or discover architecture decision records across every home |
 | `/lore:cultivate` | Cultivate a bounded-context domain — with arg: bootstrap/refine/audit; without arg: discover candidates + audit existing |
 | `/lore:doctor` | Run full workspace + KB diagnostic |
 | `/lore:explore [query]` | Browse and search knowledge nodes |
@@ -105,7 +105,7 @@ Always display available commands:
 | Frameworks | `frameworks/` | Framework-specific patterns |
 | Domain | `domain/` | Business domain contexts |
 | Learnings | `learnings/` | Team-captured gotchas, edge cases, and tribal knowledge |
-| ADRs | `adrs/` | Architecture decision records — numbered, one decision each, immutable once accepted (`/lore:adr`) |
+| ADRs | `adrs/` (and each repo's `docs/adr/`) | Architecture decision records — numbered per home, one decision each, locked once a named human accepts them (`/lore:adr`) |
 
 ## Available Skills (Auto-Triggered)
 

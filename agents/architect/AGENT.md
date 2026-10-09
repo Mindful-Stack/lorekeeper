@@ -36,7 +36,7 @@ If the caller passed the catalogue path, Read it and use it. Otherwise build it 
    `meta_repo`, `knowledge_base` and `shared_knowledge_bases` has a local home at
    `<household-root>/<name>/<adrDir or adr.localDir or docs/adr>`; the shared home is
    `<team-knowledge-path>/<adr.sharedDir or adrs>`; other KBs' homes are
-   `<household-root>/<kb>/knowledge/adrs`. With no household, the git root's `docs/adr` and
+   `<household-root>/<kb>/knowledge/<adr.sharedDir or adrs>`. With no household, the git root's `docs/adr` and
    `<team-knowledge-path>/adrs` (when a KB is configured) are the homes. A repo directory that
    does not exist is not checked out: say so in the report.
 2. **Frontmatter.** One Grep per existing home:
@@ -164,12 +164,12 @@ requirement somebody once had.
 2. **Candidates first:** every record in the caller's `select` output. Then list the areas the
    diff touches (paths, technologies, boundaries crossed), expand them into search terms as in
    `bind`, and add the records that match. A `missing` candidate is a cited id that resolves
-   nowhere: report it.
+   nowhere: report it under *Dangling citations*.
 3. Read every accepted candidate in full and compare the diff with each rule, each fact relied
    on, and each trigger. Read ruled-out candidates too: a diff that brings back a rejected option
    contradicts the rejection's reasoning.
-4. Report findings in four classes. Cite code by `path:line-range` from the diff, rules by id,
-   facts by `F#`, and records by id and section.
+4. Report findings in four classes, then any dangling citations. Cite code by `path:line-range`
+   from the diff, rules by id, facts by `F#`, and records by id and section.
 
 ```markdown
 ## Contradictions with accepted records
@@ -191,6 +191,11 @@ requirement somebody once had.
 ## Uncovered hard-to-reverse choices
 - `infra/docker-compose.yml:10-31` introduces a message broker; no record covers messaging.
   Suggest `/lore:adr <topic>`.
+[or: none]
+
+## Dangling citations
+- `src/Billing/Invoice.cs:7` cites kb/ADR-0009, which resolves nowhere (renumbered, deleted, or
+  a typo).
 [or: none]
 
 ## Context

@@ -28,7 +28,7 @@ The KB repo root is the parent directory of `knowledge/` (i.e., one level up fro
 
 If no `Team knowledge path:` marker is present, the hook already showed the user a "not configured" message. Return that message and stop — unless the change is an ADR for a local home, which needs no knowledge base (see *ADRs*).
 
-**ADRs route by home, not by these rules.** An ADR change names its Home: `shared` is the team KB's ADR home, `local:<repo>` is that repo's local home (`docs/adr/` or its configured directory) inside the code repo itself. The caller passes the `homes` JSON (directories and each repo's `defaultBranch`) and an `ADR lint:` line with the absolute path of `adr-lint.js`; use that path for every `adr-lint` command below. Only if the caller passed none, fall back to `${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js` and run its `homes` subcommand yourself.
+**ADRs route by home, not by these rules.** An ADR change names its Home: `shared` is the team KB's ADR home, `local:<repo>` is that repo's local home (`docs/adr/` or its configured directory) inside the code repo itself. The caller passes the `homes` JSON (directories and each repo's `defaultBranch`) and an `ADR lint:` line with the absolute path of `adr-lint.js`. That path is `<ADR lint>`: every `adr-lint` command below runs as `node <ADR lint> …`. Only if the caller passed none, fall back to `${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js` as `<ADR lint>` and run its `homes` subcommand yourself.
 
 ## Input
 
@@ -76,9 +76,9 @@ Follow DDD structure: Purpose, Key Entities, Ubiquitous Language, Integration Po
 
 ### ADRs (shared home `knowledge/adrs/`, or a code repo's local home)
 
-The caller drafts; you place, validate and commit. The format is
-`${CLAUDE_PLUGIN_ROOT}/references/adr-template.md`; the rules are in
-`${CLAUDE_PLUGIN_ROOT}/commands/adr.md`.
+The caller drafts; you place, validate and commit. The format is the plugin's
+`references/adr-template.md` and the rules are in its `commands/adr.md` (both next to the
+`ADR lint:` script's `../references/` and `../commands/`).
 
 **Filename and identity.** `NNNN-<problem-slug>.md`, four digits, numbered per home; the caller
 supplies the number. `id` is `kb/ADR-NNNN` in the shared home and `<repo>/ADR-NNNN` in a local
@@ -108,7 +108,9 @@ deprecated or rejected. An `update` to a locked record may only be one of:
 3. a dated bullet appended to `## Later observations` (add the section before *See also* if a
    legacy record lacks it);
 4. formatting or a link target (a bare wikilink only in *See also*);
-5. a schema backfill of `id` and empty classification keys on a record from before this format.
+5. a schema backfill on a record from before this format: `id`, the classification keys
+   (`reversibility`, `blast_radius`, `sensitivity`), `scope`, and `decided_by` where absent, with
+   all classification keys and `scope` written together in one change.
 
 Refuse anything else and tell the caller to supersede the record. A proposed record may be edited
 freely. `adr-lint check --base` enforces the same list, so a refused edit would also fail CI.
@@ -157,7 +159,7 @@ flips a predecessor uses the accepted record's number; a discover batch uses
 **Validate before committing.** Run the validator on the home directory as it will be committed:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check --home shared|local [--repo <repo>] \
+node <ADR lint> check --home shared|local [--repo <repo>] \
   --base origin/<default> --config <household-root>/household.json <home-dir>
 ```
 

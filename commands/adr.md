@@ -234,8 +234,8 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    variable does not survive between commands). Write the catalogue to a scratch file with
    `adr-lint index --json > <scratch>/adr-index.json`. Dispatch two agents in parallel: the
    **architect** in `bind` mode with the topic, the homes JSON, and the catalogue path (plus
-   `adr-lint select --repo <repo> --paths <paths>` output when the code paths are known), and the
-   **knowledge-reader** with "Prioritise domain context and architecture patterns." If the
+   `adr-lint select --repo <repo> --paths <path,path,…>` output, a comma-separated list, when the
+   code paths are known), and the **knowledge-reader** with "Prioritise domain context and architecture patterns." If the
    architect names a record that already covers the decision, stop and offer `accept`,
    `supersede`, or nothing. Grep the code for the thing being decided so Context and *Facts
    relied on* rest on evidence.
@@ -392,8 +392,10 @@ and binding until the successor is accepted (`accept` step 6).
 ### `deprecate <ref> <reason>` → Retire with no replacement
 
 Only for an `accepted` record. Ask who decided it no longer applies (a named human, as for
-`accept`). Edit `status: deprecated` and append `Deprecated YYYY-MM-DD by <name>: <reason>.`
-Apply with Placement `own-pr`. If something replaces the decision, use `supersede` instead.
+`accept`); without one, or in a non-interactive run without one, stop and say a named human is
+required. Edit `status: deprecated` and append `Deprecated YYYY-MM-DD by <name>: <reason>.`
+Present the edit and get confirmation; in a non-interactive run, show it and stop. Then apply
+with Placement `own-pr`. If something replaces the decision, use `supersede` instead.
 
 ### `move <ref>` → Move to another home
 
@@ -427,11 +429,12 @@ does not change: if the scope or classification changes, that is a `supersede`.
    `Superseded YYYY-MM-DD by <id>.`
    **`to <id>` (move):** replace the file with its stub — the same frontmatter plus
    `moved_to: <id>`, and a one-line body `Moved to <id>.`
-3. Apply with Placement `own-pr` in `<ref>`'s home.
+3. Present the edit and get confirmation; in a non-interactive run, show it and stop. Then
+   apply with Placement `own-pr` in `<ref>`'s home.
 
 ### `lint` → Validate every home
 
-For each home with `exists: true`, run
+For the local homes and the shared home with `exists: true` (not `otherKbs`), run
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check [--base origin/<default-branch>] <home-dir>

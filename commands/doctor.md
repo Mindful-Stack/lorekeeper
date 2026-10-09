@@ -75,7 +75,8 @@ and in the team KB's shared home. Resolve them:
 node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js homes
 ```
 
-For every home with `exists: true`, run the validator without a base (doctor diffs nothing):
+For the local homes and the shared home with `exists: true` (not `otherKbs`: other teams' KBs are
+theirs to check), run the validator without a base (doctor diffs nothing):
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home-dir>
@@ -83,21 +84,25 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home-dir>
 
 Report per home: the number of records, errors and warnings, grouped by rule. Then:
 
-- **Errors** (exit 1) — print each `path: rule: message` line. A `relations` error is a qualified
-  id (`kb/ADR-0004`, `api/ADR-0002`) that resolves nowhere: a renumbered or deleted record, or a
-  typo.
+- **Errors** (exit 1) — print each `path: rule: message` line. A `relations` error is one of: a
+  relation whose id (`kb/ADR-0004`, `api/ADR-0002`) resolves nowhere or is not a qualified id (a
+  renumbered or deleted record, or a typo); a supersession that is not symmetric (`superseded_by`
+  set on one record while its successor does not list it in `supersedes`); or a flip left undone
+  (an accepted record whose predecessor in the same home is not yet `superseded` by it, or a
+  `superseded_by` without `status: superseded`, or a record flipped to a successor that is not
+  accepted).
 - **Warnings on records from before the ADR-centred format** (`id`, `reversibility` or the other
   classification keys missing) — one summary line per home, suggesting `/lore:migrate` for the
   backfill. Do not list every record.
 - **Legacy proposals** (`proposed-shared` warnings in the shared home) — list each by its
   qualified id (`kb/ADR-NNNN`, from its home and number): each needs
   `/lore:adr accept <id> by <name>` or `/lore:adr reject <id> by <name>`.
-
-Name records by qualified id everywhere in this report (`kb/ADR-0002`, `api/ADR-0001`): a bare
-`ADR-0002` is ambiguous when two homes both have one.
 - **Repos not checked out** (`present: false`) — name them: their local records could not be
   checked, and references into them show up as warnings, not errors.
 - A home that does not exist yet is not a problem: say "no records yet".
+
+Name records by qualified id everywhere in this report (`kb/ADR-0002`, `api/ADR-0001`): a bare
+`ADR-0002` is ambiguous when two homes both have one.
 
 If `homes` reports no local home and no shared home (no household, no git repo), skip this step.
 

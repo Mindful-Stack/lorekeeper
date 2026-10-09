@@ -400,13 +400,20 @@ does not change: if the scope or classification changes, that is a `supersede`.
 1. Read `<ref>`; it must be `accepted` (a proposal is simply amended and refiled). Work out the
    target home from its `blast_radius` and, for a local home, the governed repo. A coinciding home
    has nowhere to move to: say so and stop.
-2. **PR 1, in the target home:** a new record with the next number there, the same body, `id`
-   for the new home, `aliases: [<old id>]`, the same `decided_by`, `status: accepted`, `scope`
-   rewritten for the new home's syntax, and the Status log copied with one line appended:
-   `Moved YYYY-MM-DD from <old id>.` Classify it now if it predates classification. Apply with
-   Placement `own-pr`, telling the knowledge-updater it is a move copy of `<old id>` (it writes
-   `accepted` without a new decider only for that).
-3. Tell the user: after PR 1 merges, run `/lore:adr retire <old id> to <new id>` for PR 2 (the
+2. **PR 1, in the target home:** a new record with the next number there and the same body.
+   Rewritten: the filename (`NNNN-<slug>.md` with the new number), `id` for the new home,
+   `title` (`ADR-NNNN: …` with the new number), and `scope` in the new home's syntax. Any
+   relation holding a bare number is requalified to the full id in the old home
+   (`<old prefix>/ADR-NNNN`). Kept: the same `decided_by` and `status: accepted`; added:
+   `aliases: [<old id>]`. The Status log is copied with one line appended:
+   `Moved YYYY-MM-DD from <old id>.` Classify it now if it predates classification.
+3. **Lint the copy** as in New record step 7 (`check --draft` in a scratch copy of the target
+   home, with that home's flags and `--config`). If it fails on `high-tier` (tier extras) or
+   `decided-by` (the decider pool), stop: say the record cannot move as-is and needs a supersede
+   (a new decision record) instead. Otherwise apply with Placement `own-pr`, telling the
+   knowledge-updater it is a move copy of `<old id>` (it writes `accepted` without a new decider
+   only for that).
+4. Tell the user: after PR 1 merges, run `/lore:adr retire <old id> to <new id>` for PR 2 (the
    `stack` skill orders the pair). Until then both copies are accepted and the newer binds.
 
 ### `retire <ref> by|to <id>` → Second PR of a cross-home pair

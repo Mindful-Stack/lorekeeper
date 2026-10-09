@@ -36,8 +36,11 @@ If the caller passed the catalogue path, Read it and use it. Otherwise build it 
    `meta_repo`, `knowledge_base` and `shared_knowledge_bases` has a local home at
    `<household-root>/<name>/<adrDir or adr.localDir or docs/adr>`; the shared home is
    `<team-knowledge-path>/<adr.sharedDir or adrs>`; other KBs' homes are
-   `<household-root>/<kb>/knowledge/<adr.sharedDir or adrs>`. With no household, the git root's `docs/adr` and
-   `<team-knowledge-path>/adrs` (when a KB is configured) are the homes. A repo directory that
+   `<household-root>/<kb>/knowledge/<adr.sharedDir or adrs>`. With no household, Read the git
+   root's `.lorekeeper/config.json` if it exists: the local home is
+   `<git-root>/<adr.localDir or docs/adr>` and the shared home
+   `<team-knowledge-path>/<adr.sharedDir or adrs>` (when a KB is configured). Only without that
+   file do the defaults `docs/adr` and `adrs` apply. A repo directory that
    does not exist is not checked out: say so in the report.
 2. **Frontmatter.** One Grep per existing home:
    ```

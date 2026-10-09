@@ -352,7 +352,9 @@ collected from exemptions and fed back.
 read-only helpers the commands use instead of re-deriving the rules in prose: `homes` (the
 resolved homes, the governed repo, and per home its `repoRoot` (the git toplevel holding it,
 `null` when not checked out), `relDir` (its path inside that repo) and the default branch read
-from that repo, as JSON; a KB folder inside a code repo reports the code repo), `index` (the catalogue across homes with computed
+from that repo (`origin/HEAD` when set, else asked of origin with `git ls-remote --symref`, else
+`null`: unknown, never guessed from `origin/main` or `origin/master`; an unknown default branch
+refuses a ride-along and makes `own-pr` ask which branch to base on), as JSON; a KB folder inside a code repo reports the code repo), `index` (the catalogue across homes with computed
 reverse links, as a table or `--json`), and `next` (the next free number in a home, counting the
 base tip with `--base`). Run by the skill after every write, available as a pre-commit hook, and
 in CI.

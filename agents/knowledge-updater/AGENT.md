@@ -134,7 +134,9 @@ every commit and push, the same command must print that path exactly; if it does
 
 - `own-pr` — a new branch off the home repo's default branch, worked in a temporary worktree so
   the user's checkout is never touched. `<default>` is the home's `defaultBranch` from the homes
-  JSON (`sharedDefaultBranch` for the KB), or `main` when it is `null`:
+  JSON (`sharedDefaultBranch` for the KB). `null` means the default branch is unknown (no
+  `origin`, or it could not be reached): never assume `main`; stop and ask the caller which
+  branch to base on, and use the answer as `<default>` here and in validation:
   ```bash
   git -C <repo> fetch origin
   git -C <repo> ls-remote --heads origin <branch>   # must print nothing (see Branch names)
@@ -169,7 +171,8 @@ every commit and push, the same command must print that path exactly; if it does
   Before every ride-along write, create or edit, check both: the repo the user is working in
   (`git rev-parse --show-toplevel` from the session's working directory) is the record's home
   repo `<repo>`, and its current branch (`git -C <repo> branch --show-current`) is neither empty
-  nor the home's default branch. If either fails, do not write: a `pr-branch` change takes its
+  nor the home's default branch. A `null` default branch fails this check: never stage when the
+  default branch is unknown. If either fails, do not write: a `pr-branch` change takes its
   worktree flow, and a new record or an observation takes `own-pr`, saying so in your output; an
   accept or reject of a record that exists only on that branch stops and reports why. Before writing, note whether
   the file exists and, if it does, copy it into a fresh `mktemp -d` directory. Write, validate, and `git add` only after validation passes. If

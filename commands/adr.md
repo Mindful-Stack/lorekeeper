@@ -73,8 +73,8 @@ contains the CWD, or `null` at the household root), `config` (`localDir`, `share
 repository holding the home (for a KB folder inside a code repo, that code repo) and `relDir` the
 home's path inside it; both are `null` when the repo is not checked out. Wherever this file says
 `<repo>` in a git command, use the home's `repoRoot` (or `sharedRepoRoot`); wherever it says
-`<default-branch>`, use the home's `defaultBranch` (or `sharedDefaultBranch`), and `main` when it
-is `null`. A repo with `present: false` is not checked
+`<default-branch>`, use the home's `defaultBranch` (or `sharedDefaultBranch`). `null` means the
+default branch is unknown (no `origin`, or unreachable): never assume `main`; ask the user. A repo with `present: false` is not checked
 out: say so when it matters, never guess its contents. The **governed repo** for a new local
 record is `governedRepo`; when it is `null`, ask which repo the record governs (the only "where"
 question, and only then).

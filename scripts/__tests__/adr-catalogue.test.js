@@ -162,10 +162,34 @@ test('CLI homes names each repo\'s default branch from origin, never a parent re
     const kb = path.join(h.root, 'lore');
     initRepo(kb, env);
     commitAll(kb, env, 'kb');
-    git(kb, env, 'update-ref', 'refs/remotes/origin/master', 'HEAD'); // no origin/HEAD: fallback
+    git(kb, env, 'update-ref', 'refs/remotes/origin/master', 'HEAD'); // no origin/HEAD, no remote: unknown
     const out = JSON.parse(runCli(h.root, env, 'homes').stdout);
     assert.deepEqual(out.localHomes.map((x) => [x.repo, x.defaultBranch]), [['api', 'develop'], ['web', null]]);
-    assert.equal(out.sharedDefaultBranch, 'master');
+    assert.equal(out.sharedDefaultBranch, null);
+});
+
+test('CLI homes asks origin for its default branch when origin/HEAD is unset, never guessing main', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    write(path.join(root, '.lorekeeper', 'config.json'), JSON.stringify({ knowledgeBasePath: 'lore' }));
+    fs.mkdirSync(path.join(root, 'lore', 'knowledge', 'adrs'), { recursive: true });
+    initRepo(root, env);
+    commitAll(root, env, 'init');
+    git(root, env, 'branch', 'develop');
+    const bare = path.join(tmpDir(t), 'origin.git');
+    git(root, env, 'init', '-q', '--bare', '-b', 'develop', bare);
+    git(root, env, 'remote', 'add', 'origin', bare);
+    git(root, env, 'push', '-q', 'origin', 'main', 'develop');
+    git(root, env, 'fetch', '-q', 'origin');
+    // Newer git sets origin/HEAD on fetch (followRemoteHEAD); a clone may still lack it.
+    git(root, env, 'update-ref', '--no-deref', '-d', 'refs/remotes/origin/HEAD');
+    const homes = () => JSON.parse(runCli(root, env, 'homes').stdout).sharedDefaultBranch;
+    assert.equal(homes(), 'develop');
+    git(root, env, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main');
+    assert.equal(homes(), 'main', 'a set origin/HEAD is used as is');
+    git(root, env, 'symbolic-ref', '--delete', 'refs/remotes/origin/HEAD');
+    fs.rmSync(bare, { recursive: true, force: true });
+    assert.equal(homes(), null, 'an unreachable origin is unknown, not origin/main');
 });
 
 test('check --draft turns a new shared proposal and a ride-along into warnings', (t) => {

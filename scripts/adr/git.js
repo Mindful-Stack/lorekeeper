@@ -69,13 +69,17 @@ function repoName(root) {
     return path.basename(root);
 }
 
-// The remote default branch's name, or null. `origin/HEAD` is often unset in a clone, so fall
-// back to whichever of origin/main and origin/master exists.
+// The remote default branch's name, or null when it cannot be known. A clone's `origin/HEAD`
+// may be unset, so ask origin itself (read-only); never guess from origin/main or master.
 function defaultBranch(root) {
     const head = git(root, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
     if (head !== null && head.trim().startsWith('origin/')) return head.trim().slice('origin/'.length);
-    for (const name of ['main', 'master']) if (revExists(root, `origin/${name}`)) return name;
-    return null;
+    // No prompt and a time limit, so an offline or credential-gated remote fails instead of hanging.
+    const r = spawnSync('git', [...PINNED, 'ls-remote', '--symref', 'origin', 'HEAD'], {
+        cwd: root, encoding: 'utf8', timeout: 15000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+    const m = r.status === 0 && /^ref: refs\/heads\/(\S+)\tHEAD$/m.exec(r.stdout);
+    return m ? m[1] : null;
 }
 
 module.exports = {

@@ -88,7 +88,10 @@ locked record allows.
 3. **Show the combined list and ask** whether to apply it. On no, go to Step 7.
 4. **Per repo that has changes:** check `git -C <repo> status --porcelain -- <home-dir>` is
    empty (stop for that repo if not), create a branch `chore/adr-backfill` from the repo's
-   default branch, run the same command without `--dry-run`, then verify:
+   default branch, run the same command without `--dry-run` (it skips a record with no
+   frontmatter: `skipped: no frontmatter: convert it by rewriting`; such a record is converted
+   by rewriting it in place, and `/lore:adr accept <id> by <name>` converts and ratifies it in
+   one change), then verify:
    ```bash
    node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check --base <default-branch> <home-dir>
    ```
@@ -98,7 +101,9 @@ locked record allows.
 6. **Offer to commit and open a PR** per repo (`chore: backfill ADR ids and classification
    keys`). Never commit to the default branch; the KB's main is protected. Filling in the
    classification values is a human review step for each record: say so, and that the values
-   can be filled once, in one PR per record, while the record is still unclassified.
+   can be filled once, in one PR per record, while the record is still unclassified. Classifying
+   a record converts it: that PR may rewrite its body into the template and must meet the full
+   rules (high-tier extras, a named `decided_by`).
 
 ### Step 7: Optional tooling refresh
 

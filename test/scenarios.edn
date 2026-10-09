@@ -142,7 +142,7 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "command-adr-accept-requires-named-decider"
   :prompt "/lore:adr accept kb/ADR-0002. Do not write files, branch, or open a PR."
   :workdir "."
-  :expects ["(?i)who is ratifying|named human|name (a|the) human|human decider|who (ratified|decided|is accepting)"]
+  :expects ["(?i)who is ratifying|named human|name (a|the) human|human decider|who (ratified|decided|is accepting)|named person|no decider (was )?named"]
   :rejects ["(?i)decided_by: \\[\\s*\"?[A-Za-z]" "Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]"]}
 
  {:name "command-adr-accept-refuses-agent-decider"

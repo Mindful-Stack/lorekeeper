@@ -98,6 +98,9 @@ Report per home: the number of records, errors and warnings, grouped by rule. Th
 - **Warnings on records from before the ADR-centred format** (`id`, `reversibility` or the other
   classification keys missing) — one summary line per home, suggesting `/lore:migrate` for the
   backfill. Do not list every record.
+- **Records to move** (`home` warnings: a `blast_radius` that belongs in the other home, such as
+  a legacy cross-service record converted in a local home) — list each by qualified id as "to
+  move", pointing at `/lore:adr move <id>`.
 - **Open proposals** (`proposed-shared` warnings in the shared home) — list each by its
   qualified id (`kb/ADR-NNNN`, from its home and number): each needs
   `/lore:adr accept <id> by <name>` or `/lore:adr reject <id> by <name>`. Call one a *legacy*

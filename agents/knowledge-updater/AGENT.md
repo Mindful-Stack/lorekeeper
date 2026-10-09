@@ -95,7 +95,9 @@ and its `decided_by` is copied unchanged from that record; write it as `accepted
 may carry `deciders` instead of `decided_by`; read it as `decided_by` and never rename it.
 
 **Locked records.** A record is locked once accepted, and stays locked when later superseded,
-deprecated or rejected. An `update` to a locked record may only be one of:
+deprecated or rejected. Legacy records (no frontmatter, or not yet classified on the base) are not
+locked: a conversion to the new format may rewrite them. An `update` to a locked record may only
+be one of:
 
 1. one new line appended to `## Status`, with a transition to `superseded` or `deprecated`
    (including `deprecated` → `superseded`) or a note — never back to `proposed`. The count is

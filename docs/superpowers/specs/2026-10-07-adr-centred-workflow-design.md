@@ -269,11 +269,20 @@ How common situations map onto the rule:
 | The scope or classification was wrong | Superseding record |
 | The decision no longer applies and nothing replaces it | Status line (1): `deprecated` |
 | A broken link, a renamed file path in *See also*, mangled formatting | Repair (4) |
-| A record accepted before this design lacks `id` or classification | Backfill (5) |
+| A record accepted before this design lacks `id` or classification | Backfill (5), or convert it by rewriting in place (see *Legacy records*) |
 | A new record relates to or depends on an accepted one | Nothing: reverse links are computed (see *The validator*) |
 
 The validator enforces this mechanically: given `--base`, it diffs every locked record section by
 section and fails on any change outside the five allowed edits.
+
+**Legacy records** are records whose base copy has no frontmatter, or has frontmatter but no
+`reversibility` (unclassified). They predate this design and are not locked: the change that
+converts one to the new format may rewrite anything in it, frontmatter and body, once. The
+converted record is validated as a full new-format record (description, tags, status, a named
+human in `decided_by` when ratified, classification, and the high-tier extras). Once its base copy
+is classified, the lock above applies. A legacy record the change leaves unclassified keeps the
+grandfathered warnings (see *The validator*). A legacy record whose `blast_radius` belongs in the
+other home may be converted where it sits and moved later.
 
 **Observations** answer four things: when and where (date, PR or ticket), which statement
 (quoted, or a `F#` fact id), what is true now and its source, and what it means (no trigger fired
@@ -359,7 +368,9 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
 
 - frontmatter schema: required keys, enum values, inline values only;
 - id matches home and filename; number unique against `--base`;
-- home matches `blast_radius` (skipped for coinciding homes); `scope` syntax matches the home;
+- home matches `blast_radius` (skipped for coinciding homes): an error, except on a legacy record
+  (judged on its base copy, or on the record itself without a base), where it is a warning to
+  move it; `scope` syntax matches the home;
 - high-tier extras; `accepted` requires non-empty `decided_by` (any named human: who should
   approve is named in the PR, not checked against a list);
 - relations resolve; references to another home are warnings when that home is not on disk or
@@ -369,8 +380,9 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
   reverse links ("related from", "depended on by") are computed on read by `index`, the
   architect's catalogue load and `doctor`, never written into the target, so a new record never
   edits a locked one;
-- **locked-record diff rule:** given `--base`, a locked record may only differ by the five edits
-  in *Amend or supersede*;
+- **locked-record diff rule:** given `--base`, a record locked on the base (accepted or later,
+  and classified) may only differ by the five edits in *Amend or supersede*; a legacy record is
+  not locked, and its conversion is checked as a new-format record;
 - given `--base`, a record locked on the base tip but not at the merge base (accepted on the base
   since this branch forked) must be unchanged from the merge base; any edit to it fails with
   "rebase onto <base>";
@@ -382,12 +394,14 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
 - ride-along rule (above), given `--base` and the PR's changed files.
 
 **Grandfathered records** are records unclassified (no `reversibility`) on the base branch whose
-status this change does not move, including legacy proposals. On them, a missing *or empty*
+status this change does not move and which it leaves unclassified, including legacy proposals. On them, a missing *or empty*
 classification field, `scope` or `decided_by` is a warning, and an error under `--strict`. On
 every other record it is an error (subject to the high-tier extras). An unclassified
 grandfathered record is treated as high tier wherever tier is read.
 
-A record locked on the base is only held to rules an allowed edit can satisfy; values the change writes are always checked.
+A record locked on the base, or a legacy record with a locked status that the change leaves
+unclassified, is only held to rules an allowed edit can satisfy; values the change writes are
+always checked.
 
 Exit non-zero with one line per violation (`path: rule: message`). Tests in
 `scripts/__tests__/adr-*.test.js`.
@@ -452,6 +466,9 @@ Exit non-zero with one line per violation (`path: rule: message`). Tests in
   records. Every change it makes is a schema backfill (edit 5), so the migration PR passes the
   locked-record diff rule. It never renames `deciders` to `decided_by` (a rename would change an
   existing value); the old key stays and is read.
+- Legacy records (no frontmatter, or unclassified) are converted by rewriting them in place into
+  the template (see *Legacy records* under *Amend or supersede*); the backfill only adds keys and
+  skips a record with no frontmatter.
 - Plan A (this validator, the template, and the optional migrate step) only adds, so it ships as
   a **minor** version. Release as a **major** version once Plan B lands and `accept` semantics
   change: the required `id` and the new `accept` rule change behaviour for existing users.

@@ -183,6 +183,16 @@ it. The validator checks each one mechanically against the base branch.
 Spelling fixes are not repairs. A wrong fact is an observation; a wrong rule, scope or
 classification is a superseding record.
 
+### Legacy records
+
+A record whose copy on the default branch has no frontmatter, or has frontmatter but no
+`reversibility` (unclassified), is **legacy**. It is not locked: the change that converts it to
+the new format may rewrite anything in it, frontmatter and body, once. The validator checks the
+converted record as a full new-format record (description, tags, status, a named human in
+`decided_by` when ratified, classification, high-tier extras). Once the classified copy is on the
+default branch, the lock applies. `accept` and `reject` do the conversion. A legacy record whose
+`blast_radius` belongs in the other home only warns: convert it where it is and `move` it later.
+
 ## Where a change lands
 
 Every write goes through the **knowledge-updater** agent with Type `adr`, the record's **Home**
@@ -312,7 +322,8 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
 
 ### `accept <ref> [by <name>, …]` → Ratify
 
-1. **Find the record and its placement.** Stop unless its `status` is `proposed`. After
+1. **Find the record and its placement.** Stop unless its `status` is `proposed` or it is a
+   legacy record (see *Legacy records*; an old accepted one is converted and ratified here). After
    `git -C <repo> fetch origin`, test in this order:
    1. `git -C <repo> cat-file -e origin/<default-branch>:<path>` succeeds (a proposal from before
       this format, merged on the default branch): Placement `own-pr`.
@@ -336,6 +347,10 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    - **Unclassified** (a proposal from before this format, no `reversibility`): accepting it ends
      its grace period, so it needs `id`, the classification and `scope`. Propose them from its
      content, as in the New record interview.
+   - **Legacy** (no frontmatter, or unclassified on the default branch): convert it to the
+     template in this same change. Write the frontmatter, and rewrite the body into the
+     template's sections from the old text, keeping its meaning (the old Status lines stay in
+     `## Status`). Confirm the rewrite with the user with the classification below.
    - **High tier** (unclassified counts as high tier until classified): it needs at least two
      considered options, at least one invalidation trigger, and a non-empty `scope`. If the body
      lacks them, draft the amendment.
@@ -355,7 +370,8 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    (the team's usual review; CODEOWNERS on the ADR folder where a repo uses it)". The PR author
    and reviewer are responsible for involving them.
 5. **Edit:** `status: accepted`, `decided_by: [<names>]`, and append to `## Status`:
-   `Accepted YYYY-MM-DD by <names>.` Nothing else changes.
+   `Accepted YYYY-MM-DD by <names>.` Nothing else changes (beyond a legacy conversion from
+   step 2).
 6. **Predecessors.** For each id in `supersedes`:
    - **same home** — flip it in the same change: `status: superseded`, `superseded_by: <this
      id>`, and append `Superseded YYYY-MM-DD by <this id>.` to its Status. Its body stays as is.
@@ -428,7 +444,9 @@ with Placement `own-pr`. If something replaces the decision, use `supersede` ins
 ### `move <ref>` → Move to another home
 
 For a record filed in the wrong home, or whose code moved to another repo. The decision itself
-does not change: if the scope or classification changes, that is a `supersede`.
+does not change: if the scope or classification changes, that is a `supersede`. A legacy
+cross-service record in a local home may be accepted where it is (the validator only warns) and
+moved later.
 
 1. Read `<ref>`; it must be `accepted` (a proposal is simply amended and refiled). Work out the
    target home from its `blast_radius` and, for a local home, the governed repo. A coinciding home

@@ -73,8 +73,18 @@ Tests are defined in `scenarios.edn` as pure data:
 
 - **name**: Test identifier
 - **prompt**: What to send to Claude
-- **workdir**: Directory to run in (relative to knowledge repo root, usually ".")
+- **workdir**: Directory to run in (relative to knowledge repo root, usually "."); the runner
+  currently always runs from the workspace root, so a scenario that depends on the governed repo
+  names it in the prompt
 - **expects**: Regex patterns that must appear in output
+- **rejects** (optional): Regex patterns that must not appear, for outcomes a lenient `expects`
+  could hide (an agent accepted as a decider, a record filed in the wrong home)
+
+Scenarios never write. The fixture workspace sits inside this repository, so the runner pins
+`--permission-mode default`, allows only `Read`, `Glob`, `Grep`, `Bash(node *)` and agent and
+skill dispatch, and denies `Write`, `Edit`, `git` and `gh`, whatever the user's own permission
+settings say. Prompts for commands that would otherwise write end with an instruction to stop
+after presenting the draft.
 
 ## How It Works
 

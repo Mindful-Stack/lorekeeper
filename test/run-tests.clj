@@ -30,7 +30,14 @@
 (defn plugin-root []
   (-> *file* io/file .getParentFile (io/file "..") .getCanonicalFile .getCanonicalPath))
 
-(defn run-test [{:keys [name prompt workdir expects]} {:keys [workspace-root plugin-dir]}]
+;; Scenarios must never write: the fixture workspace sits inside this repo's checkout, so a
+;; write, branch, push or PR would land on the real repository. Pin the permission mode (the
+;; user's own default may auto-approve), allow only reading tools and node (every adr-lint and
+;; doctor call), and deny writes, git and gh outright.
+(def allowed-tools ["Read" "Glob" "Grep" "Bash(node *)" "Task" "Agent" "Skill"])
+(def disallowed-tools ["Write" "Edit" "NotebookEdit" "Bash(git *)" "Bash(gh *)"])
+
+(defn run-test [{:keys [name prompt workdir expects rejects]} {:keys [workspace-root plugin-dir]}]
   (let [;; Always run from workspace root where settings.json has plugins enabled.
         ;; --plugin-dir loads this checkout's plugin code rather than the installed copy.
         _ (println (colorize :yellow "  Running:") prompt "(context:" workdir ")")
@@ -38,20 +45,26 @@
                                               :out :string
                                               :err :string
                                               :continue true}
-                                     (concat ["claude" "--print"]
+                                     (concat ["claude" "--print" "--permission-mode" "default"
+                                              "--allowedTools"] allowed-tools
+                                             ["--disallowedTools"] disallowed-tools
                                              (when plugin-dir ["--plugin-dir" plugin-dir])
-                                             [prompt]))
+                                             ["--" prompt]))
         output (str out err)
-        missing (filter #(not (re-find (re-pattern %) output)) expects)]
+        missing (filter #(not (re-find (re-pattern %) output)) expects)
+        present (filter #(re-find (re-pattern %) output) (or rejects []))]
     {:name name
-     :passed (empty? missing)
+     :passed (and (empty? missing) (empty? present))
      :missing missing
+     :present present
      :output output}))
 
-(defn print-result [{:keys [name passed missing]}]
+(defn print-result [{:keys [name passed missing present]}]
   (if passed
     (println (colorize :green "[PASS]") name)
-    (println (colorize :red "[FAIL]") name "- missing:" (str/join ", " missing))))
+    (println (colorize :red "[FAIL]") name
+             (str (when (seq missing) (str "- missing: " (str/join ", " missing)))
+                  (when (seq present) (str " - must not appear: " (str/join ", " present)))))))
 
 (defn load-scenarios []
   (let [script-dir (-> *file* io/file .getParentFile .getCanonicalPath)

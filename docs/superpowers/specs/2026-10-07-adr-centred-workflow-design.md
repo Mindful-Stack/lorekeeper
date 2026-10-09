@@ -204,7 +204,7 @@ them; the human reviewer confirms, and a wrong classification is itself a review
 |---|---|---|
 | Who decides | `decided_by` ∩ `decisionOwners` ≠ ∅ | `decided_by` ∩ `deciders` ≠ ∅ (owners informed) |
 | PR venue | its own ADR-only PR, merged as `accepted` before implementation PRs | may ride in the implementation PR |
-| Validator extras | ≥1 invalidation trigger, ≥2 considered options, `scope` non-empty | — |
+| Validator extras (not for `rejected` records) | ≥1 invalidation trigger, ≥2 considered options, `scope` non-empty | — |
 
 **Ride-along ratification.** A low-tier record in an implementation PR is drafted `proposed`.
 Before merge, once the decider has approved the PR, the author runs `/lore:adr accept NNNN` naming

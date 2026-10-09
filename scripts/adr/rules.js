@@ -203,9 +203,10 @@ function checkRecord(home, r) {
         }
     }
 
-    // Tier extras and deciders. Grandfathered records are exempt: they predate tiers.
+    // Tier extras and deciders. Grandfathered records are exempt: they predate tiers. A rejected
+    // record is exempt from the extras: a declined proposal need not be completed to be declined.
     const high = R.isHighTier(fm);
-    if (high && !gf) {
+    if (high && !gf && fm.status !== 'rejected') {
         const triggers = 'Assumptions and invalidation triggers';
         const options = 'Considered options';
         if (countTriggers(R.section(r, triggers)) < 1) fix([`§${triggers}`, ...TIER_KEYS], 'high-tier', 'needs at least one invalidation trigger');

@@ -94,6 +94,19 @@ test('high tier needs a trigger, two options and a scope; low tier does not', ()
     assert.ok(!run([low], { home: LOCAL }).some((v) => v.rule === 'high-tier'));
 });
 
+test('a rejected high-tier record need not carry the tier extras; the same record proposed does', () => {
+    const thin = {
+        sections: { 'Assumptions and invalidation triggers': '- Assumes nothing.', 'Considered options': '- **Only one**' },
+        fm: { scope: [] },
+    };
+    const rejected = rec({ ...thin, status: 'rejected', fm: { ...thin.fm, decided_by: ['Alex Doe'] } });
+    assert.ok(!run([rejected]).some((v) => v.rule === 'high-tier'));
+    const proposed = run([rec({ ...thin, status: 'proposed' })]);
+    assert.ok(has(proposed, 'high-tier', /invalidation trigger/));
+    assert.ok(has(proposed, 'high-tier', /two considered options/));
+    assert.ok(has(proposed, 'high-tier', /non-empty scope/));
+});
+
 test('accepted needs decided_by; legacy deciders counts', () => {
     assert.ok(has(run([rec({ fm: { decided_by: [] } })]), 'decided-by', /requires a named human/));
     assert.deepEqual(run([rec({ fm: { decided_by: undefined, deciders: ['Alex Doe'] } })]), []);

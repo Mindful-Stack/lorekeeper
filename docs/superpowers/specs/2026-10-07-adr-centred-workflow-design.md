@@ -86,10 +86,14 @@ Commands and agents resolve homes in this order:
    no KB), there is one home. Ids use the local prefix, and the validator skips the home check.
 
 **Governed repo** for a new local record: the git root of the CWD; when the CWD is the household
-root, `/lore:adr` asks which repo (the only "where" question, and only in that case).
+root, `/lore:adr` asks which repo (the only "where" question, and only in that case). A single
+repo's name, and so its id prefix, is the last path segment of its `origin` URL (minus `.git`),
+else the main worktree's directory name, else the git root's: a linked worktree's directory name
+never becomes an id prefix, so ids match what CI infers.
 
 **Other teams' shared KBs** (`shared_knowledge_bases`): their `adrs/` are read as binding context,
-ids `<kb-dir>/ADR-NNNN`, never edited (unchanged rule). `kb/` always means the team KB.
+ids `<kb-dir>/ADR-NNNN`, never edited (unchanged rule). `kb/` always means the team KB, so
+another KB's own `kb/` ids and references read as `<kb-dir>/`.
 
 ### Configuration
 
@@ -287,6 +291,10 @@ line naming the follow-up; (2) the predecessor is flipped to `superseded` (or re
 stub, for a move) in the other home. Between the two merges both records are accepted; the
 architect treats the newer one as binding and reports the pair.
 
+**Only an `accepted` or `deprecated` record can be superseded.** A `superseded` one points at
+its successor, which is the record to supersede; a `rejected` one is not revived by supersession
+but by a new record that lists it in `related` and says in its Context why the option is back.
+
 **Agent-drafted records** must not reference chat logs or sessions, must not attribute authorship
 to an AI, and must leave `decided_by` for the human to name.
 
@@ -333,7 +341,9 @@ collected from exemptions and fed back.
 `scripts/adr-lint.js` (Node, no dependencies, cross-platform), with subcommands `check`,
 `select` (from a patch with `--diff`, or from planned paths with `--paths`), `backfill`, and three
 read-only helpers the commands use instead of re-deriving the rules in prose: `homes` (the
-resolved homes, the governed repo, and each home repo's default branch, as JSON), `index` (the catalogue across homes with computed
+resolved homes, the governed repo, and per home its `repoRoot` (the git toplevel holding it,
+`null` when not checked out), `relDir` (its path inside that repo) and the default branch read
+from that repo, as JSON; a KB folder inside a code repo reports the code repo), `index` (the catalogue across homes with computed
 reverse links, as a table or `--json`), and `next` (the next free number in a home, counting the
 base tip with `--base`). Run by the skill after every write, available as a pre-commit hook, and
 in CI.
@@ -409,7 +419,16 @@ Exit non-zero with one line per violation (`path: rule: message`). Tests in
   temporary git worktree so the user's checkout is untouched), `pr-branch <branch>` (commit onto
   the open PR that carries the record — `accept` and `reject` of a proposal under review), or
   `ride-along` (stage on the user's current branch, never commit). It runs `adr-lint check --base`
-  before committing and stops on errors.
+  before committing and stops on any nonzero exit. It passes `--draft` for every `pr-branch` and
+  `ride-along` change and for an `own-pr` change that proposes a record, since a PR may still
+  carry other proposals; CI never passes it and stays the merge gate.
+- A ride-along needs the user in the record's home repo on a non-default branch; otherwise the
+  change goes `own-pr`. `pr-branch` refuses a PR from a fork (`isCrossRepository`): its author
+  applies the edit.
+- A proposal's branch is named after the record (`knowledge/adr-NNNN-<slug>`,
+  `adr/<repo>-NNNN-<slug>`); every later edit adds its mode and date
+  (`knowledge/adr-0002-observe-20261011`), checked free on the remote first, and nothing is ever
+  force-pushed.
 
 **`architect` agent**
 - Catalogue load greps every resolved local home, the team KB and shared KBs.

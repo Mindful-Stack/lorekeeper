@@ -29,27 +29,38 @@ function same(a, b) {
     return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
 }
 
-// Grandfathered: written before this design classified records, and not being moved through
-// its lifecycle in this change. Without a base the record's own state stands in, so a local
-// run may warn where CI with --base fails.
+// Grandfathered: written before this design classified records, and neither moved through
+// its lifecycle nor classified in this change. Without a base the record's own state stands
+// in, so a local run may warn where CI with --base fails.
 function grandfathered(record, baseText) {
-    if (baseText === undefined) return R.isUnclassified(record.fm);
+    if (!R.isUnclassified(record.fm)) return false;
+    if (baseText === undefined) return true;
     if (baseText === null) return false;
     const b = parseRecord(baseText).fm;
     return R.isUnclassified(b) && b.status === record.fm.status;
 }
 
+// Locked: ratified or declined, and classified. A legacy record (no frontmatter, or none of this
+// design's classification) is not: the change that converts it may rewrite it in place.
+function isLocked(parsed) {
+    return parsed.found && R.LOCKED.has(parsed.fm.status) && !R.isUnclassified(parsed.fm);
+}
+
 // What the base says about one record. `frozen` decides how a finding the record cannot fix
 // is reported: a record locked on the base changes only by the five allowed edits, so a finding
 // about a key or section the change leaves as it was is skipped (it would block every later
-// change to the home), while a value the change writes is always checked. Without a base, a
-// locked status stands in and every such finding is a warning.
+// change to the home), while a value the change writes is always checked. A legacy record with
+// a locked status is frozen the same way until a change classifies it; from then on it is
+// checked in full. Without a base, a locked status stands in and every such finding is a warning.
 function describe(r, ctx) {
     const baseText = ctx.base ? ctx.base.textAt(r.name) : undefined;
     const b = baseText ? parseRecord(baseText) : null;
-    const lockedOnBase = !!b && R.LOCKED.has(b.fm.status);
+    const lockedOnBase = !!b && isLocked(b);
+    const legacyOnBase = !!b && (!b.found || R.isUnclassified(b.fm));
+    const frozenOnBase = lockedOnBase
+        || (legacyOnBase && b.found && R.LOCKED.has(b.fm.status) && R.isUnclassified(r.fm));
     const keys = new Set();
-    if (lockedOnBase) {
+    if (frozenOnBase) {
         for (const k of new Set([...Object.keys(b.fm), ...Object.keys(r.fm), ...R.KNOWN_KEYS])) {
             if (same(b.fm[k], r.fm[k])) keys.add(k);
         }
@@ -60,13 +71,14 @@ function describe(r, ctx) {
         for (const h of RULE_SECTIONS) if (!present.has(h)) keys.add(`§${h}`);
     }
     let mode = 'none';
-    if (lockedOnBase) mode = 'base';
+    if (frozenOnBase) mode = 'base';
     else if (!ctx.base && R.LOCKED.has(r.fm.status)) mode = 'warn';
     return {
         baseText,
         baseFm: b ? b.fm : null,
         baseBlockRaw: b ? b.blockRaw : {},
         lockedOnBase,
+        legacyOnBase,
         // On the base and identical to it, whatever its status: this change did not cause a
         // finding here.
         untouched: !!baseText && lf(baseText) === lf(r.text),
@@ -119,9 +131,9 @@ function checkRecord(home, r) {
     const info = home.info.get(r);
     const { baseText, lockedOnBase, gf, frozen, untouched } = info;
     // A record the change leaves as it was cannot be blamed on it: its parse errors warn. So
-    // does a block key a locked record keeps as it was in a form decodeBlock cannot read:
-    // lockedDiff requires it byte-identical, so no allowed edit could clear the error.
-    const stuck = (key) => lockedOnBase && key !== null && r.blockRaw && r.blockRaw[key]
+    // does a block key a frozen record keeps as it was in a form decodeBlock cannot read: only
+    // a conversion of a legacy record could clear it, and lockedDiff forbids it once locked.
+    const stuck = (key) => frozen.mode === 'base' && key !== null && r.blockRaw && r.blockRaw[key]
         && !decodeBlock(r.blockRaw[key]).ok && same(r.blockRaw[key], info.baseBlockRaw[key]);
     r.errors.forEach((e, i) => (untouched || stuck(r.errorKeys[i]) ? warn : err)(r.file, 'frontmatter', e));
     if (r.errors.length && Object.keys(fm).length === 0) return;
@@ -186,7 +198,11 @@ function checkRecord(home, r) {
         const allowed = h.kind === 'shared' ? R.SHARED_BLAST : R.LOCAL_BLAST;
         if (!allowed.has(fm.blast_radius)) {
             const want = h.kind === 'shared' ? 'local home' : 'shared home';
-            fix(['blast_radius'], 'home', `blast_radius ${fm.blast_radius} belongs in the ${want}`);
+            // A legacy record converted where it sits may be moved later; a new or classified one
+            // is written in the right home.
+            const legacy = info.legacyOnBase || (baseText === undefined && R.isUnclassified(fm));
+            if (legacy) warn(r.file, 'home', `blast_radius ${fm.blast_radius} belongs in the ${want}; move it`);
+            else fix(['blast_radius'], 'home', `blast_radius ${fm.blast_radius} belongs in the ${want}`);
         }
     }
     for (const s of asList(fm.scope)) {
@@ -218,7 +234,7 @@ function checkRecord(home, r) {
     // reference it keeps is still checked, so deleting its target is caught, but a reference
     // already broken on the base only warns.
     for (const key of RELATION_KEYS) {
-        const kept = lockedOnBase && frozen.keys.has(key);
+        const kept = frozen.mode === 'base' && frozen.keys.has(key);
         for (const ref of asList(fm[key])) checkRef(home, r, ref, key, kept);
     }
     if (!isEmpty(fm.superseded_by)) {
@@ -266,7 +282,7 @@ function checkAcrossRecords(home) {
                 const message = `superseded_by ${succ}, but ${succ} does not list ${ownId(r)} in supersedes`;
                 // A locked, untouched successor with no supersedes at all is a legacy record that
                 // can never gain the key; linking its predecessor is still right, so this warns.
-                if (home.info.get(s).lockedOnBase && home.info.get(s).untouched && isEmpty(s.fm.supersedes)) home.warn(r.file, 'relations', message);
+                if (home.info.get(s).untouched && R.LOCKED.has(s.fm.status) && isEmpty(s.fm.supersedes)) home.warn(r.file, 'relations', message);
                 else between([r, s], r.file, 'relations', message);
             }
         }
@@ -306,7 +322,7 @@ function checkAgainstBase(home) {
     for (const r of records) {
         const tip = base.tipTextAt ? base.tipTextAt(r.name) : null;
         const info = home.info.get(r);
-        if (!tip || info.lockedOnBase || !R.LOCKED.has(parseRecord(tip).fm.status)) continue;
+        if (!tip || info.lockedOnBase || !isLocked(parseRecord(tip))) continue;
         if (info.baseText === null || lf(info.baseText) !== lf(r.text)) {
             err(r.file, 'locked', `accepted on ${base.ref} since this branch forked; rebase onto ${base.ref}`);
         }

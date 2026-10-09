@@ -360,3 +360,91 @@ test('fix4-8: a standalone checkout accepts a local-to-local move, warning that 
     assert.equal(r.code, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /relations: warning: moved_to web\/ADR-0004: its home is not on disk/);
 });
+
+// B4: a legacy record (no frontmatter, or not classified on the base) is not locked: the change
+// that converts it may rewrite it, and the converted record meets every new-format rule.
+const LEGACY_BARE = [
+    '# ADR-0001: Sessions',
+    '',
+    '## Status',
+    'Accepted 2025-03-01',
+    '',
+    '## Context',
+    'Cookies are too small for our sessions.',
+    '',
+    '## Decision',
+    'We keep sessions on the server.',
+    '',
+].join('\n');
+
+function legacyOnMain(w, dir, repo, text) {
+    const file = path.join(dir, '0001-session-storage.md');
+    write(file, text);
+    commitAll(repo, w.env, 'legacy record');
+    git(repo, w.env, 'checkout', '-q', '-b', 'convert');
+    return file;
+}
+
+test('B4a: a frontmatter-less legacy record may be rewritten into a valid new-format record', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.shared, w.kb, LEGACY_BARE);
+    write(file, makeRecord());
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /locked/);
+});
+
+test('B4b: the converted record meets the full rules (a high-tier record without a trigger fails)', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.shared, w.kb, LEGACY_BARE);
+    write(file, makeRecord({ sections: { 'Assumptions and invalidation triggers': '- Assumes nothing.' } }));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /high-tier: needs at least one invalidation trigger/);
+});
+
+test('B4c: an unclassified legacy record may have its body rewritten as it is classified', (t) => {
+    const w = workspace(t);
+    const legacy = makeRecord({ fm: { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined, decided_by: undefined, deciders: ['Alex Doe'] } });
+    const file = legacyOnMain(w, w.shared, w.kb, legacy);
+    write(file, makeRecord({ sections: { Context: 'Rewritten from the old text: cookies cap at 4 KB and sessions outgrow them.' } }));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+});
+
+test('B4d: once the converted record is on the base, the lock applies', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.shared, w.kb, LEGACY_BARE);
+    write(file, makeRecord());
+    commitAll(w.kb, w.env, 'convert 0001');
+    git(w.kb, w.env, 'checkout', '-q', 'main');
+    git(w.kb, w.env, 'merge', '-q', '--ff-only', 'convert');
+    git(w.kb, w.env, 'checkout', '-q', '-b', 'later');
+    write(file, makeRecord({ sections: { Decision: 'Sessions live in cookies.' } }));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /locked: section "Decision" changed/);
+});
+
+test('B4e: a converted legacy cross-service record in a local home warns; a new one fails', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.local, w.api, LEGACY_BARE);
+    const crossService = makeRecord({ prefix: 'api', fm: { blast_radius: 'cross-service' } });
+    write(file, crossService);
+    const legacy = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(legacy.code, 0, legacy.stdout + legacy.stderr);
+    assert.match(legacy.stdout, /home: warning: blast_radius cross-service belongs in the shared home; move it/);
+    write(path.join(w.local, '0002-audit-log.md'), crossService.replace(/0001/g, '0002'));
+    const fresh = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(fresh.code, 1, fresh.stdout);
+    assert.match(fresh.stdout, /0002-audit-log\.md: home: blast_radius cross-service belongs in the shared home/);
+});
+
+test('B4f: backfill skips a frontmatter-less record and says to convert it by rewriting', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), LEGACY_BARE);
+    const r = runCli(w.root, w.env, 'backfill', w.shared);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /0001-session-storage\.md: skipped: no frontmatter: convert it by rewriting \(legacy records may be rewritten in place\)/);
+    assert.equal(fs.readFileSync(path.join(w.shared, '0001-session-storage.md'), 'utf8'), LEGACY_BARE);
+});

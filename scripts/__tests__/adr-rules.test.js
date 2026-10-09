@@ -142,7 +142,7 @@ test('without a base, unfixable findings on a locked record are warnings', () =>
     assert.ok(has(run([rec({ status: 'proposed', fm: { tags: ['sessions'] } })], { base: null }), 'schema', /includes adr/));
 });
 
-test('locked on the base: classifying a legacy record leaves the home green afterwards', () => {
+test('classifying a legacy record checks it in full; the home stays green afterwards', () => {
     const thin = {
         sections: { 'Assumptions and invalidation triggers': '- Assumes nothing.', 'Considered options': '- **Only one**' },
         fm: { ...LEGACY_FM, decided_by: undefined, deciders: ['Alex Doe'] },
@@ -153,10 +153,12 @@ test('locked on the base: classifying a legacy record leaves the home green afte
         .replace(/^blast_radius:.*$/m, 'blast_radius: cross-service');
     assert.notEqual(classifiedText, backfilled);
     const name = '0001-session-storage.md';
-    // The classifying change itself: base is the backfilled legacy record.
+    // The classifying change itself converts the record, so it must meet the high-tier rules.
     const classified = loadRecord(`/h/${name}`, classifiedText);
-    assert.deepEqual(errors(run([classified], { base: base({ [name]: backfilled }) })), []);
-    // A later, unrelated change to the home: base is the classified record.
+    assert.ok(has(run([classified], { base: base({ [name]: backfilled }) }), 'high-tier', /invalidation trigger/));
+    const full = classify(backfill(makeRecord({ fm: thin.fm }), 'kb/ADR-0001').text, { reversibility: 'one-way', blast_radius: 'cross-service', scope: '[api:src/Sessions/**]' });
+    assert.deepEqual(errors(run([loadRecord(`/h/${name}`, full)], { base: base({ [name]: backfilled }) })), []);
+    // A later, unrelated change to the home: base is the classified record, whatever it lacks.
     const later = rec({ number: '0002', slug: 'other', fm: { decided_by: ['arch-team'] } });
     assert.deepEqual(errors(run([classified, later], { base: base({ [name]: classifiedText }) })), []);
 });
@@ -320,10 +322,10 @@ test('C1: a backfilled id must equal the implied id', () => {
     assert.ok(has(run([cur], { base: base({ '0001-session-storage.md': legacy }) }), 'id', /must be kb\/ADR-0001/));
 });
 
-test('C1: a backfilled blast_radius that belongs in the other home is an error', () => {
+test('C1: a legacy record classified into the other home warns to move it (B4)', () => {
     const b = base({ '0001-session-storage.md': BACKFILLED() });
     const cur = loadRecord('/h/0001-session-storage.md', classify(BACKFILLED(), { reversibility: 'two-way', blast_radius: 'service', scope: '[api:src/**]' }));
-    assert.ok(has(run([cur], { base: b }), 'home', /belongs in the local home/));
+    assert.ok(has(run([cur], { base: b }), 'home', /belongs in the local home; move it/, 'warning'));
 });
 
 test('C1: a correct classification of a locked legacy record is clean', () => {
@@ -541,4 +543,46 @@ test('fix4-4: a deleted record locked on the base tip since the fork needs a reb
     const b = base({ [name]: makeRecord({ status: 'proposed' }) }, { tip: { [name]: makeRecord() } });
     assert.ok(has(run([], { base: b }), 'locked', /accepted on main since this branch forked/));
     assert.ok(!run([], { base: base({ [name]: makeRecord({ status: 'proposed' }) }) }).some((v) => v.level === 'error'));
+});
+
+// B4: legacy records (no frontmatter, or not classified on the base) are not locked; the change
+// that converts them may rewrite anything, and full rules apply to the result.
+const BARE = '# ADR-0001: Sessions\n\n## Status\nAccepted 2025-03-01\n\n## Decision\nWe keep sessions on the server.\n';
+const UNCLASSIFIED = () => makeRecord({ fm: { ...LEGACY_FM, decided_by: undefined, deciders: ['Alex Doe'] } });
+
+test('B4: a frontmatter-less base record may be rewritten into a valid record', () => {
+    const name = '0001-session-storage.md';
+    assert.deepEqual(run([rec()], { base: base({ [name]: BARE }) }), []);
+    const thin = rec({ sections: { 'Assumptions and invalidation triggers': '- Assumes nothing.' } });
+    assert.ok(has(run([thin], { base: base({ [name]: BARE }) }), 'high-tier', /invalidation trigger/));
+});
+
+test('B4: an unclassified base record is not locked; its conversion meets the full rules', () => {
+    const name = '0001-session-storage.md';
+    const rewritten = rec({ sections: { Context: 'Rewritten.' } });
+    assert.deepEqual(run([rewritten], { base: base({ [name]: UNCLASSIFIED() }) }), []);
+    // Classified now, so not grandfathered: a missing decided_by is an error, not a warning.
+    const noDecider = rec({ fm: { decided_by: [] }, sections: { Context: 'Rewritten.' } });
+    assert.ok(has(run([noDecider], { base: base({ [name]: UNCLASSIFIED() }) }), 'decided-by', /named human/));
+    // Once classified on the base, the lock applies.
+    assert.ok(has(run([rewritten], { base: base({ [name]: makeRecord() }) }), 'locked', /section "Context" changed/));
+});
+
+test('B4: an unclassified record accepted on both base and tip may be converted without a rebase', () => {
+    const name = '0001-session-storage.md';
+    const b = base({ [name]: UNCLASSIFIED() });
+    assert.ok(!run([rec({ sections: { Context: 'Rewritten.' } })], { base: b }).some((v) => v.rule === 'locked'));
+});
+
+test('B4: a legacy record in the wrong home warns; a new or classified one fails', () => {
+    const name = '0001-session-storage.md';
+    const service = rec({ fm: { reversibility: 'two-way', blast_radius: 'service', scope: ['api:src/**'] } });
+    for (const legacyBase of [BARE, UNCLASSIFIED()]) {
+        const vs = run([service], { base: base({ [name]: legacyBase }) });
+        assert.deepEqual(errors(vs), []);
+        assert.ok(has(vs, 'home', /belongs in the local home; move it/, 'warning'));
+    }
+    assert.ok(has(run([service]), 'home', /belongs in the local home/));
+    const classifiedBase = makeRecord({ fm: { reversibility: 'two-way' } });
+    assert.ok(has(run([service], { base: base({ [name]: classifiedBase }) }), 'home', /belongs in the local home/));
 });

@@ -1,359 +1,459 @@
 ---
-description: Record, list, accept, supersede, or discover architecture decision records (ADRs) in the team knowledge base. Use when a hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) or to recover decisions already baked into the code.
+description: Record, list, accept, observe, supersede, move, or discover architecture decision records (ADRs) in their homes — the governed repo's docs/adr or the team knowledge base. Use when a hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) or to recover decisions already baked into the code.
 ---
 
 # ADR Command
 
 Architecture decision records are first-class knowledge: one hard-to-reverse decision per record,
-numbered, reviewed through a PR like every other node, and immutable once code depends on them.
-This command is the plugin's equivalent of `adr-tools` (`adr new`, `adr list`, `adr new -s`), plus
-a `discover` mode that recovers the decisions a codebase has already made implicitly. Retrieval
-and scanning are delegated to the **architect** agent; this command owns everything that needs the
-user in the loop: triage, interview, drafting, and the PR.
+numbered per home, reviewed through a PR, binding once a named human accepts it, and locked from
+then on. This command owns everything that needs the user in the loop: triage, interview,
+drafting, ratification, and the PR. Retrieval and scanning are delegated to the **architect**
+agent, writing and the git flow to the **knowledge-updater** agent, and every mechanical rule to
+`scripts/adr-lint.js`.
 
 ## Usage
 
 ```
-/lore:adr <title or one-line description>     # new record (interview → draft → PR)
-/lore:adr                                     # list all records
-/lore:adr list [status]                       # list, optionally filtered (proposed|accepted|…)
-/lore:adr accept NNNN                         # flip a proposed record to accepted
-/lore:adr supersede NNNN <title>              # new record that replaces NNNN
-/lore:adr discover                            # find implicit decisions in the codebase, draft records
+/lore:adr <title or one-line description>   # new record: triage → interview → draft → PR
+/lore:adr                                   # list records across every home
+/lore:adr list [status]                     # list, optionally filtered (proposed|accepted|…)
+/lore:adr index                             # list plus relations and reverse links
+/lore:adr accept <ref> [by <name>, …]       # a named human ratifies a proposed record
+/lore:adr reject <ref> [by <name>, …]       # a named human declines a proposed record
+/lore:adr observe <ref> <what changed>      # append a dated observation to a locked record
+/lore:adr supersede <ref> <title>           # propose a new record that replaces <ref>
+/lore:adr deprecate <ref> <reason>          # the decision no longer applies, nothing replaces it
+/lore:adr move <ref>                        # move a record to another home (two-PR stack)
+/lore:adr retire <ref> by|to <id>           # second PR of a cross-home supersede or move
+/lore:adr lint                              # run the validator over every home
+/lore:adr discover                          # find implicit decisions in the code, draft records
 ```
+
+`<ref>` is a qualified id (`kb/ADR-0004`, `billing-api/ADR-0002`) or a bare number. A bare number
+resolves in the governed repo's local home first, then the shared home; if both have it, ask
+which one. Other teams' shared KBs are read-only: if `<ref>` lives in one, say where it lives and
+stop.
 
 ## Examples
 
 ```
 /lore:adr Use PostgreSQL as the primary datastore
-/lore:adr How do we authenticate the browser against the API?
-/lore:adr list accepted
-/lore:adr accept 0004
+/lore:adr accept kb/ADR-0004 by Alex Doe
+/lore:adr observe billing-api/ADR-0002 Invoices now exceed the 10k/day assumed in F2
 /lore:adr supersede 0002 Move session state from cookies to bearer tokens
+/lore:adr move kb/ADR-0006
 /lore:adr discover
 ```
 
-## Knowledge Paths
+## Homes
 
-The SessionStart hook injects one or more `Knowledge path:` markers (read sources, priority order
-lowest -> highest) and a `Team knowledge path:` marker (the team's writable KB).
+A record lives in exactly one **home**:
 
-- **Read contexts** (listing, numbering, checking for duplicates): iterate over all
-  `Knowledge path:` markers.
-- **Write contexts** (new records, status changes): always the `Team knowledge path:`. Decisions
-  are team-owned, so this command creates and modifies records only there. A record that lives in
-  a shared KB belongs to another team: cite it as binding context, but never edit it and never
-  copy it into the team KB. If the user asks to accept or supersede one, say where it lives and
-  stop.
+- **Local home** — `docs/adr/` (or the configured `adr.localDir` / `repos[].adrDir`) inside the
+  repo whose code it governs. Ids: `<repo>/ADR-NNNN`.
+- **Shared home** — `adrs/` inside the team knowledge base (`<team-knowledge-path>/adrs/`).
+  Ids: `kb/ADR-NNNN`.
 
-If no `Knowledge path:` marker is present, tell the user:
-"No knowledge base configured — run `/lore:init` to set one up, or see the SessionStart message
-for other options, then restart Claude Code."
+The record's `blast_radius` decides the home, so the user is never asked where a record goes:
+`local` and `service` go to the governed repo's local home, `cross-service` and `customer` go to
+the shared home. When the two homes coincide (a single repo whose KB folder is that home, or a
+repo with no KB), there is one home and ids use the local prefix.
 
-If `<team-knowledge-path>/adrs/` does not exist, create it as part of the first record's PR.
+Resolve the homes once per invocation and reuse the answer:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js homes
+```
+
+It prints JSON: `mode` (`household` or `single`), `root`, `governedRepo` (the repo whose checkout
+contains the CWD, or `null` at the household root), `config` (`localDir`, `sharedDir`,
+`decisionOwners`, `deciders`), `localHomes` (`repo`, `dir`, `present`, `exists`, `coinciding`,
+`defaultBranch`), `sharedHome`, `sharedHomeExists` and `sharedDefaultBranch`, and `otherKbs`.
+Wherever this file says `<default-branch>`, use the home's `defaultBranch` (or
+`sharedDefaultBranch`), and `main` when it is `null`. A repo with `present: false` is not checked
+out: say so when it matters, never guess its contents. The **governed repo** for a new local
+record is `governedRepo`; when it is `null`, ask which repo the record governs (the only "where"
+question, and only then).
+
+If no `Knowledge path:` marker is present and `homes` reports no shared home, the local home is the
+only home; that is a valid setup, not an error.
 
 ## The record format
 
-Every record lives at `<knowledge-path>/adrs/NNNN-<topic-slug>.md` and has exactly this shape.
-The sections follow Nygard's original *Context / Decision / Consequences* (what `adr-tools`
-generates), with a short *Considered options* list and an *Assumptions and invalidation triggers*
-section so the record says when it should be revisited.
+The canonical template is `${CLAUDE_PLUGIN_ROOT}/references/adr-template.md`. Read it before
+drafting and keep its frontmatter keys and section order exactly. The file lives at
+`<home>/NNNN-<problem-slug>.md`.
 
-```markdown
----
-title: "ADR-NNNN: <short title — may state the decision>"
-description: "<the decision in one declarative sentence, with its strongest because>"
-tags: [adr, <topic>, <topic>]
-status: proposed
-date: YYYY-MM-DD
-deciders: [<names or roles>]
-confidence: high
----
+**Frontmatter**
 
-# ADR-NNNN: <short title>
+- `id` is `<prefix>/ADR-NNNN` for the home and number. `title` is `"ADR-NNNN: …"` (bare number) and
+  may state the decision. `description` is the decision in one sentence with its strongest
+  because (≤300 chars): listings and search show it, so it carries the whole decision.
+- `tags` always includes `adr`; prefer tags already in use (`grep -rh '^tags:'` the home).
+- `status` is `proposed` on every draft. Agents never write `accepted` except in the `accept`
+  flow below, with the human the user named.
+- `decided_by` stays `[]` on a draft: the human who ratifies is named at `accept`, never guessed.
+  `consulted` lists the people asked.
+- **Classification** — the drafting agent proposes, the human confirms:
+  - `reversibility`: `one-way` when undoing it costs more than a day or breaks consumers,
+    otherwise `two-way`;
+  - `blast_radius`: `local` (one module), `service` (one repo or deployable), `cross-service`
+    (contracts between repos or services; household-wide decisions too), `customer` (visible to
+    users or customers);
+  - `sensitivity`: any of `security`, `privacy`, `billing`, `legal`, `contract`; `[]` for none.
+- **High tier** = `one-way`, or `cross-service`/`customer`, or any sensitivity tag. A high-tier
+  record needs at least two considered options, at least one invalidation trigger, and a
+  non-empty `scope`; it is decided by someone in `config.decisionOwners` (when configured) and
+  gets its own ADR-only PR, merged as accepted before any implementation PR. A low-tier record is
+  decided by someone in `config.deciders` (when configured) and may ride along in the
+  implementation PR.
+- `scope`: globs for the code the decision governs. In a local record they are relative to the
+  repo root (`src/Billing/**`); in a shared record each is prefixed with the repo name
+  (`billing-api:src/Billing/**`). Reviews select records by scope, so a record with no scope is
+  only found by search.
+- Relations hold qualified ids: `supersedes` (list), `superseded_by` (one id, set only when the
+  record is superseded), `depends_on`, `related`. Write a relation only on the record you are
+  drafting; reverse links are computed on read (`index`), never written into the target.
+- `implements` is reserved for behaviour-spec rule ids; leave it `[]`. `rfc` is an optional URL.
+  `aliases` holds former ids after a move.
+- Every value sits inline on its key's line. Block scalars (`>` / `|`) and block lists are
+  invisible to retrieval and fail the validator.
 
-## Status
+**Body**
 
-Proposed YYYY-MM-DD.
-
-## Context
-
-<Value-neutral facts: the forces, constraints, and requirements in play. Written so that a
-proponent of the losing option would agree with every sentence. No selling here.>
-
-## Considered options
-
-- **<Option A>** — one honest advantage.
-- **<Option B>** — one honest advantage.
-- **<Option C>** — one honest advantage.
-
-## Decision
-
-<One declarative, falsifiable sentence in active voice with a named actor and its strongest
-"because" — a reviewer must be able to point at code and say "this violates the ADR". Then the
-rules the decision implies, in the record itself, never only in code comments.>
-
-## Consequences
-
-- <Each line is a complete claim with a reason, never a bare adjective.>
-- <Include real negatives. If you cannot name a downside, the record is not done.>
-
-## Assumptions and invalidation triggers
-
-- *Assumes <X>.* Trigger: <the concrete event that forces a revisit> ⇒ <supersede | amend>.
-
-## See also
-
-- [[adrs/NNNN-…]] / [[domain/…]] — related records and the context that drove this.
-```
-
-**Frontmatter rules**
-
-- `title` is `"ADR-NNNN: …"`. `description` is the decision in one sentence (≤300 chars); it is
-  what `list`, `/lore:explore`, and search show, so it carries the whole decision.
-- `tags` always includes `adr`. Prefer tags already in use in the KB.
-- `status` is one of `proposed | accepted | rejected | deprecated | superseded`.
-- `deciders` is an inline list. `confidence` is `high | medium | low`; low confidence on an
-  accepted record marks it for planned revisiting, not embarrassment.
-- Optional: `supersedes: NNNN` on the new record, `superseded_by: NNNN` on the old one.
-- Every value sits inline on its own line. Block scalars (`>` / `|`) and block lists are invisible
-  to retrieval and fail the KB's `make validate`.
-
-**Naming**
-
-- `NNNN` is four digits, zero-padded, monotonically increasing, never reused. Find the next number
-  by globbing `<knowledge-path>/adrs/[0-9][0-9][0-9][0-9]-*.md` across all knowledge paths and
-  adding one to the highest; the first record is `0001`. Ignore `_`-prefixed files.
-- The slug names the **problem or topic**, never the chosen answer (`0005-session-storage.md`,
-  not `0005-session-storage-in-redis.md`), so the filename stays honest if the decision is later
-  superseded. The title and H1 may state the decision.
+- *Context*: value-neutral facts a proponent of the losing option would accept.
+- *Facts relied on*: numbered `F1 … — source: <path, URL or command>`, each checkable by an
+  agent later. These are what observations and reviews hold up against the code.
+- *Considered options*: two or three viable alternatives, each with one honest advantage.
+- *Decision*: one falsifiable sentence, active voice, named actor, strongest because; then
+  numbered rules `R1`, `R2`, … each a MUST or MUST NOT a reviewer can hold code against
+  (`kb/ADR-0007.R2` is how reviews cite them).
+- *Consequences*: complete claims with reasons, at least one real negative.
+- *Assumptions and invalidation triggers*: `*Assumes X.* Trigger: <concrete event> ⇒ supersede.`
+- *Later observations*: empty on a draft; appended to after acceptance (`observe`).
+- *See also*: same-home links as `[[adrs/NNNN-…]]` in the KB or plain relative links in a local
+  home; cross-home references as the qualified id in text, never a path.
 
 **Writing rules**
 
-- Target 300–900 words; hard ceiling about 1,500. Past that it is a design doc wearing an ADR
-  costume: split the decision or link the design from *See also*.
-- One decision per record. "Store X in database Y" is usually three decisions (storage
-  technology, data model, isolation model) that break at different times; decompose.
-- Two or three genuinely viable alternatives, each with one honest advantage. No strawmen.
-- Register: a conversation with a future developer. Plain sentences, active voice, one idea per
-  sentence. "For now" and "we should consider" are not decisions.
+- Target 300–900 words; past about 1,500 it is a design doc: split the decision or link the design.
+- One decision per record. "Store X in database Y" is usually three decisions (technology, data
+  model, isolation) that break at different times; decompose.
+- A conversation with a future developer: plain sentences, one idea each. "For now" and "we
+  should consider" are not decisions.
+- Never mention chat sessions or conversations, never attribute authorship to an AI.
 
-**Lifecycle**
+**Naming and numbering**
+
+- `NNNN` is four digits, per home, never reused. Get the next one with
+  `node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js next [--base origin/<default-branch>] <home-dir>`
+  (with `--base` when the home's repo has that ref, so numbers already merged upstream count;
+  `<default-branch>` comes from `homes`).
+- The slug names the problem, never the answer (`0005-session-storage.md`), so it stays honest
+  after a supersede.
+
+## Lifecycle and the locked-record rule
 
 ```
-proposed → accepted → deprecated | superseded by NNNN
-    └────→ rejected
+proposed ──(accept, naming a human)──► accepted ──► superseded | deprecated
+    └──(reject, naming a human)──────► rejected
 ```
 
-- **proposed** — a draft in its cooling period. Amend freely; nothing is built on it yet.
-- **accepted** — the first code depends on it. That dependency is what flips the status, and it
-  **locks** the record. From then on the only permitted edits are an appended `## Status` line
-  (on its own, or with a transition to `accepted`, `superseded`, or `deprecated`), `superseded_by`,
-  and repairs to a broken `[[wikilink]]`. A locked record never returns to `proposed`, and
-  `superseded` and `deprecated` records stay locked. To change the decision, write a new record
-  that supersedes it.
-- **rejected** — considered and declined; kept for the audit trail.
-- **deprecated** — no longer applies and nothing replaces it.
-- **superseded** — replaced by a later record; both link to each other. The flip happens when
-  the replacement is *accepted*, never when it is proposed: until then the old record stays
-  `accepted` and binding, with a Status line noting the pending replacement.
+- **proposed** — a draft. Amend freely. Code must not depend on it. A proposal in the shared home
+  lives only on its PR branch: the KB's default branch holds settled records.
+- **accepted** — a named human ratified it. This **locks** the record for good, whatever its later
+  status. **rejected**, **superseded** and **deprecated** records are locked too; rejected records
+  are merged and kept so nobody re-proposes a dead option.
 
-There is no index file to maintain. Frontmatter is the catalogue: `list` renders it on demand.
+A locked record changes only by these five edits; everything else is a new record that supersedes
+it. The validator checks each one mechanically against the base branch.
+
+| # | Edit | Mode |
+|---|---|---|
+| 1 | One new line appended to `## Status`, with a transition to `superseded`/`deprecated` or a note | `deprecate`, `accept` (predecessor flip), `retire` |
+| 2 | Setting `superseded_by` with the flip to `superseded` (successor already accepted); a move stub | `accept`, `retire` |
+| 3 | A dated bullet appended to `## Later observations` | `observe` |
+| 4 | Formatting or a link target (bare wikilinks only in *See also*) | by hand, via `/lore:update` |
+| 5 | Backfilling `id` and empty classification keys on a record from before this format | `/lore:migrate` |
+
+Spelling fixes are not repairs. A wrong fact is an observation; a wrong rule, scope or
+classification is a superseding record.
+
+## Where a change lands
+
+Every write goes through the **knowledge-updater** agent with Type `adr`, the record's **Home**
+(`shared`, or `local:<repo>`), a **Placement**, and two inputs it cannot work out reliably on its
+own: `ADR lint: ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js` written out as an absolute path, and the
+`homes` JSON. The placements:
+
+- `own-pr` — a new branch off the home repo's default branch and a PR. The agent works in a
+  temporary git worktree, so the user's checkout and branch are never touched. High-tier records
+  always use this.
+- `pr-branch <branch>` — commit onto the open PR branch that already carries the record and push.
+  `accept` and `reject` of a proposal under review use this. When that branch is the one checked
+  out in the user's repo, it behaves as `ride-along` instead.
+- `ride-along` — write into the user's working tree on their current branch and stage it, without
+  committing. Only for a low-tier record in a local home, and only when the user chooses it.
+
+The agent runs `adr-lint check` on the result before it commits; a failing check stops the write.
+A proposal under review is expected to fail CI's check until it is accepted (a shared-home
+proposal never merges as proposed, and a ride-along must be accepted before its PR merges), so the
+agent validates a change that proposes a record with `--draft`, which reports those two findings
+as warnings.
 
 ## Implementation
 
-Parse the argument. `list`, `accept`, `supersede`, and `discover` are keywords; anything else
-(or nothing) is the `new` / `list` split below.
+Parse the argument. The first word selects the mode when it is one of `list`, `index`, `accept`,
+`reject`, `observe`, `supersede`, `deprecate`, `move`, `retire`, `lint`, `discover`; no argument
+lists; anything else is a new record.
 
-### No arguments, or `list [status]` -> List
+### `list [status]` and `index`
 
-One Grep call per knowledge path:
-
-```
-Grep  pattern: ^(title|description|status|date):
-      path: <knowledge-path>/adrs   glob: [0-9]*.md   output_mode: content   -n: true
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js index [--status <status>]
 ```
 
-Group the four lines per file, sort by number, optionally filter on `status`, and render:
+Show the table it prints (for `index`, also the relations and reverse links). If it lists no
+records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End with:
+`Use /lore:prime <path> to load a record into context.`
 
-```
-## Architecture decision records (N)
+### `<title>` → New record
 
-| ADR | Title | Decision | Status | Date |
-|-----|-------|----------|--------|------|
-| 0001 | Primary datastore | All transactional data lives in PostgreSQL because… | accepted | 2026-05-16 |
-```
-
-If `adrs/` is empty or missing, say so and point at `/lore:adr <title>` and `/lore:adr discover`.
-End with: `Use /lore:prime adrs/NNNN-… to load a record into context.`
-
-### `<title>` -> New record
-
-1. **Triage first.** Not every decision deserves a record. Ask yourself, and say which tier it is:
-   - **Tier 1 — record it**: expensive to reverse (changing your mind later costs more than a
-     day), crosses service or module boundaries, or keeps getting re-debated.
-   - **Tier 2 — one line**: sets a local convention, reversible with moderate effort. Offer to add
-     a single line to the owning record's consequences, a standard in `general/`, or a learning
-     instead. Promote to a full record only if it gets re-litigated.
-   - **Tier 3 — no record** beyond the plan, the PR description, and the code.
-   If the decision is Tier 2 or 3, say so, offer the lighter option, and stop unless the user
-   insists.
-2. **Load context.** Dispatch two agents in parallel (both Task calls in one message): the
-   **architect** agent in `bind` mode with the topic (returns the accepted records that already
-   constrain it, any trigger this decision fires, and duplicates or supersede candidates) and the
-   **knowledge-reader** agent with the hint "Prioritise domain context and architecture
-   patterns." If the architect reports a record that already covers the decision, stop and offer
-   `accept`, `supersede`, or nothing. Grep the codebase for the thing being decided so the Context
-   section rests on facts, not memory.
-3. **Interview, one question at a time.** Before drafting, ask the scoping questions that apply:
-   who accesses this and at what boundaries; isolation and access-control requirements;
-   read/write patterns and scale; retention and lifecycle; what adjacent planned work touches it;
-   which alternatives were genuinely on the table and why they lost. Prefer multiple choice.
-   Stop asking as soon as you can write every section honestly.
-4. **Decompose bundles.** If the answers reveal more than one decision, say so, and record them
-   as separate numbered records in one PR (one interview, N files).
-5. **Draft** the record in the format above. Status is `proposed` unless the user says code
-   already depends on it, in which case use `accepted` and write the Status line as
-   "Accepted (retrospective) YYYY-MM-DD; the decision predates this record. First dependent code:
-   `<path>`."
-6. **Self-check** before showing it, and fix inline:
-   - Is the Decision one falsifiable sentence a reviewer could hold code against?
+1. **Triage.** Will code depend on it, and does changing it later cost more than a day? Say
+   which tier it is:
+   - **record it** — expensive to reverse, crosses a module or service boundary, or keeps being
+     re-debated;
+   - **one line** — a reversible local convention: offer a line in a standard or a learning;
+   - **no record** — routine implementation: the PR description is enough.
+   A code-independent decision (a tool, a vendor with no integration, a process) belongs in the
+   team's RFC or meeting notes, not here. Stop at a lighter option unless the user insists.
+2. **Load context.** Resolve the homes. Write the catalogue to a scratch file with
+   `adr-lint index --json > <scratch>/adr-index.json`. Dispatch two agents in parallel: the
+   **architect** in `bind` mode with the topic, the homes JSON, and the catalogue path (plus
+   `adr-lint select --repo <repo> --paths <paths>` output when the code paths are known), and the
+   **knowledge-reader** with "Prioritise domain context and architecture patterns." If the
+   architect names a record that already covers the decision, stop and offer `accept`,
+   `supersede`, or nothing. Grep the code for the thing being decided so Context and *Facts
+   relied on* rest on evidence.
+3. **Interview, one question at a time,** skipping anything the user's message already answers:
+   who uses it and across which boundaries; isolation and access control; read/write patterns
+   and scale; retention; adjacent planned work; the real alternatives and why they lost;
+   **classification** (how costly to undo, how far the effect reaches, any sensitivity); **scope**
+   (which paths will depend on it); **facts** the decision rests on and where each can be
+   checked. Prefer multiple choice. Stop as soon as every section can be written honestly; when
+   running non-interactively, draft with the assumptions stated in the summary instead of asking.
+4. **Decompose bundles** into separate records, one interview, N files.
+5. **Home and number.** Derive the home from `blast_radius` (above). Get the number with
+   `adr-lint next` for that home. Records from one interview that land in the same home take
+   consecutive numbers.
+6. **Draft** from the template: `status: proposed`, `decided_by: []`, Status line
+   `Proposed YYYY-MM-DD.` Write the draft to the session scratchpad first.
+7. **Self-check**, and fix inline:
+   - Is the Decision one falsifiable sentence, and is every rule a MUST/MUST NOT a reviewer can
+     hold code against?
    - Would a proponent of the losing option accept every sentence in Context?
-   - Are there two or three real alternatives, each with an honest advantage?
-   - Is at least one consequence a genuine negative?
-   - Is there at least one named invalidation trigger?
-   - Is every frontmatter value inline, and is `description` the decision itself?
-   - Word count within 300–900?
-7. **Present** the complete file to the developer with its proposed path:
+   - Is every fact checkable, with a source?
+   - Two or three real alternatives, each with an honest advantage? At least one genuine
+     negative consequence? At least one invalidation trigger?
+   - Does the classification match the evidence, and the home match `blast_radius`?
+   - Is `scope` non-empty for a high-tier record, and in the home's syntax?
+   - Every frontmatter value inline, `description` the decision itself, `decided_by` empty, no
+     mention of sessions or AI authorship?
+   Then lint it without touching the user's checkout: copy the home directory and the draft into
+   a scratch directory and run `adr-lint check --draft --home <shared|local> [--repo <repo>]
+   <scratch-home>`. Fix every error before presenting.
+8. **Present** the file with its path, tier and PR shape:
 
-   > **Proposed ADR**
+   > **Proposed ADR** — `billing-api/ADR-0003` (low tier: two-way, service)
    >
-   > **File:** `<team-knowledge-path>/adrs/NNNN-<slug>.md`
+   > **File:** `billing-api/docs/adr/0003-invoice-numbering.md`
    >
    > ```markdown
    > [complete file contents]
    > ```
    >
-   > Does this look right? I can adjust any section, the tier, or the status before opening a PR.
+   > High tier: "It gets its own ADR-only PR; implementation waits until it is accepted."
+   > Low tier, local home: "Ride along in your current branch (accepted before merge by the
+   > approver), or its own PR?"
+   >
+   > Does this look right? I can adjust any section, the classification, or the status first.
 
-8. **Apply** (if confirmed). Dispatch the **knowledge-updater** agent with:
-   - **Type:** `adr`
-   - **Content:** the approved file
-   - **Action:** `create`
-   - **File path:** `adrs/NNNN-<slug>.md`
+9. **Apply** on confirmation: dispatch **knowledge-updater** with Type `adr`, Action `create`,
+   the file, Home, Placement (`own-pr` for high tier; the user's choice for low tier), the
+   `ADR lint:` path and the homes JSON. For several records from one interview, use the batch
+   shape: one batch per home.
+10. **Confirm** with the PR URL (or "staged on <branch>") and the next step. High tier: "its PR
+    stays red on the ADR check until it is accepted: get it reviewed, then
+    `/lore:adr accept <id> by <name>`". Ride-along: "once the approver approves the PR, run
+    `/lore:adr accept <id> by <approver>` before merging". If the decision implies a standing
+    rule, offer that one line for the relevant standard or the repo's `CLAUDE.md`, in the same PR.
 
-   For several records from one interview, use the agent's batch shape so they land in one PR.
-9. **Confirm** with the PR URL: `ADR-NNNN drafted (proposed) and PR created: {pr-url}`. If the
-   decision implies a standing rule ("always X", "never Y"), offer to add that one line to the
-   relevant standard or the repo's `CLAUDE.md` in the same PR: the ADR holds the reasoning, the
-   standard holds the rule.
+### `accept <ref> [by <name>, …]` → Ratify
 
-### `accept NNNN` -> Flip to accepted
+1. **Find the record and its placement.** Stop unless its `status` is `proposed`.
+   - In the working tree of its home, on the branch the user has checked out: Placement
+     `ride-along` (the user commits the edit with their change).
+   - In the working tree, on the home repo's default branch (a proposal from before this
+     format, still on the default branch): Placement `own-pr`.
+   - Not in the working tree: it is on an unmerged branch. Find the PR with `gh pr list` in the
+     home's repo (search the filename or `ADR-NNNN`), or ask for the PR number; read the record
+     with `git show origin/<branch>:<path>` after a fetch. Placement `pr-branch <branch>`.
+2. **Name the decider.** Use the names after `by`; otherwise ask "Who is ratifying this
+   decision?" Never infer a name from git config, the session, or the PR author, and never
+   proceed without one: in a non-interactive run, stop and say a named human decider is
+   required. Refuse any name that identifies an agent or bot (Claude, Codex, Copilot, an AI or
+   assistant, anything ending in `[bot]`): an agent cannot ratify.
+3. **Check the decider.** The pool is `config.decisionOwners` for a high-tier record and
+   `config.deciders` otherwise; when that list is non-empty, at least one named decider must be
+   in it (case-insensitive, `@` ignored). If not, say who may decide and stop.
+4. **Make it acceptable before asking anyone to decide.** A proposal is still a draft, so fix it
+   now, as a draft amendment, rather than after the decider has been named:
+   - **Unclassified** (a proposal from before this format, no `reversibility`): accepting it ends
+     its grace period, so it needs `id`, the classification and `scope`. Propose them from its
+     content and confirm with the user, as in the New record interview.
+   - **High tier** (unclassified counts as high tier): it needs at least two considered options,
+     at least one invalidation trigger, and a non-empty `scope`. If the body lacks them, amend it.
+   - Lint the result as in New record step 7 (`check --draft` in a scratch copy).
+5. **Edit:** `status: accepted`, `decided_by: [<names>]`, and append to `## Status`:
+   `Accepted YYYY-MM-DD by <names>.` Nothing else changes.
+6. **Predecessors.** For each id in `supersedes`:
+   - **same home** — flip it in the same change: `status: superseded`, `superseded_by: <this
+     id>`, and append `Superseded YYYY-MM-DD by <this id>.` to its Status. Its body stays as is.
+   - **another home** — leave it. Add to this record's Status line: `Supersedes <id> once
+     retired there.` After this PR merges, the user runs `/lore:adr retire <id> by <this id>` for
+     the second PR (use the `stack` skill to show the order).
+7. **Apply** with knowledge-updater, Action `update` (a batch when a predecessor is flipped), with
+   the Placement from step 1. Confirm what was committed, or staged, and that the PR can merge once
+   checks pass.
 
-1. Read the record. If its status is not `proposed`, stop and say what it is.
-2. Ask what code now depends on it (a PR number or path). That dependency is the reason for the
-   flip, and it goes in the log.
-3. Change `status: proposed` to `status: accepted` and append to `## Status`:
-   `Accepted YYYY-MM-DD. First dependent code: <PR or path>.` Nothing else changes.
-4. **If the record carries `supersedes: NNNN`**, retire the predecessor in the same change:
-   `status: superseded`, `superseded_by: MMMM`, and a Status line
-   `Superseded YYYY-MM-DD by [[adrs/MMMM-…]].` Its body stays untouched. The two edits are one
-   atomic transition: there is never a moment when neither record is binding.
-5. Present the diff(s), then dispatch **knowledge-updater** with Type `adr`, Action `update`, and
-   the file path — or, when a predecessor is retired too, the **batch shape** (two `update`
-   entries) with `pr_title` `docs: accept ADR-MMMM, supersede ADR-NNNN - <title>`. Confirm with
-   the PR URL.
+### `reject <ref> [by <name>, …]` → Decline a proposal
 
-### `supersede NNNN <title>` -> Replace a record
+As `accept` steps 1, 2, 4 (classification only: a rejected record has no tier extras) and 7, but
+the edit is `status: rejected`, `decided_by: [<names>]`, and
+`Rejected YYYY-MM-DD by <names>: <one-line reason>.` A rejected record merges and stays, so the
+reason is worth a sentence. A rejected record never flips a predecessor.
 
-Superseding is two transitions, not one. This flow only *proposes* the replacement; NNNN stays
-`accepted` and binding until `accept MMMM` retires it (see the accept flow, step 4). Otherwise
-there would be a window where the old record is already superseded and the new one is still
-proposed, and nothing constrains the code.
+### `observe <ref> <what changed>` → Append an observation
 
-1. Read record NNNN. If it is `proposed`, ask whether the user would rather amend it (a proposed
-   record is still a draft); only continue if they want a new record.
-2. Draft the replacement with the **drafting steps of the New record flow only — steps 1 to 7**.
-   Do not run its steps 8 and 9; publishing happens once, in step 4 below. Two adjustments:
-   - In step 2 the architect will report NNNN as already covering the decision. That is the
-     expected duplicate — do not stop on it. Stop only if it names a *different* accepted record
-     covering the same decision.
-   - The draft's status is `proposed`, its frontmatter carries `supersedes: NNNN`, its Context
-     opens with one sentence on what changed since NNNN, and its *See also* links
-     `[[adrs/NNNN-…]]`.
-3. Prepare the edit to the old record: **only** a Status line
-   `Supersession proposed YYYY-MM-DD by [[adrs/MMMM-…]]; this record remains binding until
-   ADR-MMMM is accepted.` Its `status` and body stay untouched: appending to the Status log is a
-   permitted edit on a locked record (rule 3).
-4. Present both files, then dispatch **knowledge-updater** once with the **batch shape** (one
-   `create`, one `update`) so both land in one PR titled
-   `docs: propose ADR-MMMM superseding ADR-NNNN - <title>`. Confirm with the PR URL and say
-   that `accept MMMM` will retire NNNN.
+1. Read the record; stop unless it is locked (`accepted`, `superseded`, `deprecated`, or
+   `rejected`). A proposed record is amended directly instead.
+2. Draft one dated bullet that answers four things: when and where (date, PR or ticket), which
+   statement (quoted, or its `F#`), what is true now and its source, and what it means — no
+   trigger fired and the decision holds, or trigger X fired and a superseding record follows.
+   Example: `- 2026-11-02 (PR 412): F2 no longer holds — invoices reach 14k/day (source: billing
+   dashboard). No trigger fired; the decision holds.`
+3. Append it at the end of `## Later observations` (add that section before *See also* if a
+   legacy record lacks it). Nothing else changes.
+4. If the observation says a trigger fired, say so and offer `/lore:adr supersede <ref>`.
+5. Present, then apply: Placement `ride-along` when it belongs to the change the user is making
+   in that repo and they agree, else `own-pr`.
 
-### `discover` -> Decision archaeology
+### `supersede <ref> <title>` → Propose a replacement
 
-Recover the architecturally significant decisions a codebase has already made without writing
-them down. The scanning happens in the **architect** agent so the evidence never lands in this
-conversation; only the pick, the drafting, and one review round do. Every pick is recorded in a
-single batch: one bind check, one round of questions, one review, one PR.
+Superseding is two transitions: this flow proposes the successor; the predecessor stays accepted
+and binding until the successor is accepted (`accept` step 6).
 
-1. **Dispatch the architect agent** in `survey` mode, passing any scope the user gave (a repo or
-   area) or "the whole household". It returns the grouped candidate list (at most fifteen, each
-   with the requirement, the choice, evidence paths, and whether an alternative was weighed), the
-   records that already exist, and the scan scope.
-2. **Render its report verbatim**, then ask in plain text (not `AskUserQuestion`, the list can
-   exceed four options): "Which should I record? Reply with numbers or topics, comma-separated,
-   `all`, or `none`." Parse, validate, and de-duplicate. There is no cap; echo the resolved picks
-   in one line and go on without a separate confirmation. On `none`, skip to step 8.
-3. **Triage and split, once for the whole batch.** Drop any pick that is Tier 2 or 3 (say which
-   and offer the lighter option in the summary). A candidate that bundles several decisions that
-   break at different times becomes several records. Number the resulting records consecutively
-   from the next free number, in candidate order, and list the plan (number, slug, one-line
-   decision) before drafting. If no records remain after triage (or after step 4), skip to
-   step 8: there is nothing to draft and no PR to open.
-4. **One bind check for the batch.** Dispatch the architect once in `bind` mode with every planned
-   topic: the survey listed choices nobody recorded, it never checked them against the accepted
-   records. Drop or redirect (to `supersede`) any pick an accepted record already covers. Skip the
-   dispatch only when the survey reported no numbered records at all. The knowledge-reader
-   dispatch is skipped, since the survey already cited the evidence.
-5. **Draft every record** with the **New record** format in retrospective form: status
-   `accepted`, the retrospective Status line, Context reconstructed from the evidence the agent
-   cited. Where the alternatives were not visibly weighed at the time, say exactly that in
-   *Considered options* rather than inventing a debate. Write every draft to a file in the session
-   scratchpad, never into the knowledge base, so the review in step 7 has a target to link. For
-   more than three records, fan the drafting out to parallel subagents (a few records each, all
-   in one message), each writing its drafts to the scratchpad and returning the questions it
-   could not answer from the evidence. Run the self-check (New flow, step 6) on every draft.
-6. **Ask once.** Collect the open questions from every draft (usually a reason that the evidence
-   does not state, or whether an alternative was weighed) and ask them together, batched into as
-   few `AskUserQuestion` calls as the four-question limit allows. Fold the answers into the drafts.
-7. **Review once.** Present a table of the batch (number, title, decision, confidence) with a
-   link to each draft file, rather than pasting every file inline, and ask for approval or
-   amendments in one reply. Apply amendments, then dispatch **knowledge-updater** once with the
-   **batch shape** (one `create` per record), branch `knowledge/adrs-NNNN-MMMM-discover`, and
-   `pr_title` `docs: record ADR-NNNN to ADR-MMMM (discover)`. A batch of one record uses the
-   single-record branch and title instead. The batch is one PR on purpose: it is one review of
-   one survey, and the updater's one-concept-per-PR rule makes an exception for it.
-8. **Summarise**: the PR URL, the records it opens, picks dropped at triage or bind, candidates
-   left unpicked, and a reminder that `/lore:adr discover` can be run again later.
+1. Read `<ref>`. If it is `proposed`, offer to amend it instead.
+2. Run the **New record** flow steps 1–8 with these adjustments: the architect will report
+   `<ref>` as covering the decision — that is expected, stop only for a *different* record;
+   the draft carries `supersedes: [<ref>]`, its Context opens with what changed since `<ref>`,
+   and its classification may differ (it decides its own home).
+3. **Same home:** add one Status line to `<ref>`:
+   `Supersession proposed YYYY-MM-DD by <new id>; this record remains binding until it is accepted.`
+   and land both files in one PR (batch shape). **Another home:** leave `<ref>` untouched.
+4. Apply as for a new record and confirm, noting that `accept <new id>` retires `<ref>` (same
+   home) or that `retire` follows the merge (another home).
+
+### `deprecate <ref> <reason>` → Retire with no replacement
+
+Only for an `accepted` record. Ask who decided it no longer applies (a named human, as for
+`accept`). Edit `status: deprecated` and append `Deprecated YYYY-MM-DD by <name>: <reason>.`
+Apply with Placement `own-pr`. If something replaces the decision, use `supersede` instead.
+
+### `move <ref>` → Move to another home
+
+For a record filed in the wrong home, or whose code moved to another repo. The decision itself
+does not change: if the scope or classification changes, that is a `supersede`.
+
+1. Read `<ref>`; it must be `accepted` (a proposal is simply amended and refiled). Work out the
+   target home from its `blast_radius` and, for a local home, the governed repo. A coinciding home
+   has nowhere to move to: say so and stop.
+2. **PR 1, in the target home:** a new record with the next number there, the same body, `id`
+   for the new home, `aliases: [<old id>]`, the same `decided_by`, `status: accepted`, `scope`
+   rewritten for the new home's syntax, and the Status log copied with one line appended:
+   `Moved YYYY-MM-DD from <old id>.` Classify it now if it predates classification. Apply with
+   Placement `own-pr`, telling the knowledge-updater it is a move copy of `<old id>` (it writes
+   `accepted` without a new decider only for that).
+3. Tell the user: after PR 1 merges, run `/lore:adr retire <old id> to <new id>` for PR 2 (the
+   `stack` skill orders the pair). Until then both copies are accepted and the newer binds.
+
+### `retire <ref> by|to <id>` → Second PR of a cross-home pair
+
+1. Read `<id>` from its home's default branch. It must be `accepted` there (merged), and for
+   `to`, list `<ref>` in `aliases`. If not, say what is missing and stop.
+2. **`by <id>` (supersede):** `status: superseded`, `superseded_by: <id>`, Status line
+   `Superseded YYYY-MM-DD by <id>.`
+   **`to <id>` (move):** replace the file with its stub — the same frontmatter plus
+   `moved_to: <id>`, and a one-line body `Moved to <id>.`
+3. Apply with Placement `own-pr` in `<ref>`'s home.
+
+### `lint` → Validate every home
+
+For each home with `exists: true`, run
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check [--base origin/<default-branch>] <home-dir>
+```
+
+with `--base` when that repo has the ref (`git -C <repo> rev-parse --verify origin/<branch>`).
+Report per home: errors, warnings, and the exit code; group findings by rule. Warnings on records
+from before this format (missing `id` or classification) point at `/lore:migrate`. Read-only.
+
+### `discover` → Decision archaeology
+
+Recover the decisions a codebase already made without writing them down. The scanning happens in
+the architect so the evidence never lands in this conversation; only the picks, the drafting, and
+one review round do. Every pick arrives as a **proposed** record: a human ratifies each one with
+`accept`, like any other.
+
+1. Resolve the homes and write the catalogue (as in New record step 2). Dispatch the
+   **architect** in `survey` mode with any scope the user gave, the homes JSON and the catalogue
+   path. It returns at most fifteen candidates, each with the requirement, the choice, evidence
+   paths, whether an alternative was weighed, a proposed classification and the governed repo.
+2. Render its report verbatim, then ask in plain text: "Which should I record? Reply with numbers
+   or topics, comma-separated, `all`, or `none`." Echo the resolved picks in one line; on `none`,
+   skip to step 8.
+3. **Triage and split** the picks once: drop lighter ones (say which and offer the lighter
+   option), split bundles, and give each record its home from its classification. Number each
+   home's records consecutively from `adr-lint next`, in candidate order, and list the plan
+   (id, slug, one-line decision).
+4. **One bind check** for the batch: the architect in `bind` mode with every planned topic. Drop
+   or redirect to `supersede` any pick an accepted record already covers.
+5. **Draft every record** in the scratchpad, `status: proposed`, Context reconstructed from the
+   evidence. Where alternatives were not visibly weighed, say exactly that in *Considered
+   options* rather than inventing a debate; a record that cannot honestly name two options and a
+   trigger stays low tier or goes back to the user. For more than three records, fan the
+   drafting out to parallel subagents, each returning the questions the evidence cannot answer.
+   Self-check every draft (New record step 7).
+6. **Ask once:** collect every open question and ask them together, in as few `AskUserQuestion`
+   calls as the four-question limit allows.
+7. **Review once:** a table of the batch (id, home, title, decision, tier) with a link to each
+   draft file; ask for approval or amendments in one reply. Then dispatch **knowledge-updater**
+   once per home with the batch shape, Placement `own-pr`, and `pr_title`
+   `docs: propose <first id> to <last id> (discover)`.
+8. **Summarise:** the PR URLs, the records each opens, the picks dropped at triage or bind, the
+   candidates left unpicked, and that each record now needs `/lore:adr accept <id> by <name>`.
 
 ## Important Rules
 
-1. **Always get developer approval** before writing any file to the knowledge base, and **always
-   create a branch and PR** — never commit directly to main. Drafts written to the session
-   scratchpad for review are not knowledge-base writes and need no approval first.
-2. **Record before building.** A decision that is about to be implemented gets a `proposed`
-   record first; it flips to `accepted` when the code lands. Do not write records after the fact
-   for new work and call them proposed.
-3. **Accepted records are locked.** Acceptance is recorded in the `## Status` log and locks the
-   record for good, whatever its status later becomes. The only permitted edits are an appended
-   Status line (alone, or with a transition to `accepted`, `superseded`, or `deprecated`),
-   `superseded_by`, and repairs to a broken `[[wikilink]]`. Never edit anything else; supersede
-   instead.
-4. **Give every record `title`, `description`, and `tags`** — retrieval greps those, so a record
-   missing any of them is invisible to search. The `description` must be the decision itself.
-5. **Numbers are never reused**, not even for rejected records. If two open PRs claim the same
-   number, the one still unmerged renumbers its draft: filename, `title`, and inbound wikilinks.
-   A number already merged is never changed.
-6. **Never hard-code a category or repo list** — discover records by globbing `adrs/`, and repos
-   from `household.json`.
+1. **Developer approval before every write**, and every write through knowledge-updater on a
+   branch: never commit to a default branch. Drafts in the session scratchpad need no approval.
+2. **Record before building.** A decision about to be implemented gets a proposed record first.
+   High-tier code waits until its record is accepted; a low-tier record is accepted before its
+   PR merges.
+3. **Only a named human accepts or rejects.** Never infer the decider and never accept on the
+   agent's own initiative.
+4. **Locked records change by the five edits only.** Anything else is a superseding record.
+5. **Numbers are per home and never reused.** If two open PRs claim one number, the unmerged one
+   renumbers: filename, `id`, `title` and inbound links. A merged number never changes.
+6. **Never hard-code a repo or home list.** Homes come from `adr-lint homes`.

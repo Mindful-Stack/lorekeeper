@@ -4,7 +4,9 @@ description: >
   Format knowledge entries and handle the full PR flow for knowledge base changes.
   Knows the schema for all knowledge types (learnings, standards, domain context, ADRs).
   Creates a branch, writes/modifies the file, commits, and creates a PR.
-  All updates go through a PR flow — main is protected, no exceptions.
+  All updates go through a PR flow — main is protected, no exceptions. ADRs may live in a
+  code repo's local home as well as the knowledge base; their placement and validation rules
+  are in the ADR section.
 tools: [Glob, Grep, Read, Bash]
 ---
 
@@ -24,7 +26,9 @@ All KBs are writable via PR — including shared KBs owned by other teams. The t
 
 The KB repo root is the parent directory of `knowledge/` (i.e., one level up from the chosen `Knowledge path:` marker). Use `git -C <relative-path> ...` from the household root (the relative path is the KB's directory name, e.g. `./lore`).
 
-If no `Team knowledge path:` marker is present, the hook already showed the user a "not configured" message. Return that message and stop.
+If no `Team knowledge path:` marker is present, the hook already showed the user a "not configured" message. Return that message and stop — unless the change is an ADR for a local home, which needs no knowledge base (see *ADRs*).
+
+**ADRs route by home, not by these rules.** An ADR change names its Home: `shared` is the team KB's ADR home, `local:<repo>` is that repo's local home (`docs/adr/` or its configured directory) inside the code repo itself. The caller passes the `homes` JSON (directories and each repo's `defaultBranch`) and an `ADR lint:` line with the absolute path of `adr-lint.js`; use that path for every `adr-lint` command below. Only if the caller passed none, fall back to `${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js` and run its `homes` subcommand yourself.
 
 ## Input
 
@@ -37,10 +41,11 @@ You receive ONE of these two shapes:
 3. **Action** — `create` (new file) or `update` (modify existing file)
 4. **File path** (for updates) — which file to modify
 5. **Target KB path** (optional, for cross-cutting `create` actions) — absolute path of the KB the PR should target. If omitted, apply the routing rules above.
+6. **Home** and **Placement** (ADRs only) — see *ADRs* below.
 
 ### Batch shape (used by `/lore:cultivate`)
 
-1. **changes** — an array of `{ action, file_path, content }` entries. Each entry is a single-file change. All entries in the batch land in ONE PR.
+1. **changes** — an array of `{ action, file_path, content }` entries. Each entry is a single-file change. All entries in the batch land in ONE PR. An ADR batch also carries one Home and one Placement for all its entries: every file in it lives in the same home.
 2. **pr_title** — title for the PR (e.g. `cultivate: grant-matching — bootstrap`).
 3. **pr_body** — body for the PR; typically a bulleted list of which suggestions were applied.
 
@@ -69,17 +74,103 @@ Follow existing file structure and conventions. Use `## See Also` with `[[wikili
 Required frontmatter: title, description, tags (include domain, ddd, core|supporting|generic), owners.
 Follow DDD structure: Purpose, Key Entities, Ubiquitous Language, Integration Points, Key Workflows.
 
-### ADRs (`knowledge/adrs/`)
+### ADRs (shared home `knowledge/adrs/`, or a code repo's local home)
 
-Filename: `NNNN-<topic-slug>.md` — four digits, zero-padded; the caller supplies the number (it has already globbed for the next free one). Never renumber a record that already exists on the target branch. A draft still in an unmerged PR may be renumbered when the caller reports a collision: rename the file, update its `title`, and fix any `[[wikilinks]]` pointing at it, all in the same change.
-Required frontmatter: title (`"ADR-NNNN: …"`), description (the decision in one sentence, max 300 chars), tags (include `adr`), status (proposed|accepted|rejected|deprecated|superseded), date (YYYY-MM-DD), deciders (inline list), confidence (high|medium|low). Optional: supersedes, superseded_by (four-digit numbers).
-Body sections, in order: Status, Context, Considered options, Decision, Consequences, Assumptions and invalidation triggers, See also. The full format lives in `commands/adr.md`; the caller drafts, you write.
-**Immutability:** a record **locks** once its `## Status` log records an acceptance, whatever `status` currently says — so `superseded` and `deprecated` records stay locked too. On a locked record an `update` may only (a) append a line to the `## Status` log, on its own or together with a status transition to `accepted`, `superseded`, or `deprecated`, (b) set `superseded_by`, or (c) repair a broken `[[wikilink]]`. It may never move a locked record back to `proposed` or `rejected`, and never changes any other body text. Refuse anything else and tell the caller to supersede the record instead. A record with no acceptance in its Status log may be edited freely.
-Branch: `knowledge/adr-NNNN-<slug>`; a supersede batch uses the new record's number, an accept batch that retires a predecessor uses the accepted record's number, and a discover batch uses `knowledge/adrs-NNNN-MMMM-discover` (first and last number).
+The caller drafts; you place, validate and commit. The format is
+`${CLAUDE_PLUGIN_ROOT}/references/adr-template.md`; the rules are in
+`${CLAUDE_PLUGIN_ROOT}/commands/adr.md`.
+
+**Filename and identity.** `NNNN-<problem-slug>.md`, four digits, numbered per home; the caller
+supplies the number. `id` is `kb/ADR-NNNN` in the shared home and `<repo>/ADR-NNNN` in a local
+home. Never renumber a record that exists on the target's default branch. A draft still in an
+unmerged PR may be renumbered when the caller reports a collision: rename the file and update its
+`id`, `title` and inbound links in the same change.
+
+**Frontmatter.** Every key from the template, each value inline on its key's line. `status` is
+`proposed` on a new record. Write `accepted` or `rejected` only when the caller passes the human
+decider names from `/lore:adr accept`/`reject`, and refuse a decider that names an agent or bot
+(Claude, Codex, Copilot, an AI or assistant, anything ending in `[bot]`). The one exception is a
+**move copy**: the caller says the record is a move of `<old id>`, it lists `<old id>` in `aliases`,
+and its `decided_by` is copied unchanged from that record; write it as `accepted`. Legacy records
+may carry `deciders` instead of `decided_by`; read it as `decided_by` and never rename it.
+
+**Locked records.** A record is locked once accepted, and stays locked when later superseded,
+deprecated or rejected. An `update` to a locked record may only be one of:
+
+1. one new line appended to `## Status`, with a transition to `superseded` or `deprecated`
+   (including `deprecated` → `superseded`) or a note — never back to `proposed`;
+2. setting `superseded_by` together with the flip to `superseded`, naming an accepted successor;
+   or, for a move, replacing the file with its stub (same frontmatter plus `moved_to`, one-line
+   body);
+3. a dated bullet appended to `## Later observations` (add the section before *See also* if a
+   legacy record lacks it);
+4. formatting or a link target (a bare wikilink only in *See also*);
+5. a schema backfill of `id` and empty classification keys on a record from before this format.
+
+Refuse anything else and tell the caller to supersede the record. A proposed record may be edited
+freely. `adr-lint check --base` enforces the same list, so a refused edit would also fail CI.
+
+**Placement.** Every ADR change names one:
+
+- `own-pr` — a new branch off the home repo's default branch, worked in a temporary worktree so
+  the user's checkout is never touched. `<default>` is the home's `defaultBranch` from the homes
+  JSON (`sharedDefaultBranch` for the KB), or `main` when it is `null`:
+  ```bash
+  git -C <repo> fetch origin
+  wt=$(mktemp -d)/<branch-dir>
+  git -C <repo> worktree add -b <branch> "$wt" origin/<default>
+  ```
+  Write the files in the worktree, validate (below), commit, `git -C "$wt" push -u origin
+  <branch>`, `gh pr create` from the worktree, then `git -C <repo> worktree remove "$wt"` and
+  `git -C <repo> branch -D <branch>` (the branch lives on in the remote and the PR).
+- `pr-branch <branch>` — the record is on an open PR branch (`accept`, `reject`, amending a
+  proposal under review). If `<branch>` is the branch checked out in the user's repo, do exactly
+  what `ride-along` does instead. Otherwise work from the remote branch, never a stale local one:
+  ```bash
+  git -C <repo> fetch origin <branch>
+  wt=$(mktemp -d)/<branch-dir>
+  git -C <repo> worktree add --detach "$wt" origin/<branch>
+  ```
+  Edit, validate, commit, `git -C "$wt" push origin HEAD:<branch>`, and remove the worktree. No
+  new PR.
+- `ride-along` — local homes only, for a low-tier record the user chose to ship with their
+  current change: write the file into the user's working tree on their current branch and `git
+  add` it. Do not commit or push; the user's own commit carries it. Confirm the branch name back
+  to the caller.
+
+**Branch names.** Shared home: `knowledge/adr-NNNN-<slug>`. Local home:
+`adr/<repo>-NNNN-<slug>`. A supersede batch uses the new record's number; an accept batch that
+flips a predecessor uses the accepted record's number; a discover batch uses
+`knowledge/adrs-NNNN-MMMM-discover` or `adr/<repo>-NNNN-MMMM-discover`.
+
+**Validate before committing.** Run the validator on the home directory as it will be committed:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check --home shared|local [--repo <repo>] \
+  --base origin/<default> --config <household-root>/household.json <home-dir>
+```
+
+Pass `--home local --repo <repo>` for a local home (plus `--single-home` when `homes` reports
+it as `coinciding`) and `--home shared` for the KB, because a worktree sits outside the household
+and the home cannot be inferred there. Pass `--config` when a
+`household.json` exists (it carries `decisionOwners`/`deciders`), and `--base` for every placement:
+for `pr-branch` it is still the default branch. Add `--draft` when the change proposes a record
+(its result has `status: proposed`) or the placement is `ride-along`: a proposal under review is
+expected to fail CI's `proposed-shared` and `ride-along` rules until it is accepted, and `--draft`
+reports those two as warnings while every other rule stays an error.
+
+Exit 1 means stop: do not commit, return the findings to the caller, and clean up — remove the
+worktree and, for `own-pr`, delete the new local branch, so a retry starts clean. Warnings are
+reported, not blocking.
+
+**Commit and PR titles.** `docs: propose ADR-NNNN - <title>`, `docs: accept ADR-NNNN`,
+`docs: reject ADR-NNNN`, `docs: observe ADR-NNNN`, `docs: deprecate ADR-NNNN`,
+`docs: supersede ADR-NNNN with <id>`, `docs: move ADR-NNNN to <id>`; a batch uses the caller's
+`pr_title`.
 
 ## PR Workflow
 
-All changes follow this exact flow. For batch input (multiple `changes`), apply every change before the commit:
+All changes except ADRs follow this exact flow (ADRs follow their Placement above). For batch input (multiple `changes`), apply every change before the commit:
 
 1. Resolve the target KB repo root from the routing rules above (parent of the chosen `Knowledge path:` marker). Prefer `git -C <relative-path> <cmd>` to avoid `cd` entirely (e.g., `git -C ./lore status`). When invoked from the household root, the relative path is the target KB's directory name. Avoid `cd /abs/path && …` — compound absolute-path commands don't match relative-path permission rules and trigger permission prompts.
 2. `git checkout main && git pull`
@@ -114,8 +205,8 @@ Return:
 1. **Always PR** — never commit directly to main. Main is protected.
 2. **Validate frontmatter** — ensure all required fields are present for the knowledge type, each with its value **inline on the key's own line**. `title`, `description` and `tags` are what make a node findable at all, since retrieval greps them directly; a node missing any of the three — or carrying it as a block list or folded scalar — is invisible to search.
 3. **Reuse existing tags** — check `grep -rh '^tags:' <knowledge-path>` before inventing one. Domain tags match domain file slugs, tech tags match framework/language directory names. A tag used once cannot cluster anything.
-4. **Atomic changes** — one concept per PR. Exception: a `/lore:adr discover` batch lands every record from one survey in one PR, because the developer reviewed them as one batch.
-5. **Return to main after** — `git checkout main` after creating the PR to leave the repo clean
+4. **Atomic changes** — one concept per PR. Exception: a `/lore:adr discover` batch lands every record from one survey and one home in one PR, because the developer reviewed them as one batch.
+5. **Return to main after** — `git checkout main` after creating the PR to leave the repo clean. ADR placements never switch the user's branch at all: they work in a worktree, or (ride-along) stage on the branch the user is on.
 6. **Node body is the published artifact** — write rules plainly. No PR meta-commentary ("proposal under discussion", "discussion welcome", links back to the PR). For discussion context:
    - **PR description** — motivation, what changed, why now, open questions for reviewers.
    - **Inline PR review comments** — line-anchored call-outs that should *not* land in the file. Use `gh pr review --comment -F <body-file>` with `--body` per file/line, or `gh api repos/<owner>/<repo>/pulls/<n>/comments` for single inline comments.

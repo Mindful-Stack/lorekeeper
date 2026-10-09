@@ -271,25 +271,38 @@ function cmdHomes(flags) {
     const cwd = path.resolve(flags.cwd || process.cwd());
     const homes = H.resolveHomes(cwd);
     const exists = (p) => !!p && fs.existsSync(p);
-    // Asked of the repo's own directory, never a parent: a missing repo must not inherit the
-    // household meta-repo's branch.
-    const branchOf = (repoDir) => {
-        const root = exists(repoDir) ? G.gitRoot(repoDir) : null;
-        return root && realpathLoose(root) === realpathLoose(repoDir) ? G.defaultBranch(root) : null;
+    // The git toplevel holding a home's repo or KB root, which must exist. In a household each
+    // is its own repo, so a missing or unversioned sibling never reports the meta repo; a
+    // single repo's KB may sit inside the code repo, which is then its repo.
+    const repoRootOf = (dir) => {
+        const top = exists(dir) ? G.gitRoot(dir) : null;
+        if (!top) return null;
+        return homes.mode === 'household' && realpathLoose(top) !== realpathLoose(dir) ? null : top;
+    };
+    const place = (home, dir) => {
+        const repoRoot = repoRootOf(dir);
+        return {
+            repoRoot,
+            relDir: repoRoot ? toPosix(path.relative(realpathLoose(repoRoot), realpathLoose(home))) : null,
+            defaultBranch: repoRoot ? G.defaultBranch(repoRoot) : null,
+        };
     };
     const repoDirOf = (h) => (homes.mode === 'single' ? homes.root : path.join(homes.root, h.repo));
-    const kbRoot = homes.sharedHome ? path.dirname(path.dirname(homes.sharedHome)) : null;
+    const shared = homes.sharedHome ? place(homes.sharedHome, homes.sharedRoot) : place(null, null);
     console.log(JSON.stringify({
         mode: homes.mode,
         root: homes.root,
         governedRepo: governedRepo(homes, cwd),
         config: homes.config,
         localHomes: homes.localHomes.map((h) => ({
-            ...h, exists: exists(h.dir), defaultBranch: h.present ? branchOf(repoDirOf(h)) : null,
+            ...h, exists: exists(h.dir), ...place(h.dir, h.present ? repoDirOf(h) : null),
         })),
         sharedHome: homes.sharedHome,
         sharedHomeExists: exists(homes.sharedHome),
-        sharedDefaultBranch: kbRoot ? branchOf(kbRoot) : null,
+        sharedRoot: homes.sharedRoot,
+        sharedRepoRoot: shared.repoRoot,
+        sharedRelDir: shared.relDir,
+        sharedDefaultBranch: shared.defaultBranch,
         otherKbs: homes.otherKbs.map((k) => ({ ...k, exists: exists(k.dir) })),
     }, null, 2));
     return 0;

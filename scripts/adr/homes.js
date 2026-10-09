@@ -46,7 +46,9 @@ function sameDir(a, b) {
 }
 
 // Resolves every ADR home visible from `start`. Shape:
-//   { mode, root, config, repos, localHomes: [{ repo, dir, present, coinciding }], sharedHome, otherKbs }
+//   { mode, root, config, repos, localHomes: [{ repo, dir, present, coinciding }], sharedHome,
+//     sharedRoot, otherKbs }
+// `sharedRoot` is the team KB's root (the directory holding knowledge/), or null.
 // A local home `coinciding` is the only home: the shared home is the same directory, or
 // (single repo) no knowledge base resolves at all.
 function resolveHomes(start, env = process.env) {
@@ -79,6 +81,7 @@ function resolveHomes(start, env = process.env) {
             repos: m.repos || [],
             localHomes,
             sharedHome,
+            sharedRoot: path.join(household, kbName),
             otherKbs,
         };
     }
@@ -103,6 +106,7 @@ function resolveHomes(start, env = process.env) {
         repos: [],
         localHomes: [local],
         sharedHome,
+        sharedRoot: team ? kbRoot : null,
         otherKbs: [],
     };
 }

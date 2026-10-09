@@ -195,3 +195,47 @@ test('check --draft turns a new shared proposal and a ride-along into warnings',
     assert.equal(ride.code, 0, ride.stdout);
     assert.match(ride.stdout, /ride-along: warning:/);
 });
+
+test('CLI homes gives each home its repo root and path inside it; an embedded KB uses the enclosing repo\'s branch', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    initRepo(root, env);
+    write(path.join(root, '.lorekeeper', 'config.json'), JSON.stringify({ knowledgeBasePath: 'lore' }));
+    fs.mkdirSync(path.join(root, 'lore', 'knowledge', 'adrs'), { recursive: true });
+    commitAll(root, env, 'init');
+    git(root, env, 'update-ref', 'refs/remotes/origin/develop', 'HEAD');
+    git(root, env, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/develop');
+    const out = JSON.parse(runCli(root, env, 'homes').stdout);
+    assert.equal(out.sharedRepoRoot, root);
+    assert.equal(out.sharedRelDir, 'lore/knowledge/adrs');
+    assert.equal(out.sharedDefaultBranch, 'develop');
+    assert.deepEqual(out.localHomes.map((x) => [x.repoRoot, x.relDir, x.defaultBranch]), [[root, 'docs/adr', 'develop']]);
+});
+
+test('CLI homes finds the KB repo\'s branch under a nested sharedDir, and nulls for a missing KB or sibling', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    write(path.join(root, 'household.json'), JSON.stringify({
+        meta_repo: 'ws', knowledge_base: 'lore', repos: [{ name: 'ws' }, { name: 'lore' }, { name: 'api' }, { name: 'web' }],
+        adr: { sharedDir: 'architecture/adrs' },
+    }));
+    initRepo(root, env);
+    commitAll(root, env, 'meta');
+    git(root, env, 'update-ref', 'refs/remotes/origin/trunk', 'HEAD');
+    git(root, env, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk');
+    const missing = JSON.parse(runCli(root, env, 'homes').stdout);
+    assert.deepEqual([missing.sharedRepoRoot, missing.sharedRelDir, missing.sharedDefaultBranch], [null, null, null]);
+    const kb = path.join(root, 'lore');
+    initRepo(kb, env);
+    fs.mkdirSync(path.join(kb, 'knowledge', 'architecture'), { recursive: true });
+    commitAll(kb, env, 'kb');
+    git(kb, env, 'update-ref', 'refs/remotes/origin/develop', 'HEAD');
+    git(kb, env, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/develop');
+    const api = path.join(root, 'api');
+    initRepo(api, env);
+    const out = JSON.parse(runCli(root, env, 'homes').stdout);
+    assert.equal(out.sharedRepoRoot, kb);
+    assert.equal(out.sharedRelDir, 'knowledge/architecture/adrs');
+    assert.equal(out.sharedDefaultBranch, 'develop');
+    assert.deepEqual(out.localHomes.map((x) => [x.repo, x.repoRoot, x.relDir]), [['api', api, 'docs/adr'], ['web', null, null]]);
+});

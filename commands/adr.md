@@ -227,7 +227,9 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    - **no record** — routine implementation: the PR description is enough.
    A code-independent decision (a tool, a vendor with no integration, a process) belongs in the
    team's RFC or meeting notes, not here. Stop at a lighter option unless the user insists.
-2. **Load context.** Resolve the homes. Write the catalogue to a scratch file with
+2. **Load context.** Resolve the homes. `<scratch>`, here and below, is the session scratchpad
+   directory; without one, run `mktemp -d` once and write the path it prints literally (a shell
+   variable does not survive between commands). Write the catalogue to a scratch file with
    `adr-lint index --json > <scratch>/adr-index.json`. Dispatch two agents in parallel: the
    **architect** in `bind` mode with the topic, the homes JSON, and the catalogue path (plus
    `adr-lint select --repo <repo> --paths <paths>` output when the code paths are known), and the
@@ -260,8 +262,11 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    - Every frontmatter value inline, `description` the decision itself, `decided_by` empty, no
      mention of sessions or AI authorship?
    Then lint it without touching the user's checkout: copy the home directory and the draft into
-   a scratch directory and run `adr-lint check --draft --home <shared|local> [--repo <repo>]
-   <scratch-home>`. Fix every error before presenting.
+   `<scratch>/<home-dir-name>` and run `adr-lint check --draft` on that copy with the home spelt
+   out, since the copy sits outside the household: `--home shared` for the shared home, or
+   `--home local --repo <repo>` for a local home, plus `--single-home` when `homes` reports it as
+   `coinciding`. Add `--config <root>/household.json` when one exists, so the decider pools
+   apply. Fix every error before presenting.
 8. **Present** the file with its path, tier and PR shape:
 
    > **Proposed ADR** — `billing-api/ADR-0003` (low tier: two-way, service)
@@ -313,7 +318,8 @@ records, say so and point at `/lore:adr <title>` and `/lore:adr discover`. End w
    - Present any classification and any body amendment (new options, triggers, scope) and get
      the user's confirmation before going on. If there is one to confirm and the run is
      non-interactive, show it and stop here.
-   - Lint the result as in New record step 7 (`check --draft` in a scratch copy).
+   - Lint the result as in New record step 7 (`check --draft` in a scratch copy of its home,
+     with the `--home`, `--repo` and `--single-home` flags given there).
 3. **Name the decider.** Use the names after `by`; otherwise ask "Who is ratifying this
    decision?" Never infer a name from git config, the session, or the PR author, and never
    proceed without one: in a non-interactive run, stop and say a named human decider is

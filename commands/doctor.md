@@ -1,5 +1,5 @@
 ---
-description: Full workspace + KB diagnostic. Reports manifest issues, sibling presence, KB frontmatter, broken wikilinks, and orphans.
+description: Full workspace + KB diagnostic. Reports manifest issues, sibling presence, KB frontmatter, broken wikilinks, orphans, and the health of every ADR home.
 ---
 
 # Doctor Command
@@ -66,7 +66,42 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/migrate-manifest.js --dry-run --dir=<workspac
 
 This step never writes — it only reports. `/lore:migrate` is the writer.
 
-### Step 5: Render the output
+### Step 5: Check the ADR homes (read-only)
+
+Architecture decision records live in each code repo's local home (`docs/adr/` unless configured)
+and in the team KB's shared home. Resolve them:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js homes
+```
+
+For every home with `exists: true`, run the validator without a base (doctor diffs nothing):
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home-dir>
+```
+
+Report per home: the number of records, errors and warnings, grouped by rule. Then:
+
+- **Errors** (exit 1) — print each `path: rule: message` line. A `relations` error is a qualified
+  id (`kb/ADR-0004`, `api/ADR-0002`) that resolves nowhere: a renumbered or deleted record, or a
+  typo.
+- **Warnings on records from before the ADR-centred format** (`id`, `reversibility` or the other
+  classification keys missing) — one summary line per home, suggesting `/lore:migrate` for the
+  backfill. Do not list every record.
+- **Legacy proposals** (`proposed-shared` warnings in the shared home) — list each by its
+  qualified id (`kb/ADR-NNNN`, from its home and number): each needs
+  `/lore:adr accept <id> by <name>` or `/lore:adr reject <id> by <name>`.
+
+Name records by qualified id everywhere in this report (`kb/ADR-0002`, `api/ADR-0001`): a bare
+`ADR-0002` is ambiguous when two homes both have one.
+- **Repos not checked out** (`present: false`) — name them: their local records could not be
+  checked, and references into them show up as warnings, not errors.
+- A home that does not exist yet is not a problem: say "no records yet".
+
+If `homes` reports no local home and no shared home (no household, no git repo), skip this step.
+
+### Step 6: Render the output
 
 Display the tool's output verbatim. If there are errors (exit code 1):
 
@@ -75,11 +110,12 @@ Display the tool's output verbatim. If there are errors (exit code 1):
 - For missing sibling errors: print `make setup` as the suggested fix.
 - For a node missing `title`/`description`/`tags`: print the file and the missing field — the node is invisible to frontmatter search until it has all three.
 
-### Step 6: Exit cleanly
+### Step 7: Exit cleanly
 
 End the response with a one-line summary: "X errors, Y warnings. <suggested next step or 'All clear.'>"
+Count the ADR findings from Step 5 in the totals.
 
 ## Notes
 
-- /lore:doctor never modifies files. It's read-only. This includes schema drift: doctor reports it but never applies it — `/lore:migrate` is the writer.
+- /lore:doctor never modifies files. It's read-only. This includes schema drift and ADR backfills: doctor reports them but never applies them — `/lore:migrate` is the writer.
 - The diagnostic tool lives in the witan-household template under `lore/_tools/`. If the user's workspace was created before the tooling was added, `cli.js doctor` won't exist; in that case, suggest they adopt the current witan-household template, which ships it.

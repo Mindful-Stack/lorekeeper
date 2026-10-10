@@ -16,10 +16,11 @@ const STATUS_MOVES = { accepted: ['superseded', 'deprecated'], deprecated: ['sup
 // wikilink has text apart from its target, so its target may change in any section. A bare
 // wikilink or autolink is its own text, so its target may change only in *See also*, where a
 // renamed file path is the expected repair.
+// A `*` or `**` next to a `/` is a glob (src/**/x), never emphasis.
 const EMPHASIS = [
-    /(^|[^A-Za-z0-9_*])\*\*(?=\S)([^\n]*?\S)\*\*(?![A-Za-z0-9_*])/g,
+    /(^|[^A-Za-z0-9_*/])\*\*(?=[^\s/])([^\n]*?[^\s/])\*\*(?![A-Za-z0-9_*/])/g,
     /(^|[^A-Za-z0-9_])__(?=\S)([^\n]*?\S)__(?![A-Za-z0-9_])/g,
-    /(^|[^A-Za-z0-9_*])\*(?=[^\s*])([^*\n]*?[^\s*])?\*(?![A-Za-z0-9_*])/g,
+    /(^|[^A-Za-z0-9_*/])\*(?=[^\s*/])([^*\n]*?[^\s*/])?\*(?![A-Za-z0-9_*/])/g,
     /(^|[^A-Za-z0-9_])_(?=[^\s_])([^_\n]*?[^\s_])?_(?![A-Za-z0-9_])/g,
 ];
 

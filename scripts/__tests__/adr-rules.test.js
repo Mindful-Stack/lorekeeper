@@ -247,7 +247,7 @@ test('base: a number taken on the base tip under another name fails', () => {
     assert.ok(has(run([mine], { base: base({}, { tipNumbers: tip }) }), 'number', /already 0002-someone-else.md/));
 });
 
-test('ride-along: a new proposed local record whose scope the change touches fails', () => {
+test('ride-along: a proposed local record whose scope the change touches fails under --ci', () => {
     const proposed = rec({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way' } });
     const b = base({}, { changedFiles: ['src/Sessions/Store.cs', 'docs/adr/0001-session-storage.md'] });
     assert.ok(has(run([proposed], { home: LOCAL, base: b }), 'ride-along', /src\/Sessions\/Store.cs/, 'warning'));

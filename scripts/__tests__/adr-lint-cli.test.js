@@ -291,6 +291,44 @@ test('M8 (decision 17): a proposed record whose scope covers its own home does n
     assert.doesNotMatch(r.stdout, /ride-along/);
 });
 
+test('G: a proposal merged without code still rides along when a later change touches its scope', (t) => {
+    const w = workspace(t);
+    commitAll(w.api, w.env, 'empty');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'pr1');
+    write(path.join(w.local, '0001-session-storage.md'), makeRecord({ prefix: 'api', status: 'proposed' }));
+    commitAll(w.api, w.env, 'propose 0001');
+    git(w.api, w.env, 'checkout', '-q', 'main');
+    git(w.api, w.env, 'merge', '-q', '--no-ff', '-m', 'merge pr1', 'pr1');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'pr2');
+    write(path.join(w.api, 'src', 'Sessions', 'Store.cs'), 'class Store {}\n');
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', '--ci', w.local);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /0001-session-storage\.md: ride-along: this change touches src\/Sessions\/Store\.cs/);
+});
+
+test('I: renaming a proposed record\'s slug keeps its number', (t) => {
+    const w = workspace(t);
+    write(path.join(w.local, '0001-session-storage.md'), makeRecord({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way', scope: [] } }));
+    commitAll(w.api, w.env, 'proposal on main');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'pr1');
+    git(w.api, w.env, 'mv', path.join(w.local, '0001-session-storage.md'), path.join(w.local, '0001-session-state.md'));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', '--ci', w.local);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /number/);
+});
+
+test('I: renaming an accepted record still fails, and a new record cannot take its number', (t) => {
+    const w = workspace(t);
+    write(path.join(w.local, '0001-session-storage.md'), makeRecord({ prefix: 'api' }));
+    commitAll(w.api, w.env, 'accepted on main');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'pr1');
+    git(w.api, w.env, 'mv', path.join(w.local, '0001-session-storage.md'), path.join(w.local, '0001-session-state.md'));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /0001-session-storage\.md: locked: a locked record is never deleted or renamed/);
+    assert.match(r.stdout, /0001-session-state\.md: number: ADR-0001 is already 0001-session-storage\.md/);
+});
+
 test('fix4-4: --base: deleting a record accepted on the base since the fork fails', (t) => {
     const w = workspace(t);
     const file = path.join(w.local, '0001-session-storage.md');

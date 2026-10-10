@@ -343,13 +343,17 @@ function checkAgainstBase(home) {
         }
     }
     // Only a record new on this branch takes a number; one already on the merge base is
-    // covered by the duplicate-number check above.
+    // covered by the duplicate-number check above. A record that is not locked may be renamed:
+    // its new name keeps the number its old name, deleted in this change, held.
+    const renamed = (owner) => !names.has(owner) && base.textAt(owner) !== null
+        && !R.LOCKED.has(parseRecord(base.textAt(owner)).fm.status);
     for (const r of records) {
         const owner = base.textAt(r.name) === null && base.tipNumbers.get(r.number);
-        if (owner && owner !== r.name) err(r.file, 'number', `ADR-${r.number} is already ${owner} on the base branch; renumber this record`);
+        if (owner && owner !== r.name && !renamed(owner)) err(r.file, 'number', `ADR-${r.number} is already ${owner} on the base branch; renumber this record`);
     }
+    // Any proposed local record, merged earlier or new here, rides along with code in its scope.
     for (const r of records) {
-        if (base.textAt(r.name) !== null || r.fm.status !== 'proposed' || h.kind !== 'local') continue;
+        if (r.fm.status !== 'proposed' || h.kind !== 'local') continue;
         const scope = asList(r.fm.scope);
         const hit = base.changedFiles.find((f) => scope.some((g) => matchesGlob(f, g)));
         if (!hit) continue;

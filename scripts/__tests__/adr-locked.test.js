@@ -190,6 +190,13 @@ test('M5: only paired emphasis is formatting; a glob losing its ** is a change',
     }
 });
 
+test('H: a ** or * glob after a slash is text, not emphasis', () => {
+    const rule = (t) => S({ Decision: `The API stores sessions server-side.\n\n- **R1** Only ${t} MAY read the session store.` });
+    assert.ok(lockedDiff(rule('src/**/Sessions and src/**/Auth'), rule('src//Sessions and src//Auth')).some((m) => /Decision" changed/.test(m)));
+    assert.ok(lockedDiff(rule('src/*/Sessions and src/*/Auth'), rule('src//Sessions and src//Auth')).some((m) => /Decision" changed/.test(m)));
+    assert.deepEqual(lockedDiff(rule('src/**/Sessions'), rule('**src/**/Sessions**')), []);
+});
+
 test('M5: markdown link targets may change anywhere; bare wikilinks and autolinks only in See also', () => {
     const at = (section, link) => S({ [section]: `- Read ${link} first.` });
     const pairs = [

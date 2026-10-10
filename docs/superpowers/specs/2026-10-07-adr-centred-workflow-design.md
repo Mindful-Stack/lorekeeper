@@ -110,7 +110,7 @@ change. `.lorekeeper/config.json` nests the same keys under `adr`.
 
 ## Identity and numbering
 
-- Files stay `NNNN-<problem-slug>.md`; the slug names the problem, never the answer.
+- Files stay `NNNN-<problem-slug>.md`; the slug names the problem, never the answer. A home may also hold a `README.md` (the folder's index on code hosts, ignored) and `_`-prefixed files (ignored); any other markdown file there is reported as a likely misnamed record, as a warning.
 - Ids are qualified by home: `<repo>/ADR-NNNN` for local records (`<repo>` = the manifest name,
   or the git-root directory name in a single repo), `kb/ADR-NNNN` for team-KB records. Titles keep
   bare `ADR-NNNN`; listings across homes show a Home column.

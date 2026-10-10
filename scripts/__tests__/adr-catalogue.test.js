@@ -288,3 +288,14 @@ test('another team\'s KB keeps its own kb/ ids apart from the team KB\'s', (t) =
     assert.deepEqual(cat.records.find((e) => e.id === 'platform-kb/ADR-0002').related, ['platform-kb/ADR-0001']);
 });
 
+
+test('a README in an ADR home is the folder index, not a stray record', (t) => {
+    const dir = tmpDir(t);
+    write(path.join(dir, 'README.md'), '# Decisions\n');
+    write(path.join(dir, 'readme.md'), '# lower\n');
+    write(path.join(dir, 'template.md'), '# template\n');
+    write(path.join(dir, '0001-a.md'), makeRecord({ prefix: 'x' }));
+    const { strays, records } = require('../adr/records').loadHome(dir);
+    assert.deepEqual(strays.map((f) => path.basename(f)), ['template.md']);
+    assert.equal(records.length, 1);
+});

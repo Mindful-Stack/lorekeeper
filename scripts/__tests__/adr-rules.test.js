@@ -260,7 +260,9 @@ test('ride-along: a proposed local record whose scope the change touches fails u
 
 test('strays and duplicate numbers are reported', () => {
     const vs = run([rec(), rec({ slug: 'dup' })], { strays: ['/h/notes.md'] });
-    assert.ok(has(vs, 'filename', /NNNN-<problem-slug>/));
+    // A stray is a likely misnamed record: worth a warning, never a blocked merge.
+    assert.ok(has(vs, 'filename', /NNNN-<problem-slug>/, 'warning'));
+    assert.ok(!has(vs, 'filename', /NNNN-<problem-slug>/));
     assert.ok(has(vs, 'number', /also used by/));
 });
 

@@ -261,7 +261,8 @@ function checkAcrossRecords(home) {
     const { ctx, err, between, ownId, byId } = home;
     const { records, home: h } = ctx;
     for (const file of ctx.strays || []) {
-        err(file, 'filename', 'record files are named NNNN-<problem-slug>.md (prefix with _ to exclude)');
+        // Likely a misnamed record, but nothing a merge needs to wait for.
+        home.warn(file, 'filename', 'record files are named NNNN-<problem-slug>.md (prefix with _ to exclude)');
     }
 
     const byNumber = new Map();

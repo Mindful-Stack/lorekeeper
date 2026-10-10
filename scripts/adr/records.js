@@ -45,14 +45,15 @@ function loadRecord(file, text) {
     };
 }
 
-// Every `NNNN-slug.md` record in a home. `_`-prefixed and non-markdown files are ignored;
-// other markdown files are returned as strays so the validator can name them.
+// Every `NNNN-slug.md` record in a home. `_`-prefixed and non-markdown files are ignored, and
+// so is a README (the folder's index on code hosts); other markdown files are returned as
+// strays so the validator can name them.
 function loadHome(dir) {
     const records = [];
     const strays = [];
     if (!fs.existsSync(dir)) return { records, strays };
     for (const name of fs.readdirSync(dir).sort()) {
-        if (name.startsWith('_') || !name.endsWith('.md')) continue;
+        if (name.startsWith('_') || !name.endsWith('.md') || name.toLowerCase() === 'readme.md') continue;
         const file = path.join(dir, name);
         if (!FILE_RE.test(name)) {
             strays.push(file);

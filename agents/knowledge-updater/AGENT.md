@@ -144,7 +144,7 @@ and validate in `<worktree>/<relDir>`. `gh` has no `-C`: pass `--repo <owner/nam
   Edit, validate, commit, `git -C <worktree> push origin HEAD:<branch>`, remove the worktree. No
   new PR.
 - **own-pr** — everything else: a new record, an edit of a record on `origin/<default>`, and
-  always the successor of a replace, a predecessor flip in another home, a retire, and every
+  always a replace's new successor, a predecessor flip in another home, a retire, and every new
   high-tier record.
   ```bash
   git -C <repo> worktree add -b <branch> <worktree> origin/<default>
@@ -154,8 +154,8 @@ and validate in `<worktree>/<relDir>`. `gh` has no `-C`: pass `--repo <owner/nam
   <worktree>` and `git -C <repo> branch -D <branch>`.
 
 A record found only in the user's working tree on `<default>` is a stop: it must be pushed on a
-branch first. If a ride-along check fails, fall back to `own-pr` (or, for a record that exists
-only on that branch, stop and say why), and say so.
+branch first. If a ride-along check fails, a record on an unmerged branch goes `pr-branch` and
+anything else `own-pr`; say so in your report.
 
 **Branch names.** `adr/<repo>-NNNN-<action>-<YYYYMMDD>` in a local home,
 `knowledge/adr-NNNN-<action>-<YYYYMMDD>` in the shared home, with the record's number (a batch:
@@ -187,8 +187,8 @@ Warnings are reported, not blocking.
 `docs: supersede ADR-NNNN with <id>`; a batch uses the caller's `pr_title`. The PR body names the
 decider(s) or who should approve; for a high-tier record it adds "please have the area owners
 review"; for a proposal it adds "once a named human approves it, tell Claude who approved it",
-and in the shared home or on a ride-along "the ADR check stays red until then". With no new PR (`pr-branch`, ride-along), return that sentence for the
-user's PR description.
+and in the shared home or on a ride-along "the ADR check stays red until then". With no new PR
+(`pr-branch`, ride-along), return that text for the user's PR description.
 
 **Report** where the change landed, in words and with its link: "opened PR <url> on
 `<branch>`", "committed to PR <url> (`<branch>`)", or "staged on your branch `<branch>`, not

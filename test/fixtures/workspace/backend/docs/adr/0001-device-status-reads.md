@@ -18,7 +18,6 @@ depends_on: []
 related: []
 implements: []
 rfc:
-aliases: []
 ---
 
 # ADR-0001: Device status is read from the device repository, not cached

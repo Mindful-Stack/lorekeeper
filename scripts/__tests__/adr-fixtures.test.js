@@ -10,7 +10,7 @@ const { makeRecord } = require('./helpers/adr-fixtures');
 const TEMPLATE = fs.readFileSync(path.join(__dirname, '..', '..', 'references', 'adr-template.md'), 'utf8');
 
 // Keys a record may carry that the template deliberately leaves out.
-const NOT_IN_TEMPLATE = new Set(['deciders', 'moved_to']);
+const NOT_IN_TEMPLATE = new Set(['deciders']);
 
 test('the template parses cleanly and carries exactly the known keys', () => {
     const t = parseRecord(TEMPLATE);

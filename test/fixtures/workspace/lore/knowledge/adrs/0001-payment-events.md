@@ -18,7 +18,6 @@ depends_on: []
 related: []
 implements: []
 rfc:
-aliases: []
 ---
 
 # ADR-0001: Payments react to OrderPlaced events, never to synchronous calls

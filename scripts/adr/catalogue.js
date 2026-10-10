@@ -53,8 +53,6 @@ function entry(home, r) {
         supersededBy: own(fm.superseded_by || '') || '',
         dependsOn: refs('depends_on'),
         related: refs('related'),
-        movedTo: own(fm.moved_to || '') || '',
-        aliases: asList(fm.aliases),
         relatedFrom: [],
         dependedOnBy: [],
     };
@@ -73,20 +71,9 @@ function buildCatalogue(homes) {
         }
     }
     const byId = new Map(records.map((e) => [e.id, e]));
-    for (const e of records) for (const a of e.aliases) if (!byId.has(a)) byId.set(a, e);
-    // A link to a moved record's old id belongs to the record it moved to.
-    const live = (id) => {
-        let e = byId.get(id);
-        const seen = new Set();
-        while (e && e.movedTo && byId.has(e.movedTo) && !seen.has(e)) {
-            seen.add(e);
-            e = byId.get(e.movedTo);
-        }
-        return e;
-    };
     for (const e of records) {
-        for (const id of e.related) if (live(id)) live(id).relatedFrom.push(e.id);
-        for (const id of e.dependsOn) if (live(id)) live(id).dependedOnBy.push(e.id);
+        for (const id of e.related) if (byId.has(id)) byId.get(id).relatedFrom.push(e.id);
+        for (const id of e.dependsOn) if (byId.has(id)) byId.get(id).dependedOnBy.push(e.id);
     }
     const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
     records.sort((a, b) => order(a.id, b.id));
@@ -113,29 +100,23 @@ function cell(s) {
     return String(s).replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
 }
 
-// The status a listing shows and filters on: a moved stub is `moved`, whatever it kept.
-function listedStatus(e) {
-    return e.movedTo ? 'moved' : e.status;
-}
-
 // Markdown rendering: one table across homes, then the relations each record has.
 function renderMarkdown(cat, statusFilter) {
-    const rows = cat.records.filter((e) => !statusFilter || listedStatus(e) === statusFilter);
+    const rows = cat.records.filter((e) => !statusFilter || e.status === statusFilter);
     const lines = [`## Architecture decision records (${rows.length})`, ''];
     lines.push('| ID | Home | Title | Decision | Status | Date |', '|---|---|---|---|---|---|');
     for (const e of rows) {
         const title = cell(e.title.replace(/^ADR-\d{4}:\s*/, ''));
-        lines.push(`| ${e.id} | ${e.home} | ${title} | ${cell(e.description)} | ${listedStatus(e)} | ${e.date} |`);
+        lines.push(`| ${e.id} | ${e.home} | ${title} | ${cell(e.description)} | ${e.status} | ${e.date} |`);
     }
     const rel = rows.filter((e) => e.supersedes.length || e.supersededBy || e.dependsOn.length
-        || e.related.length || e.relatedFrom.length || e.dependedOnBy.length || e.movedTo);
+        || e.related.length || e.relatedFrom.length || e.dependedOnBy.length);
     if (rel.length) {
         lines.push('', '### Relations', '');
         for (const e of rel) {
             const parts = [];
             if (e.supersedes.length) parts.push(`supersedes ${e.supersedes.join(', ')}`);
             if (e.supersededBy) parts.push(`superseded by ${e.supersededBy}`);
-            if (e.movedTo) parts.push(`moved to ${e.movedTo}`);
             if (e.dependsOn.length) parts.push(`depends on ${e.dependsOn.join(', ')}`);
             if (e.dependedOnBy.length) parts.push(`depended on by ${e.dependedOnBy.join(', ')}`);
             if (e.related.length) parts.push(`related to ${e.related.join(', ')}`);
@@ -150,4 +131,4 @@ function renderMarkdown(cat, statusFilter) {
     return lines.join('\n');
 }
 
-module.exports = { listHomes, buildCatalogue, nextNumber, listedStatus, renderMarkdown };
+module.exports = { listHomes, buildCatalogue, nextNumber, renderMarkdown };

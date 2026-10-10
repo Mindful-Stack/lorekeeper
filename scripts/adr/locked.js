@@ -90,15 +90,6 @@ function lockedDiff(baseText, curText) {
     const c = parseRecord(curText);
     const out = [];
 
-    // Edit 2, move: the file becomes a stub pointing at its new id.
-    if (isEmpty(b.fm.moved_to) && !isEmpty(c.fm.moved_to)) {
-        for (const key of new Set([...b.order, ...c.order])) {
-            if (key !== 'moved_to' && !same(b.fm[key], c.fm[key])) out.push(`a moved record keeps its frontmatter; ${key} changed`);
-        }
-        if (nonBlankLines(c.body) > 1) out.push('a moved record is a stub with a one-line body');
-        return out;
-    }
-
     const backfillOpen = isUnclassified(b.fm);
     const keys = [...new Set([...b.order, ...b.blockKeys, ...c.order])];
     for (const key of keys) {

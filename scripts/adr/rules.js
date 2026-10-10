@@ -156,13 +156,6 @@ function checkRecord(home, r) {
         : info.legacyLockedOnBase ? conversionDiff : null;
     if (diff) for (const m of diff(baseText, r.text)) err(r.file, 'locked', m);
 
-    // A moved record is a stub pointing at its new id in another home, which names the
-    // old id in its aliases.
-    if (!isEmpty(fm.moved_to)) {
-        if (!info.baseFm || !same(info.baseFm.moved_to, fm.moved_to)) checkMove(home, r, info);
-        return;
-    }
-
     // Schema.
     for (const key of ['title', 'description', 'tags', 'status', 'date']) {
         if (isEmpty(fm[key])) fix([key], 'schema', `${key} is required`);
@@ -184,7 +177,7 @@ function checkRecord(home, r) {
     for (const s of asList(fm.sensitivity)) {
         if (!R.SENSITIVITY.includes(s)) fix(['sensitivity'], 'schema', `sensitivity tag ${s} must be one of ${R.SENSITIVITY.join(', ')}`);
     }
-    for (const key of ['scope', 'sensitivity', 'depends_on', 'related', 'implements', 'aliases', 'decided_by', 'consulted']) {
+    for (const key of ['scope', 'sensitivity', 'depends_on', 'related', 'implements', 'decided_by', 'consulted']) {
         if (fm[key] !== undefined && fm[key] !== '' && !Array.isArray(fm[key])) fix([key], 'schema', `${key} must be an inline list`);
     }
     if (isEmpty(fm.id)) need(['id'], 'schema', 'id is required');
@@ -204,10 +197,10 @@ function checkRecord(home, r) {
         const allowed = h.kind === 'shared' ? R.SHARED_BLAST : R.LOCAL_BLAST;
         if (!allowed.has(fm.blast_radius)) {
             const want = h.kind === 'shared' ? 'local home' : 'shared home';
-            // A legacy record converted where it sits may be moved later; a new or classified one
-            // is written in the right home.
+            // A legacy record converted where it sits may stay there, or be refiled by a record in
+            // the right home that supersedes it; a new or classified one is written in the right home.
             const legacy = info.legacyOnBase || (baseText === undefined && R.isUnclassified(fm));
-            if (legacy) warn(r.file, 'home', `blast_radius ${fm.blast_radius} belongs in the ${want}; move it`);
+            if (legacy) warn(r.file, 'home', `blast_radius ${fm.blast_radius} belongs in the ${want}; leave it here, or supersede it with a record there`);
             else fix(['blast_radius'], 'home', `blast_radius ${fm.blast_radius} belongs in the ${want}`);
         }
     }
@@ -406,35 +399,6 @@ function checkRef(home, r, ref, key, kept = false) {
     if (found.state === 'missing') report(r.file, 'relations', `${key} ${id} does not exist`);
     else if (found.state === 'unavailable') warn(r.file, 'relations', `${key} ${id}: its home is not on disk, so it was not checked`);
     return found;
-}
-
-// A move is legal only on a record the base holds without moved_to, and goes to any home other
-// than the record's own (the shared home, or another repo's local home). lockedDiff checks a
-// locked stub's frontmatter and body; a stub not locked on the base has its body checked here.
-// A destination that resolves must list the old id in its aliases and be accepted; one whose
-// home is not on disk is a warning (from checkRef).
-function checkMove(home, r, info) {
-    const { ctx, err, ownId } = home;
-    const { prefix, coinciding } = ctx.home;
-    const ref = r.fm.moved_to;
-    if (coinciding) return err(r.file, 'move', 'this repo has one ADR home, so there is no other home to move to');
-    if (info.baseText !== undefined && (info.baseText === null || !isEmpty(info.baseFm.moved_to))) {
-        err(r.file, 'move', 'only an existing record can be moved');
-    }
-    if (!info.lockedOnBase && r.body.split('\n').filter((l) => l.trim() !== '').length > 1) {
-        err(r.file, 'move', 'a moved record is a stub with a one-line body');
-    }
-    const id = R.qualify(ref, prefix);
-    if (!id) return err(r.file, 'move', `moved_to ${ref} is not a qualified id`);
-    if (id.startsWith(`${prefix}/`)) return err(r.file, 'move', 'moved_to names this home; a move goes to another home');
-    const found = checkRef(home, r, id, 'moved_to');
-    if (found && found.state === 'found' && !asList(found.fm && found.fm.aliases).includes(ownId(r))) {
-        err(r.file, 'move', `${id} must list ${ownId(r)} in its aliases`);
-    }
-    // As with supersession, the stub replaces the record only once its new copy binds.
-    const status = found && found.state === 'found' && found.fm ? found.fm.status : null;
-    if (status && status !== 'accepted') err(r.file, 'move', `destination ${id} is ${status}; it must be accepted before the record is moved`);
-    return undefined;
 }
 
 module.exports = { checkHome, grandfathered };

@@ -43,10 +43,10 @@ test('catalogue spans every present home and names the absent ones', (t) => {
     assert.match(renderMarkdown(cat), /Not on disk: web/);
 });
 
-test('reverse links are computed across homes, and through aliases', (t) => {
+test('reverse links are computed across homes', (t) => {
     const h = household(t);
-    write(path.join(h.shared, '0001-session-storage.md'), makeRecord({ fm: { aliases: ['api/ADR-0009'] } }));
-    write(path.join(h.local, '0002-cache.md'), makeRecord({ prefix: 'api', number: '0002', fm: { related: ['kb/ADR-0001'], depends_on: ['api/ADR-0009'] } }));
+    write(path.join(h.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(h.local, '0002-cache.md'), makeRecord({ prefix: 'api', number: '0002', fm: { related: ['kb/ADR-0001'], depends_on: ['kb/ADR-0001'] } }));
     const cat = buildCatalogue(resolveHomes(h.root, NO_ENV));
     const kb1 = cat.records.find((e) => e.id === 'kb/ADR-0001');
     assert.deepEqual(kb1.relatedFrom, ['api/ADR-0002']);
@@ -55,6 +55,15 @@ test('reverse links are computed across homes, and through aliases', (t) => {
     const api2 = cat.records.find((e) => e.id === 'api/ADR-0002');
     assert.deepEqual(api2.relatedFrom, []);
     assert.match(renderMarkdown(cat), /\*\*kb\/ADR-0001\*\*: depended on by api\/ADR-0002; related from api\/ADR-0002/);
+});
+
+test('CLI index has no moved status; a record carrying aliases is listed under its own id only', (t) => {
+    const h = household(t);
+    write(path.join(h.shared, '0001-session-storage.md'), makeRecord({ fm: { aliases: ['api/ADR-0009'] } }));
+    write(path.join(h.local, '0002-cache.md'), makeRecord({ prefix: 'api', number: '0002', fm: { depends_on: ['api/ADR-0009'] } }));
+    const cat = buildCatalogue(resolveHomes(h.root, NO_ENV));
+    assert.deepEqual(cat.records.find((e) => e.id === 'kb/ADR-0001').dependedOnBy, []);
+    assert.equal(runCli(h.root, gitEnv(h.root), 'index', '--status', 'moved').code, 2);
 });
 
 test('legacy bare-number relations qualify within the declaring home', (t) => {
@@ -278,18 +287,3 @@ test('another team\'s KB keeps its own kb/ ids apart from the team KB\'s', (t) =
     assert.deepEqual(cat.records.find((e) => e.id === 'platform-kb/ADR-0002').related, ['platform-kb/ADR-0001']);
 });
 
-test('a moved stub lists as moved and its reverse links go to the record it moved to', (t) => {
-    const h = household(t);
-    write(path.join(h.local, '0001-cache.md'), makeRecord({ prefix: 'api', fm: { moved_to: 'kb/ADR-0002' } }));
-    write(path.join(h.shared, '0002-cache.md'), makeRecord({ number: '0002', fm: { aliases: ['api/ADR-0001'] } }));
-    write(path.join(h.local, '0003-reader.md'), makeRecord({ prefix: 'api', number: '0003', fm: { depends_on: ['api/ADR-0001'], related: ['api/ADR-0001'] } }));
-    const cat = buildCatalogue(resolveHomes(h.root, NO_ENV));
-    const target = cat.records.find((e) => e.id === 'kb/ADR-0002');
-    assert.deepEqual([target.dependedOnBy, target.relatedFrom], [['api/ADR-0003'], ['api/ADR-0003']]);
-    const stub = cat.records.find((e) => e.id === 'api/ADR-0001');
-    assert.deepEqual([stub.dependedOnBy, stub.relatedFrom], [[], []]);
-    assert.match(renderMarkdown(cat), /\| api\/ADR-0001 \| api \| .* \| moved \|/);
-    assert.doesNotMatch(renderMarkdown(cat, 'accepted'), /\| api\/ADR-0001 \|/);
-    const json = JSON.parse(runCli(h.root, gitEnv(h.root), 'index', '--json', '--status', 'accepted').stdout);
-    assert.deepEqual(json.records.map((e) => e.id), ['api/ADR-0003', 'kb/ADR-0002']);
-});

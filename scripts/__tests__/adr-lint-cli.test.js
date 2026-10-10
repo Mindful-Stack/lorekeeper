@@ -291,27 +291,6 @@ test('M8 (decision 17): a proposed record whose scope covers its own home does n
     assert.doesNotMatch(r.stdout, /ride-along/);
 });
 
-test('fix2-2: in a household, a local record may move to another repo, with or without --home', (t) => {
-    const w = workspace(t);
-    const manifest = JSON.parse(fs.readFileSync(path.join(w.root, 'household.json'), 'utf8'));
-    manifest.repos.push({ name: 'web' });
-    write(path.join(w.root, 'household.json'), JSON.stringify(manifest));
-    const web = path.join(w.root, 'web');
-    initRepo(web, w.env);
-    write(path.join(web, 'docs', 'adr', '0004-session-storage.md'), makeRecord({ number: '0004', prefix: 'web', fm: { aliases: ['api/ADR-0001'] } }));
-    const file = path.join(w.local, '0001-session-storage.md');
-    write(file, makeRecord({ prefix: 'api' }));
-    commitAll(w.api, w.env, 'accept 0001');
-    git(w.api, w.env, 'checkout', '-q', '-b', 'move');
-    const head = makeRecord({ prefix: 'api', fm: { moved_to: 'web/ADR-0004' } });
-    write(file, `${head.slice(0, head.indexOf('\n---\n') + 5)}Moved to web/ADR-0004.\n`);
-    const ok = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
-    assert.equal(ok.code, 0, ok.stdout + ok.stderr);
-    // fix3-6: --home names the home; the household still makes every repo's home known.
-    const named = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', '--base', 'main', w.local);
-    assert.equal(named.code, 0, named.stdout + named.stderr);
-});
-
 test('fix4-4: --base: deleting a record accepted on the base since the fork fails', (t) => {
     const w = workspace(t);
     const file = path.join(w.local, '0001-session-storage.md');
@@ -343,22 +322,6 @@ test('fix4-7: a declared team KB that is not checked out makes kb/ references wa
     const unknown = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
     assert.equal(unknown.code, 1, unknown.stdout);
     assert.match(unknown.stdout, /related nope\/ADR-0002 does not exist/);
-});
-
-test('fix4-8: a standalone checkout accepts a local-to-local move, warning that the destination is not on disk', (t) => {
-    const dir = tmpDir(t);
-    const env = gitEnv(dir);
-    initRepo(dir, env);
-    const adrs = path.join(dir, 'docs', 'adr');
-    const file = path.join(adrs, '0001-session-storage.md');
-    write(file, makeRecord({ prefix: 'api' }));
-    commitAll(dir, env, 'accept 0001');
-    git(dir, env, 'checkout', '-q', '-b', 'move');
-    const head = makeRecord({ prefix: 'api', fm: { moved_to: 'web/ADR-0004' } });
-    write(file, `${head.slice(0, head.indexOf('\n---\n') + 5)}Moved to web/ADR-0004.\n`);
-    const r = runCli(dir, env, 'check', '--home', 'local', '--repo', 'api', '--base', 'main', adrs);
-    assert.equal(r.code, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /relations: warning: moved_to web\/ADR-0004: its home is not on disk/);
 });
 
 // B4: a legacy record (no frontmatter, or not classified on the base) is not locked: the change
@@ -433,7 +396,7 @@ test('B4e: a converted legacy cross-service record in a local home warns; a new 
     write(file, crossService);
     const legacy = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
     assert.equal(legacy.code, 0, legacy.stdout + legacy.stderr);
-    assert.match(legacy.stdout, /home: warning: blast_radius cross-service belongs in the shared home; move it/);
+    assert.match(legacy.stdout, /home: warning: blast_radius cross-service belongs in the shared home; leave it here, or supersede it with a record there/);
     write(path.join(w.local, '0002-audit-log.md'), crossService.replace(/0001/g, '0002'));
     const fresh = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
     assert.equal(fresh.code, 1, fresh.stdout);
@@ -551,5 +514,5 @@ test('B5b: accepting an unclassified legacy proposal as cross-service in its loc
     write(file, converted);
     const r = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', '--base', 'origin/main', path.dirname(file));
     assert.equal(r.code, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /home: warning: blast_radius cross-service belongs in the shared home; move it/);
+    assert.match(r.stdout, /home: warning: blast_radius cross-service belongs in the shared home; leave it here, or supersede it with a record there/);
 });

@@ -18,7 +18,6 @@ depends_on: []
 related: []
 implements: []              # reserved: behaviour-spec rule ids
 rfc:                        # optional URL
-aliases: []
 ---
 
 # ADR-NNNN: <short title>

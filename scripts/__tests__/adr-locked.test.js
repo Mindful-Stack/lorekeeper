@@ -53,21 +53,6 @@ test('edit 2: superseded_by is set only with the superseded transition, and neve
     assert.ok(lockedDiff(set, changed).some((m) => /superseded_by is already set/.test(m)));
 });
 
-function stub(fm, body = 'Moved to api/ADR-0004.') {
-    const head = makeRecord({ fm: { moved_to: 'api/ADR-0004', ...fm } });
-    return `${head.slice(0, head.indexOf('\n---\n') + 5)}${body}\n`;
-}
-
-test('edit 2: a move replaces the file with a one-line stub', () => {
-    assert.deepEqual(lockedDiff(BASE, stub({})), []);
-    assert.ok(lockedDiff(BASE, stub({}, 'Moved.\nAnd more.')).some((m) => /one-line body/.test(m)));
-});
-
-test('edit 2: a stub keeps every base frontmatter value', () => {
-    assert.ok(lockedDiff(BASE, stub({ title: 'ADR-0001: Something else' })).some((m) => /title changed/.test(m)));
-    assert.ok(lockedDiff(BASE, stub({ decided_by: ['Mallory'] })).some((m) => /decided_by changed/.test(m)));
-});
-
 test('edit 1: deprecated may later be superseded; nothing leaves superseded or rejected', () => {
     const dep = makeRecord({ fm: { status: 'deprecated' }, sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nDeprecated 2026-11-01.' } });
     const sup = makeRecord({ fm: { status: 'superseded', superseded_by: 'kb/ADR-0002' }, sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nDeprecated 2026-11-01.\nSuperseded 2026-12-01 by kb/ADR-0002.' } });

@@ -18,7 +18,7 @@ const BACKFILL_KEYS = ['id', 'reversibility', 'blast_radius', 'sensitivity', 'sc
 const KNOWN_KEYS = new Set([
     'id', 'title', 'description', 'tags', 'status', 'date', 'decided_by', 'deciders', 'consulted',
     'confidence', 'reversibility', 'blast_radius', 'sensitivity', 'scope', 'supersedes',
-    'superseded_by', 'depends_on', 'related', 'implements', 'rfc', 'aliases', 'moved_to',
+    'superseded_by', 'depends_on', 'related', 'implements', 'rfc',
 ]);
 const FILE_RE = /^(\d{4})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/;
 const ID_RE = /^([A-Za-z0-9._-]+)\/ADR-(\d{4})$/;

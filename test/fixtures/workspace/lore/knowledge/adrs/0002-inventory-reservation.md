@@ -18,7 +18,6 @@ depends_on: [kb/ADR-0001]
 related: []
 implements: []
 rfc:
-aliases: []
 ---
 
 # ADR-0002: Inventory is reserved when an order is placed

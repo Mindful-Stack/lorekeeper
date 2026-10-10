@@ -62,6 +62,13 @@ test('schema: an unknown key is a warning, not an error', () => {
     assert.ok(has(vs, 'schema', /unknown key decidedby/, 'warning'));
 });
 
+test('schema: moved_to and aliases are unknown keys (there is no move)', () => {
+    const vs = run([rec({ fm: { moved_to: 'api/ADR-0004', aliases: ['api/ADR-0009'] } })]);
+    assert.deepEqual(errors(vs), []);
+    assert.ok(has(vs, 'schema', /unknown key moved_to/, 'warning'));
+    assert.ok(has(vs, 'schema', /unknown key aliases/, 'warning'));
+});
+
 test('id must match the home prefix and the filename number', () => {
     assert.ok(has(run([rec({ fm: { id: 'api/ADR-0001' } })]), 'id', /must be kb\/ADR-0001/));
     assert.ok(has(run([rec({ number: '0002', fm: { id: 'kb/ADR-0001' } })]), 'id', /must be kb\/ADR-0002/));
@@ -207,61 +214,6 @@ test('proposed in the shared home: warning locally, error when the change adds o
     assert.ok(has(run([p], { base: edited }), 'proposed-shared', /merges only/));
 });
 
-// A stub: the record's frontmatter plus moved_to, and a one-line body.
-function stubOf(opts, movedTo, body = `Moved to ${movedTo}.`) {
-    const head = makeRecord({ ...opts, fm: { ...(opts.fm || {}), moved_to: movedTo } });
-    return `${head.slice(0, head.indexOf('\n---\n') + 5)}${body}\n`;
-}
-
-test('move: a stub must point at another home whose record lists the old id in aliases', () => {
-    const original = { '0001-session-storage.md': makeRecord() };
-    const stub = loadRecord('/h/0001-session-storage.md', stubOf({}, 'api/ADR-0004'));
-    const listed = () => ({ state: 'found', fm: { aliases: ['kb/ADR-0001'] } });
-    assert.deepEqual(errors(run([stub], { resolveRef: listed, base: base(original) })), []);
-    assert.ok(has(run([stub], { base: base(original), resolveRef: () => ({ state: 'found', fm: { aliases: [] } }) }), 'move', /list kb\/ADR-0001 in its aliases/));
-    const sameHome = loadRecord('/h/0001-session-storage.md', stubOf({}, 'kb/ADR-0002'));
-    assert.ok(has(run([sameHome, rec({ number: '0002', slug: 'other' })], { base: base(original) }), 'move', /goes to another home/));
-});
-
-test('I1: only a record that exists on the base without moved_to can be moved', () => {
-    const fresh = loadRecord('/h/0001-session-storage.md', stubOf({}, 'api/ADR-0004'));
-    assert.ok(has(run([fresh], { base: base({}) }), 'move', /only an existing record can be moved/));
-    const draft = { '0001-session-storage.md': stubOf({ status: 'proposed' }, 'api/ADR-0004') };
-    const redirected = loadRecord('/h/0001-session-storage.md', stubOf({ status: 'proposed' }, 'api/ADR-0005'));
-    assert.ok(has(run([redirected], { base: base(draft) }), 'move', /only an existing record can be moved/));
-});
-
-test('I1: a stub has a one-line body, with or without a base', () => {
-    const long = loadRecord('/h/0001-session-storage.md', stubOf({ status: 'proposed' }, 'api/ADR-0004', 'Moved.\nAnd more.'));
-    assert.ok(has(run([long], { base: null }), 'move', /one-line body/));
-    const draft = { '0001-session-storage.md': makeRecord({ status: 'proposed' }) };
-    assert.ok(has(run([long], { base: base(draft) }), 'move', /one-line body/));
-});
-
-test('I1: a coinciding home has no other home to move to', () => {
-    const one = { kind: 'local', prefix: 'api', repo: 'api', coinciding: true };
-    const stub = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'kb/ADR-0004'));
-    const vs = run([stub], { home: one, base: base({ '0001-session-storage.md': makeRecord({ prefix: 'api' }) }) });
-    assert.ok(has(vs, 'move', /one ADR home/));
-});
-
-test('I1: a move goes to another home; an unresolvable target warns', () => {
-    const unavailable = () => ({ state: 'unavailable' });
-    const localBase = base({ '0001-session-storage.md': makeRecord({ prefix: 'api' }) });
-    // fix4-8: another repo's local home is a valid destination, manifest or not.
-    const toRepo = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'web/ADR-0004'));
-    const repoOk = run([toRepo], { home: LOCAL, base: localBase, resolveRef: unavailable });
-    assert.deepEqual(errors(repoOk), []);
-    assert.ok(has(repoOk, 'relations', /moved_to web\/ADR-0004: its home is not on disk/, 'warning'));
-    const toKb = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'kb/ADR-0004'));
-    const ok = run([toKb], { home: LOCAL, base: localBase, resolveRef: unavailable });
-    assert.deepEqual(errors(ok), []);
-    assert.ok(has(ok, 'relations', /moved_to kb\/ADR-0004: its home is not on disk/, 'warning'));
-    const shared = loadRecord('/h/0001-session-storage.md', stubOf({}, 'api/ADR-0004'));
-    const sharedOk = run([shared], { base: base({ '0001-session-storage.md': makeRecord() }), resolveRef: unavailable });
-    assert.deepEqual(errors(sharedOk), []);
-});
-
 test('base: editing a locked record fails; editing a proposed one does not', () => {
     const before = makeRecord();
     const after = rec({ sections: { Context: 'Rewritten.' } });
@@ -322,10 +274,10 @@ test('C1: a backfilled id must equal the implied id', () => {
     assert.ok(has(run([cur], { base: base({ '0001-session-storage.md': legacy }) }), 'id', /must be kb\/ADR-0001/));
 });
 
-test('C1: a legacy record classified into the other home warns to move it (B4)', () => {
+test('C1: a legacy record classified into the other home warns (B4)', () => {
     const b = base({ '0001-session-storage.md': BACKFILLED() });
     const cur = loadRecord('/h/0001-session-storage.md', classify(BACKFILLED(), { reversibility: 'two-way', blast_radius: 'service', scope: '[api:src/**]' }));
-    assert.ok(has(run([cur], { base: b }), 'home', /belongs in the local home; move it/, 'warning'));
+    assert.ok(has(run([cur], { base: b }), 'home', /belongs in the local home; leave it here, or supersede it with a record there/, 'warning'));
 });
 
 test('C1: a correct classification of a locked legacy record is clean', () => {
@@ -347,8 +299,6 @@ test('C1: two records with the same explicit id are an error', () => {
 test('I4: an identical base and current produce no errors, whatever shape the home is in', () => {
     const legacyFm = { ...LEGACY_FM, decided_by: undefined, deciders: ['Alex Doe'] };
     const half = BACKFILLED().replace('blast_radius:', 'blast_radius: cross-service');
-    const head = makeRecord({ fm: { moved_to: 'api/ADR-0004' } });
-    const stubText = `${head.slice(0, head.indexOf('\n---\n') + 5)}Moved to api/ADR-0004.\n`;
     const shapes = {
         'legacy accepted': [makeRecord({ fm: legacyFm })],
         'half-classified': [half],
@@ -358,7 +308,6 @@ test('I4: an identical base and current produce no errors, whatever shape the ho
         ],
         'duplicate-number pair': [makeRecord(), makeRecord()],
         'legacy proposal': [makeRecord({ status: 'proposed', fm: LEGACY_FM })],
-        'moved stub': [stubText],
         'legacy block YAML': [blockYamlLegacy()],
     };
     for (const [shape, texts] of Object.entries(shapes)) {
@@ -390,17 +339,6 @@ test('I5: a CRLF working copy of an untouched locked pair still counts as untouc
     const b = base({ '0001-a.md': a, '0001-b.md': a }, { tipNumbers: new Map() });
     const crlf = [loadRecord('/h/0001-a.md', a.replace(/\n/g, '\r\n')), loadRecord('/h/0001-b.md', a.replace(/\n/g, '\r\n'))];
     assert.deepEqual(errors(run(crlf, { base: b })), []);
-});
-
-test('fix2-2: a local record may move to another repo\'s local home or to kb/, not to its own', () => {
-    const localBase = base({ '0001-session-storage.md': makeRecord({ prefix: 'api' }) });
-    const listed = () => ({ state: 'found', fm: { aliases: ['api/ADR-0001'] } });
-    const toRepo = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'web/ADR-0004'));
-    assert.deepEqual(errors(run([toRepo], { home: LOCAL, base: localBase, resolveRef: listed })), []);
-    const toKb = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'kb/ADR-0004'));
-    assert.deepEqual(errors(run([toKb], { home: LOCAL, base: localBase, resolveRef: listed })), []);
-    const toSelf = loadRecord('/h/0001-session-storage.md', stubOf({ prefix: 'api' }, 'api/ADR-0004'));
-    assert.ok(has(run([toSelf], { home: LOCAL, base: localBase, resolveRef: listed }), 'move', /goes to another home/));
 });
 
 test('fix3-1a: frontmatter parse errors are warnings on a record the change leaves alone', () => {
@@ -526,18 +464,6 @@ test('fix4-2: a locked high-tier record missing sections it can never add is not
     assert.ok(has(run([loadRecord(`/h/${name}`, text)]), 'high-tier', /two considered options/));
 });
 
-test('fix4-3: a move needs an accepted destination', () => {
-    const original = { '0001-session-storage.md': makeRecord() };
-    const stub = loadRecord('/h/0001-session-storage.md', stubOf({}, 'api/ADR-0002'));
-    const dest = (status) => () => ({ state: 'found', fm: { status, aliases: ['kb/ADR-0001'] } });
-    assert.ok(has(run([stub], { base: base(original), resolveRef: dest('proposed') }), 'move', /destination api\/ADR-0002 is proposed; it must be accepted/));
-    assert.ok(has(run([stub], { base: base(original), resolveRef: dest('rejected') }), 'move', /is rejected/));
-    assert.deepEqual(errors(run([stub], { base: base(original), resolveRef: dest('accepted') })), []);
-    const away = run([stub], { base: base(original), resolveRef: () => ({ state: 'unavailable' }) });
-    assert.deepEqual(errors(away), []);
-    assert.ok(has(away, 'relations', /moved_to api\/ADR-0002: its home is not on disk/, 'warning'));
-});
-
 test('fix4-4: a deleted record locked on the base tip since the fork needs a rebase', () => {
     const name = '0001-session-storage.md';
     const b = base({ [name]: makeRecord({ status: 'proposed' }) }, { tip: { [name]: makeRecord() } });
@@ -580,7 +506,7 @@ test('B4: a legacy record in the wrong home warns; a new or classified one fails
     for (const legacyBase of [BARE, UNCLASSIFIED()]) {
         const vs = run([service], { base: base({ [name]: legacyBase }) });
         assert.deepEqual(errors(vs), []);
-        assert.ok(has(vs, 'home', /belongs in the local home; move it/, 'warning'));
+        assert.ok(has(vs, 'home', /belongs in the local home; leave it here, or supersede it with a record there/, 'warning'));
     }
     assert.ok(has(run([service]), 'home', /belongs in the local home/));
     const classifiedBase = makeRecord({ fm: { reversibility: 'two-way' } });

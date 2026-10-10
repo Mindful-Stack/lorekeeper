@@ -129,11 +129,11 @@ test('--base: ride-along requires acceptance when the change touches the scope',
     write(path.join(w.api, 'src', 'Sessions', 'Store.cs'), 'class Store { int x; }\n');
     const record = path.join(w.local, '0001-session-storage.md');
     write(record, makeRecord({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way' } }));
-    const bad = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    const bad = runCli(w.root, w.env, 'check', '--base', 'main', '--ci', w.local);
     assert.equal(bad.code, 1);
     assert.match(bad.stdout, /ride-along: .*src\/Sessions\/Store\.cs/);
     write(record, makeRecord({ prefix: 'api', fm: { reversibility: 'two-way' } }));
-    const ok = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    const ok = runCli(w.root, w.env, 'check', '--base', 'main', '--ci', w.local);
     assert.equal(ok.code, 0, ok.stdout);
 });
 
@@ -484,7 +484,7 @@ test('B5a: reject on a pr-branch: an incomplete high-tier proposal passes once i
     git(w.kb, w.env, 'checkout', '-q', 'main');
     const wt = updaterWorktree(t, w, w.kb, 'knowledge/adr-0001-session-storage');
     const home = path.join(wt, 'knowledge', 'adrs');
-    const check = () => runCli(w.root, w.env, 'check', '--home', 'shared', '--draft', '--base', 'origin/main', home);
+    const check = () => runCli(w.root, w.env, 'check', '--home', 'shared', '--base', 'origin/main', home);
     const before = check();
     assert.equal(before.code, 1, 'still proposed, the tier rules apply');
     assert.match(before.stdout, /high-tier:/);
@@ -506,7 +506,7 @@ test('B5b: accepting an unclassified legacy proposal as cross-service in its loc
     // has no base, so it cannot see the record is legacy: the wrong home is an error there.
     const scratch = path.join(tmpDir(t), 'adr');
     write(path.join(scratch, '0001-session-storage.md'), makeRecord({ prefix: 'api', status: 'proposed', fm: { blast_radius: 'cross-service' } }));
-    const lost = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', '--draft', scratch);
+    const lost = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', scratch);
     assert.equal(lost.code, 1, lost.stdout);
     assert.match(lost.stdout, /home: blast_radius cross-service belongs in the shared home/);
     const wt = updaterWorktree(t, w, w.api, null, 'origin/main');

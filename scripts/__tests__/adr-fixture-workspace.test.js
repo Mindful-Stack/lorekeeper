@@ -24,7 +24,8 @@ test('the fixture shared home passes, its proposal only warning', () => {
     const r = check('lore/knowledge/adrs');
     assert.equal(r.code, 0, r.out);
     assert.deepEqual(r.out.trim().split('\n'), [
-        'lore/knowledge/adrs/0002-inventory-reservation.md: proposed-shared: warning: a shared-home record merges only as accepted or rejected',
+        'lore/knowledge/adrs/0002-inventory-reservation.md: proposed-shared: warning: a shared-home record merges only as accepted or rejected'
+            + ' — record a named human\'s approval: `/lore:adr accept kb/ADR-0002 by <name>` (or tell Claude who approved it)',
     ]);
 });
 

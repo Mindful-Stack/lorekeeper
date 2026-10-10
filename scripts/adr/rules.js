@@ -9,6 +9,8 @@ const SHARED_SCOPE = /^[A-Za-z0-9._-]+:[^:]/;
 const PREFIXED = /^[A-Za-z0-9._-]+:/;
 const TIER_KEYS = ['reversibility', 'blast_radius', 'sensitivity'];
 const RELATION_KEYS = ['supersedes', 'depends_on', 'related', 'superseded_by'];
+// The fix for a record that needs a named human's approval.
+const nextStep = (id) => ` — record a named human's approval: \`/lore:adr accept ${id} by <name>\` (or tell Claude who approved it)`;
 // Sections a rule can ask for (the high-tier extras).
 const RULE_SECTIONS = ['Considered options', 'Assumptions and invalidation triggers'];
 
@@ -92,7 +94,8 @@ function describe(r, ctx) {
 // ctx:
 //   home        { kind: 'local'|'shared', prefix, coinciding }
 //   records     loadHome(...).records       strays   loadHome(...).strays
-//   strict      boolean
+//   strict      boolean   (grandfathered findings are errors)
+//   ci          boolean   (the merge gate: proposed-shared and ride-along are errors)
 //   resolveRef  (qualifiedId) -> { state: 'found'|'missing'|'unavailable', fm? }  (other homes only)
 //   base        null, or {
 //                 ref          string             (the base ref as given)
@@ -226,7 +229,7 @@ function checkRecord(home, r) {
     const deciders = R.decidedBy(fm);
     if (R.RATIFIED.has(fm.status)) {
         // Who should approve is not configured: the PR names it and the team's review handles it.
-        if (deciders.length === 0) need(['decided_by', 'deciders'], 'decided-by', `${fm.status} requires a named human in decided_by`);
+        if (deciders.length === 0) need(['decided_by', 'deciders'], 'decided-by', `${fm.status} requires a named human in decided_by${nextStep(home.ownId(r))}`);
     }
 
     // Relations. On a record locked on the base only a newly set superseded_by can change; a
@@ -242,13 +245,13 @@ function checkRecord(home, r) {
         if (newlySet) checkSuccessorAccepted(home, r);
     }
 
-    // An unchanged legacy proposal on the default branch predates this rule: warn only. A draft
-    // check (--draft) is the writer validating a proposal that will be reviewed before merge.
+    // A warning except in the merge gate (--ci), where a proposal this change adds or edits
+    // fails; an unchanged legacy proposal on the default branch predates this rule.
     if (h.kind === 'shared' && !h.coinciding && fm.status === 'proposed') {
         const touched = ctx.base && (baseText === null || lf(baseText) !== lf(r.text));
         home.out.push({
-            file: r.file, rule: 'proposed-shared', level: touched && !ctx.draft ? 'error' : 'warning',
-            message: 'a shared-home record merges only as accepted or rejected',
+            file: r.file, rule: 'proposed-shared', level: touched && ctx.ci ? 'error' : 'warning',
+            message: `a shared-home record merges only as accepted or rejected${nextStep(home.ownId(r))}`,
         });
     }
 }
@@ -350,9 +353,8 @@ function checkAgainstBase(home) {
         const scope = asList(r.fm.scope);
         const hit = base.changedFiles.find((f) => scope.some((g) => matchesGlob(f, g)));
         if (!hit) continue;
-        const message = `this change touches ${hit} in its scope, so the record must be accepted before merge`;
-        if (ctx.draft) home.warn(r.file, 'ride-along', message);
-        else err(r.file, 'ride-along', message);
+        const message = `this change touches ${hit} in its scope, so the record must be accepted before merge${nextStep(home.ownId(r))}`;
+        (ctx.ci ? err : home.warn)(r.file, 'ride-along', message);
     }
 }
 

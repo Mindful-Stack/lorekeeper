@@ -18,7 +18,7 @@ const C = require('./adr/catalogue');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
-                 [--strict] [--draft] <dir>
+                 [--strict] [--ci] <dir>
   adr-lint select (--diff <patch-file|-> | --paths <path,...>) [--repo <name>] [--pr-body <file>]
                   [--cwd <dir>]
   adr-lint backfill [--home local|shared] [--repo <name>] [--dry-run] <dir>
@@ -30,9 +30,9 @@ exit codes: 0 ok (warnings allowed), 1 violations, 2 usage or environment error`
 
 class UsageError extends Error {}
 
-const BOOLEAN_FLAGS = new Set(['strict', 'single-home', 'dry-run', 'json', 'draft']);
+const BOOLEAN_FLAGS = new Set(['strict', 'single-home', 'dry-run', 'json', 'ci']);
 const FLAGS = {
-    check: ['home', 'repo', 'single-home', 'base', 'strict', 'draft'],
+    check: ['home', 'repo', 'single-home', 'base', 'strict', 'ci'],
     select: ['diff', 'paths', 'repo', 'pr-body', 'cwd'],
     backfill: ['home', 'repo', 'dry-run'],
     homes: ['cwd'],
@@ -167,8 +167,8 @@ function cmdCheck(flags, positional) {
         records,
         strays,
         strict: !!flags.strict,
-        // A writer validating a proposal before review: proposed-shared and ride-along warn.
-        draft: !!flags.draft,
+        // The merge gate: a proposal that has not been accepted or rejected fails.
+        ci: !!flags.ci,
         resolveRef: makeResolver(homes),
         base: flags.base ? loadBase(dir, flags.base) : null,
     });

@@ -98,8 +98,9 @@ test('cross-home flip: a successor whose home is not on disk is a warning', (t) 
 });
 
 // A discover batch opens one PR with several shared proposals; accepting one of them on that
-// PR's branch leaves the others proposed, so the writer validates with --draft (CI does not).
-test('pr-branch accept of one record in a two-proposal shared PR passes only with --draft', (t) => {
+// PR's branch leaves the others proposed: a plain check passes with a warning, the CI gate
+// (--ci) stays red until every record in the PR is accepted or rejected.
+test('pr-branch accept of one record in a two-proposal shared PR passes a plain check, not --ci', (t) => {
     const root = tmpDir(t);
     const env = gitEnv(root);
     write(path.join(root, 'household.json'), JSON.stringify({
@@ -118,10 +119,10 @@ test('pr-branch accept of one record in a two-proposal shared PR passes only wit
         number: '0002',
         sections: { Status: 'Proposed 2026-10-08.\nAccepted 2026-10-09 by Alex Doe.' },
     }));
-    const strict = runCli(root, env, 'check', '--home', 'shared', '--base', 'main', shared);
+    const strict = runCli(root, env, 'check', '--home', 'shared', '--base', 'main', '--ci', shared);
     assert.equal(strict.code, 1, strict.stdout);
     assert.match(strict.stdout, /0003-queue\.md: proposed-shared: /);
-    const draft = runCli(root, env, 'check', '--home', 'shared', '--base', 'main', '--draft', shared);
+    const draft = runCli(root, env, 'check', '--home', 'shared', '--base', 'main', shared);
     assert.equal(draft.code, 0, draft.stdout + draft.stderr);
     assert.match(draft.stdout, /0003-queue\.md: proposed-shared: warning:/);
 });

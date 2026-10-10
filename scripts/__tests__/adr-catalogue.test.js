@@ -201,7 +201,7 @@ test('CLI homes asks origin for its default branch when origin/HEAD is unset, ne
     assert.equal(homes(), null, 'an unreachable origin is unknown, not origin/main');
 });
 
-test('check --draft turns a new shared proposal and a ride-along into warnings', (t) => {
+test('plain check warns on a new shared proposal and a ride-along; check --ci fails them; --draft is gone', (t) => {
     const root = tmpDir(t);
     const env = gitEnv(root);
     write(path.join(root, 'household.json'), JSON.stringify({
@@ -216,15 +216,16 @@ test('check --draft turns a new shared proposal and a ride-along into warnings',
     commitAll(api, env, 'init');
     write(path.join(kb, 'knowledge', 'adrs', '0001-session-storage.md'), makeRecord({ status: 'proposed' }));
     const shared = path.join(kb, 'knowledge', 'adrs');
-    assert.equal(runCli(root, env, 'check', '--base', 'main', shared).code, 1);
-    const draft = runCli(root, env, 'check', '--base', 'main', '--draft', shared);
-    assert.equal(draft.code, 0, draft.stdout);
-    assert.match(draft.stdout, /proposed-shared: warning:/);
+    assert.equal(runCli(root, env, 'check', '--base', 'main', '--ci', shared).code, 1);
+    assert.equal(runCli(root, env, 'check', '--base', 'main', '--draft', shared).code, 2);
+    const plain = runCli(root, env, 'check', '--base', 'main', shared);
+    assert.equal(plain.code, 0, plain.stdout);
+    assert.match(plain.stdout, /proposed-shared: warning:/);
     write(path.join(api, 'src', 'Sessions', 'Store.cs'), 'class Store { int x; }\n');
     write(path.join(api, 'docs', 'adr', '0001-session-storage.md'), makeRecord({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way' } }));
     const local = path.join(api, 'docs', 'adr');
-    assert.equal(runCli(root, env, 'check', '--base', 'main', local).code, 1);
-    const ride = runCli(root, env, 'check', '--base', 'main', '--draft', local);
+    assert.equal(runCli(root, env, 'check', '--base', 'main', '--ci', local).code, 1);
+    const ride = runCli(root, env, 'check', '--base', 'main', local);
     assert.equal(ride.code, 0, ride.stdout);
     assert.match(ride.stdout, /ride-along: warning:/);
 });

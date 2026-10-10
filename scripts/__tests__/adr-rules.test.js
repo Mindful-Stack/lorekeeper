@@ -206,12 +206,25 @@ test('supersession: superseded_by must be mirrored by supersedes, and cycles fai
     assert.ok(has(vs, 'relations', /does not list kb\/ADR-0002 in supersedes/));
 });
 
-test('proposed in the shared home: warning locally, error when the change adds or edits it', () => {
+test('proposed in the shared home: a warning, and under --ci an error when the change adds or edits it', () => {
     const p = rec({ status: 'proposed' });
-    assert.ok(has(run([p], { base: null }), 'proposed-shared', /merges only/, 'warning'));
-    assert.ok(has(run([p]), 'proposed-shared', /merges only/));
+    assert.ok(has(run([p], { base: null, ci: true }), 'proposed-shared', /merges only/, 'warning'));
+    assert.ok(has(run([p]), 'proposed-shared', /merges only/, 'warning'));
+    assert.ok(has(run([p], { ci: true }), 'proposed-shared', /merges only/));
     const edited = base({ '0001-session-storage.md': makeRecord({ status: 'proposed', sections: { Context: 'Old.' } }) });
-    assert.ok(has(run([p], { base: edited }), 'proposed-shared', /merges only/));
+    assert.ok(has(run([p], { base: edited, ci: true }), 'proposed-shared', /merges only/));
+});
+
+test('proposed-shared, ride-along and decided-by name the next step', () => {
+    const next = ' — record a named human\'s approval: `/lore:adr accept kb/ADR-0001 by <name>` (or tell Claude who approved it)';
+    const shared = run([rec({ status: 'proposed' })], { ci: true }).find((v) => v.rule === 'proposed-shared');
+    assert.equal(shared.message, `a shared-home record merges only as accepted or rejected${next}`);
+    const decided = run([rec({ fm: { decided_by: [] } })]).find((v) => v.rule === 'decided-by');
+    assert.equal(decided.message, `accepted requires a named human in decided_by${next}`);
+    const proposed = rec({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way' } });
+    const b = base({}, { changedFiles: ['src/Sessions/Store.cs'] });
+    const ride = run([proposed], { home: LOCAL, base: b }).find((v) => v.rule === 'ride-along');
+    assert.ok(ride.message.endsWith(next.replace('kb/', 'api/')), ride.message);
 });
 
 test('base: editing a locked record fails; editing a proposed one does not', () => {
@@ -237,7 +250,8 @@ test('base: a number taken on the base tip under another name fails', () => {
 test('ride-along: a new proposed local record whose scope the change touches fails', () => {
     const proposed = rec({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way' } });
     const b = base({}, { changedFiles: ['src/Sessions/Store.cs', 'docs/adr/0001-session-storage.md'] });
-    assert.ok(has(run([proposed], { home: LOCAL, base: b }), 'ride-along', /src\/Sessions\/Store.cs/));
+    assert.ok(has(run([proposed], { home: LOCAL, base: b }), 'ride-along', /src\/Sessions\/Store.cs/, 'warning'));
+    assert.ok(has(run([proposed], { home: LOCAL, base: b, ci: true }), 'ride-along', /src\/Sessions\/Store.cs/));
     const untouched = base({}, { changedFiles: ['README.md'] });
     assert.ok(!run([proposed], { home: LOCAL, base: untouched }).some((v) => v.rule === 'ride-along'));
     const accepted = rec({ prefix: 'api', fm: { reversibility: 'two-way' } });

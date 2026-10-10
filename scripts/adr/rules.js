@@ -332,13 +332,13 @@ function checkAgainstBase(home) {
     const names = new Set(records.map((r) => r.name));
     for (const name of base.baseNames) {
         if (names.has(name)) continue;
-        const b = parseRecord(base.textAt(name) || '').fm;
-        if (R.LOCKED.has(b.status)) {
+        // A frontmatter-less legacy record carries its status in ## Status.
+        if (R.LOCKED.has(R.baseStatus(parseRecord(base.textAt(name) || '')))) {
             err(name, 'locked', 'a locked record is never deleted or renamed');
             continue;
         }
         const tip = base.tipTextAt ? base.tipTextAt(name) : null;
-        if (tip && R.LOCKED.has(parseRecord(tip).fm.status)) {
+        if (tip && R.LOCKED.has(R.baseStatus(parseRecord(tip)))) {
             err(name, 'locked', `accepted on ${base.ref} since this branch forked; rebase onto ${base.ref}`);
         }
     }
@@ -346,7 +346,7 @@ function checkAgainstBase(home) {
     // covered by the duplicate-number check above. A record that is not locked may be renamed:
     // its new name keeps the number its old name, deleted in this change, held.
     const renamed = (owner) => !names.has(owner) && base.textAt(owner) !== null
-        && !R.LOCKED.has(parseRecord(base.textAt(owner)).fm.status);
+        && !R.LOCKED.has(R.baseStatus(parseRecord(base.textAt(owner))));
     for (const r of records) {
         const owner = base.textAt(r.name) === null && base.tipNumbers.get(r.number);
         if (owner && owner !== r.name && !renamed(owner)) err(r.file, 'number', `ADR-${r.number} is already ${owner} on the base branch; renumber this record`);

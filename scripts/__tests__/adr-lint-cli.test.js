@@ -512,6 +512,21 @@ test('B6d: a frontmatter-less legacy record reads its status from ## Status; its
     assert.equal(kept.code, 0, kept.stdout + kept.stderr);
 });
 
+test('B6e: an accepted frontmatter-less record cannot be renamed or deleted around its lock', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.shared, w.kb, LEGACY_BARE);
+    const renamed = path.join(path.dirname(file), file.endsWith('0001-session-storage.md') ? '0001-session-state.md' : '0001-renamed.md');
+    fs.renameSync(file, renamed);
+    write(renamed, makeRecord({ status: 'proposed', fm: { decided_by: [] }, sections: { Decision: 'Sessions live in cookies.' } }));
+    const r = runCli(w.root, w.env, 'check', '--ci', '--base', 'main', w.shared);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /locked: a locked record is never deleted or renamed/);
+    fs.rmSync(renamed);
+    const d = runCli(w.root, w.env, 'check', '--ci', '--base', 'main', w.shared);
+    assert.equal(d.code, 1, d.stdout);
+    assert.match(d.stdout, /locked: a locked record is never deleted or renamed/);
+});
+
 // B5: an edit of an existing record is validated only by the knowledge-updater, in a worktree
 // against the real base with its flags; a scratch copy (no base) misjudges these two cases.
 function updaterWorktree(t, w, repo, branch, start) {

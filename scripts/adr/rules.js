@@ -60,7 +60,7 @@ function describe(r, ctx) {
     const b = baseText ? parseRecord(baseText) : null;
     const lockedOnBase = !!b && isLocked(b);
     const legacyOnBase = !!b && (!b.found || R.isUnclassified(b.fm));
-    const legacyLockedOnBase = legacyOnBase && b.found && R.LOCKED.has(b.fm.status);
+    const legacyLockedOnBase = legacyOnBase && R.LOCKED.has(R.baseStatus(b));
     const frozenOnBase = lockedOnBase || (legacyLockedOnBase && R.isUnclassified(r.fm));
     const keys = new Set();
     if (frozenOnBase) {

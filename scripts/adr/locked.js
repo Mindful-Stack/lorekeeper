@@ -5,7 +5,7 @@
 // mechanical; none judges whether a sentence kept its meaning.
 
 const { parseRecord, decodeBlock, sections, isEmpty } = require('./frontmatter');
-const { BACKFILL_KEYS, isUnclassified, decidedBy } = require('./records');
+const { BACKFILL_KEYS, isUnclassified, decidedBy, baseStatus } = require('./records');
 
 const APPEND_ONLY = new Set(['Status', 'Later observations']);
 const DATED_ENTRY = /^[-*+]\s+\**\s*\d{4}-\d{2}-\d{2}/;
@@ -197,8 +197,10 @@ function successorNamed(bfm, cfm) {
 
 // The change that classifies a legacy record with a locked status may rewrite its body, but
 // its status moves only forward and the deciders it already records stay.
+// A base with no frontmatter takes its status from its Status section and records no deciders.
 function conversionDiff(baseText, curText) {
-    const b = parseRecord(baseText).fm;
+    const parsed = parseRecord(baseText);
+    const b = { ...parsed.fm, status: baseStatus(parsed) };
     const c = parseRecord(curText).fm;
     const out = [];
     if (!transitionAllowed(b.status, c.status)) out.push(`status ${b.status} -> ${c.status} is not an allowed transition`);

@@ -499,6 +499,19 @@ test('B6c: converting a legacy accepted record in the shared home keeps its deci
     assert.equal(kept.code, 0, kept.stdout + kept.stderr);
 });
 
+test('B6d: a frontmatter-less legacy record reads its status from ## Status; its conversion moves only forward', (t) => {
+    const w = workspace(t);
+    const bare = LEGACY_BARE.replace('Accepted 2025-03-01', 'Proposed 2024-02-01\naccepted 2024-03-01');
+    const file = legacyOnMain(w, w.shared, w.kb, bare);
+    write(file, makeRecord({ status: 'proposed', fm: { decided_by: [] }, sections: { Status: 'Proposed 2024-02-01.\nAccepted 2024-03-01.' } }));
+    const back = runCli(w.root, w.env, 'check', '--ci', '--base', 'main', w.shared);
+    assert.equal(back.code, 1, back.stdout);
+    assert.match(back.stdout, /locked: status accepted -> proposed is not an allowed transition/);
+    write(file, makeRecord());
+    const kept = runCli(w.root, w.env, 'check', '--ci', '--base', 'main', w.shared);
+    assert.equal(kept.code, 0, kept.stdout + kept.stderr);
+});
+
 // B5: an edit of an existing record is validated only by the knowledge-updater, in a worktree
 // against the real base with its flags; a scratch copy (no base) misjudges these two cases.
 function updaterWorktree(t, w, repo, branch, start) {

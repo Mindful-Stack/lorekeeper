@@ -497,6 +497,17 @@ test('B4: a frontmatter-less base record may be rewritten into a valid record', 
     assert.ok(has(run([thin], { base: base({ [name]: BARE }) }), 'high-tier', /invalidation trigger/));
 });
 
+test('B6: a frontmatter-less base takes its status from the last status word in ## Status', () => {
+    const name = '0001-session-storage.md';
+    const back = rec({ status: 'proposed', fm: { decided_by: [] } });
+    assert.ok(has(run([back], { base: base({ [name]: BARE }) }), 'locked', /status accepted -> proposed/));
+    const deprecated = BARE.replace('Accepted 2025-03-01', 'Accepted 2025-03-01\nDeprecated 2025-06-01: gone');
+    assert.ok(has(run([rec()], { base: base({ [name]: deprecated }) }), 'locked', /status deprecated -> accepted/));
+    // A proposal stays a draft: no status word that locks it, so nothing to keep.
+    const proposal = BARE.replace('Accepted 2025-03-01', 'Proposed 2025-03-01');
+    assert.ok(!run([back], { base: base({ [name]: proposal }) }).some((v) => v.rule === 'locked'));
+});
+
 test('B4: an unclassified base record is not locked; its conversion meets the full rules', () => {
     const name = '0001-session-storage.md';
     const rewritten = rec({ sections: { Context: 'Rewritten.' } });

@@ -81,6 +81,19 @@ function isUnclassified(fm) {
     return isEmpty(fm.reversibility);
 }
 
+// A record's status: its frontmatter `status`, or for a record with no frontmatter the last
+// status word that opens a line of its `## Status` section (`Accepted 2024-03-01` -> accepted).
+function baseStatus(parsed) {
+    if (parsed.found) return parsed.fm.status;
+    const status = sections(parsed.body).find((s) => s.heading === 'Status');
+    let last;
+    for (const line of status ? status.content.split('\n') : []) {
+        const m = /^(Proposed|Accepted|Rejected|Deprecated|Superseded)\b/i.exec(line.trim());
+        if (m) last = m[1].toLowerCase();
+    }
+    return last;
+}
+
 // Normalises a relation value to a qualified id. Legacy records wrote bare numbers
 // (`0002`, `2`, `ADR-0002`); those resolve within the record's own home.
 function qualify(ref, ownPrefix) {
@@ -97,7 +110,7 @@ function section(record, heading) {
 }
 
 module.exports = {
-    STATUSES, LOCKED, RATIFIED, CONFIDENCE, REVERSIBILITY, BLAST_RADIUS, SENSITIVITY,
+    STATUSES, LOCKED, baseStatus, RATIFIED, CONFIDENCE, REVERSIBILITY, BLAST_RADIUS, SENSITIVITY,
     LOCAL_BLAST, SHARED_BLAST, BACKFILL_KEYS, KNOWN_KEYS, FILE_RE, ID_RE,
     impliedId, loadRecord, loadHome, decidedBy, isHighTier, isUnclassified, qualify, section,
 };

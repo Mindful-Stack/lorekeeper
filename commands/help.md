@@ -83,7 +83,7 @@ Always display available commands:
 
 | Command | Description |
 |---------|-------------|
-| `/lore:adr [title\|list\|index\|accept\|reject\|observe\|supersede\|deprecate\|move\|retire\|lint\|discover]` | Record, list, ratify, observe, supersede, move, or discover architecture decision records across every home |
+| `/lore:adr <what you decided or what changed>` | Architecture decision records in plain words: record a decision, say who approved it, note a change, replace or retire one, ask what binds a change, list, or discover |
 | `/lore:cultivate` | Cultivate a bounded-context domain — with arg: bootstrap/refine/audit; without arg: discover candidates + audit existing |
 | `/lore:doctor` | Run full workspace + KB diagnostic |
 | `/lore:explore [query]` | Browse and search knowledge nodes |
@@ -131,5 +131,5 @@ Always display available commands:
 2. **Need domain context?** → `/lore:prime <your-domain>`
 3. **Looking for something?** → `/lore:explore <topic>`
 4. **Review your work?** → `/lore:review`
-5. **Made a hard-to-reverse call?** → `/lore:adr <title>` (or `/lore:adr discover` for the ones already in the code)
+5. **Made a hard-to-reverse call?** → `/lore:adr <what you decided>` (or ask it to find the decisions already in the code)
 ```

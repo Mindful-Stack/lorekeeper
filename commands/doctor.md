@@ -75,8 +75,10 @@ and in the team KB's shared home. Resolve them:
 node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js homes
 ```
 
-For the local homes and the shared home with `exists: true` (not `otherKbs`: other teams' KBs are
-theirs to check), run the validator without a base (doctor diffs nothing):
+This is the one place every home is validated. For the local homes and the shared home with
+`exists: true` (not `otherKbs`: other teams' KBs are theirs to check), run the validator without a
+base (doctor diffs nothing; a plain check reports open proposals as warnings, where CI's `--ci`
+fails them):
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home flags> <home-dir>
@@ -98,12 +100,12 @@ Report per home: the number of records, errors and warnings, grouped by rule. Th
 - **Warnings on records from before the ADR-centred format** (`id`, `reversibility` or the other
   classification keys missing) — one summary line per home, suggesting `/lore:migrate` for the
   backfill. Do not list every record.
-- **Records to move** (`home` warnings: a `blast_radius` that belongs in the other home, such as
-  a legacy cross-service record converted in a local home) — list each by qualified id as "to
-  move", pointing at `/lore:adr move <id>`.
+- **Records in the wrong home** (`home` warnings: a `blast_radius` that belongs in the other home,
+  such as a legacy cross-service record converted in a local home) — list each by qualified id:
+  "consider replacing it with a record in the right home, or leave it where it is".
 - **Open proposals** (`proposed-shared` warnings in the shared home) — list each by its
-  qualified id (`kb/ADR-NNNN`, from its home and number): each needs
-  `/lore:adr accept <id> by <name>` or `/lore:adr reject <id> by <name>`. Call one a *legacy*
+  qualified id (`kb/ADR-NNNN`, from its home and number): each needs a named human to accept or
+  reject it ("tell Claude who approved kb/ADR-NNNN"). Call one a *legacy*
   proposal only when it is also unclassified (no `reversibility`): the KB checkout may simply be
   on a branch carrying a fresh one.
 - **Repos not checked out** (`present: false`) — name them: their local records could not be

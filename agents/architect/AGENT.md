@@ -44,7 +44,7 @@ If the caller passed the catalogue path, Read it and use it. Otherwise build it 
    does not exist is not checked out: say so in the report.
 2. **Frontmatter.** One Grep per existing home:
    ```
-   Grep  pattern: ^(id|title|description|tags|status|date|scope|supersedes|superseded_by|depends_on|related|moved_to|aliases):
+   Grep  pattern: ^(id|title|description|tags|status|date|scope|supersedes|superseded_by|depends_on|related):
          path: <home-dir>   glob: [0-9]*.md   output_mode: content   -n: true
    ```
    Ignore `_`-prefixed files. A record without `id` has the implied one: the home's prefix plus
@@ -55,10 +55,9 @@ the gaps are still worth reporting.
 
 **Binding status.** `accepted` binds. `proposed` is supplementary. `rejected` and `superseded`
 records are **already ruled out**: report them when they touch the area, so nobody re-proposes a
-dead option. A stub with `moved_to` points at its new id; follow it. When two accepted records in
-different homes form an in-flight pair (the newer `supersedes` the older, or lists it in
-`aliases`, and the older is not yet flipped), the newer binds; report the pair so the caller knows
-a `retire` is pending.
+dead option. A cross-home replacement is **in flight** when the successor is accepted and lists the
+predecessor in `supersedes`, but the predecessor in the other home is not yet flipped: the newer
+binds; report the pair so the caller knows the flip PR is still to merge.
 
 ## Input
 
@@ -96,19 +95,19 @@ decided?" as `survey`.
   - kb/ADR-0004.R3 — "<rule, verbatim>"
 
 ## Triggers fired
-- kb/ADR-0004 assumes <X>; this task <does Y> ⇒ `/lore:adr observe kb/ADR-0004 …`, then
-  `/lore:adr supersede kb/ADR-0004 …` before building.
+- kb/ADR-0004 assumes <X>; this task <does Y> ⇒ note the change on kb/ADR-0004, then replace
+  it before building.
 [or: none]
 
 ## Not binding
 - Proposed: api/ADR-0007 — <title>: <description>.
 - Already ruled out: kb/ADR-0002 (rejected) — <title>.
-- In flight: kb/ADR-0009 supersedes api/ADR-0003; retire pending.
+- In flight: kb/ADR-0009 supersedes api/ADR-0003; the flip of api/ADR-0003 has not merged.
 [omit lines that do not apply; omit the section if none]
 
 ## Gaps
-- This task will choose <thing>; no record covers it. Expect `/lore:adr <topic>` if the choice
-  is hard to reverse.
+- This task will choose <thing>; no record covers it. Record it first if the choice is hard to
+  reverse.
 [or: none]
 ```
 
@@ -177,7 +176,7 @@ requirement somebody once had.
 ```markdown
 ## Contradictions with accepted records
 - `src/Auth/Startup.cs:42-58` registers a bearer scheme; **kb/ADR-0003.R1** ("The browser MUST
-  authenticate with cookies only") forbids it. Either conform, or `/lore:adr supersede kb/ADR-0003`.
+  authenticate with cookies only") forbids it. Either conform, or replace kb/ADR-0003.
 [or: none]
 
 ## Triggers fired
@@ -193,7 +192,7 @@ requirement somebody once had.
 
 ## Uncovered hard-to-reverse choices
 - `infra/docker-compose.yml:10-31` introduces a message broker; no record covers messaging.
-  Suggest `/lore:adr <topic>`.
+  Suggest recording it.
 [or: none]
 
 ## Dangling citations
@@ -212,11 +211,11 @@ Severity is the caller's call: report the class, never a verdict on whether the 
 
 ## Important Rules
 
-1. **Read-only.** Never draft, number, or write a record; return findings and let `/lore:adr` do
-   the writing with the user in the loop.
+1. **Read-only.** Never draft, number, or write a record; return findings and let the caller
+   (`/lore:adr`) do the writing with the user in the loop.
 2. **Accepted binds; proposed does not; rejected and superseded are ruled out.** Say which is
-   which every time. An accepted record whose Status log notes a *proposed* supersession is still
-   binding; name the pending replacement.
+   which every time. An accepted record that a *proposed* record `supersedes` is still binding;
+   name the pending replacement.
 3. **Cite by qualified id**, rules as `<id>.R<n>`, facts as `<id>.F<n>`, records also by section
    and path; code by line range. Section names survive edits; line numbers in records do not.
 4. **Be honest about absence.** An empty home is a finding, not a failure; a home that is not

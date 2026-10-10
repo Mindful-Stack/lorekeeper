@@ -57,4 +57,31 @@ function originUrl(root) {
     return out === null ? null : out.trim();
 }
 
-module.exports = { gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, originUrl };
+// The repository's name, the same from every worktree: origin's last path segment, else the
+// main worktree's directory (a linked worktree's own name is arbitrary), else `root`'s name.
+function repoName(root) {
+    const url = originUrl(root);
+    const fromUrl = url && url.replace(/[/\\]+$/, '').replace(/\.git$/, '').split(/[/:\\]/).pop();
+    if (fromUrl) return fromUrl;
+    const common = git(root, ['rev-parse', '--git-common-dir']);
+    const dir = common === null ? null : path.resolve(root, common.trim());
+    if (dir && path.basename(dir) === '.git') return path.basename(path.dirname(dir));
+    return path.basename(root);
+}
+
+// The remote default branch's name, or null when it cannot be known. A clone's `origin/HEAD`
+// may be unset, so ask origin itself (read-only); never guess from origin/main or master.
+function defaultBranch(root) {
+    const head = git(root, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
+    if (head !== null && head.trim().startsWith('origin/')) return head.trim().slice('origin/'.length);
+    // No prompt and a time limit, so an offline or credential-gated remote fails instead of hanging.
+    const r = spawnSync('git', [...PINNED, 'ls-remote', '--symref', 'origin', 'HEAD'], {
+        cwd: root, encoding: 'utf8', timeout: 15000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+    const m = r.status === 0 && /^ref: refs\/heads\/(\S+)\tHEAD$/m.exec(r.stdout);
+    return m ? m[1] : null;
+}
+
+module.exports = {
+    gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, originUrl, repoName, defaultBranch,
+};

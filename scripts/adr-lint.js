@@ -14,22 +14,30 @@ const G = require('./adr/git');
 const { checkHome } = require('./adr/rules');
 const { backfill } = require('./adr/backfill');
 const { parsePatchPaths, parseCitedIds, select } = require('./adr/select');
+const C = require('./adr/catalogue');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
-                 [--strict] [--config <file>] <dir>
-  adr-lint select --diff <patch-file|-> [--repo <name>] [--pr-body <file>] [--cwd <dir>]
+                 [--strict] [--ci] <dir>
+  adr-lint select (--diff <patch-file|-> | --paths <path,...>) [--repo <name>] [--pr-body <file>]
+                  [--cwd <dir>]
   adr-lint backfill [--home local|shared] [--repo <name>] [--dry-run] <dir>
+  adr-lint homes [--cwd <dir>]                      (JSON)
+  adr-lint index [--cwd <dir>] [--status <status>] [--json]
+  adr-lint next [--base <ref>] <dir>
 
 exit codes: 0 ok (warnings allowed), 1 violations, 2 usage or environment error`;
 
 class UsageError extends Error {}
 
-const BOOLEAN_FLAGS = new Set(['strict', 'single-home', 'dry-run']);
+const BOOLEAN_FLAGS = new Set(['strict', 'single-home', 'dry-run', 'json', 'ci']);
 const FLAGS = {
-    check: ['home', 'repo', 'single-home', 'base', 'strict', 'config'],
-    select: ['diff', 'repo', 'pr-body', 'cwd'],
+    check: ['home', 'repo', 'single-home', 'base', 'strict', 'ci'],
+    select: ['diff', 'paths', 'repo', 'pr-body', 'cwd'],
     backfill: ['home', 'repo', 'dry-run'],
+    homes: ['cwd'],
+    index: ['cwd', 'status', 'json'],
+    next: ['base'],
 };
 
 // `known` lists the flags the subcommand takes; any other flag is a usage error, so a typo
@@ -81,7 +89,7 @@ function locateHome(dir, flags) {
     const homes = H.resolveHomes(dir);
     const inferredRepo = () => {
         const root = G.gitRoot(dir);
-        return H.repoFromRemote(homes, root && G.originUrl(root)) || path.basename(root || dir);
+        return H.repoFromRemote(homes, root && G.originUrl(root)) || (root ? G.repoName(root) : path.basename(dir));
     };
     if (flags.home) {
         if (flags.home !== 'local' && flags.home !== 'shared') throw new UsageError('--home is local or shared');
@@ -149,17 +157,6 @@ function makeResolver(homes) {
     };
 }
 
-function readConfig(flags, homes) {
-    if (!flags.config) return homes.config;
-    let json;
-    try {
-        json = JSON.parse(fs.readFileSync(flags.config, 'utf8'));
-    } catch (e) {
-        throw new UsageError(`cannot read --config ${flags.config}: ${e.message}`);
-    }
-    return { ...H.DEFAULTS, ...(json.adr || json) };
-}
-
 function cmdCheck(flags, positional) {
     if (positional.length !== 1) throw new UsageError('check takes exactly one directory');
     const dir = path.resolve(positional[0]);
@@ -169,8 +166,9 @@ function cmdCheck(flags, positional) {
         home,
         records,
         strays,
-        config: readConfig(flags, homes),
         strict: !!flags.strict,
+        // The merge gate: a proposal that has not been accepted or rejected fails.
+        ci: !!flags.ci,
         resolveRef: makeResolver(homes),
         base: flags.base ? loadBase(dir, flags.base) : null,
     });
@@ -183,14 +181,14 @@ function cmdCheck(flags, positional) {
 }
 
 function cmdSelect(flags) {
-    if (!flags.diff) throw new UsageError('select needs --diff <patch-file|->');
+    if (!flags.diff === !flags.paths) throw new UsageError('select needs exactly one of --diff <patch-file|-> or --paths <path,...>');
     const cwd = path.resolve(flags.cwd || process.cwd());
     const homes = H.resolveHomes(cwd);
     const root = G.gitRoot(cwd);
     const repo = flags.repo
         || H.repoFromRemote(homes, root && G.originUrl(root))
         || (homes.mode === 'single' ? homes.localHomes[0].repo : null)
-        || (root && homes.localHomes.some((h) => h.repo === path.basename(root)) ? path.basename(root) : null);
+        || (root ? [G.repoName(root), path.basename(root)].find((n) => homes.localHomes.some((h) => h.repo === n)) : null);
     if (!repo) throw new UsageError('cannot tell which repo this is; pass --repo <name>');
     const local = homes.mode === 'single' ? homes.localHomes[0] : homes.localHomes.find((h) => h.repo === repo);
     if (!local) throw new UsageError(`repo ${repo} is not in household.json`);
@@ -210,9 +208,11 @@ function cmdSelect(flags) {
     add(local.dir, 'local', repo);
     if (homes.sharedHome && !local.coinciding) add(homes.sharedHome, 'shared', 'kb');
 
-    const patch = readInput(flags.diff, 'diff');
+    const paths = flags.paths
+        ? flags.paths.split(',').map((p) => toPosix(p.trim())).filter(Boolean)
+        : parsePatchPaths(readInput(flags.diff, 'diff'));
     const prBody = flags['pr-body'] ? readInput(flags['pr-body'], 'pr-body') : '';
-    const picked = select({ candidates, repo, paths: parsePatchPaths(patch), cited: parseCitedIds(prBody) });
+    const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody) });
     for (const p of picked) {
         console.log([p.id, p.status, p.file ? display(p.file) : '-', p.reasons.join(',')].join('\t'));
     }
@@ -243,6 +243,89 @@ function cmdBackfill(flags, positional) {
     return 0;
 }
 
+// The repo whose checkout contains `cwd`, or null (the household root itself, or elsewhere).
+function governedRepo(homes, cwd) {
+    const here = realpathLoose(cwd);
+    const inside = (dir) => {
+        const rel = path.relative(realpathLoose(dir), here);
+        return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    };
+    if (homes.mode === 'single') return inside(homes.root) ? homes.localHomes[0].repo : null;
+    const hit = homes.localHomes.find((h) => inside(path.join(homes.root, h.repo)));
+    return hit ? hit.repo : null;
+}
+
+function cmdHomes(flags) {
+    const cwd = path.resolve(flags.cwd || process.cwd());
+    const homes = H.resolveHomes(cwd);
+    const exists = (p) => !!p && fs.existsSync(p);
+    // The git toplevel holding a home's repo or KB root, which must exist. In a household each
+    // is its own repo, so a missing or unversioned sibling never reports the meta repo; a
+    // single repo's KB may sit inside the code repo, which is then its repo.
+    const repoRootOf = (dir) => {
+        const top = exists(dir) ? G.gitRoot(dir) : null;
+        if (!top) return null;
+        return homes.mode === 'household' && realpathLoose(top) !== realpathLoose(dir) ? null : top;
+    };
+    const place = (home, dir) => {
+        const repoRoot = repoRootOf(dir);
+        return {
+            repoRoot,
+            relDir: repoRoot ? toPosix(path.relative(realpathLoose(repoRoot), realpathLoose(home))) : null,
+            defaultBranch: repoRoot ? G.defaultBranch(repoRoot) : null,
+        };
+    };
+    const repoDirOf = (h) => (homes.mode === 'single' ? homes.root : path.join(homes.root, h.repo));
+    const shared = homes.sharedHome ? place(homes.sharedHome, homes.sharedRoot) : place(null, null);
+    console.log(JSON.stringify({
+        mode: homes.mode,
+        root: homes.root,
+        governedRepo: governedRepo(homes, cwd),
+        config: homes.config,
+        localHomes: homes.localHomes.map((h) => ({
+            ...h, exists: exists(h.dir), ...place(h.dir, h.present ? repoDirOf(h) : null),
+        })),
+        sharedHome: homes.sharedHome,
+        sharedHomeExists: exists(homes.sharedHome),
+        sharedRoot: homes.sharedRoot,
+        sharedRepoRoot: shared.repoRoot,
+        sharedRelDir: shared.relDir,
+        sharedDefaultBranch: shared.defaultBranch,
+        otherKbs: homes.otherKbs.map((k) => ({ ...k, exists: exists(k.dir) })),
+    }, null, 2));
+    return 0;
+}
+
+function cmdIndex(flags) {
+    const cwd = path.resolve(flags.cwd || process.cwd());
+    const cat = C.buildCatalogue(H.resolveHomes(cwd));
+    if (flags.status && !R.STATUSES.includes(flags.status)) {
+        throw new UsageError(`--status is one of ${R.STATUSES.join(', ')}`);
+    }
+    if (flags.json) {
+        const records = cat.records.filter((e) => !flags.status || e.status === flags.status);
+        console.log(JSON.stringify({ homes: cat.homes, records }, null, 2));
+    } else {
+        console.log(C.renderMarkdown(cat, flags.status));
+    }
+    return 0;
+}
+
+function cmdNext(flags, positional) {
+    if (positional.length !== 1) throw new UsageError('next takes exactly one directory');
+    const dir = path.resolve(positional[0]);
+    let extra = [];
+    if (flags.base) {
+        const root = G.gitRoot(dir);
+        if (!root) throw new UsageError(`--base needs ${display(dir)} to be inside a git repository`);
+        if (!G.revExists(root, flags.base)) throw new UsageError(`base ref ${flags.base} not found; fetch it first`);
+        const rel = toPosix(path.relative(fs.realpathSync(root), realpathLoose(dir)));
+        extra = G.listDir(root, flags.base, rel);
+    }
+    console.log(C.nextNumber(dir, extra));
+    return 0;
+}
+
 function main(argv) {
     const [cmd, ...rest] = argv.slice(2);
     try {
@@ -250,6 +333,9 @@ function main(argv) {
         const { flags, positional } = parseArgs(rest, FLAGS[cmd]);
         if (cmd === 'check') return cmdCheck(flags, positional);
         if (cmd === 'select') return cmdSelect(flags);
+        if (cmd === 'homes') return cmdHomes(flags);
+        if (cmd === 'index') return cmdIndex(flags);
+        if (cmd === 'next') return cmdNext(flags, positional);
         return cmdBackfill(flags, positional);
     } catch (e) {
         if (!(e instanceof UsageError)) throw e;

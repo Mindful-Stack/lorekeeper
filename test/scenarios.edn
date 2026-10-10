@@ -122,6 +122,56 @@ git commit -m \"feat: add DeviceStatusDto\"
   :workdir "."
   :expects ["Tier|proposed|Context|Consequences"]}
 
+ {:name "command-adr-list-spans-homes"
+  :prompt "/lore:adr list"
+  :workdir "."
+  :expects ["backend/ADR-0001" "kb/ADR-0001" "kb/ADR-0002"]}
+
+ {:name "command-adr-new-local-home-by-blast-radius"
+  :prompt "/lore:adr Validate backend commands with FluentValidation validators in the Application layer. Interview answers: the governed repo is backend; only the backend service is affected; switching libraries later would take an afternoon (two-way); it governs src/Application/**; no security, privacy, billing, legal or contract sensitivity. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["backend/docs/adr/0002-|backend/ADR-0002" "blast_radius: (local|service)" "id: backend/ADR-0002"]
+  :rejects ["lore/knowledge/adrs/0003-"]}
+
+ {:name "command-adr-new-shared-home-by-blast-radius"
+  :prompt "/lore:adr Orders publish an OrderCancelled event that payments and inventory both consume. Interview answers: it is a contract between three services (cross-service); hard to undo once consumers exist (one-way); it governs backend:src/Orders/**; it touches billing. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["lore/knowledge/adrs/0003-|kb/ADR-0003" "blast_radius: cross-service" "id: kb/ADR-0003"]
+  :rejects ["backend/docs/adr/0002-"]}
+
+ {:name "command-adr-accept-requires-named-decider"
+  :prompt "/lore:adr accept kb/ADR-0002. Do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["(?i)who is ratifying|named human|name (a|the) human|human decider|who (ratified|decided|is accepting)|named person|no decider (was )?named"]
+  :rejects ["(?i)decided_by: \\[\\s*\"?[A-Za-z]" "Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]"]}
+
+ {:name "command-adr-accept-refuses-agent-decider"
+  :prompt "/lore:adr accept kb/ADR-0002 by Claude. Do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["(?i)only a (named )?human (can|may) (ratify|accept|decide)|(?i)Claude\\b[^.]{0,60}(cannot|can't|can not|isn't|is not|may not|must not|never)|(?i)(agent|bot|AI|assistant)\\b.{0,80}(cannot|can't|can not|may not|must not|never|isn't|is not)[^.]{0,40}(ratify|accept|decide|a human)|(?i)(cannot|can't|may not|never)\\s+(be\\s+)?(ratif|accept|decid)[^.]{0,60}(agent|bot|AI|Claude)"]
+  :rejects ["(?i)decided_by: \\[\\s*\"?Claude" "Accepted \\d{4}-\\d{2}-\\d{2} by Claude"]}
+
+ {:name "command-adr-observe-appends-dated-entry"
+  :prompt "/lore:adr observe kb/ADR-0001 The payment provider now supports webhooks v2, so F2 no longer holds. No trigger fired. Do not ask me questions. Stop after presenting the observation: do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["Later observations" "(?m)^[\\s>]*[-*]\\s+\\**\\d{4}-\\d{2}-\\d{2}.*F2"]}
+
+ {:name "skill-adr-ratify-from-plain-words"
+  :prompt "Alex Doe approved kb/ADR-0002 — record that. Do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["(?i)Alex Doe" "status: accepted|Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe"]
+  :rejects ["(?i)decided_by: \\[\\s*\"?Claude"]}
+
+ {:name "skill-adr-what-binds-a-change"
+  :prompt "Which architecture decisions apply if I change src/Payments in the backend?"
+  :workdir "."
+  :expects ["kb/ADR-0001"]}
+
+ {:name "command-doctor-reports-adr-homes"
+  :prompt "/lore:doctor"
+  :workdir "."
+  :expects ["(?i)adr" "kb/ADR-0002"]}
+
  {:name "cultivate-bootstrap-prompts-for-purpose"
   :prompt "/lore:cultivate fresh-domain"
   :workdir "."

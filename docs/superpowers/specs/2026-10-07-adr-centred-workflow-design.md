@@ -86,36 +86,39 @@ Commands and agents resolve homes in this order:
    no KB), there is one home. Ids use the local prefix, and the validator skips the home check.
 
 **Governed repo** for a new local record: the git root of the CWD; when the CWD is the household
-root, `/lore:adr` asks which repo (the only "where" question, and only in that case).
+root, `/lore:adr` asks which repo (the only "where" question, and only in that case). A single
+repo's name, and so its id prefix, is the last path segment of its `origin` URL (minus `.git`),
+else the main worktree's directory name, else the git root's: a linked worktree's directory name
+never becomes an id prefix, so ids match what CI infers.
 
 **Other teams' shared KBs** (`shared_knowledge_bases`): their `adrs/` are read as binding context,
-ids `<kb-dir>/ADR-NNNN`, never edited (unchanged rule). `kb/` always means the team KB.
+ids `<kb-dir>/ADR-NNNN`, never edited (unchanged rule). `kb/` always means the team KB, so
+another KB's own `kb/` ids and references read as `<kb-dir>/`.
 
 ### Configuration
 
 `household.json` gains an optional `adr` block:
 
 ```json
-"adr": { "localDir": "docs/adr", "sharedDir": "adrs", "decisionOwners": [], "deciders": [] }
+"adr": { "localDir": "docs/adr", "sharedDir": "adrs" }
 ```
 
 plus a per-repo `repos[].adrDir` override. `.lorekeeper/config.json` accepts the same keys for
-single-repo setups. `decisionOwners` and `deciders` are people or code-host team handles; an empty
-list disables the matching check. Every key is optional, so the manifest schema version does not
+single-repo setups. Who approves a record is not configured: the PR names it and the team's
+review handles it. Every key is optional, so the manifest schema version does not
 change. `.lorekeeper/config.json` nests the same keys under `adr`.
 
 ## Identity and numbering
 
-- Files stay `NNNN-<problem-slug>.md`; the slug names the problem, never the answer.
+- Files stay `NNNN-<problem-slug>.md`; the slug names the problem, never the answer. A home may also hold a `README.md` (the folder's index on code hosts, ignored) and `_`-prefixed files (ignored); any other markdown file there is reported as a likely misnamed record, as a warning.
 - Ids are qualified by home: `<repo>/ADR-NNNN` for local records (`<repo>` = the manifest name,
   or the git-root directory name in a single repo), `kb/ADR-NNNN` for team-KB records. Titles keep
   bare `ADR-NNNN`; listings across homes show a Home column.
 - Numbers are per home, monotonically increasing, never reused. The validator fails a PR whose
   number already exists on the base branch; the unmerged PR renumbers (filename, `id`, inbound
   links). A merged number never changes.
-- A record moved between homes gets a new id in its new home, keeps its old id in `aliases:`, and
-  leaves a stub file at the old path (frontmatter `status` unchanged, `moved_to: <new id>`, body one
-  line). The stub replaces the record only once the new record is accepted.
+- Records do not move between homes. A record in the wrong home stays where it is, or is
+  superseded by a record in the right home.
 
 ## The record
 
@@ -142,7 +145,6 @@ depends_on: []
 related: []
 implements: []              # reserved: behaviour-spec rule ids
 rfc:                        # optional URL
-aliases: []
 ---
 
 # ADR-0007: <short title>
@@ -202,20 +204,20 @@ them; the human reviewer confirms, and a wrong classification is itself a review
 
 | | High tier | Otherwise |
 |---|---|---|
-| Who decides | `decided_by` ∩ `decisionOwners` ≠ ∅ | `decided_by` ∩ `deciders` ≠ ∅ (owners informed) |
+| Who decides | the PR names who should approve (the decider; the area's owners via the team's normal review); no mechanical check | the PR names who should approve (the decider); no mechanical check |
 | PR venue | its own ADR-only PR, merged as `accepted` before implementation PRs | may ride in the implementation PR |
-| Validator extras | ≥1 invalidation trigger, ≥2 considered options, `scope` non-empty | — |
+| Validator extras (not for `rejected` records) | ≥1 invalidation trigger, ≥2 considered options, `scope` non-empty | — |
 
 **Ride-along ratification.** A low-tier record in an implementation PR is drafted `proposed`.
-Before merge, once the decider has approved the PR, the author runs `/lore:adr accept NNNN` naming
-that approver; the record merges as `accepted` in the same PR. The validator enforces the
+Before merge, once the decider has approved the PR, the author tells Claude who approved it; the
+record merges as `accepted` in the same PR. The validator enforces the
 ordering: a PR that changes files matching a record's `scope` and adds that record must carry it
 as `accepted` by the time checks pass on the final commit.
 
 ## Lifecycle
 
 ```
-proposed ──(/lore:adr accept, naming a human)──► accepted ──► superseded | deprecated
+proposed ──(ratified, naming a human)──► accepted ──► superseded | deprecated
     └────────────────────────────────────────► rejected
 ```
 
@@ -224,7 +226,7 @@ proposed ──(/lore:adr accept, naming a human)──► accepted ──► su
   only); a proposal already on the default branch from before this rule is a grandfathered
   legacy proposal (see *The validator*), not a violation.
 - **accepted** — a named human ratified it. Agents never set `accepted` on their own initiative:
-  the only path is `/lore:adr accept` with the decider named by the user, which refuses an
+  the only path is a ratification with the decider named by the user, which refuses an
   agent-only identity. Acceptance **locks** the record (see *Amend or supersede*).
 - **rejected** — kept, merged, and retrievable, so agents do not re-propose dead options. Locked.
 - **superseded / deprecated** — locked.
@@ -241,8 +243,8 @@ checkable by the validator without judging meaning:
 
 | # | Allowed edit | What it looks like |
 |---|---|---|
-| 1 | **Status line** | One line appended to `## Status` per change (and the matching `status:` value), for a transition to `superseded` or `deprecated` (including `deprecated` → `superseded`), or a note such as "Supersession proposed by kb/ADR-0012" (a note sets no frontmatter). The line starts on a new line, never appended to the last sentence. Never a transition back to `proposed`. |
-| 2 | **Supersede link** | Setting `superseded_by:`, only in the change that moves `status` to `superseded` (1) or on a record already `superseded` whose link is empty, never changed once set; the successor it names must already be `accepted` (in the same PR within a home, or merged earlier across homes), and a non-empty `superseded_by` means `status: superseded` (and, for a move, replacing the file with its stub, which keeps the record's frontmatter and adds only `moved_to`, naming another home; the new record lists the old id in `aliases`). |
+| 1 | **Status line** | One line appended to `## Status` per change (and the matching `status:` value), for a transition to `superseded` or `deprecated` (including `deprecated` → `superseded`), or a note (a note sets no frontmatter). The line starts on a new line, never appended to the last sentence. Never a transition back to `proposed`. |
+| 2 | **Supersede link** | Setting `superseded_by:`, only in the change that moves `status` to `superseded` (1) or on a record already `superseded` whose link is empty, never changed once set; the successor it names must already be `accepted` (in the same PR within a home; across homes, merged first, which review checks), and a non-empty `superseded_by` means `status: superseded`; a transition to `superseded` sets it. |
 | 3 | **Later observation** | A dated entry appended at the end of `## Later observations`, starting on a new line; every top-level line appended is a bullet that starts with its date (indented lines continue the entry above). Earlier entries are never edited; a wrong one is corrected by a newer one. |
 | 4 | **Format and link repair** | Formatting only (the section text is identical after normalising whitespace, paired emphasis markers outside code spans, and list bullets), or a link target only: a markdown link's or aliased wikilink's target may change in any section, its text may not; a bare wikilink or autolink, whose target is its text, may change only in *See also*. |
 | 5 | **Schema backfill** | Adding a frontmatter key this design introduces (`id`, `reversibility`, `blast_radius`, `sensitivity`, `scope`, `decided_by`) that is absent or empty on the base, allowed only while the base record is unclassified (no `reversibility`): every classification key is filled in one PR, all-or-nothing. `id` must equal the value its home and filename imply. `decided_by` is not added over an existing `deciders` value. A filled value is never changed again. The body is untouched. |
@@ -265,11 +267,25 @@ How common situations map onto the rule:
 | The scope or classification was wrong | Superseding record |
 | The decision no longer applies and nothing replaces it | Status line (1): `deprecated` |
 | A broken link, a renamed file path in *See also*, mangled formatting | Repair (4) |
-| A record accepted before this design lacks `id` or classification | Backfill (5) |
+| A record accepted before this design lacks `id` or classification | Backfill (5), or convert it by rewriting in place (see *Legacy records*) |
 | A new record relates to or depends on an accepted one | Nothing: reverse links are computed (see *The validator*) |
 
 The validator enforces this mechanically: given `--base`, it diffs every locked record section by
 section and fails on any change outside the five allowed edits.
+
+**Legacy records** are records whose base copy has no frontmatter, or has frontmatter but no
+`reversibility` (unclassified). They predate this design. An unconverted legacy record with a
+locked status keeps the five-edit lock. One change may **convert** a legacy record: it classifies
+it and may rewrite anything in it, frontmatter and body, but its status moves only forward (as in
+edit 1) and the deciders it already records stay. A base with no frontmatter has its status only
+as prose in `## Status` and records no deciders: its conversion may map that prose to any settled
+status (accepted, rejected, deprecated, or superseded naming its successor), never to `proposed`. The converted record is
+validated as a full new-format record (description, tags, status, a named human in `decided_by`
+when ratified, classification, and the high-tier extras). Once its base copy is classified, the
+full lock applies. A legacy record the change leaves unclassified keeps the grandfathered
+warnings (see *The validator*). A legacy record whose `blast_radius` belongs in the other home may
+be converted where it sits (a warning), and stays there or is superseded by a record in the right
+home.
 
 **Observations** answer four things: when and where (date, PR or ticket), which statement
 (quoted, or a `F#` fact id), what is true now and its source, and what it means (no trigger fired
@@ -281,11 +297,16 @@ and the decision holds, or trigger X fired and a superseding record follows).
 never a moment when neither binds. A predecessor is never flipped to a successor that is not yet
 accepted, in either case.
 
-**Across homes** (local ⇄ shared, or between two repos' local homes), supersession and moves cannot be one PR. They run as a two-PR
-stack ordered by the `stack` skill: (1) the successor merges as accepted in its home, its Status
-line naming the follow-up; (2) the predecessor is flipped to `superseded` (or replaced by its
-stub, for a move) in the other home. Between the two merges both records are accepted; the
-architect treats the newer one as binding and reports the pair.
+**Across homes** (local ⇄ shared, or between two repos' local homes), supersession cannot be one
+PR. When the successor is accepted, both PRs are opened at once: the successor, accepted, in its
+home, and the predecessor's flip to `superseded` in the other home. The team merges the successor
+first (the `stack` skill shows the order). Between the two merges both records are accepted; the
+architect treats the newer one as binding and reports the pair. Each home's CI sees the other home
+only when it is on disk, so the cross-home link is a review responsibility, not a mechanical one.
+
+**Only an `accepted` or `deprecated` record can be superseded.** A `superseded` one points at
+its successor, which is the record to supersede; a `rejected` one is not revived by supersession
+but by a new record that lists it in `related` and says in its Context why the option is back.
 
 **Agent-drafted records** must not reference chat logs or sessions, must not attribute authorship
 to an AI, and must leave `decided_by` for the human to name.
@@ -330,22 +351,33 @@ collected from exemptions and fed back.
 
 ## The validator
 
-`scripts/adr-lint.js` (Node, no dependencies, cross-platform), with subcommands `check` and
-`select`. Run by the skill after every write, available as a pre-commit hook, and in CI.
+`scripts/adr-lint.js` (Node, no dependencies, cross-platform), with subcommands `check`,
+`select` (from a patch with `--diff`, or from planned paths with `--paths`), `backfill`, and three
+read-only helpers the commands use instead of re-deriving the rules in prose: `homes` (the
+resolved homes, the governed repo, and per home its `repoRoot` (the git toplevel holding it,
+`null` when not checked out), `relDir` (its path inside that repo) and the default branch read
+from that repo (`origin/HEAD` when set, else asked of origin with `git ls-remote --symref`, else
+`null`: unknown, never guessed from `origin/main` or `origin/master`; an unknown default branch
+refuses a ride-along and makes `own-pr` ask which branch to base on), as JSON; a KB folder inside a code repo reports the code repo), `index` (the catalogue across homes with computed
+reverse links, as a table or `--json`), and `next` (the next free number in a home, counting the
+base tip with `--base`). Run by the skill after every write, available as a pre-commit hook, and
+in CI.
 
-`check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>] [--strict] [--config
-<file>] <dir>`. The home is inferred from the path for any home the resolution above finds (a
+`check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>] [--strict] [--ci]
+<dir>`. A plain check reports the `proposed-shared` and ride-along findings, which are expected
+until the record is accepted, as warnings; `--ci` (the merge gate) makes them errors. CI always
+passes `--ci`. The home is inferred from the path for any home the resolution above finds (a
 household's homes, or a single repo's local home and its KB); a standalone KB checkout needs
 `--home shared`, and CI passes `--home` because the manifest is not checked out there. `--single-home`
-marks a repo with no KB (one coinciding home) when `--home` is passed; `--config` supplies
-`decisionOwners`/`deciders` where no manifest or config file is checked out. `--base` needs the
+marks a repo with no KB (one coinciding home) when `--home` is passed. `--base` needs the
 base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
 
 - frontmatter schema: required keys, enum values, inline values only;
 - id matches home and filename; number unique against `--base`;
-- home matches `blast_radius` (skipped for coinciding homes); `scope` syntax matches the home;
-- high-tier extras; `accepted` requires non-empty `decided_by`; owner/decider membership when
-  configured;
+- home matches `blast_radius` (skipped for coinciding homes): an error, except on a legacy record
+  (judged on its base copy, or on the record itself without a base), where it is a warning; `scope` syntax matches the home;
+- high-tier extras; `accepted` requires non-empty `decided_by` (any named human: who should
+  approve is named in the PR, not checked against a list);
 - relations resolve; references to another home are warnings when that home is not on disk or
   not resolvable without a manifest, errors when it is; no supersession cycles;
 - `supersedes` / `superseded_by` are symmetric within the home (edit 2 makes the reverse side
@@ -353,8 +385,12 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
   reverse links ("related from", "depended on by") are computed on read by `index`, the
   architect's catalogue load and `doctor`, never written into the target, so a new record never
   edits a locked one;
-- **locked-record diff rule:** given `--base`, a locked record may only differ by the five edits
-  in *Amend or supersede*;
+- **locked-record diff rule:** given `--base`, a record locked on the base (accepted or later,
+  and classified) may only differ by the five edits in *Amend or supersede*. A legacy record with
+  a locked status keeps that lock until a change converts it; the conversion is checked as a
+  new-format record whose status moves only forward (a frontmatter-less base may map to any
+  settled status, never `proposed`) and whose recorded deciders stay;
+- a transition to `superseded` names the successor in `superseded_by`;
 - given `--base`, a record locked on the base tip but not at the merge base (accepted on the base
   since this branch forked) must be unchanged from the merge base; any edit to it fails with
   "rebase onto <base>";
@@ -366,26 +402,44 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
 - ride-along rule (above), given `--base` and the PR's changed files.
 
 **Grandfathered records** are records unclassified (no `reversibility`) on the base branch whose
-status this change does not move, including legacy proposals. On them, a missing *or empty*
+status this change does not move and which it leaves unclassified, including legacy proposals. On them, a missing *or empty*
 classification field, `scope` or `decided_by` is a warning, and an error under `--strict`. On
 every other record it is an error (subject to the high-tier extras). An unclassified
 grandfathered record is treated as high tier wherever tier is read.
 
-A record locked on the base is only held to rules an allowed edit can satisfy; values the change writes are always checked.
+A record locked on the base, or a legacy record with a locked status that the change leaves
+unclassified, is only held to rules an allowed edit can satisfy; values the change writes are
+always checked.
 
 Exit non-zero with one line per violation (`path: rule: message`). Tests in
 `scripts/__tests__/adr-*.test.js`.
 
 ## Command and agent changes
 
-**`/lore:adr`** (`commands/adr.md`, `skills/lore-adr`)
-- Resolves homes as above; `new` derives the home from the interview's `blast_radius` answer.
-- Interview adds classification, `scope`, and facts relied on; the tier sets the PR shape.
-- `accept NNNN` requires the user to name the decider(s), refuses an agent-only identity, writes
-  `decided_by` and the ratification Status line, and checks the owner/decider rule.
-- New modes: `observe NNNN`, `lint` (runs the validator), `index` (renders the catalogue across all
-  homes on demand; never committed), `move NNNN` (cross-home move as a two-PR stack).
-- `discover` unchanged in shape; retrospective records arrive `proposed` and go through `accept`.
+**Front door: the `recording-decisions` skill.** The user says what they decided or what changed;
+the skill triggers on a hard-to-reverse choice surfacing, an approval or rejection, a changed
+fact, a replaced or dropped decision, "what applies to this change", or a request to list or
+discover. It shows the edit, confirms, then writes, and never ratifies on its own. `/lore:adr
+<plain words>` (`commands/adr.md`, `skills/lore-adr`) is the explicit shortcut: no subcommand
+grammar; an old leading keyword (`accept 0004 by X`) is plain text that happens to be clear.
+
+`commands/adr.md` picks one of these actions from the request (ambiguous → one question):
+- **record** — triage, interview (classification as one plain multiple choice), draft,
+  self-check, show, apply; the home follows `blast_radius`, the tier sets the PR shape.
+- **ratify** — accept or reject a proposal (legacy proposals included), naming the human
+  decider(s) and refusing an agent; accepting a legacy record converts it in the same change,
+  keeping its recorded deciders; a same-home accept flips the predecessor.
+- **note a change** — a dated observation on a locked record.
+- **replace** — a successor that supersedes an accepted or deprecated record, always in its own
+  PR; across homes, its acceptance opens the predecessor's flip PR at the same time.
+- **retire** — deprecate, naming a human, in its own PR.
+- **what binds** — `select --paths` and the architect's `bind` mode; read-only.
+- **list** — `adr-lint index` with relations; validation of every home is `/lore:doctor`.
+- **discover** — the architect's `survey`, drafted as proposals in one batch per home.
+
+There is no move, retire-to, alias or "Supersession proposed" note: a record in the wrong home
+stays or is replaced by one in the right home. A bare number resolves in the governed repo's local
+home first, then the shared home; when both have it the command asks.
 
 **`knowledge-updater` agent**
 - ADR schema: `id`, `decided_by` (reads `deciders`), the new fields, the *Facts relied on* and
@@ -394,15 +448,33 @@ Exit non-zero with one line per violation (`path: rule: message`). Tests in
 - Local-home records are written in the code repo, not the KB: a high-tier record gets its own
   branch off the repo's default branch (never the user's working branch); a low-tier ride-along is
   staged on the current branch when the user says so.
+- The updater decides the placement from where it finds the record and the user's preference:
+  `own-pr` (a new branch off the default branch, worked in a temporary git worktree so the user's
+  checkout is untouched), `pr-branch` (commit onto the open PR that carries the record — a
+  ratification of a proposal under review), or `ride-along` (stage on the user's current branch,
+  never commit). It runs `adr-lint check --base`
+  before committing and stops on any nonzero exit. Its check is a plain one (without
+  `--ci`), since a PR may still carry proposals; CI passes `--ci` and stays the merge gate.
+- A ride-along needs the user in the record's home repo on a non-default branch; otherwise the
+  change goes `own-pr`. `pr-branch` refuses a PR from a fork (`isCrossRepository`): its author
+  applies the edit.
+- One branch-name rule: `adr/<repo>-NNNN-<action>-<YYYYMMDD>` (KB:
+  `knowledge/adr-NNNN-<action>-<YYYYMMDD>`), `-2` if taken on the remote or locally, and nothing is
+  ever force-pushed.
+- The PR body names the decider(s) or who should approve; a high-tier record asks the area owners
+  to review. Its report says where the change landed.
 
 **`architect` agent**
 - Catalogue load greps every resolved local home, the team KB and shared KBs.
 - `bind` and `check` take the `select` output first, then synonym expansion.
-- `check` returns the four finding classes with severities; reports `rejected` and `superseded`
-  records in the area as "already ruled out" and in-flight cross-home pairs.
+- `check` returns the four finding classes (contradiction, fired trigger, stale fact, uncovered
+  choice); the review that dispatches it assigns their severities (Plan C). It reports `rejected`
+  and `superseded` records in the area as "already ruled out" and in-flight cross-home pairs.
+- With no tools beyond Glob, Grep and Read, the architect takes the catalogue (`adr-lint index
+  --json`) and `select` output from its caller, and falls back to resolving the homes itself.
 
 **`review`, `recording-decisions`, `brainstorming`, `writing-plans`, `doctor`** — the hooks above;
-`doctor` learns local homes and the qualified-id references.
+`doctor` learns local homes and the qualified-id references, and is where every home is validated.
 
 ## Migration from the current format
 
@@ -414,6 +486,9 @@ Exit non-zero with one line per violation (`path: rule: message`). Tests in
   records. Every change it makes is a schema backfill (edit 5), so the migration PR passes the
   locked-record diff rule. It never renames `deciders` to `decided_by` (a rename would change an
   existing value); the old key stays and is read.
+- Legacy records (no frontmatter, or unclassified) are converted by rewriting them in place into
+  the template (see *Legacy records* under *Amend or supersede*); the backfill only adds keys and
+  skips a record with no frontmatter.
 - Plan A (this validator, the template, and the optional migrate step) only adds, so it ships as
   a **minor** version. Release as a **major** version once Plan B lands and `accept` semantics
   change: the required `id` and the new `accept` rule change behaviour for existing users.
@@ -424,10 +499,12 @@ Three implementation plans, in order:
 
 - **A. Record format, homes and validator** — template, configuration and resolution, `adr-lint`
   `check` and `select`, tests, migrate step (no manifest schema change; see *Configuration*).
-- **B. Writing records** — `/lore:adr` modes, `knowledge-updater`, `architect` catalogue and
-  `select` integration, `doctor`.
-- **C. Workflow enforcement** — `review` severity mapping and escape hatch, `recording-decisions`,
-  `brainstorming` terminal state, `writing-plans` header, plan-compliance review.
+- **B. Writing records** — `/lore:adr` actions, `knowledge-updater`, `architect` catalogue and
+  `select` integration, `doctor`, and the `adr-lint` helpers they call (`homes`, `index`, `next`,
+  `select --paths`).
+- **C. Workflow enforcement** — `review` severity mapping (for the architect's four classes) and
+  escape hatch, `recording-decisions`, `brainstorming` terminal state, `writing-plans` header,
+  plan-compliance review.
 
 ## Testing
 

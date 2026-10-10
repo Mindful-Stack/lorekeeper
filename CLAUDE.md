@@ -20,7 +20,7 @@ bb test/run-tests.clj --filter "command-help"  # filter by name substring
 bb test/run-tests.clj --verbose                # show full output on failures
 ```
 
-The runner executes `claude --print` from a workspace root, passing `--plugin-dir` for this checkout so the scenarios exercise the working tree rather than the installed plugin. The workspace root defaults to the bundled fixture `test/fixtures/workspace/` (manifest plus a small KB with `payments`/`inventory`/`device` domains); `--workspace-root` and `--plugin-dir` override it.
+The runner executes `claude --print` from a workspace root, passing `--plugin-dir` for this checkout so the scenarios exercise the working tree rather than the installed plugin. The workspace root defaults to a fresh copy of the bundled fixture `test/fixtures/workspace/` (manifest plus a small KB with `payments`/`inventory`/`device` domains), made in a temp directory outside any git repo for each run and deleted afterwards; `--workspace-root` (used in place) and `--plugin-dir` override it.
 
 ### Init-script tests (Node)
 
@@ -70,8 +70,10 @@ There is deliberately **no build step and no generated catalogue**. Frontmatter 
 
 The one deliberate exception is `scripts/adr-lint.js`: ADR validation has to run in CI and as a
 pre-commit hook, where Claude is not present, and it has to give the same answer every time. It
-validates and selects; it never generates a catalogue, and nothing reads its output back into
-the knowledge base.
+validates and selects, and its read-only helpers (`homes`, `index`, `next`) give the ADR command
+and agents the same answer the validator would: where the homes are, what the catalogue holds
+with its reverse links, which number is next. It never writes a catalogue, and nothing reads its
+output back into the knowledge base.
 
 ### Layer priority for knowledge
 
@@ -86,7 +88,7 @@ Whenever multiple knowledge sources address the same topic, the agreed priority 
 
 Hypothesis-confidence learnings never override; they're supplementary.
 
-Accepted ADRs (`adrs/`, `status: accepted`) sit outside the ladder: they are constraints, not standards, and no standard overrides one. Retrieval is the read-only `architect` agent (`bind` / `survey` / `check`), which pattern-identifier, brainstorming, and review dispatch in parallel with their usual agent; the reader and answerer stay ADR-agnostic. Authoring is `/lore:adr`; accepted records are immutable and the knowledge-updater agent refuses body edits to them.
+Accepted ADRs (in each code repo's `docs/adr/` local home and the KB's `adrs/` shared home, `status: accepted`) sit outside the ladder: they are constraints, not standards, and no standard overrides one. Retrieval is the read-only `architect` agent (`bind` / `survey` / `check`), which pattern-identifier, brainstorming, and review dispatch in parallel with their usual agent; the reader and answerer stay ADR-agnostic. Authoring is `/lore:adr`; accepted records are immutable and the knowledge-updater agent refuses body edits to them.
 
 ### Skill router vs. user-installed superpowers
 

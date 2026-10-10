@@ -83,7 +83,7 @@ Always display available commands:
 
 | Command | Description |
 |---------|-------------|
-| `/lore:adr [title\|list\|accept NNNN\|supersede NNNN\|discover]` | Record, list, accept, supersede, or discover architecture decision records |
+| `/lore:adr <what you decided or what changed>` | Architecture decision records in plain words: record a decision, say who approved it, note a change, replace or retire one, ask what binds a change, list, or discover |
 | `/lore:cultivate` | Cultivate a bounded-context domain — with arg: bootstrap/refine/audit; without arg: discover candidates + audit existing |
 | `/lore:doctor` | Run full workspace + KB diagnostic |
 | `/lore:explore [query]` | Browse and search knowledge nodes |
@@ -105,7 +105,7 @@ Always display available commands:
 | Frameworks | `frameworks/` | Framework-specific patterns |
 | Domain | `domain/` | Business domain contexts |
 | Learnings | `learnings/` | Team-captured gotchas, edge cases, and tribal knowledge |
-| ADRs | `adrs/` | Architecture decision records — numbered, one decision each, immutable once accepted (`/lore:adr`) |
+| ADRs | `adrs/` (and each repo's `docs/adr/`) | Architecture decision records — numbered per home, one decision each, locked once a named human accepts them (`/lore:adr`) |
 
 ## Available Skills (Auto-Triggered)
 
@@ -131,5 +131,5 @@ Always display available commands:
 2. **Need domain context?** → `/lore:prime <your-domain>`
 3. **Looking for something?** → `/lore:explore <topic>`
 4. **Review your work?** → `/lore:review`
-5. **Made a hard-to-reverse call?** → `/lore:adr <title>` (or `/lore:adr discover` for the ones already in the code)
+5. **Made a hard-to-reverse call?** → `/lore:adr <what you decided>` (or ask it to find the decisions already in the code)
 ```

@@ -76,6 +76,24 @@ validator treats them as grandfathered (warnings, not errors), so this step is o
 adds the missing keys without changing anything else, which is the *schema backfill* edit a
 locked record allows.
 
+**Legacy records** are the records this step is about: their copy on the default branch has no
+`reversibility` (unclassified), or no frontmatter at all. The rules for them:
+
+- **Converting** one rewrites it into the template, frontmatter and body, once, in one change
+  that classifies it. The result must meet every rule of a new record (description, tags, a named
+  human in `decided_by` when ratified, classification, the high-tier extras). The conversion keeps
+  the record's status moving only forward (never back to `proposed`; `accepted` may become only
+  `superseded` or `deprecated`) and keeps the deciders it records. A record with no frontmatter
+  has its status only as prose in `## Status`, so its conversion may map it to any settled status
+  (accepted, rejected, deprecated, or superseded with a named successor), never to `proposed`. Accepting a legacy
+  proposal through `/lore:adr` converts it in the same change.
+- **Until converted**, a legacy record with a locked status (`accepted`, `rejected`,
+  `superseded`, `deprecated`) is locked: it changes only by the five edits, the backfill among
+  them. After this step an unclassified accepted record stays locked until it is converted.
+- **Once the classified copy is on the default branch,** the full lock applies.
+- A legacy record whose `blast_radius` belongs in the other home only warns: it stays where it
+  is, or is replaced by a record in the right home.
+
 1. **Find the homes:** the team KB's shared home (`<team-knowledge-path>/adrs`) and the local
    home of every repo present on disk (`<repo>/docs/adr`, or the manifest's `adrDir` /
    `adr.localDir`). Skip homes that do not exist.
@@ -88,17 +106,20 @@ locked record allows.
 3. **Show the combined list and ask** whether to apply it. On no, go to Step 7.
 4. **Per repo that has changes:** check `git -C <repo> status --porcelain -- <home-dir>` is
    empty (stop for that repo if not), create a branch `chore/adr-backfill` from the repo's
-   default branch, run the same command without `--dry-run`, then verify:
+   default branch, run the same command without `--dry-run` (it skips a record with no
+   frontmatter: `skipped: no frontmatter: convert it by rewriting`; such a record is converted
+   by rewriting it in place, as above), then verify:
    ```bash
    node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check --base <default-branch> <home-dir>
    ```
    Expected: exit 0 with `warning:` lines only. Any error means stop and report it, never
    commit.
-5. **List legacy proposals in the shared home** (`status: proposed` on the default branch, which the old `accept` rule allowed). The backfill leaves them alone and prints `skipped: proposed (classify on accept)` for each. They are warnings now, but a human must accept or reject each one: say which, and point at `/lore:adr accept NNNN`. Accepting one requires classifying it in the same change.
+5. **List legacy proposals in the shared home** (`status: proposed` on the default branch, which the old `accept` rule allowed). The backfill leaves them alone and prints `skipped: proposed (classify on accept)` for each. They are warnings now, but a human must accept or reject each one: say which, by qualified id (`kb/ADR-NNNN`), and that telling Claude who approved it (`/lore:adr kb/ADR-NNNN approved by <name>`) classifies and accepts it in one change. CI's `check --ci` fails a proposal it touches.
 6. **Offer to commit and open a PR** per repo (`chore: backfill ADR ids and classification
    keys`). Never commit to the default branch; the KB's main is protected. Filling in the
    classification values is a human review step for each record: say so, and that the values
-   can be filled once, in one PR per record, while the record is still unclassified.
+   can be filled once, in one PR per record, while the record is still unclassified. Classifying
+   a record converts it (see *Legacy records* above).
 
 ### Step 7: Optional tooling refresh
 

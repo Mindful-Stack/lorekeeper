@@ -5,7 +5,7 @@
 // mechanical; none judges whether a sentence kept its meaning.
 
 const { parseRecord, decodeBlock, sections, isEmpty } = require('./frontmatter');
-const { BACKFILL_KEYS, isUnclassified, decidedBy } = require('./records');
+const { BACKFILL_KEYS, isUnclassified, decidedBy, baseStatus } = require('./records');
 
 const APPEND_ONLY = new Set(['Status', 'Later observations']);
 const DATED_ENTRY = /^[-*+]\s+\**\s*\d{4}-\d{2}-\d{2}/;
@@ -16,10 +16,11 @@ const STATUS_MOVES = { accepted: ['superseded', 'deprecated'], deprecated: ['sup
 // wikilink has text apart from its target, so its target may change in any section. A bare
 // wikilink or autolink is its own text, so its target may change only in *See also*, where a
 // renamed file path is the expected repair.
+// A `*` or `**` next to a `/` is a glob (src/**/x), never emphasis.
 const EMPHASIS = [
-    /(^|[^A-Za-z0-9_*])\*\*(?=\S)([^\n]*?\S)\*\*(?![A-Za-z0-9_*])/g,
+    /(^|[^A-Za-z0-9_*/])\*\*(?=[^\s/])([^\n]*?[^\s/])\*\*(?![A-Za-z0-9_*/])/g,
     /(^|[^A-Za-z0-9_])__(?=\S)([^\n]*?\S)__(?![A-Za-z0-9_])/g,
-    /(^|[^A-Za-z0-9_*])\*(?=[^\s*])([^*\n]*?[^\s*])?\*(?![A-Za-z0-9_*])/g,
+    /(^|[^A-Za-z0-9_*/])\*(?=[^\s*/])([^*\n]*?[^\s*/])?\*(?![A-Za-z0-9_*/])/g,
     /(^|[^A-Za-z0-9_])_(?=[^\s_])([^_\n]*?[^\s_])?_(?![A-Za-z0-9_])/g,
 ];
 
@@ -90,15 +91,6 @@ function lockedDiff(baseText, curText) {
     const c = parseRecord(curText);
     const out = [];
 
-    // Edit 2, move: the file becomes a stub pointing at its new id.
-    if (isEmpty(b.fm.moved_to) && !isEmpty(c.fm.moved_to)) {
-        for (const key of new Set([...b.order, ...c.order])) {
-            if (key !== 'moved_to' && !same(b.fm[key], c.fm[key])) out.push(`a moved record keeps its frontmatter; ${key} changed`);
-        }
-        if (nonBlankLines(c.body) > 1) out.push('a moved record is a stub with a one-line body');
-        return out;
-    }
-
     const backfillOpen = isUnclassified(b.fm);
     const keys = [...new Set([...b.order, ...b.blockKeys, ...c.order])];
     for (const key of keys) {
@@ -113,7 +105,7 @@ function lockedDiff(baseText, curText) {
         const cv = c.fm[key];
         if (same(bv, cv)) continue;
         if (key === 'status') {
-            if (!(STATUS_MOVES[bv] || []).includes(cv)) {
+            if (!transitionAllowed(bv, cv)) {
                 out.push(`status ${bv} -> ${cv} is not an allowed transition`);
             }
         } else if (key === 'superseded_by') {
@@ -185,10 +177,41 @@ function lockedDiff(baseText, curText) {
             out.push('each later observation is a bullet that starts with its date');
         }
     }
+    out.push(...successorNamed(b.fm, c.fm));
     if (!same(b.fm.status, c.fm.status) && !statusGrew) {
         out.push('a status transition needs a line appended to ## Status');
     }
     return out;
 }
 
-module.exports = { lockedDiff, normaliseForRepair };
+function transitionAllowed(from, to) {
+    return same(from, to) || (STATUS_MOVES[from] || []).includes(to);
+}
+
+// A predecessor is never left superseded by nothing. One already superseded on the base with
+// an empty link (a legacy record) is left as it was.
+function successorNamed(bfm, cfm) {
+    return bfm.status !== 'superseded' && cfm.status === 'superseded' && isEmpty(cfm.superseded_by)
+        ? ['a transition to superseded sets superseded_by to the accepted successor'] : [];
+}
+
+// The change that classifies a legacy record with a locked status may rewrite its body, but
+// its status moves only forward and the deciders it already records stay.
+// A base with no frontmatter takes its status from its Status section and records no deciders.
+function conversionDiff(baseText, curText) {
+    const parsed = parseRecord(baseText);
+    const b = { ...parsed.fm, status: baseStatus(parsed) };
+    const c = parseRecord(curText).fm;
+    const out = [];
+    // A record with no frontmatter carries its status as prose ("Superseded by the MVP approach"),
+    // so its conversion may map it to any settled status; it may never be reopened as a proposal.
+    const freeMapping = !parsed.found && c.status !== 'proposed';
+    if (!freeMapping && !transitionAllowed(b.status, c.status)) out.push(`status ${b.status} -> ${c.status} is not an allowed transition`);
+    // Prose gives no successor link, so a superseded result must name one either way.
+    out.push(...successorNamed(parsed.found ? b : { ...b, status: undefined }, c));
+    const was = decidedBy(b);
+    if (was.length && !same(was, decidedBy(c))) out.push('decided_by cannot replace the deciders already recorded');
+    return out;
+}
+
+module.exports = { lockedDiff, conversionDiff, normaliseForRepair };

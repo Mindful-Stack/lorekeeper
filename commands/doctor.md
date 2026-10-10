@@ -1,5 +1,5 @@
 ---
-description: Full workspace + KB diagnostic. Reports manifest issues, sibling presence, KB frontmatter, broken wikilinks, and orphans.
+description: Full workspace + KB diagnostic. Reports manifest issues, sibling presence, KB frontmatter, broken wikilinks, orphans, and the health of every ADR home.
 ---
 
 # Doctor Command
@@ -66,7 +66,58 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/migrate-manifest.js --dry-run --dir=<workspac
 
 This step never writes — it only reports. `/lore:migrate` is the writer.
 
-### Step 5: Render the output
+### Step 5: Check the ADR homes (read-only)
+
+Architecture decision records live in each code repo's local home (`docs/adr/` unless configured)
+and in the team KB's shared home. Resolve them:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js homes
+```
+
+This is the one place every home is validated. For the local homes and the shared home with
+`exists: true` (not `otherKbs`: other teams' KBs are theirs to check), run the validator without a
+base (doctor diffs nothing; a plain check reports open proposals as warnings, where CI's `--ci`
+fails them):
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js check <home flags> <home-dir>
+```
+
+`<home flags>` are `--home shared` for the shared home, and `--home local --repo <repo>` (the
+home's `repo`) for a local home, plus `--single-home` when `homes` reports it as `coinciding`.
+Spelt out, the check never has to re-resolve the homes from inside a KB that sits outside the
+code repo.
+
+Report per home: the number of records, errors and warnings, grouped by rule. Then:
+
+- **Errors** (exit 1) — print each `path: rule: message` line. A `relations` error is one of: a
+  relation whose id (`kb/ADR-0004`, `api/ADR-0002`) resolves nowhere or is not a qualified id (a
+  renumbered or deleted record, or a typo); a supersession that is not symmetric (`superseded_by`
+  set on one record while its successor does not list it in `supersedes`); or a flip left undone
+  (an accepted record whose predecessor in the same home is not yet `superseded` by it, or a
+  `superseded_by` without `status: superseded`).
+- **Warnings on records from before the ADR-centred format** (`id`, `reversibility` or the other
+  classification keys missing) — one summary line per home, suggesting `/lore:migrate` for the
+  backfill. Do not list every record.
+- **Records in the wrong home** (`home` warnings: a `blast_radius` that belongs in the other home,
+  such as a legacy cross-service record converted in a local home) — list each by qualified id:
+  "consider replacing it with a record in the right home, or leave it where it is".
+- **Open proposals** (`proposed-shared` warnings in the shared home) — list each by its
+  qualified id (`kb/ADR-NNNN`, from its home and number): each needs a named human to accept or
+  reject it ("tell Claude who approved kb/ADR-NNNN"). Call one a *legacy*
+  proposal only when it is also unclassified (no `reversibility`): the KB checkout may simply be
+  on a branch carrying a fresh one.
+- **Repos not checked out** (`present: false`) — name them: their local records could not be
+  checked, and references into them show up as warnings, not errors.
+- A home that does not exist yet is not a problem: say "no records yet".
+
+Name records by qualified id everywhere in this report (`kb/ADR-0002`, `api/ADR-0001`): a bare
+`ADR-0002` is ambiguous when two homes both have one.
+
+If `homes` reports no local home and no shared home (no household, no git repo), skip this step.
+
+### Step 6: Render the output
 
 Display the tool's output verbatim. If there are errors (exit code 1):
 
@@ -75,11 +126,12 @@ Display the tool's output verbatim. If there are errors (exit code 1):
 - For missing sibling errors: print `make setup` as the suggested fix.
 - For a node missing `title`/`description`/`tags`: print the file and the missing field — the node is invisible to frontmatter search until it has all three.
 
-### Step 6: Exit cleanly
+### Step 7: Exit cleanly
 
 End the response with a one-line summary: "X errors, Y warnings. <suggested next step or 'All clear.'>"
+Count the ADR findings from Step 5 in the totals.
 
 ## Notes
 
-- /lore:doctor never modifies files. It's read-only. This includes schema drift: doctor reports it but never applies it — `/lore:migrate` is the writer.
+- /lore:doctor never modifies files. It's read-only. This includes schema drift and ADR backfills: doctor reports them but never applies them — `/lore:migrate` is the writer.
 - The diagnostic tool lives in the witan-household template under `lore/_tools/`. If the user's workspace was created before the tooling was added, `cli.js doctor` won't exist; in that case, suggest they adopt the current witan-household template, which ships it.

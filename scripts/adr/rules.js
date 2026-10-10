@@ -2,19 +2,17 @@
 
 const { isEmpty, asList, parseRecord, decodeBlock, sections } = require('./frontmatter');
 const { matchesGlob } = require('./glob');
-const { lockedDiff } = require('./locked');
+const { lockedDiff, conversionDiff } = require('./locked');
 const R = require('./records');
 
 const SHARED_SCOPE = /^[A-Za-z0-9._-]+:[^:]/;
 const PREFIXED = /^[A-Za-z0-9._-]+:/;
 const TIER_KEYS = ['reversibility', 'blast_radius', 'sensitivity'];
 const RELATION_KEYS = ['supersedes', 'depends_on', 'related', 'superseded_by'];
+// The fix for a record that needs a named human's approval.
+const nextStep = (id) => ` — record a named human's approval: \`/lore:adr accept ${id} by <name>\` (or tell Claude who approved it)`;
 // Sections a rule can ask for (the high-tier extras).
 const RULE_SECTIONS = ['Considered options', 'Assumptions and invalidation triggers'];
-
-function handle(s) {
-    return String(s).trim().replace(/^@/, '').toLowerCase();
-}
 
 function countBullets(content) {
     return content === null ? 0 : content.split('\n').filter((l) => /^[-*+]\s/.test(l)).length;
@@ -33,27 +31,39 @@ function same(a, b) {
     return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
 }
 
-// Grandfathered: written before this design classified records, and not being moved through
-// its lifecycle in this change. Without a base the record's own state stands in, so a local
-// run may warn where CI with --base fails.
+// Grandfathered: written before this design classified records, and neither moved through
+// its lifecycle nor classified in this change. Without a base the record's own state stands
+// in, so a local run may warn where CI with --base fails.
 function grandfathered(record, baseText) {
-    if (baseText === undefined) return R.isUnclassified(record.fm);
+    if (!R.isUnclassified(record.fm)) return false;
+    if (baseText === undefined) return true;
     if (baseText === null) return false;
     const b = parseRecord(baseText).fm;
     return R.isUnclassified(b) && b.status === record.fm.status;
 }
 
+// Locked: ratified or declined, and classified. A legacy record (no frontmatter, or none of this
+// design's classification) is not: the change that classifies it may rewrite it in place, within
+// conversionDiff; until then a legacy record with a locked status takes only the five edits.
+function isLocked(parsed) {
+    return parsed.found && R.LOCKED.has(parsed.fm.status) && !R.isUnclassified(parsed.fm);
+}
+
 // What the base says about one record. `frozen` decides how a finding the record cannot fix
 // is reported: a record locked on the base changes only by the five allowed edits, so a finding
 // about a key or section the change leaves as it was is skipped (it would block every later
-// change to the home), while a value the change writes is always checked. Without a base, a
-// locked status stands in and every such finding is a warning.
+// change to the home), while a value the change writes is always checked. A legacy record with
+// a locked status is frozen the same way until a change classifies it; from then on it is
+// checked in full. Without a base, a locked status stands in and every such finding is a warning.
 function describe(r, ctx) {
     const baseText = ctx.base ? ctx.base.textAt(r.name) : undefined;
     const b = baseText ? parseRecord(baseText) : null;
-    const lockedOnBase = !!b && R.LOCKED.has(b.fm.status);
+    const lockedOnBase = !!b && isLocked(b);
+    const legacyOnBase = !!b && (!b.found || R.isUnclassified(b.fm));
+    const legacyLockedOnBase = legacyOnBase && R.LOCKED.has(R.baseStatus(b));
+    const frozenOnBase = lockedOnBase || (legacyLockedOnBase && R.isUnclassified(r.fm));
     const keys = new Set();
-    if (lockedOnBase) {
+    if (frozenOnBase) {
         for (const k of new Set([...Object.keys(b.fm), ...Object.keys(r.fm), ...R.KNOWN_KEYS])) {
             if (same(b.fm[k], r.fm[k])) keys.add(k);
         }
@@ -64,13 +74,15 @@ function describe(r, ctx) {
         for (const h of RULE_SECTIONS) if (!present.has(h)) keys.add(`§${h}`);
     }
     let mode = 'none';
-    if (lockedOnBase) mode = 'base';
+    if (frozenOnBase) mode = 'base';
     else if (!ctx.base && R.LOCKED.has(r.fm.status)) mode = 'warn';
     return {
         baseText,
         baseFm: b ? b.fm : null,
         baseBlockRaw: b ? b.blockRaw : {},
         lockedOnBase,
+        legacyOnBase,
+        legacyLockedOnBase,
         // On the base and identical to it, whatever its status: this change did not cause a
         // finding here.
         untouched: !!baseText && lf(baseText) === lf(r.text),
@@ -82,8 +94,8 @@ function describe(r, ctx) {
 // ctx:
 //   home        { kind: 'local'|'shared', prefix, coinciding }
 //   records     loadHome(...).records       strays   loadHome(...).strays
-//   config      { decisionOwners: [], deciders: [] }
-//   strict      boolean
+//   strict      boolean   (grandfathered findings are errors)
+//   ci          boolean   (the merge gate: proposed-shared and ride-along are errors)
 //   resolveRef  (qualifiedId) -> { state: 'found'|'missing'|'unavailable', fm? }  (other homes only)
 //   base        null, or {
 //                 ref          string             (the base ref as given)
@@ -124,9 +136,9 @@ function checkRecord(home, r) {
     const info = home.info.get(r);
     const { baseText, lockedOnBase, gf, frozen, untouched } = info;
     // A record the change leaves as it was cannot be blamed on it: its parse errors warn. So
-    // does a block key a locked record keeps as it was in a form decodeBlock cannot read:
-    // lockedDiff requires it byte-identical, so no allowed edit could clear the error.
-    const stuck = (key) => lockedOnBase && key !== null && r.blockRaw && r.blockRaw[key]
+    // does a block key a frozen record keeps as it was in a form decodeBlock cannot read: only
+    // a conversion of a legacy record could clear it, and lockedDiff forbids it once locked.
+    const stuck = (key) => frozen.mode === 'base' && key !== null && r.blockRaw && r.blockRaw[key]
         && !decodeBlock(r.blockRaw[key]).ok && same(r.blockRaw[key], info.baseBlockRaw[key]);
     r.errors.forEach((e, i) => (untouched || stuck(r.errorKeys[i]) ? warn : err)(r.file, 'frontmatter', e));
     if (r.errors.length && Object.keys(fm).length === 0) return;
@@ -141,14 +153,11 @@ function checkRecord(home, r) {
         else fix(keys, rule, message);
     };
 
-    if (lockedOnBase) for (const m of lockedDiff(baseText, r.text)) err(r.file, 'locked', m);
-
-    // A moved record is a stub pointing at its new id in another home, which names the
-    // old id in its aliases.
-    if (!isEmpty(fm.moved_to)) {
-        if (!info.baseFm || !same(info.baseFm.moved_to, fm.moved_to)) checkMove(home, r, info);
-        return;
-    }
+    // A legacy record with a locked status changes by the five edits until a change classifies
+    // it; that change may rewrite it, within conversionDiff.
+    const diff = lockedOnBase || (info.legacyLockedOnBase && R.isUnclassified(fm)) ? lockedDiff
+        : info.legacyLockedOnBase ? conversionDiff : null;
+    if (diff) for (const m of diff(baseText, r.text)) err(r.file, 'locked', m);
 
     // Schema.
     for (const key of ['title', 'description', 'tags', 'status', 'date']) {
@@ -171,7 +180,7 @@ function checkRecord(home, r) {
     for (const s of asList(fm.sensitivity)) {
         if (!R.SENSITIVITY.includes(s)) fix(['sensitivity'], 'schema', `sensitivity tag ${s} must be one of ${R.SENSITIVITY.join(', ')}`);
     }
-    for (const key of ['scope', 'sensitivity', 'depends_on', 'related', 'implements', 'aliases', 'decided_by', 'consulted']) {
+    for (const key of ['scope', 'sensitivity', 'depends_on', 'related', 'implements', 'decided_by', 'consulted']) {
         if (fm[key] !== undefined && fm[key] !== '' && !Array.isArray(fm[key])) fix([key], 'schema', `${key} must be an inline list`);
     }
     if (isEmpty(fm.id)) need(['id'], 'schema', 'id is required');
@@ -181,7 +190,7 @@ function checkRecord(home, r) {
     if (!('scope' in fm)) need(['scope'], 'schema', 'scope is required (use [] when the record governs no paths)');
 
     // Identity.
-    const { home: h, config } = ctx;
+    const { home: h } = ctx;
     const expected = R.impliedId(h.prefix, r.number);
     if (!isEmpty(fm.id) && fm.id !== expected) fix(['id'], 'id', `id must be ${expected} (home and filename)`);
     if (!isEmpty(fm.title) && !String(fm.title).startsWith(`ADR-${r.number}:`)) fix(['title'], 'id', `title must start with "ADR-${r.number}:"`);
@@ -191,7 +200,11 @@ function checkRecord(home, r) {
         const allowed = h.kind === 'shared' ? R.SHARED_BLAST : R.LOCAL_BLAST;
         if (!allowed.has(fm.blast_radius)) {
             const want = h.kind === 'shared' ? 'local home' : 'shared home';
-            fix(['blast_radius'], 'home', `blast_radius ${fm.blast_radius} belongs in the ${want}`);
+            // A legacy record converted where it sits may stay there, or be refiled by a record in
+            // the right home that supersedes it; a new or classified one is written in the right home.
+            const legacy = info.legacyOnBase || (baseText === undefined && R.isUnclassified(fm));
+            if (legacy) warn(r.file, 'home', `blast_radius ${fm.blast_radius} belongs in the ${want}; leave it here, or supersede it with a record there`);
+            else fix(['blast_radius'], 'home', `blast_radius ${fm.blast_radius} belongs in the ${want}`);
         }
     }
     for (const s of asList(fm.scope)) {
@@ -203,9 +216,10 @@ function checkRecord(home, r) {
         }
     }
 
-    // Tier extras and deciders. Grandfathered records are exempt: they predate tiers.
+    // Tier extras and decided_by. Grandfathered records are exempt: they predate tiers. A rejected
+    // record is exempt from the extras: a declined proposal need not be completed to be declined.
     const high = R.isHighTier(fm);
-    if (high && !gf) {
+    if (high && !gf && fm.status !== 'rejected') {
         const triggers = 'Assumptions and invalidation triggers';
         const options = 'Considered options';
         if (countTriggers(R.section(r, triggers)) < 1) fix([`§${triggers}`, ...TIER_KEYS], 'high-tier', 'needs at least one invalidation trigger');
@@ -214,21 +228,15 @@ function checkRecord(home, r) {
     }
     const deciders = R.decidedBy(fm);
     if (R.RATIFIED.has(fm.status)) {
-        if (deciders.length === 0) need(['decided_by', 'deciders'], 'decided-by', `${fm.status} requires a named human in decided_by`);
-        const pool = asList(high ? config.decisionOwners : config.deciders);
-        if (!gf && deciders.length && pool.length) {
-            const allowed = new Set(pool.map(handle));
-            if (!deciders.some((d) => allowed.has(handle(d)))) {
-                fix(['decided_by', 'deciders', ...TIER_KEYS], 'decided-by', `decided_by must include one of the ${high ? 'decisionOwners' : 'deciders'}: ${pool.join(', ')}`);
-            }
-        }
+        // Who should approve is not configured: the PR names it and the team's review handles it.
+        if (deciders.length === 0) need(['decided_by', 'deciders'], 'decided-by', `${fm.status} requires a named human in decided_by${nextStep(home.ownId(r))}`);
     }
 
     // Relations. On a record locked on the base only a newly set superseded_by can change; a
     // reference it keeps is still checked, so deleting its target is caught, but a reference
     // already broken on the base only warns.
     for (const key of RELATION_KEYS) {
-        const kept = lockedOnBase && frozen.keys.has(key);
+        const kept = frozen.mode === 'base' && frozen.keys.has(key);
         for (const ref of asList(fm[key])) checkRef(home, r, ref, key, kept);
     }
     if (!isEmpty(fm.superseded_by)) {
@@ -237,12 +245,13 @@ function checkRecord(home, r) {
         if (newlySet) checkSuccessorAccepted(home, r);
     }
 
-    // An unchanged legacy proposal on the default branch predates this rule: warn only.
+    // A warning except in the merge gate (--ci), where a proposal this change adds or edits
+    // fails; an unchanged legacy proposal on the default branch predates this rule.
     if (h.kind === 'shared' && !h.coinciding && fm.status === 'proposed') {
         const touched = ctx.base && (baseText === null || lf(baseText) !== lf(r.text));
         home.out.push({
-            file: r.file, rule: 'proposed-shared', level: touched ? 'error' : 'warning',
-            message: 'a shared-home record merges only as accepted or rejected',
+            file: r.file, rule: 'proposed-shared', level: touched && ctx.ci ? 'error' : 'warning',
+            message: `a shared-home record merges only as accepted or rejected${nextStep(home.ownId(r))}`,
         });
     }
 }
@@ -252,7 +261,8 @@ function checkAcrossRecords(home) {
     const { ctx, err, between, ownId, byId } = home;
     const { records, home: h } = ctx;
     for (const file of ctx.strays || []) {
-        err(file, 'filename', 'record files are named NNNN-<problem-slug>.md (prefix with _ to exclude)');
+        // Likely a misnamed record, but nothing a merge needs to wait for.
+        home.warn(file, 'filename', 'record files are named NNNN-<problem-slug>.md (prefix with _ to exclude)');
     }
 
     const byNumber = new Map();
@@ -275,7 +285,7 @@ function checkAcrossRecords(home) {
                 const message = `superseded_by ${succ}, but ${succ} does not list ${ownId(r)} in supersedes`;
                 // A locked, untouched successor with no supersedes at all is a legacy record that
                 // can never gain the key; linking its predecessor is still right, so this warns.
-                if (home.info.get(s).lockedOnBase && home.info.get(s).untouched && isEmpty(s.fm.supersedes)) home.warn(r.file, 'relations', message);
+                if (home.info.get(s).untouched && R.LOCKED.has(s.fm.status) && isEmpty(s.fm.supersedes)) home.warn(r.file, 'relations', message);
                 else between([r, s], r.file, 'relations', message);
             }
         }
@@ -315,7 +325,7 @@ function checkAgainstBase(home) {
     for (const r of records) {
         const tip = base.tipTextAt ? base.tipTextAt(r.name) : null;
         const info = home.info.get(r);
-        if (!tip || info.lockedOnBase || !R.LOCKED.has(parseRecord(tip).fm.status)) continue;
+        if (!tip || info.lockedOnBase || !isLocked(parseRecord(tip))) continue;
         if (info.baseText === null || lf(info.baseText) !== lf(r.text)) {
             err(r.file, 'locked', `accepted on ${base.ref} since this branch forked; rebase onto ${base.ref}`);
         }
@@ -323,27 +333,33 @@ function checkAgainstBase(home) {
     const names = new Set(records.map((r) => r.name));
     for (const name of base.baseNames) {
         if (names.has(name)) continue;
-        const b = parseRecord(base.textAt(name) || '').fm;
-        if (R.LOCKED.has(b.status)) {
+        // A frontmatter-less legacy record carries its status in ## Status.
+        if (R.LOCKED.has(R.baseStatus(parseRecord(base.textAt(name) || '')))) {
             err(name, 'locked', 'a locked record is never deleted or renamed');
             continue;
         }
         const tip = base.tipTextAt ? base.tipTextAt(name) : null;
-        if (tip && R.LOCKED.has(parseRecord(tip).fm.status)) {
+        if (tip && R.LOCKED.has(R.baseStatus(parseRecord(tip)))) {
             err(name, 'locked', `accepted on ${base.ref} since this branch forked; rebase onto ${base.ref}`);
         }
     }
     // Only a record new on this branch takes a number; one already on the merge base is
-    // covered by the duplicate-number check above.
+    // covered by the duplicate-number check above. A record that is not locked may be renamed:
+    // its new name keeps the number its old name, deleted in this change, held.
+    const renamed = (owner) => !names.has(owner) && base.textAt(owner) !== null
+        && !R.LOCKED.has(R.baseStatus(parseRecord(base.textAt(owner))));
     for (const r of records) {
         const owner = base.textAt(r.name) === null && base.tipNumbers.get(r.number);
-        if (owner && owner !== r.name) err(r.file, 'number', `ADR-${r.number} is already ${owner} on the base branch; renumber this record`);
+        if (owner && owner !== r.name && !renamed(owner)) err(r.file, 'number', `ADR-${r.number} is already ${owner} on the base branch; renumber this record`);
     }
+    // Any proposed local record, merged earlier or new here, rides along with code in its scope.
     for (const r of records) {
-        if (base.textAt(r.name) !== null || r.fm.status !== 'proposed' || h.kind !== 'local') continue;
+        if (r.fm.status !== 'proposed' || h.kind !== 'local') continue;
         const scope = asList(r.fm.scope);
         const hit = base.changedFiles.find((f) => scope.some((g) => matchesGlob(f, g)));
-        if (hit) err(r.file, 'ride-along', `this change touches ${hit} in its scope, so the record must be accepted before merge`);
+        if (!hit) continue;
+        const message = `this change touches ${hit} in its scope, so the record must be accepted before merge${nextStep(home.ownId(r))}`;
+        (ctx.ci ? err : home.warn)(r.file, 'ride-along', message);
     }
 }
 
@@ -390,35 +406,6 @@ function checkRef(home, r, ref, key, kept = false) {
     if (found.state === 'missing') report(r.file, 'relations', `${key} ${id} does not exist`);
     else if (found.state === 'unavailable') warn(r.file, 'relations', `${key} ${id}: its home is not on disk, so it was not checked`);
     return found;
-}
-
-// A move is legal only on a record the base holds without moved_to, and goes to any home other
-// than the record's own (the shared home, or another repo's local home). lockedDiff checks a
-// locked stub's frontmatter and body; a stub not locked on the base has its body checked here.
-// A destination that resolves must list the old id in its aliases and be accepted; one whose
-// home is not on disk is a warning (from checkRef).
-function checkMove(home, r, info) {
-    const { ctx, err, ownId } = home;
-    const { prefix, coinciding } = ctx.home;
-    const ref = r.fm.moved_to;
-    if (coinciding) return err(r.file, 'move', 'this repo has one ADR home, so there is no other home to move to');
-    if (info.baseText !== undefined && (info.baseText === null || !isEmpty(info.baseFm.moved_to))) {
-        err(r.file, 'move', 'only an existing record can be moved');
-    }
-    if (!info.lockedOnBase && r.body.split('\n').filter((l) => l.trim() !== '').length > 1) {
-        err(r.file, 'move', 'a moved record is a stub with a one-line body');
-    }
-    const id = R.qualify(ref, prefix);
-    if (!id) return err(r.file, 'move', `moved_to ${ref} is not a qualified id`);
-    if (id.startsWith(`${prefix}/`)) return err(r.file, 'move', 'moved_to names this home; a move goes to another home');
-    const found = checkRef(home, r, id, 'moved_to');
-    if (found && found.state === 'found' && !asList(found.fm && found.fm.aliases).includes(ownId(r))) {
-        err(r.file, 'move', `${id} must list ${ownId(r)} in its aliases`);
-    }
-    // As with supersession, the stub replaces the record only once its new copy binds.
-    const status = found && found.state === 'found' && found.fm ? found.fm.status : null;
-    if (status && status !== 'accepted') err(r.file, 'move', `destination ${id} is ${status}; it must be accepted before the record is moved`);
-    return undefined;
 }
 
 module.exports = { checkHome, grandfathered };

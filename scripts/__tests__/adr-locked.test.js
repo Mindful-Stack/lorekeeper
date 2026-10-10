@@ -42,7 +42,7 @@ test('edit 1: rewriting an earlier Status line fails', () => {
 });
 
 test('edit 2: superseded_by is set only with the superseded transition, and never changes', () => {
-    const noted = 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSupersession proposed by kb/ADR-0002.';
+    const noted = 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nNote 2026-10-08: see kb/ADR-0002.';
     assert.deepEqual(lockedDiff(BASE, makeRecord({ sections: { Status: noted } })), []);
     const early = makeRecord({ fm: { superseded_by: 'kb/ADR-0002' }, sections: { Status: noted } });
     assert.ok(lockedDiff(BASE, early).some((m) => /superseded_by is set only together with status: superseded/.test(m)));
@@ -51,21 +51,6 @@ test('edit 2: superseded_by is set only with the superseded transition, and neve
     assert.deepEqual(lockedDiff(BASE, set), []);
     const changed = makeRecord({ fm: { status: 'superseded', superseded_by: 'kb/ADR-0003' }, sections: { Status: flipped } });
     assert.ok(lockedDiff(set, changed).some((m) => /superseded_by is already set/.test(m)));
-});
-
-function stub(fm, body = 'Moved to api/ADR-0004.') {
-    const head = makeRecord({ fm: { moved_to: 'api/ADR-0004', ...fm } });
-    return `${head.slice(0, head.indexOf('\n---\n') + 5)}${body}\n`;
-}
-
-test('edit 2: a move replaces the file with a one-line stub', () => {
-    assert.deepEqual(lockedDiff(BASE, stub({})), []);
-    assert.ok(lockedDiff(BASE, stub({}, 'Moved.\nAnd more.')).some((m) => /one-line body/.test(m)));
-});
-
-test('edit 2: a stub keeps every base frontmatter value', () => {
-    assert.ok(lockedDiff(BASE, stub({ title: 'ADR-0001: Something else' })).some((m) => /title changed/.test(m)));
-    assert.ok(lockedDiff(BASE, stub({ decided_by: ['Mallory'] })).some((m) => /decided_by changed/.test(m)));
 });
 
 test('edit 1: deprecated may later be superseded; nothing leaves superseded or rejected', () => {
@@ -205,6 +190,13 @@ test('M5: only paired emphasis is formatting; a glob losing its ** is a change',
     }
 });
 
+test('H: a ** or * glob after a slash is text, not emphasis', () => {
+    const rule = (t) => S({ Decision: `The API stores sessions server-side.\n\n- **R1** Only ${t} MAY read the session store.` });
+    assert.ok(lockedDiff(rule('src/**/Sessions and src/**/Auth'), rule('src//Sessions and src//Auth')).some((m) => /Decision" changed/.test(m)));
+    assert.ok(lockedDiff(rule('src/*/Sessions and src/*/Auth'), rule('src//Sessions and src//Auth')).some((m) => /Decision" changed/.test(m)));
+    assert.deepEqual(lockedDiff(rule('src/**/Sessions'), rule('**src/**/Sessions**')), []);
+});
+
 test('M5: markdown link targets may change anywhere; bare wikilinks and autolinks only in See also', () => {
     const at = (section, link) => S({ [section]: `- Read ${link} first.` });
     const pairs = [
@@ -224,9 +216,19 @@ test('M5: markdown link targets may change anywhere; bare wikilinks and autolink
 test('M6: a change appends exactly one Status line', () => {
     const two = makeRecord({
         fm: { status: 'deprecated' },
-        sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSupersession proposed by kb/ADR-0002.\nDeprecated 2026-11-01.' },
+        sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nNote 2026-10-08: see kb/ADR-0002.\nDeprecated 2026-11-01.' },
     });
     assert.ok(lockedDiff(BASE, two).some((m) => /one line to ## Status per change/.test(m)));
+});
+
+test('B6: a transition to superseded names its successor', () => {
+    const flipped = 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSuperseded 2026-11-01.';
+    const bare = makeRecord({ fm: { status: 'superseded' }, sections: { Status: flipped } });
+    assert.ok(lockedDiff(BASE, bare).some((m) => /a transition to superseded sets superseded_by to the accepted successor/.test(m)));
+    const depStatus = 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nDeprecated 2026-10-02 by Alex Doe: x.';
+    const deprecated = makeRecord({ fm: { status: 'deprecated' }, sections: { Status: depStatus } });
+    const fromDeprecated = makeRecord({ fm: { status: 'superseded' }, sections: { Status: `${depStatus}\nSuperseded 2026-10-09.` } });
+    assert.ok(lockedDiff(deprecated, fromDeprecated).some((m) => /sets superseded_by/.test(m)));
 });
 
 test('fix2-1: a record already superseded with an empty link may gain it once', () => {
@@ -276,4 +278,14 @@ test('edit 5 repair: a literal block rewritten inline matches with or without it
     }
     const changed = makeRecord({ fm: { rfc: undefined }, extraFrontmatter: 'rfc: "line one\\nline 2"' });
     assert.ok(lockedDiff(block, changed).some((m) => /rfc changed/.test(m)));
+});
+
+test('a frontmatter-less legacy status in prose maps to any settled status, never back to proposed', () => {
+    const { conversionDiff } = require('../adr/locked');
+    const bare = '# ADR-0001: Service architecture\n\n## Status\nSuperseded by MVP 1 approach (shared database, direct HTTP communication)\n\n## Context\nOld text.\n';
+    assert.deepEqual(conversionDiff(bare, makeRecord({ fm: { status: 'deprecated' }, sections: { Status: 'Deprecated 2026-10-10 by Alex Doe.' } })), []);
+    assert.deepEqual(conversionDiff(bare, makeRecord({ status: 'rejected', fm: { decided_by: ['Alex Doe'] } })), []);
+    assert.ok(conversionDiff(bare, makeRecord({ status: 'proposed', fm: { decided_by: [] } })).some((m) => /-> proposed is not an allowed transition/.test(m)));
+    // A superseded result still names its successor.
+    assert.ok(conversionDiff(bare, makeRecord({ fm: { status: 'superseded' } })).some((m) => /superseded sets superseded_by/.test(m)));
 });

@@ -129,11 +129,11 @@ test('--base: ride-along requires acceptance when the change touches the scope',
     write(path.join(w.api, 'src', 'Sessions', 'Store.cs'), 'class Store { int x; }\n');
     const record = path.join(w.local, '0001-session-storage.md');
     write(record, makeRecord({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way' } }));
-    const bad = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    const bad = runCli(w.root, w.env, 'check', '--base', 'main', '--ci', w.local);
     assert.equal(bad.code, 1);
     assert.match(bad.stdout, /ride-along: .*src\/Sessions\/Store\.cs/);
     write(record, makeRecord({ prefix: 'api', fm: { reversibility: 'two-way' } }));
-    const ok = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    const ok = runCli(w.root, w.env, 'check', '--base', 'main', '--ci', w.local);
     assert.equal(ok.code, 0, ok.stdout);
 });
 
@@ -223,6 +223,7 @@ test('M1: an unknown flag is a usage error for each subcommand', (t) => {
     for (const args of [
         ['check', '--bogus', w.shared],
         ['check', '--diff', patch, w.shared],
+        ['check', '--config', patch, w.shared],
         ['select', '--repo', 'api', '--diff', patch, '--strict'],
         ['backfill', '--base', 'main', w.shared],
     ]) {
@@ -230,6 +231,20 @@ test('M1: an unknown flag is a usage error for each subcommand', (t) => {
         assert.equal(r.code, 2, `${args.join(' ')}: ${r.stdout}${r.stderr}`);
         assert.match(r.stderr, /unknown flag/);
     }
+});
+
+test('b3: who approves is not configured: an old adr.decisionOwners is ignored, not an error', (t) => {
+    const w = workspace(t);
+    const manifest = JSON.parse(fs.readFileSync(path.join(w.root, 'household.json'), 'utf8'));
+    manifest.adr = { decisionOwners: ['@arch-team'], deciders: ['Sam Roe'] };
+    write(path.join(w.root, 'household.json'), JSON.stringify(manifest));
+    // An accepted high-tier record decided by someone in no list.
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord({ fm: { decided_by: ['Anyone Else'] } }));
+    const r = runCli(w.root, w.env, 'check', w.shared);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /decided-by/);
+    const homes = JSON.parse(runCli(w.root, w.env, 'homes').stdout);
+    assert.deepEqual(homes.config, { localDir: 'docs/adr', sharedDir: 'adrs' });
 });
 
 test('M2: a home directory that does not exist is empty, and deleting it is still checked', (t) => {
@@ -276,25 +291,42 @@ test('M8 (decision 17): a proposed record whose scope covers its own home does n
     assert.doesNotMatch(r.stdout, /ride-along/);
 });
 
-test('fix2-2: in a household, a local record may move to another repo, with or without --home', (t) => {
+test('G: a proposal merged without code still rides along when a later change touches its scope', (t) => {
     const w = workspace(t);
-    const manifest = JSON.parse(fs.readFileSync(path.join(w.root, 'household.json'), 'utf8'));
-    manifest.repos.push({ name: 'web' });
-    write(path.join(w.root, 'household.json'), JSON.stringify(manifest));
-    const web = path.join(w.root, 'web');
-    initRepo(web, w.env);
-    write(path.join(web, 'docs', 'adr', '0004-session-storage.md'), makeRecord({ number: '0004', prefix: 'web', fm: { aliases: ['api/ADR-0001'] } }));
-    const file = path.join(w.local, '0001-session-storage.md');
-    write(file, makeRecord({ prefix: 'api' }));
-    commitAll(w.api, w.env, 'accept 0001');
-    git(w.api, w.env, 'checkout', '-q', '-b', 'move');
-    const head = makeRecord({ prefix: 'api', fm: { moved_to: 'web/ADR-0004' } });
-    write(file, `${head.slice(0, head.indexOf('\n---\n') + 5)}Moved to web/ADR-0004.\n`);
-    const ok = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
-    assert.equal(ok.code, 0, ok.stdout + ok.stderr);
-    // fix3-6: --home names the home; the household still makes every repo's home known.
-    const named = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', '--base', 'main', w.local);
-    assert.equal(named.code, 0, named.stdout + named.stderr);
+    commitAll(w.api, w.env, 'empty');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'pr1');
+    write(path.join(w.local, '0001-session-storage.md'), makeRecord({ prefix: 'api', status: 'proposed' }));
+    commitAll(w.api, w.env, 'propose 0001');
+    git(w.api, w.env, 'checkout', '-q', 'main');
+    git(w.api, w.env, 'merge', '-q', '--no-ff', '-m', 'merge pr1', 'pr1');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'pr2');
+    write(path.join(w.api, 'src', 'Sessions', 'Store.cs'), 'class Store {}\n');
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', '--ci', w.local);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /0001-session-storage\.md: ride-along: this change touches src\/Sessions\/Store\.cs/);
+});
+
+test('I: renaming a proposed record\'s slug keeps its number', (t) => {
+    const w = workspace(t);
+    write(path.join(w.local, '0001-session-storage.md'), makeRecord({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way', scope: [] } }));
+    commitAll(w.api, w.env, 'proposal on main');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'pr1');
+    git(w.api, w.env, 'mv', path.join(w.local, '0001-session-storage.md'), path.join(w.local, '0001-session-state.md'));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', '--ci', w.local);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /number/);
+});
+
+test('I: renaming an accepted record still fails, and a new record cannot take its number', (t) => {
+    const w = workspace(t);
+    write(path.join(w.local, '0001-session-storage.md'), makeRecord({ prefix: 'api' }));
+    commitAll(w.api, w.env, 'accepted on main');
+    git(w.api, w.env, 'checkout', '-q', '-b', 'pr1');
+    git(w.api, w.env, 'mv', path.join(w.local, '0001-session-storage.md'), path.join(w.local, '0001-session-state.md'));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /0001-session-storage\.md: locked: a locked record is never deleted or renamed/);
+    assert.match(r.stdout, /0001-session-state\.md: number: ADR-0001 is already 0001-session-storage\.md/);
 });
 
 test('fix4-4: --base: deleting a record accepted on the base since the fork fails', (t) => {
@@ -330,18 +362,223 @@ test('fix4-7: a declared team KB that is not checked out makes kb/ references wa
     assert.match(unknown.stdout, /related nope\/ADR-0002 does not exist/);
 });
 
-test('fix4-8: a standalone checkout accepts a local-to-local move, warning that the destination is not on disk', (t) => {
-    const dir = tmpDir(t);
-    const env = gitEnv(dir);
-    initRepo(dir, env);
-    const adrs = path.join(dir, 'docs', 'adr');
-    const file = path.join(adrs, '0001-session-storage.md');
-    write(file, makeRecord({ prefix: 'api' }));
-    commitAll(dir, env, 'accept 0001');
-    git(dir, env, 'checkout', '-q', '-b', 'move');
-    const head = makeRecord({ prefix: 'api', fm: { moved_to: 'web/ADR-0004' } });
-    write(file, `${head.slice(0, head.indexOf('\n---\n') + 5)}Moved to web/ADR-0004.\n`);
-    const r = runCli(dir, env, 'check', '--home', 'local', '--repo', 'api', '--base', 'main', adrs);
+// B4: a legacy record (no frontmatter, or not classified on the base) is not locked: the change
+// that converts it may rewrite it, and the converted record meets every new-format rule.
+const LEGACY_BARE = [
+    '# ADR-0001: Sessions',
+    '',
+    '## Status',
+    'Accepted 2025-03-01',
+    '',
+    '## Context',
+    'Cookies are too small for our sessions.',
+    '',
+    '## Decision',
+    'We keep sessions on the server.',
+    '',
+].join('\n');
+
+function legacyOnMain(w, dir, repo, text) {
+    const file = path.join(dir, '0001-session-storage.md');
+    write(file, text);
+    commitAll(repo, w.env, 'legacy record');
+    git(repo, w.env, 'checkout', '-q', '-b', 'convert');
+    return file;
+}
+
+test('B4a: a frontmatter-less legacy record may be rewritten into a valid new-format record', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.shared, w.kb, LEGACY_BARE);
+    write(file, makeRecord());
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
     assert.equal(r.code, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /relations: warning: moved_to web\/ADR-0004: its home is not on disk/);
+    assert.doesNotMatch(r.stdout, /locked/);
+});
+
+test('B4b: the converted record meets the full rules (a high-tier record without a trigger fails)', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.shared, w.kb, LEGACY_BARE);
+    write(file, makeRecord({ sections: { 'Assumptions and invalidation triggers': '- Assumes nothing.' } }));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /high-tier: needs at least one invalidation trigger/);
+});
+
+test('B4c: an unclassified legacy record may have its body rewritten as it is classified', (t) => {
+    const w = workspace(t);
+    const legacy = makeRecord({ fm: { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined, decided_by: undefined, deciders: ['Alex Doe'] } });
+    const file = legacyOnMain(w, w.shared, w.kb, legacy);
+    write(file, makeRecord({ sections: { Context: 'Rewritten from the old text: cookies cap at 4 KB and sessions outgrow them.' } }));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+});
+
+test('B4d: once the converted record is on the base, the lock applies', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.shared, w.kb, LEGACY_BARE);
+    write(file, makeRecord());
+    commitAll(w.kb, w.env, 'convert 0001');
+    git(w.kb, w.env, 'checkout', '-q', 'main');
+    git(w.kb, w.env, 'merge', '-q', '--ff-only', 'convert');
+    git(w.kb, w.env, 'checkout', '-q', '-b', 'later');
+    write(file, makeRecord({ sections: { Decision: 'Sessions live in cookies.' } }));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /locked: section "Decision" changed/);
+});
+
+test('B4e: a converted legacy cross-service record in a local home warns; a new one fails', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.local, w.api, LEGACY_BARE);
+    const crossService = makeRecord({ prefix: 'api', fm: { blast_radius: 'cross-service' } });
+    write(file, crossService);
+    const legacy = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(legacy.code, 0, legacy.stdout + legacy.stderr);
+    assert.match(legacy.stdout, /home: warning: blast_radius cross-service belongs in the shared home; leave it here, or supersede it with a record there/);
+    write(path.join(w.local, '0002-audit-log.md'), crossService.replace(/0001/g, '0002'));
+    const fresh = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(fresh.code, 1, fresh.stdout);
+    assert.match(fresh.stdout, /0002-audit-log\.md: home: blast_radius cross-service belongs in the shared home/);
+});
+
+test('B4f: backfill skips a frontmatter-less record and says to convert it by rewriting', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), LEGACY_BARE);
+    const r = runCli(w.root, w.env, 'backfill', w.shared);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /0001-session-storage\.md: skipped: no frontmatter: convert it by rewriting \(legacy records may be rewritten in place\)/);
+    assert.equal(fs.readFileSync(path.join(w.shared, '0001-session-storage.md'), 'utf8'), LEGACY_BARE);
+});
+
+// B6: a legacy record with a locked status is not free text. Left unclassified it changes only
+// by the five locked edits; the change that classifies it may rewrite its body, but its status
+// moves only forward and the deciders it already records stay.
+const LEGACY_ACCEPTED_FM = { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined, decided_by: undefined, deciders: ['Alex Doe'] };
+
+test('B6a: an unclassified legacy accepted record changes only by the locked edits', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.local, w.api, makeRecord({ prefix: 'api', fm: LEGACY_ACCEPTED_FM }));
+    write(file, makeRecord({ prefix: 'api', fm: LEGACY_ACCEPTED_FM, sections: { Decision: 'The API stores sessions in cookies.\n\n- **R1** Session state MUST be written to cookies.' } }));
+    const rewritten = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(rewritten.code, 1, rewritten.stdout);
+    assert.match(rewritten.stdout, /0001-session-storage\.md: locked: section "Decision" changed/);
+    write(file, makeRecord({ prefix: 'api', fm: { ...LEGACY_ACCEPTED_FM, deciders: ['Mallory'] } }));
+    const swapped = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(swapped.code, 1, swapped.stdout);
+    assert.match(swapped.stdout, /locked: frontmatter deciders changed/);
+    // A dated observation is still one of the five edits.
+    write(file, makeRecord({ prefix: 'api', fm: LEGACY_ACCEPTED_FM, sections: { 'Later observations': '<!-- append-only, accepted records only; newest last -->\n- 2026-11-02 (PR 7): F1 still holds.' } }));
+    const observed = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(observed.code, 0, observed.stdout + observed.stderr);
+});
+
+test('B6b: converting a legacy accepted record cannot move its status back or drop its deciders', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.local, w.api, makeRecord({ prefix: 'api', fm: LEGACY_ACCEPTED_FM }));
+    write(file, makeRecord({ prefix: 'api', status: 'proposed', fm: { decided_by: [] }, sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nReopened 2026-10-09.' } }));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /locked: status accepted -> proposed is not an allowed transition/);
+    assert.match(r.stdout, /locked: decided_by cannot replace the deciders already recorded/);
+});
+
+test('B6c: converting a legacy accepted record in the shared home keeps its deciders and cannot reject it', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.shared, w.kb, makeRecord({ fm: LEGACY_ACCEPTED_FM }));
+    write(file, makeRecord({ fm: { decided_by: ['Mallory'] }, sections: { Decision: 'Inverted.\n\n- **R1** Session state MUST be written to cookies.' } }));
+    const swapped = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(swapped.code, 1, swapped.stdout);
+    assert.match(swapped.stdout, /locked: decided_by cannot replace the deciders already recorded/);
+    write(file, makeRecord({ status: 'rejected', fm: { decided_by: ['Mallory'] }, sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nRejected 2026-10-09 by Mallory: no.' } }));
+    const rejected = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(rejected.code, 1, rejected.stdout);
+    assert.match(rejected.stdout, /locked: status accepted -> rejected is not an allowed transition/);
+    // Keeping the recorded decider, the body may be rewritten as the record is classified.
+    write(file, makeRecord({ sections: { Context: 'Rewritten on conversion.' } }));
+    const kept = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(kept.code, 0, kept.stdout + kept.stderr);
+});
+
+test('B6d: a frontmatter-less legacy record reads its status from ## Status; its conversion moves only forward', (t) => {
+    const w = workspace(t);
+    const bare = LEGACY_BARE.replace('Accepted 2025-03-01', 'Proposed 2024-02-01\naccepted 2024-03-01');
+    const file = legacyOnMain(w, w.shared, w.kb, bare);
+    write(file, makeRecord({ status: 'proposed', fm: { decided_by: [] }, sections: { Status: 'Proposed 2024-02-01.\nAccepted 2024-03-01.' } }));
+    const back = runCli(w.root, w.env, 'check', '--ci', '--base', 'main', w.shared);
+    assert.equal(back.code, 1, back.stdout);
+    assert.match(back.stdout, /locked: status accepted -> proposed is not an allowed transition/);
+    write(file, makeRecord());
+    const kept = runCli(w.root, w.env, 'check', '--ci', '--base', 'main', w.shared);
+    assert.equal(kept.code, 0, kept.stdout + kept.stderr);
+});
+
+test('B6e: an accepted frontmatter-less record cannot be renamed or deleted around its lock', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.shared, w.kb, LEGACY_BARE);
+    const renamed = path.join(path.dirname(file), file.endsWith('0001-session-storage.md') ? '0001-session-state.md' : '0001-renamed.md');
+    fs.renameSync(file, renamed);
+    write(renamed, makeRecord({ status: 'proposed', fm: { decided_by: [] }, sections: { Decision: 'Sessions live in cookies.' } }));
+    const r = runCli(w.root, w.env, 'check', '--ci', '--base', 'main', w.shared);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /locked: a locked record is never deleted or renamed/);
+    fs.rmSync(renamed);
+    const d = runCli(w.root, w.env, 'check', '--ci', '--base', 'main', w.shared);
+    assert.equal(d.code, 1, d.stdout);
+    assert.match(d.stdout, /locked: a locked record is never deleted or renamed/);
+});
+
+// B5: an edit of an existing record is validated only by the knowledge-updater, in a worktree
+// against the real base with its flags; a scratch copy (no base) misjudges these two cases.
+function updaterWorktree(t, w, repo, branch, start) {
+    const wt = path.join(tmpDir(t), 'wt');
+    git(repo, w.env, 'update-ref', 'refs/remotes/origin/main', 'main');
+    if (branch) git(repo, w.env, 'update-ref', `refs/remotes/origin/${branch}`, branch);
+    git(repo, w.env, 'worktree', 'add', '-q', ...(start ? ['-b', 'adr-edit', wt, start] : ['--detach', wt, `origin/${branch}`]));
+    return wt;
+}
+
+test('B5a: reject on a pr-branch: an incomplete high-tier proposal passes once in its final rejected form', (t) => {
+    const w = workspace(t);
+    commitAll(w.kb, w.env, 'empty');
+    git(w.kb, w.env, 'checkout', '-q', '-b', 'knowledge/adr-0001-session-storage');
+    const incomplete = {
+        'Considered options': '- **Server-side store** — sessions can grow without a size cap.',
+        'Assumptions and invalidation triggers': '- Assumes nothing.',
+    };
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord({ status: 'proposed', sections: incomplete }));
+    commitAll(w.kb, w.env, 'propose 0001');
+    git(w.kb, w.env, 'checkout', '-q', 'main');
+    const wt = updaterWorktree(t, w, w.kb, 'knowledge/adr-0001-session-storage');
+    const home = path.join(wt, 'knowledge', 'adrs');
+    const check = () => runCli(w.root, w.env, 'check', '--home', 'shared', '--base', 'origin/main', home);
+    const before = check();
+    assert.equal(before.code, 1, 'still proposed, the tier rules apply');
+    assert.match(before.stdout, /high-tier:/);
+    write(path.join(home, '0001-session-storage.md'), makeRecord({
+        status: 'rejected',
+        sections: { ...incomplete, Status: 'Proposed 2026-09-30.\nRejected 2026-10-09 by Alex Doe: cookies suffice for now.' },
+    }));
+    const r = check();
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+});
+
+test('B5b: accepting an unclassified legacy proposal as cross-service in its local home passes against the base, with a home warning', (t) => {
+    const w = workspace(t);
+    const legacy = makeRecord({ prefix: 'api', status: 'proposed', fm: { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined } });
+    write(path.join(w.local, '0001-session-storage.md'), legacy);
+    commitAll(w.api, w.env, 'legacy proposal');
+    const converted = makeRecord({ prefix: 'api', fm: { blast_radius: 'cross-service' } });
+    // The old accept step 2 linted the classified, still-proposed record in a scratch copy, which
+    // has no base, so it cannot see the record is legacy: the wrong home is an error there.
+    const scratch = path.join(tmpDir(t), 'adr');
+    write(path.join(scratch, '0001-session-storage.md'), makeRecord({ prefix: 'api', status: 'proposed', fm: { blast_radius: 'cross-service' } }));
+    const lost = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', scratch);
+    assert.equal(lost.code, 1, lost.stdout);
+    assert.match(lost.stdout, /home: blast_radius cross-service belongs in the shared home/);
+    const wt = updaterWorktree(t, w, w.api, null, 'origin/main');
+    const file = path.join(wt, 'docs', 'adr', '0001-session-storage.md');
+    write(file, converted);
+    const r = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', '--base', 'origin/main', path.dirname(file));
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /home: warning: blast_radius cross-service belongs in the shared home; leave it here, or supersede it with a record there/);
 });

@@ -10,7 +10,7 @@ team's knowledge base.
 - **Knowledge Search**: Fast search across all knowledge nodes
 - **Pattern Identification**: Answer "how do we do X?" using docs-first approach
 - **Update Proposals**: Suggest knowledge base improvements
-- **Decision Records**: Record, list, accept, supersede, and discover architecture decision records (ADRs)
+- **Decision Records**: Tell Claude what you decided or what changed; it records, ratifies, observes, replaces and discovers architecture decision records (ADRs)
 
 ## Setup
 
@@ -162,7 +162,7 @@ new handle and need nothing.
 | Command | Description |
 |---------|-------------|
 | `/lore:help` | Show status and help |
-| `/lore:adr` | Record, list, accept, supersede, or discover architecture decision records |
+| `/lore:adr` | Architecture decision records in plain words: record, ratify, note a change, replace, retire, what binds, list, discover |
 | `/lore:init` | Detect workspace state and scaffold or retrofit accordingly |
 | `/lore:migrate` | Bring household.json up to the schema the current plugin expects; optionally refresh template tooling |
 | `/lore:cultivate` | Cultivate a bounded-context domain. With a name: bootstrap/refine/audit. Without: discover candidate domains in the codebase + audit existing ones |
@@ -256,24 +256,44 @@ Propose updates to the knowledge base:
 
 ### ADR
 
-Architecture decision records are first-class knowledge nodes under `adrs/`: one hard-to-reverse
-decision per record, numbered like `adr-tools` (`NNNN-<topic>.md`), reviewed through a PR, and
-immutable once code depends on them.
+Architecture decision records are first-class knowledge: one hard-to-reverse decision per record,
+numbered per home (`NNNN-<problem>.md`), reviewed through a PR, binding once a named human accepts
+it, and locked from then on. A record lives in one of two **homes**, chosen by its `blast_radius`:
+the governed repo's `docs/adr/` for a decision that stays inside one service (`<repo>/ADR-NNNN`),
+or the team knowledge base's `adrs/` for cross-service and customer-facing ones (`kb/ADR-NNNN`).
 
-```bash
-/lore:adr Use PostgreSQL as the primary datastore   # new record: triage → interview → draft → PR
-/lore:adr                                            # list records (rendered from frontmatter)
-/lore:adr list accepted                              # filter by status
-/lore:adr accept 0004                                # proposed → accepted (first code depends on it)
-/lore:adr supersede 0002 Move session state to JWTs  # proposes the replacement; 0002 is retired when it is accepted
-/lore:adr discover                                   # find decisions already baked into the code
-```
+Quick start — just tell Claude what you decided or what changed:
 
-The record shape is Nygard's *Context / Decision / Consequences* with a short *Considered options*
-list and an *Assumptions and invalidation triggers* section, so every record says when it should be
-revisited. Frontmatter carries `status`, `date`, `deciders`, and `confidence`; the `description` is
-the decision in one sentence and is what listings and search show. There is no index file: the
-list is rendered from frontmatter on demand.
+1. "We'll use PostgreSQL as the primary datastore." Claude triages it, asks a few questions, and
+   shows the proposed record.
+2. You confirm; Claude opens a PR (or stages it on your branch for a small local decision).
+3. The team reviews the PR.
+4. "Alex Doe approved it." Claude records the acceptance, naming Alex, on the same PR.
+5. Merge.
+
+| You say | Claude does |
+|---|---|
+| "We'll use PostgreSQL for orders" | records a proposed decision and opens its PR |
+| "Alex Doe approved kb/ADR-0004" / "Sam rejected 0003" | accepts or rejects it, naming that person |
+| "F2 in api/ADR-0002 no longer holds: invoices hit 14k/day" | appends a dated observation to the locked record |
+| "Replace 0002: sessions move to bearer tokens" | proposes a successor; 0002 is superseded when the successor is accepted |
+| "0005 no longer applies, Sam decided" | marks it deprecated |
+| "Which decisions apply if I change src/Payments?" | lists the accepted records and rules that bind the change |
+| "List our decisions" / "find the decisions the code already made" | lists every home / drafts the implicit ones as proposals |
+
+The `recording-decisions` skill picks this up from plain conversation; `/lore:adr <plain words>`
+is the explicit shortcut. Claude always shows the edit and asks before writing, works on a branch
+or a temporary worktree (never your default branch, never a force-push), and never ratifies on
+its own: acceptance needs a named human. `/lore:doctor` validates every home.
+
+The record (`references/adr-template.md`) is MADR-shaped: Context, *Facts relied on*, Considered
+options, a Decision with numbered MUST/MUST NOT rules (`kb/ADR-0007.R2`), Consequences,
+*Assumptions and invalidation triggers*, and append-only *Later observations*. Frontmatter carries
+the classification (`reversibility`, `blast_radius`, `sensitivity`) that decides the home and the
+tier, a `scope` of globs that reviews select records by, and the people in `decided_by`.
+High-tier records (one-way, cross-service or customer, or sensitive) get their own ADR-only PR and
+are accepted before implementation; low-tier ones may ride along in the implementation PR. There is
+no index file: the list is rendered on demand.
 
 `scripts/adr-lint.js` validates records mechanically: frontmatter schema, id and home, scope
 syntax, relations, and, given a base branch, that an accepted record changed only in the ways a
@@ -281,13 +301,15 @@ locked record may (a Status line, a supersede link, a dated observation, a forma
 repair, a schema backfill). It has no dependencies:
 
 ```bash
-node scripts/adr-lint.js check --home local --base origin/main docs/adr  # CI: fetch-depth: 0
-node scripts/adr-lint.js select --repo api --diff change.patch           # records a diff touches
-node scripts/adr-lint.js backfill --dry-run <adr-dir>                    # add id + classification keys
+node scripts/adr-lint.js check --ci --home local --base origin/main docs/adr  # CI: fetch-depth: 0
+node scripts/adr-lint.js select --repo api --diff change.patch                # records a diff touches
+node scripts/adr-lint.js backfill --dry-run <adr-dir>                         # add id + classification keys
 ```
 
-CI has no `household.json`, so it names the home: `--home local` in a code repo, `--home shared`
-in a knowledge-base repo. Without `--home`, a code repo with no knowledge base on disk counts as
+A plain `check` reports a proposal that is not yet accepted (in the shared home, or riding along
+with code in its scope) as a warning; `--ci` makes it an error, so CI is the merge gate and always
+passes `--ci`. CI has no `household.json`, so it names the home: `--home local` in a code repo,
+`--home shared` in a knowledge-base repo. Without `--home`, a code repo with no knowledge base on disk counts as
 a single coinciding home, which turns off the check that each record sits in the home its
 `blast_radius` belongs to. Pass `--single-home` only in a repo that has no knowledge base at all.
 
@@ -300,20 +322,21 @@ To run it before every commit in a repo with a local ADR home, add `.git/hooks/p
 
 ```sh
 #!/bin/sh
-# Validate ADRs against the default branch before committing.
+# Validate ADRs against the default branch before committing (open proposals only warn here).
 plugin="${LOREKEEPER_PLUGIN_DIR:?set LOREKEEPER_PLUGIN_DIR to the lorekeeper checkout}"
 exec node "$plugin/scripts/adr-lint.js" check --home local --base origin/main docs/adr
 ```
 
 The canonical record template is `references/adr-template.md`.
 
-Retrieval is a separate, read-only **`architect`** agent: pattern-identifier, brainstorming, and
-review dispatch it in parallel with their usual agent, so "how do we do X?" also returns the
-decision behind X, a design that would fire a record's invalidation trigger is flagged before the
-spec is written, and a diff that contradicts an accepted record is reviewed as such. `/lore:adr
-discover` runs the agent's `survey` mode, then records every pick in one batch: one round of
-questions, one review, one PR. The `recording-decisions` skill is the gate: record it as
-proposed before building on it.
+Retrieval is a separate, read-only **`architect`** agent that reads every home: pattern-identifier,
+brainstorming, and review dispatch it in parallel with their usual agent, so "how do we do X?" also
+returns the decision behind X, a design that would fire a record's invalidation trigger is flagged
+before the spec is written, and a diff that contradicts an accepted rule, falsifies a relied-on
+fact, or makes an unrecorded hard-to-reverse choice is reviewed as such. Discovering decisions
+runs the agent's `survey` mode and drafts every pick as a proposal in one batch per home; each is
+then accepted by a named human. The `recording-decisions` skill is the gate: record it as proposed
+before building on it.
 
 ### Cultivate
 

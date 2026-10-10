@@ -1,5 +1,6 @@
 #!/usr/bin/env bb
 (require '[babashka.process :refer [shell]]
+         '[babashka.fs :as fs]
          '[clojure.edn :as edn]
          '[clojure.string :as str]
          '[clojure.java.io :as io])
@@ -9,19 +10,24 @@
 (defn colorize [color text]
   (str (colors color) text (colors :reset)))
 
-;; Find the workspace root (parent of the plugin checkout)
-(defn find-workspace-root []
-  (let [script-dir (-> *file* io/file .getParentFile .getCanonicalPath)
-        ;; Prefer the bundled fixture workspace (household.json + a small KB with
-        ;; payments/inventory/device domains). Fall back to the parent of the plugin
-        ;; checkout for setups that keep a real knowledge base as a sibling.
-        fixture (io/file script-dir "fixtures/workspace")
-        root (if (.isDirectory fixture)
-               (-> fixture .getCanonicalFile .getCanonicalPath)
-               (-> script-dir (io/file "../..") .getCanonicalFile .getCanonicalPath))]
-    root))
+;; The bundled fixture workspace (household.json + a small KB with payments/inventory/device
+;; domains), or nil when this checkout has none.
+(defn fixture-dir []
+  (let [fixture (io/file (-> *file* io/file .getParentFile .getCanonicalPath) "fixtures/workspace")]
+    (when (.isDirectory fixture) (.getCanonicalPath fixture))))
 
-(def workspace-root (find-workspace-root))
+;; Fallback for setups without the fixture that keep a real knowledge base as a sibling of
+;; the plugin checkout.
+(defn parent-workspace-root []
+  (-> *file* io/file .getParentFile (io/file "../..") .getCanonicalFile .getCanonicalPath))
+
+;; A fresh copy of the fixture in a temp directory outside any git repository, so nothing a
+;; scenario runs (a node -e write, a backfill, a git command) can reach this checkout.
+(defn copy-fixture [fixture]
+  (let [dir (fs/create-temp-dir {:prefix "lorekeeper-scenarios-"})
+        root (fs/path dir "workspace")]
+    (fs/copy-tree fixture root)
+    {:temp-dir (str dir) :root (str (fs/canonicalize root))}))
 
 ;; Debug mode via .knowledge-debug file is available for manual debugging
 ;; but not used in automated tests. See scenarios.edn for details.
@@ -30,7 +36,14 @@
 (defn plugin-root []
   (-> *file* io/file .getParentFile (io/file "..") .getCanonicalFile .getCanonicalPath))
 
-(defn run-test [{:keys [name prompt workdir expects]} {:keys [workspace-root plugin-dir]}]
+;; Scenarios assert on what a command prints before it writes. Pin the permission mode (the
+;; user's own default may auto-approve), allow only reading tools and node (every adr-lint and
+;; doctor call), and deny writes, git and gh outright. Node can still write, which is why the
+;; scenarios run from a temp copy of the fixture.
+(def allowed-tools ["Read" "Glob" "Grep" "Bash(node *)" "Task" "Agent" "Skill"])
+(def disallowed-tools ["Write" "Edit" "NotebookEdit" "Bash(git *)" "Bash(gh *)"])
+
+(defn run-test [{:keys [name prompt workdir expects rejects]} {:keys [workspace-root plugin-dir]}]
   (let [;; Always run from workspace root where settings.json has plugins enabled.
         ;; --plugin-dir loads this checkout's plugin code rather than the installed copy.
         _ (println (colorize :yellow "  Running:") prompt "(context:" workdir ")")
@@ -38,20 +51,26 @@
                                               :out :string
                                               :err :string
                                               :continue true}
-                                     (concat ["claude" "--print"]
+                                     (concat ["claude" "--print" "--permission-mode" "default"
+                                              "--allowedTools"] allowed-tools
+                                             ["--disallowedTools"] disallowed-tools
                                              (when plugin-dir ["--plugin-dir" plugin-dir])
-                                             [prompt]))
+                                             ["--" prompt]))
         output (str out err)
-        missing (filter #(not (re-find (re-pattern %) output)) expects)]
+        missing (filter #(not (re-find (re-pattern %) output)) expects)
+        present (filter #(re-find (re-pattern %) output) (or rejects []))]
     {:name name
-     :passed (empty? missing)
+     :passed (and (empty? missing) (empty? present))
      :missing missing
+     :present present
      :output output}))
 
-(defn print-result [{:keys [name passed missing]}]
+(defn print-result [{:keys [name passed missing present]}]
   (if passed
     (println (colorize :green "[PASS]") name)
-    (println (colorize :red "[FAIL]") name "- missing:" (str/join ", " missing))))
+    (println (colorize :red "[FAIL]") name
+             (str (when (seq missing) (str "- missing: " (str/join ", " missing)))
+                  (when (seq present) (str " - must not appear: " (str/join ", " present)))))))
 
 (defn load-scenarios []
   (let [script-dir (-> *file* io/file .getParentFile .getCanonicalPath)
@@ -87,25 +106,31 @@
         verbose (contains? opts :verbose)
         scenarios (cond->> (load-scenarios)
                     filter-name (filter #(str/includes? (:name %) filter-name)))
-        env {:workspace-root (or (:workspace-root opts) workspace-root)
+        fixture (fixture-dir)
+        copy (when (and (not (:workspace-root opts)) fixture) (copy-fixture fixture))
+        env {:workspace-root (or (:workspace-root opts) (:root copy) (parent-workspace-root))
              :plugin-dir (or (:plugin-dir opts) (plugin-root))}
-        _ (println "Running" (count scenarios) "tests...")
-        _ (println "Workspace root:" (:workspace-root env))
-        _ (println "Plugin dir:" (:plugin-dir env))
-        _ (println "")
-        results (doall (map (fn [s]
-                              (let [r (run-test s env)]
-                                (print-result r)
-                                (when (and verbose (not (:passed r)))
-                                  (println "\n--- Output ---")
-                                  (println (:output r))
-                                  (println "--- End ---\n"))
-                                r))
-                            scenarios))
-        passed (count (filter :passed results))
-        total (count results)]
-    (println (str "\nResults: " passed "/" total " passed"))
-    (System/exit (if (= passed total) 0 1))))
+        all-passed (try
+                     (println "Running" (count scenarios) "tests...")
+                     (println "Workspace root:" (:workspace-root env))
+                     (println "Plugin dir:" (:plugin-dir env))
+                     (println "")
+                     (let [results (doall (map (fn [s]
+                                                 (let [r (run-test s env)]
+                                                   (print-result r)
+                                                   (when (and verbose (not (:passed r)))
+                                                     (println "\n--- Output ---")
+                                                     (println (:output r))
+                                                     (println "--- End ---\n"))
+                                                   r))
+                                               scenarios))
+                           passed (count (filter :passed results))
+                           total (count results)]
+                       (println (str "\nResults: " passed "/" total " passed"))
+                       (= passed total))
+                     (finally
+                       (when copy (fs/delete-tree (:temp-dir copy)))))]
+    (System/exit (if all-passed 0 1))))
 
 (when (= *file* (System/getProperty "babashka.file"))
   (apply -main *command-line-args*))

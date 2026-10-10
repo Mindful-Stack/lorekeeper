@@ -18,7 +18,7 @@ const BACKFILL_KEYS = ['id', 'reversibility', 'blast_radius', 'sensitivity', 'sc
 const KNOWN_KEYS = new Set([
     'id', 'title', 'description', 'tags', 'status', 'date', 'decided_by', 'deciders', 'consulted',
     'confidence', 'reversibility', 'blast_radius', 'sensitivity', 'scope', 'supersedes',
-    'superseded_by', 'depends_on', 'related', 'implements', 'rfc', 'aliases', 'moved_to',
+    'superseded_by', 'depends_on', 'related', 'implements', 'rfc',
 ]);
 const FILE_RE = /^(\d{4})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/;
 const ID_RE = /^([A-Za-z0-9._-]+)\/ADR-(\d{4})$/;
@@ -45,14 +45,15 @@ function loadRecord(file, text) {
     };
 }
 
-// Every `NNNN-slug.md` record in a home. `_`-prefixed and non-markdown files are ignored;
-// other markdown files are returned as strays so the validator can name them.
+// Every `NNNN-slug.md` record in a home. `_`-prefixed and non-markdown files are ignored, and
+// so is a README (the folder's index on code hosts); other markdown files are returned as
+// strays so the validator can name them.
 function loadHome(dir) {
     const records = [];
     const strays = [];
     if (!fs.existsSync(dir)) return { records, strays };
     for (const name of fs.readdirSync(dir).sort()) {
-        if (name.startsWith('_') || !name.endsWith('.md')) continue;
+        if (name.startsWith('_') || !name.endsWith('.md') || name.toLowerCase() === 'readme.md') continue;
         const file = path.join(dir, name);
         if (!FILE_RE.test(name)) {
             strays.push(file);
@@ -81,6 +82,19 @@ function isUnclassified(fm) {
     return isEmpty(fm.reversibility);
 }
 
+// A record's status: its frontmatter `status`, or for a record with no frontmatter the last
+// status word that opens a line of its `## Status` section (`Accepted 2024-03-01` -> accepted).
+function baseStatus(parsed) {
+    if (parsed.found) return parsed.fm.status;
+    const status = sections(parsed.body).find((s) => s.heading === 'Status');
+    let last;
+    for (const line of status ? status.content.split('\n') : []) {
+        const m = /^(Proposed|Accepted|Rejected|Deprecated|Superseded)\b/i.exec(line.trim());
+        if (m) last = m[1].toLowerCase();
+    }
+    return last;
+}
+
 // Normalises a relation value to a qualified id. Legacy records wrote bare numbers
 // (`0002`, `2`, `ADR-0002`); those resolve within the record's own home.
 function qualify(ref, ownPrefix) {
@@ -97,7 +111,7 @@ function section(record, heading) {
 }
 
 module.exports = {
-    STATUSES, LOCKED, RATIFIED, CONFIDENCE, REVERSIBILITY, BLAST_RADIUS, SENSITIVITY,
+    STATUSES, LOCKED, baseStatus, RATIFIED, CONFIDENCE, REVERSIBILITY, BLAST_RADIUS, SENSITIVITY,
     LOCAL_BLAST, SHARED_BLAST, BACKFILL_KEYS, KNOWN_KEYS, FILE_RE, ID_RE,
     impliedId, loadRecord, loadHome, decidedBy, isHighTier, isUnclassified, qualify, section,
 };

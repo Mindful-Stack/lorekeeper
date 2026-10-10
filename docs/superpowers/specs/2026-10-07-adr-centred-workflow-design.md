@@ -117,9 +117,8 @@ change. `.lorekeeper/config.json` nests the same keys under `adr`.
 - Numbers are per home, monotonically increasing, never reused. The validator fails a PR whose
   number already exists on the base branch; the unmerged PR renumbers (filename, `id`, inbound
   links). A merged number never changes.
-- A record moved between homes gets a new id in its new home, keeps its old id in `aliases:`, and
-  leaves a stub file at the old path (frontmatter `status` unchanged, `moved_to: <new id>`, body one
-  line). The stub replaces the record only once the new record is accepted.
+- Records do not move between homes. A record in the wrong home stays where it is, or is
+  superseded by a record in the right home.
 
 ## The record
 
@@ -146,7 +145,6 @@ depends_on: []
 related: []
 implements: []              # reserved: behaviour-spec rule ids
 rfc:                        # optional URL
-aliases: []
 ---
 
 # ADR-0007: <short title>
@@ -246,7 +244,7 @@ checkable by the validator without judging meaning:
 | # | Allowed edit | What it looks like |
 |---|---|---|
 | 1 | **Status line** | One line appended to `## Status` per change (and the matching `status:` value), for a transition to `superseded` or `deprecated` (including `deprecated` → `superseded`), or a note such as "Supersession proposed by kb/ADR-0012" (a note sets no frontmatter). The line starts on a new line, never appended to the last sentence. Never a transition back to `proposed`. |
-| 2 | **Supersede link** | Setting `superseded_by:`, only in the change that moves `status` to `superseded` (1) or on a record already `superseded` whose link is empty, never changed once set; the successor it names must already be `accepted` (in the same PR within a home, or merged earlier across homes), and a non-empty `superseded_by` means `status: superseded` (and, for a move, replacing the file with its stub, which keeps the record's frontmatter and adds only `moved_to`, naming another home; the new record lists the old id in `aliases`). |
+| 2 | **Supersede link** | Setting `superseded_by:`, only in the change that moves `status` to `superseded` (1) or on a record already `superseded` whose link is empty, never changed once set; the successor it names must already be `accepted` (in the same PR within a home, or merged earlier across homes), and a non-empty `superseded_by` means `status: superseded`; a transition to `superseded` sets it. |
 | 3 | **Later observation** | A dated entry appended at the end of `## Later observations`, starting on a new line; every top-level line appended is a bullet that starts with its date (indented lines continue the entry above). Earlier entries are never edited; a wrong one is corrected by a newer one. |
 | 4 | **Format and link repair** | Formatting only (the section text is identical after normalising whitespace, paired emphasis markers outside code spans, and list bullets), or a link target only: a markdown link's or aliased wikilink's target may change in any section, its text may not; a bare wikilink or autolink, whose target is its text, may change only in *See also*. |
 | 5 | **Schema backfill** | Adding a frontmatter key this design introduces (`id`, `reversibility`, `blast_radius`, `sensitivity`, `scope`, `decided_by`) that is absent or empty on the base, allowed only while the base record is unclassified (no `reversibility`): every classification key is filled in one PR, all-or-nothing. `id` must equal the value its home and filename imply. `decided_by` is not added over an existing `deciders` value. A filled value is never changed again. The body is untouched. |
@@ -282,7 +280,10 @@ converted record is validated as a full new-format record (description, tags, st
 human in `decided_by` when ratified, classification, and the high-tier extras). Once its base copy
 is classified, the lock above applies. A legacy record the change leaves unclassified keeps the
 grandfathered warnings (see *The validator*). A legacy record whose `blast_radius` belongs in the
-other home may be converted where it sits and moved later.
+other home may be converted where it sits (a warning), and stays there or is superseded by a
+record in the right home. A legacy record with a locked status that the change leaves
+unclassified takes only the five edits; the change that classifies it may rewrite it, but its
+status moves only forward (as in edit 1) and the deciders it already records stay.
 
 **Observations** answer four things: when and where (date, PR or ticket), which statement
 (quoted, or a `F#` fact id), what is true now and its source, and what it means (no trigger fired
@@ -359,10 +360,10 @@ reverse links, as a table or `--json`), and `next` (the next free number in a ho
 base tip with `--base`). Run by the skill after every write, available as a pre-commit hook, and
 in CI.
 
-`check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>] [--strict] [--draft]
-<dir>`. `--draft` is for the writer validating a proposal it is about to commit
-for review: the `proposed-shared` and ride-along findings, which are expected until the record is
-accepted, are reported as warnings. CI never passes it. The home is inferred from the path for any home the resolution above finds (a
+`check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>] [--strict] [--ci]
+<dir>`. A plain check reports the `proposed-shared` and ride-along findings, which are expected
+until the record is accepted, as warnings; `--ci` (the merge gate) makes them errors. CI always
+passes `--ci`. The home is inferred from the path for any home the resolution above finds (a
 household's homes, or a single repo's local home and its KB); a standalone KB checkout needs
 `--home shared`, and CI passes `--home` because the manifest is not checked out there. `--single-home`
 marks a repo with no KB (one coinciding home) when `--home` is passed. `--base` needs the
@@ -371,8 +372,7 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
 - frontmatter schema: required keys, enum values, inline values only;
 - id matches home and filename; number unique against `--base`;
 - home matches `blast_radius` (skipped for coinciding homes): an error, except on a legacy record
-  (judged on its base copy, or on the record itself without a base), where it is a warning to
-  move it; `scope` syntax matches the home;
+  (judged on its base copy, or on the record itself without a base), where it is a warning; `scope` syntax matches the home;
 - high-tier extras; `accepted` requires non-empty `decided_by` (any named human: who should
   approve is named in the PR, not checked against a list);
 - relations resolve; references to another home are warnings when that home is not on disk or
@@ -435,9 +435,8 @@ Exit non-zero with one line per violation (`path: rule: message`). Tests in
   temporary git worktree so the user's checkout is untouched), `pr-branch <branch>` (commit onto
   the open PR that carries the record — `accept` and `reject` of a proposal under review), or
   `ride-along` (stage on the user's current branch, never commit). It runs `adr-lint check --base`
-  before committing and stops on any nonzero exit. It passes `--draft` for every `pr-branch` and
-  `ride-along` change and for an `own-pr` change that proposes a record, since a PR may still
-  carry other proposals; CI never passes it and stays the merge gate.
+  before committing and stops on any nonzero exit. Its check is a plain one (without
+  `--ci`), since a PR may still carry proposals; CI passes `--ci` and stays the merge gate.
 - A ride-along needs the user in the record's home repo on a non-default branch; otherwise the
   change goes `own-pr`. `pr-branch` refuses a PR from a fork (`isCrossRepository`): its author
   applies the edit.

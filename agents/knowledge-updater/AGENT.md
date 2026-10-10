@@ -101,7 +101,8 @@ assistant, anything ending in `[bot]`). Legacy records may carry `deciders`: rea
 
 **Locked records.** Accepted, rejected, superseded and deprecated records are locked. A legacy
 record (no frontmatter, or no `reversibility` on the base) with a locked status may be converted
-once (rewritten into the template, its status moving only forward, its recorded deciders kept);
+once (rewritten into the template, its status moving only forward, its recorded deciders kept;
+a record with no frontmatter may map its prose status to any settled status, never `proposed`);
 otherwise an `update` to a locked record is only one of these five edits:
 
 1. one new line appended to `## Status`, with a transition to `superseded` or `deprecated`

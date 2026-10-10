@@ -503,8 +503,11 @@ test('B6: a frontmatter-less base takes its status from the last status word in 
     const name = '0001-session-storage.md';
     const back = rec({ status: 'proposed', fm: { decided_by: [] } });
     assert.ok(has(run([back], { base: base({ [name]: BARE }) }), 'locked', /status accepted -> proposed/));
+    // Prose statuses map to any settled status in the conversion (the parsed word may be wrong);
+    // only reopening as a proposal is refused.
     const deprecated = BARE.replace('Accepted 2025-03-01', 'Accepted 2025-03-01\nDeprecated 2025-06-01: gone');
-    assert.ok(has(run([rec()], { base: base({ [name]: deprecated }) }), 'locked', /status deprecated -> accepted/));
+    assert.ok(!run([rec()], { base: base({ [name]: deprecated }) }).some((v) => v.rule === 'locked'));
+    assert.ok(has(run([back], { base: base({ [name]: deprecated }) }), 'locked', /status deprecated -> proposed/));
     // A proposal stays a draft: no status word that locks it, so nothing to keep.
     const proposal = BARE.replace('Accepted 2025-03-01', 'Proposed 2025-03-01');
     assert.ok(!run([back], { base: base({ [name]: proposal }) }).some((v) => v.rule === 'locked'));

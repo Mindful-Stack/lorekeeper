@@ -279,3 +279,13 @@ test('edit 5 repair: a literal block rewritten inline matches with or without it
     const changed = makeRecord({ fm: { rfc: undefined }, extraFrontmatter: 'rfc: "line one\\nline 2"' });
     assert.ok(lockedDiff(block, changed).some((m) => /rfc changed/.test(m)));
 });
+
+test('a frontmatter-less legacy status in prose maps to any settled status, never back to proposed', () => {
+    const { conversionDiff } = require('../adr/locked');
+    const bare = '# ADR-0001: Service architecture\n\n## Status\nSuperseded by MVP 1 approach (shared database, direct HTTP communication)\n\n## Context\nOld text.\n';
+    assert.deepEqual(conversionDiff(bare, makeRecord({ fm: { status: 'deprecated' }, sections: { Status: 'Deprecated 2026-10-10 by Alex Doe.' } })), []);
+    assert.deepEqual(conversionDiff(bare, makeRecord({ status: 'rejected', fm: { decided_by: ['Alex Doe'] } })), []);
+    assert.ok(conversionDiff(bare, makeRecord({ status: 'proposed', fm: { decided_by: [] } })).some((m) => /-> proposed is not an allowed transition/.test(m)));
+    // A superseded result still names its successor.
+    assert.ok(conversionDiff(bare, makeRecord({ fm: { status: 'superseded' } })).some((m) => /superseded sets superseded_by/.test(m)));
+});

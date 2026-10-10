@@ -84,7 +84,8 @@ locked record allows.
   human in `decided_by` when ratified, classification, the high-tier extras). The conversion keeps
   the record's status moving only forward (never back to `proposed`; `accepted` may become only
   `superseded` or `deprecated`) and keeps the deciders it records. A record with no frontmatter
-  takes its status from the last status word in its `## Status` section. Accepting a legacy
+  has its status only as prose in `## Status`, so its conversion may map it to any settled status
+  (accepted, rejected, deprecated, or superseded with a named successor), never to `proposed`. Accepting a legacy
   proposal through `/lore:adr` converts it in the same change.
 - **Until converted**, a legacy record with a locked status (`accepted`, `rejected`,
   `superseded`, `deprecated`) is locked: it changes only by the five edits, the backfill among

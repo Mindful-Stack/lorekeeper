@@ -277,8 +277,9 @@ section and fails on any change outside the five allowed edits.
 `reversibility` (unclassified). They predate this design. An unconverted legacy record with a
 locked status keeps the five-edit lock. One change may **convert** a legacy record: it classifies
 it and may rewrite anything in it, frontmatter and body, but its status moves only forward (as in
-edit 1) and the deciders it already records stay. A base with no frontmatter takes its status from
-the last status word in its `## Status` section and records no deciders. The converted record is
+edit 1) and the deciders it already records stay. A base with no frontmatter has its status only
+as prose in `## Status` and records no deciders: its conversion may map that prose to any settled
+status (accepted, rejected, deprecated, or superseded naming its successor), never to `proposed`. The converted record is
 validated as a full new-format record (description, tags, status, a named human in `decided_by`
 when ratified, classification, and the high-tier extras). Once its base copy is classified, the
 full lock applies. A legacy record the change leaves unclassified keeps the grandfathered
@@ -387,7 +388,8 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
 - **locked-record diff rule:** given `--base`, a record locked on the base (accepted or later,
   and classified) may only differ by the five edits in *Amend or supersede*. A legacy record with
   a locked status keeps that lock until a change converts it; the conversion is checked as a
-  new-format record whose status moves only forward and whose recorded deciders stay;
+  new-format record whose status moves only forward (a frontmatter-less base may map to any
+  settled status, never `proposed`) and whose recorded deciders stay;
 - a transition to `superseded` names the successor in `superseded_by`;
 - given `--base`, a record locked on the base tip but not at the merge base (accepted on the base
   since this branch forked) must be unchanged from the merge base; any edit to it fails with

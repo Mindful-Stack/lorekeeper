@@ -156,6 +156,17 @@ git commit -m \"feat: add DeviceStatusDto\"
   :workdir "."
   :expects ["Later observations" "(?m)^[\\s>]*[-*]\\s+\\**\\d{4}-\\d{2}-\\d{2}.*F2"]}
 
+ {:name "skill-adr-ratify-from-plain-words"
+  :prompt "Alex Doe approved kb/ADR-0002 — record that. Do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["(?i)Alex Doe" "status: accepted|Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe"]
+  :rejects ["(?i)decided_by: \\[\\s*\"?Claude"]}
+
+ {:name "skill-adr-what-binds-a-change"
+  :prompt "Which architecture decisions apply if I change src/Payments in the backend?"
+  :workdir "."
+  :expects ["kb/ADR-0001"]}
+
  {:name "command-doctor-reports-adr-homes"
   :prompt "/lore:doctor"
   :workdir "."

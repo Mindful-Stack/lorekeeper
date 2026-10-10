@@ -2,7 +2,7 @@
 
 const { isEmpty, asList, parseRecord, decodeBlock, sections } = require('./frontmatter');
 const { matchesGlob } = require('./glob');
-const { lockedDiff } = require('./locked');
+const { lockedDiff, conversionDiff } = require('./locked');
 const R = require('./records');
 
 const SHARED_SCOPE = /^[A-Za-z0-9._-]+:[^:]/;
@@ -41,7 +41,8 @@ function grandfathered(record, baseText) {
 }
 
 // Locked: ratified or declined, and classified. A legacy record (no frontmatter, or none of this
-// design's classification) is not: the change that converts it may rewrite it in place.
+// design's classification) is not: the change that classifies it may rewrite it in place, within
+// conversionDiff; until then a legacy record with a locked status takes only the five edits.
 function isLocked(parsed) {
     return parsed.found && R.LOCKED.has(parsed.fm.status) && !R.isUnclassified(parsed.fm);
 }
@@ -57,8 +58,8 @@ function describe(r, ctx) {
     const b = baseText ? parseRecord(baseText) : null;
     const lockedOnBase = !!b && isLocked(b);
     const legacyOnBase = !!b && (!b.found || R.isUnclassified(b.fm));
-    const frozenOnBase = lockedOnBase
-        || (legacyOnBase && b.found && R.LOCKED.has(b.fm.status) && R.isUnclassified(r.fm));
+    const legacyLockedOnBase = legacyOnBase && b.found && R.LOCKED.has(b.fm.status);
+    const frozenOnBase = lockedOnBase || (legacyLockedOnBase && R.isUnclassified(r.fm));
     const keys = new Set();
     if (frozenOnBase) {
         for (const k of new Set([...Object.keys(b.fm), ...Object.keys(r.fm), ...R.KNOWN_KEYS])) {
@@ -79,6 +80,7 @@ function describe(r, ctx) {
         baseBlockRaw: b ? b.blockRaw : {},
         lockedOnBase,
         legacyOnBase,
+        legacyLockedOnBase,
         // On the base and identical to it, whatever its status: this change did not cause a
         // finding here.
         untouched: !!baseText && lf(baseText) === lf(r.text),
@@ -148,7 +150,11 @@ function checkRecord(home, r) {
         else fix(keys, rule, message);
     };
 
-    if (lockedOnBase) for (const m of lockedDiff(baseText, r.text)) err(r.file, 'locked', m);
+    // A legacy record with a locked status changes by the five edits until a change classifies
+    // it; that change may rewrite it, within conversionDiff.
+    const diff = lockedOnBase || (info.legacyLockedOnBase && R.isUnclassified(fm)) ? lockedDiff
+        : info.legacyLockedOnBase ? conversionDiff : null;
+    if (diff) for (const m of diff(baseText, r.text)) err(r.file, 'locked', m);
 
     // A moved record is a stub pointing at its new id in another home, which names the
     // old id in its aliases.

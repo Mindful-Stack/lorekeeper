@@ -229,6 +229,16 @@ test('M6: a change appends exactly one Status line', () => {
     assert.ok(lockedDiff(BASE, two).some((m) => /one line to ## Status per change/.test(m)));
 });
 
+test('B6: a transition to superseded names its successor', () => {
+    const flipped = 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSuperseded 2026-11-01.';
+    const bare = makeRecord({ fm: { status: 'superseded' }, sections: { Status: flipped } });
+    assert.ok(lockedDiff(BASE, bare).some((m) => /a transition to superseded sets superseded_by to the accepted successor/.test(m)));
+    const depStatus = 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nDeprecated 2026-10-02 by Alex Doe: x.';
+    const deprecated = makeRecord({ fm: { status: 'deprecated' }, sections: { Status: depStatus } });
+    const fromDeprecated = makeRecord({ fm: { status: 'superseded' }, sections: { Status: `${depStatus}\nSuperseded 2026-10-09.` } });
+    assert.ok(lockedDiff(deprecated, fromDeprecated).some((m) => /sets superseded_by/.test(m)));
+});
+
 test('fix2-1: a record already superseded with an empty link may gain it once', () => {
     const legacySup = makeRecord({ fm: { status: 'superseded' }, sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSuperseded 2026-11-01.' } });
     const linked = legacySup.replace(/^superseded_by:.*$/m, 'superseded_by: kb/ADR-0002');

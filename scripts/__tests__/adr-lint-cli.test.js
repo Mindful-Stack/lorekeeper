@@ -449,6 +449,55 @@ test('B4f: backfill skips a frontmatter-less record and says to convert it by re
     assert.equal(fs.readFileSync(path.join(w.shared, '0001-session-storage.md'), 'utf8'), LEGACY_BARE);
 });
 
+// B6: a legacy record with a locked status is not free text. Left unclassified it changes only
+// by the five locked edits; the change that classifies it may rewrite its body, but its status
+// moves only forward and the deciders it already records stay.
+const LEGACY_ACCEPTED_FM = { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined, decided_by: undefined, deciders: ['Alex Doe'] };
+
+test('B6a: an unclassified legacy accepted record changes only by the locked edits', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.local, w.api, makeRecord({ prefix: 'api', fm: LEGACY_ACCEPTED_FM }));
+    write(file, makeRecord({ prefix: 'api', fm: LEGACY_ACCEPTED_FM, sections: { Decision: 'The API stores sessions in cookies.\n\n- **R1** Session state MUST be written to cookies.' } }));
+    const rewritten = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(rewritten.code, 1, rewritten.stdout);
+    assert.match(rewritten.stdout, /0001-session-storage\.md: locked: section "Decision" changed/);
+    write(file, makeRecord({ prefix: 'api', fm: { ...LEGACY_ACCEPTED_FM, deciders: ['Mallory'] } }));
+    const swapped = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(swapped.code, 1, swapped.stdout);
+    assert.match(swapped.stdout, /locked: frontmatter deciders changed/);
+    // A dated observation is still one of the five edits.
+    write(file, makeRecord({ prefix: 'api', fm: LEGACY_ACCEPTED_FM, sections: { 'Later observations': '<!-- append-only, accepted records only; newest last -->\n- 2026-11-02 (PR 7): F1 still holds.' } }));
+    const observed = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(observed.code, 0, observed.stdout + observed.stderr);
+});
+
+test('B6b: converting a legacy accepted record cannot move its status back or drop its deciders', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.local, w.api, makeRecord({ prefix: 'api', fm: LEGACY_ACCEPTED_FM }));
+    write(file, makeRecord({ prefix: 'api', status: 'proposed', fm: { decided_by: [] }, sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nReopened 2026-10-09.' } }));
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
+    assert.equal(r.code, 1, r.stdout);
+    assert.match(r.stdout, /locked: status accepted -> proposed is not an allowed transition/);
+    assert.match(r.stdout, /locked: decided_by cannot replace the deciders already recorded/);
+});
+
+test('B6c: converting a legacy accepted record in the shared home keeps its deciders and cannot reject it', (t) => {
+    const w = workspace(t);
+    const file = legacyOnMain(w, w.shared, w.kb, makeRecord({ fm: LEGACY_ACCEPTED_FM }));
+    write(file, makeRecord({ fm: { decided_by: ['Mallory'] }, sections: { Decision: 'Inverted.\n\n- **R1** Session state MUST be written to cookies.' } }));
+    const swapped = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(swapped.code, 1, swapped.stdout);
+    assert.match(swapped.stdout, /locked: decided_by cannot replace the deciders already recorded/);
+    write(file, makeRecord({ status: 'rejected', fm: { decided_by: ['Mallory'] }, sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nRejected 2026-10-09 by Mallory: no.' } }));
+    const rejected = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(rejected.code, 1, rejected.stdout);
+    assert.match(rejected.stdout, /locked: status accepted -> rejected is not an allowed transition/);
+    // Keeping the recorded decider, the body may be rewritten as the record is classified.
+    write(file, makeRecord({ sections: { Context: 'Rewritten on conversion.' } }));
+    const kept = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.equal(kept.code, 0, kept.stdout + kept.stderr);
+});
+
 // B5: an edit of an existing record is validated only by the knowledge-updater, in a worktree
 // against the real base with its flags; a scratch copy (no base) misjudges these two cases.
 function updaterWorktree(t, w, repo, branch, start) {

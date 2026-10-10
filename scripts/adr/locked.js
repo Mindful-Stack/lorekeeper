@@ -113,7 +113,7 @@ function lockedDiff(baseText, curText) {
         const cv = c.fm[key];
         if (same(bv, cv)) continue;
         if (key === 'status') {
-            if (!(STATUS_MOVES[bv] || []).includes(cv)) {
+            if (!transitionAllowed(bv, cv)) {
                 out.push(`status ${bv} -> ${cv} is not an allowed transition`);
             }
         } else if (key === 'superseded_by') {
@@ -185,10 +185,35 @@ function lockedDiff(baseText, curText) {
             out.push('each later observation is a bullet that starts with its date');
         }
     }
+    out.push(...successorNamed(b.fm, c.fm));
     if (!same(b.fm.status, c.fm.status) && !statusGrew) {
         out.push('a status transition needs a line appended to ## Status');
     }
     return out;
 }
 
-module.exports = { lockedDiff, normaliseForRepair };
+function transitionAllowed(from, to) {
+    return same(from, to) || (STATUS_MOVES[from] || []).includes(to);
+}
+
+// A predecessor is never left superseded by nothing. One already superseded on the base with
+// an empty link (a legacy record) is left as it was.
+function successorNamed(bfm, cfm) {
+    return bfm.status !== 'superseded' && cfm.status === 'superseded' && isEmpty(cfm.superseded_by)
+        ? ['a transition to superseded sets superseded_by to the accepted successor'] : [];
+}
+
+// The change that classifies a legacy record with a locked status may rewrite its body, but
+// its status moves only forward and the deciders it already records stay.
+function conversionDiff(baseText, curText) {
+    const b = parseRecord(baseText).fm;
+    const c = parseRecord(curText).fm;
+    const out = [];
+    if (!transitionAllowed(b.status, c.status)) out.push(`status ${b.status} -> ${c.status} is not an allowed transition`);
+    out.push(...successorNamed(b, c));
+    const was = decidedBy(b);
+    if (was.length && !same(was, decidedBy(c))) out.push('decided_by cannot replace the deciders already recorded');
+    return out;
+}
+
+module.exports = { lockedDiff, conversionDiff, normaliseForRepair };

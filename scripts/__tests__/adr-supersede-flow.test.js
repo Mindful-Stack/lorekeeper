@@ -4,12 +4,11 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const { makeRecord, tmpDir, write, gitEnv, git, initRepo, commitAll, runCli } = require('./helpers/adr-fixtures');
 
-// A same-home supersede proposes the successor and adds a Status note to the predecessor in
-// one PR; accepting the successor in that same PR must leave the predecessor one Status line
-// past the base, so the note is replaced by the flip rather than followed by it.
+// A same-home supersede proposes the successor without touching the predecessor; the reverse
+// link is computed. Accepting the successor in that PR flips the predecessor with exactly one
+// appended Status line.
 
 const ACCEPTED = 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.';
-const NOTE = 'Supersession proposed 2026-10-08 by kb/ADR-0002; this record remains binding until it is accepted.';
 const FLIP = 'Superseded 2026-10-09 by kb/ADR-0002.';
 
 function household(t) {
@@ -28,10 +27,8 @@ function household(t) {
     const succ = path.join(shared, '0002-session-transport.md');
     write(pred, makeRecord());
     commitAll(kb, env, 'accept 0001');
-    git(kb, env, 'checkout', '-q', '-b', 'knowledge/adr-0002-session-transport');
-    // The supersede flow: a proposed successor plus the note on the predecessor.
+    git(kb, env, 'checkout', '-q', '-b', 'adr/0002-own-pr-20261008');
     write(succ, makeRecord({ number: '0002', status: 'proposed', fm: { supersedes: ['kb/ADR-0001'] } }));
-    write(pred, makeRecord({ sections: { Status: `${ACCEPTED}\n${NOTE}` } }));
     commitAll(kb, env, 'propose 0002');
     return { root, env, shared, pred, succ };
 }
@@ -45,24 +42,30 @@ function acceptSuccessor(w, predStatus) {
     }));
 }
 
-test('same-home accept in the supersede PR: replacing the unmerged note passes', (t) => {
+test('same-home supersede: the proposal leaves the predecessor untouched and binding', (t) => {
+    const w = household(t);
+    const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
+    assert.doesNotMatch(r.stdout, /0001-session-storage\.md/);
+    assert.match(r.stdout, /0002-session-transport\.md: proposed-shared: /);
+});
+
+test('same-home accept in the supersede PR: the predecessor gains exactly the flip', (t) => {
     const w = household(t);
     acceptSuccessor(w, `${ACCEPTED}\n${FLIP}`);
     const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
     assert.equal(r.code, 0, r.stdout + r.stderr);
 });
 
-test('same-home accept in the supersede PR: appending the flip after the note fails', (t) => {
+test('same-home accept in the supersede PR: a note before the flip is a second Status line and fails', (t) => {
     const w = household(t);
-    acceptSuccessor(w, `${ACCEPTED}\n${NOTE}\n${FLIP}`);
+    acceptSuccessor(w, `${ACCEPTED}\nNote 2026-10-08: kb/ADR-0002 proposed.\n${FLIP}`);
     const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
     assert.equal(r.code, 1, r.stdout);
     assert.match(r.stdout, /0001-session-storage\.md: locked: append one line to ## Status per change/);
 });
 
-test('same-home reject in the supersede PR: removing the note leaves the predecessor as on the base', (t) => {
+test('same-home reject in the supersede PR: the predecessor stays as on the base', (t) => {
     const w = household(t);
-    write(w.pred, makeRecord());
     write(w.succ, makeRecord({
         number: '0002',
         status: 'rejected',
@@ -71,6 +74,27 @@ test('same-home reject in the supersede PR: removing the note leaves the predece
     }));
     const r = runCli(w.root, w.env, 'check', '--base', 'main', w.shared);
     assert.equal(r.code, 0, r.stdout + r.stderr);
+});
+
+// Cross-home links are a review responsibility: a KB-only CI cannot see the successor's home,
+// so a predecessor flipped to a successor in another repo is a warning there, not an error.
+test('cross-home flip: a successor whose home is not on disk is a warning', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    const kb = path.join(root, 'kb-checkout');
+    const shared = path.join(kb, 'knowledge', 'adrs');
+    initRepo(kb, env);
+    const pred = path.join(shared, '0001-session-storage.md');
+    write(pred, makeRecord());
+    commitAll(kb, env, 'accept 0001');
+    git(kb, env, 'checkout', '-q', '-b', 'adr/0001-flip-20261009');
+    write(pred, makeRecord({
+        fm: { status: 'superseded', superseded_by: 'api/ADR-0002' },
+        sections: { Status: `${ACCEPTED}\nSuperseded 2026-10-09 by api/ADR-0002.` },
+    }));
+    const r = runCli(kb, env, 'check', '--home', 'shared', '--base', 'main', shared);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /relations: warning: superseded_by api\/ADR-0002: its home is not on disk, so it was not checked/);
 });
 
 // A discover batch opens one PR with several shared proposals; accepting one of them on that

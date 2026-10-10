@@ -42,7 +42,7 @@ test('edit 1: rewriting an earlier Status line fails', () => {
 });
 
 test('edit 2: superseded_by is set only with the superseded transition, and never changes', () => {
-    const noted = 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSupersession proposed by kb/ADR-0002.';
+    const noted = 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nNote 2026-10-08: see kb/ADR-0002.';
     assert.deepEqual(lockedDiff(BASE, makeRecord({ sections: { Status: noted } })), []);
     const early = makeRecord({ fm: { superseded_by: 'kb/ADR-0002' }, sections: { Status: noted } });
     assert.ok(lockedDiff(BASE, early).some((m) => /superseded_by is set only together with status: superseded/.test(m)));
@@ -209,7 +209,7 @@ test('M5: markdown link targets may change anywhere; bare wikilinks and autolink
 test('M6: a change appends exactly one Status line', () => {
     const two = makeRecord({
         fm: { status: 'deprecated' },
-        sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSupersession proposed by kb/ADR-0002.\nDeprecated 2026-11-01.' },
+        sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nNote 2026-10-08: see kb/ADR-0002.\nDeprecated 2026-11-01.' },
     });
     assert.ok(lockedDiff(BASE, two).some((m) => /one line to ## Status per change/.test(m)));
 });

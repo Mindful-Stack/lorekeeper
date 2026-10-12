@@ -35,6 +35,7 @@ function loadRecord(file, text) {
         name: path.basename(file),
         number: m ? m[1] : null,
         text,
+        found: parsed.found,
         fm: parsed.fm,
         order: parsed.order,
         errors: parsed.errors,

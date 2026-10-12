@@ -142,8 +142,14 @@ function checkRecord(home, r) {
     // a conversion of a legacy record could clear it, and lockedDiff forbids it once locked.
     const stuck = (key) => frozen.mode === 'base' && key !== null && r.blockRaw && r.blockRaw[key]
         && !decodeBlock(r.blockRaw[key]).ok && same(r.blockRaw[key], info.baseBlockRaw[key]);
-    r.errors.forEach((e, i) => (untouched || stuck(r.errorKeys[i]) ? warn : err)(r.file, 'frontmatter', e));
-    if (r.errors.length && Object.keys(fm).length === 0) return;
+    // An unconverted frontmatter-less record with a locked prose status takes the five edits; its
+    // missing frontmatter stays the warning it is untouched.
+    const bareLocked = r.found === false && info.legacyLockedOnBase;
+    r.errors.forEach((e, i) => (untouched || bareLocked || stuck(r.errorKeys[i]) ? warn : err)(r.file, 'frontmatter', e));
+    if (r.errors.length && Object.keys(fm).length === 0) {
+        if (bareLocked) for (const m of lockedDiff(baseText, r.text)) err(r.file, 'locked', m);
+        return;
+    }
 
     // `keys` names the frontmatter keys (and §sections) a finding is about.
     const fix = (keys, rule, message) => {

@@ -90,6 +90,10 @@ function lockedDiff(baseText, curText) {
     const b = parseRecord(baseText);
     const c = parseRecord(curText);
     const out = [];
+    // A frontmatter-less record carries its status as prose in ## Status.
+    const bStatus = baseStatus(b);
+    const cStatus = baseStatus(c);
+    if (!c.found && !transitionAllowed(bStatus, cStatus)) out.push(`status ${bStatus} -> ${cStatus} is not an allowed transition`);
 
     const backfillOpen = isUnclassified(b.fm);
     const keys = [...new Set([...b.order, ...b.blockKeys, ...c.order])];
@@ -170,7 +174,7 @@ function lockedDiff(baseText, curText) {
                 if (nonBlankLines(extra) > 1) out.push('append one line to ## Status per change (a transition or a note)');
                 // A line that reads as a status must be the record's status, or the prose misleads.
                 const word = STATUS_WORD.exec(extra.trim());
-                if (word && word[1].toLowerCase() !== c.fm.status) out.push(`the Status line says ${word[1].toLowerCase()}, but status is ${c.fm.status}`);
+                if (word && word[1].toLowerCase() !== cStatus) out.push(`the Status line says ${word[1].toLowerCase()}, but status is ${cStatus}`);
             } else if (extra.trim() !== '' && undatedObservation(extra)) {
                 out.push('each later observation is a bullet that starts with its date');
             }
@@ -184,8 +188,8 @@ function lockedDiff(baseText, curText) {
             out.push('each later observation is a bullet that starts with its date');
         }
     }
-    out.push(...successorNamed(b.fm, c.fm));
-    if (!same(b.fm.status, c.fm.status) && !statusGrew) {
+    out.push(...successorNamed({ ...b.fm, status: bStatus }, { ...c.fm, status: cStatus }));
+    if (!same(bStatus, cStatus) && !statusGrew) {
         out.push('a status transition needs a line appended to ## Status');
     }
     return out;

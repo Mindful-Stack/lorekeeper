@@ -589,3 +589,26 @@ test('B9a-5: narrowing a proposal\'s scope in the same change does not evade rid
     const b = base({ [name]: merged }, { changedFiles: ['src/Sessions/x.cs'] });
     assert.ok(has(run([narrowed], { home: LOCAL, base: b, ci: true }), 'ride-along', /src\/Sessions\/x.cs/));
 });
+
+// B9a-7: an unconverted frontmatter-less record with a locked prose status takes the five edits;
+// it keeps only the no-frontmatter warning it had untouched.
+test('B9a-7: a frontmatter-less accepted record takes a dated observation or a Status line', () => {
+    const name = '0001-session-storage.md';
+    const b = base({ [name]: BARE });
+    const at = (text) => run([loadRecord(`/h/${name}`, text)], { base: b });
+    const observed = at(`${BARE}\n## Later observations\n- 2026-10-12 (PR 9): the store moved to Redis; the decision holds.\n`);
+    assert.deepEqual(errors(observed), []);
+    assert.ok(has(observed, 'frontmatter', /no frontmatter/, 'warning'));
+    const deprecated = BARE.replace('Accepted 2025-03-01', 'Accepted 2025-03-01\nDeprecated 2026-10-12 by Alex Doe: sessions are gone.');
+    assert.deepEqual(errors(at(deprecated)), []);
+    // Everything else stays locked.
+    assert.ok(has(at(BARE.replace('on the server', 'in cookies')), 'locked', /section "Decision" changed/));
+    assert.ok(has(at(`${BARE}\n## Later observations\n- The store moved.\n`), 'locked', /starts with its date/));
+    assert.ok(has(at(BARE.replace('Accepted 2025-03-01', 'Accepted 2025-03-01\nProposed 2026-10-12 again.')), 'locked', /accepted -> proposed/));
+    // A successor link needs frontmatter: supersede it by converting it.
+    const superseded = BARE.replace('Accepted 2025-03-01', 'Accepted 2025-03-01\nSuperseded 2026-10-12 by kb/ADR-0002.');
+    assert.ok(has(at(superseded), 'locked', /sets superseded_by/));
+    // A frontmatter-less record that is not locked on the base still needs frontmatter.
+    const proposal = BARE.replace('Accepted 2025-03-01', 'Proposed 2025-03-01');
+    assert.ok(has(run([loadRecord(`/h/${name}`, `${proposal}\nMore.\n`)], { base: base({ [name]: proposal }) }), 'frontmatter', /no frontmatter/));
+});

@@ -280,7 +280,9 @@ section and fails on any change outside the five allowed edits.
 
 **Legacy records** are records whose base copy has no frontmatter, or has frontmatter but no
 `reversibility` (unclassified). They predate this design. An unconverted legacy record with a
-locked status keeps the five-edit lock. One change may **convert** a legacy record: it classifies
+locked status keeps the five-edit lock; one with no frontmatter takes them too, reading its status
+from `## Status` (a supersession needs `superseded_by`, so that record is converted first), and its
+missing frontmatter stays a warning. One change may **convert** a legacy record: it classifies
 it and may rewrite anything in it, frontmatter and body, but its status moves only forward (as in
 edit 1) and the deciders it already records stay. A base with no frontmatter has its status only
 as prose in `## Status` and records no deciders: a status word opening a line there (the last one

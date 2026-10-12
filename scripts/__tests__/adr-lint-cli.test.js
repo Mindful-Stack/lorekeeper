@@ -582,3 +582,11 @@ test('B5b: accepting an unclassified legacy proposal as cross-service in its loc
     assert.equal(r.code, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /home: warning: blast_radius cross-service belongs in the shared home; leave it here, or supersede it with a record there/);
 });
+
+test('B9a-3: --ci without --base is a usage error, so a CI job cannot drop the lock silently', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const r = runCli(w.root, w.env, 'check', '--ci', w.shared);
+    assert.equal(r.code, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /--ci needs --base <ref>/);
+});

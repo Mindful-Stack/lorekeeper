@@ -373,7 +373,7 @@ in CI.
 `check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>] [--strict] [--ci]
 <dir>`. A plain check reports the `proposed-shared` and ride-along findings, which are expected
 until the record is accepted, as warnings; `--ci` (the merge gate) makes them errors. CI always
-passes `--ci`. The home is inferred from the path for any home the resolution above finds (a
+passes `--ci`, which needs `--base` (without it the check is a usage error, exit 2). The home is inferred from the path for any home the resolution above finds (a
 household's homes, or a single repo's local home and its KB); a standalone KB checkout needs
 `--home shared`, and CI passes `--home` because the manifest is not checked out there. `--single-home`
 marks a repo with no KB (one coinciding home) when `--home` is passed. `--base` needs the

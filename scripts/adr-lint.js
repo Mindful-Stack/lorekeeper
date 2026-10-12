@@ -159,6 +159,8 @@ function makeResolver(homes) {
 
 function cmdCheck(flags, positional) {
     if (positional.length !== 1) throw new UsageError('check takes exactly one directory');
+    // Without a base the merge gate would skip the lock and pass.
+    if (flags.ci && !flags.base) throw new UsageError('--ci needs --base <ref>');
     const dir = path.resolve(positional[0]);
     const { homes, home } = locateHome(dir, flags);
     const { records, strays } = R.loadHome(dir);

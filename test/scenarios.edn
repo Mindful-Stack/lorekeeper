@@ -128,7 +128,7 @@ git commit -m \"feat: add DeviceStatusDto\"
   :expects ["backend/ADR-0001" "kb/ADR-0001" "kb/ADR-0002"]}
 
  {:name "command-adr-new-local-home-by-blast-radius"
-  :prompt "/lore:adr Validate backend commands with FluentValidation validators in the Application layer. Interview answers: the governed repo is backend; only the backend service is affected; switching libraries later would take an afternoon (two-way); it governs src/Application/**; no security, privacy, billing, legal or contract sensitivity. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
+  :prompt "/lore:adr The backend keeps its own read model for device status in a separate Postgres schema, rebuilt from domain events. Interview answers: the governed repo is backend; only the backend service is affected; undoing it later means migrating the schema and rewriting every device query, weeks of work (one-way); it governs src/Application/Devices/** and src/Infrastructure/ReadModel/**; no security, privacy, billing, legal or contract sensitivity; the alternatives were querying the write tables directly and an in-process cache. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
   :workdir "."
   :expects ["backend/docs/adr/0002-|backend/ADR-0002" "blast_radius: (local|service)" "id: backend/ADR-0002"]
   :rejects ["lore/knowledge/adrs/0003-"]}

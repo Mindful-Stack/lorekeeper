@@ -612,3 +612,18 @@ test('B9a-7: a frontmatter-less accepted record takes a dated observation or a S
     const proposal = BARE.replace('Accepted 2025-03-01', 'Proposed 2025-03-01');
     assert.ok(has(run([loadRecord(`/h/${name}`, `${proposal}\nMore.\n`)], { base: base({ [name]: proposal }) }), 'frontmatter', /no frontmatter/));
 });
+
+test('B9a-8: under --ci a newly set superseded_by whose home is not available fails', () => {
+    const name = '0001-session-storage.md';
+    const b = base({ [name]: makeRecord() });
+    const across = loadRecord(`/h/${name}`, makeRecord({
+        fm: { status: 'superseded', superseded_by: 'api/ADR-0002' },
+        sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nSuperseded 2026-11-01 by api/ADR-0002.' },
+    }));
+    const away = () => ({ state: 'unavailable' });
+    assert.ok(has(run([across], { base: b, resolveRef: away, ci: true }), 'relations',
+        /^superseded_by api\/ADR-0002: the successor's home is not available — run the check from the household, or set the link from the KB side$/));
+    assert.deepEqual(errors(run([across], { base: b, resolveRef: away })), []);
+    // A link already set on the base is not newly set.
+    assert.deepEqual(errors(run([across], { base: base({ [name]: across.text }), resolveRef: away, ci: true })), []);
+});

@@ -581,3 +581,11 @@ test('B9a-1: a record already locked on the base needs no named line it never ha
     // Without a base the transition cannot be seen, so nothing is reported.
     assert.ok(!run([loadRecord(`/h/${name}`, old)], { base: null }).some((v) => v.rule === 'ratified-by'));
 });
+
+test('B9a-5: narrowing a proposal\'s scope in the same change does not evade ride-along', () => {
+    const name = '0001-session-storage.md';
+    const merged = makeRecord({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way' } });
+    const narrowed = rec({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way', scope: ['src/Other/**'] } });
+    const b = base({ [name]: merged }, { changedFiles: ['src/Sessions/x.cs'] });
+    assert.ok(has(run([narrowed], { home: LOCAL, base: b, ci: true }), 'ride-along', /src\/Sessions\/x.cs/));
+});

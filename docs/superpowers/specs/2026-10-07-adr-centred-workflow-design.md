@@ -411,7 +411,8 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
   the change did not cause it, and a locked record could not clear it;
 - a shared-home record with `status: proposed` is an error when the change adds or edits it; an
   untouched legacy proposal is a warning;
-- ride-along rule (above), given `--base` and the PR's changed files.
+- ride-along rule (above), given `--base` and the PR's changed files, matched against the
+  record's scope on the base and in the change together (narrowing it does not evade the rule).
 
 **Grandfathered records** are records unclassified (no `reversibility`) on the base branch whose
 status this change does not move and which it leaves unclassified, including legacy proposals. On them, a missing *or empty*

@@ -366,7 +366,9 @@ function checkAgainstBase(home) {
     // Any proposed local record, merged earlier or new here, rides along with code in its scope.
     for (const r of records) {
         if (r.fm.status !== 'proposed' || h.kind !== 'local') continue;
-        const scope = asList(r.fm.scope);
+        // The base scope counts too: narrowing it in the same change does not move the code out.
+        const baseFm = home.info.get(r).baseFm;
+        const scope = [...asList(r.fm.scope), ...(baseFm ? asList(baseFm.scope) : [])];
         const hit = base.changedFiles.find((f) => scope.some((g) => matchesGlob(f, g)));
         if (!hit) continue;
         const message = `this change touches ${hit} in its scope, so the record must be accepted before merge${nextStep(home.ownId(r))}`;

@@ -310,3 +310,14 @@ test('B9a-4: an appended Status line that opens with a status word matches the f
     const note = S({ Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nNote 2026-10-12: renamed the store.' });
     assert.deepEqual(lockedDiff(BASE, note), []);
 });
+
+test('B9a-6: the first observation may replace the template placeholder comment', () => {
+    const comment = '<!-- append-only, accepted records only; newest last -->';
+    assert.deepEqual(lockedDiff(BASE, S({ 'Later observations': '- 2026-11-02 (PR 7): F1 still holds.' })), []);
+    // Dropping the comment beside an existing observation is fine; rewriting the observation is not.
+    const one = S({ 'Later observations': `${comment}\n- 2026-11-02 first.` });
+    assert.deepEqual(lockedDiff(one, S({ 'Later observations': '- 2026-11-02 first.\n- 2026-11-03 second.' })), []);
+    assert.ok(lockedDiff(one, S({ 'Later observations': '- 2026-11-02 first, amended.' })).some((m) => /may only grow/.test(m)));
+    // Still dated, still only in that section.
+    assert.ok(lockedDiff(BASE, S({ 'Later observations': '- F1 still holds.' })).some((m) => /starts with its date/.test(m)));
+});

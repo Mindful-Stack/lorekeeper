@@ -158,7 +158,11 @@ function lockedDiff(baseText, curText) {
             continue;
         }
         if (APPEND_ONLY.has(base.heading)) {
-            const extra = appended(base.content, cur.content);
+            let extra = appended(base.content, cur.content);
+            // The first observation may replace the template's placeholder comment.
+            if (extra === null && base.heading === 'Later observations') {
+                extra = appended(base.content.replace(/<!--[\s\S]*?-->/g, '').replace(/^\s+/, ''), cur.content);
+            }
             if (extra === null) {
                 out.push(`${label} may only grow at the end`);
             } else if (base.heading === 'Status') {

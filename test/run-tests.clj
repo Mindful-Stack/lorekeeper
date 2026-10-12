@@ -65,10 +65,10 @@
      :present present
      :output output}))
 
-(defn print-result [{:keys [name passed missing present]}]
+(defn print-result [{:keys [name passed missing present tally]}]
   (if passed
-    (println (colorize :green "[PASS]") name)
-    (println (colorize :red "[FAIL]") name
+    (println (colorize :green "[PASS]") name (or tally ""))
+    (println (colorize :red "[FAIL]") name (or tally "")
              (str (when (seq missing) (str "- missing: " (str/join ", " missing)))
                   (when (seq present) (str " - must not appear: " (str/join ", " present)))))))
 
@@ -100,8 +100,19 @@
           ;; Skip positional args
           :else (recur (rest args) result))))))
 
+;; --runs N runs each scenario N times and passes it when at least --min runs pass (default N),
+;; so a flaky scenario shows its pass rate instead of hiding behind a lucky retry.
+(defn run-repeated [s env runs min-pass]
+  (let [rs (doall (repeatedly runs #(run-test s env)))
+        k (count (filter :passed rs))]
+    (assoc (or (first (remove :passed rs)) (first rs))
+           :passed (>= k min-pass)
+           :tally (when (> runs 1) (str k "/" runs)))))
+
 (defn -main [& args]
   (let [opts (parse-args args)
+        runs (parse-long (str (:runs opts "1")))
+        min-pass (parse-long (str (:min opts runs)))
         filter-name (:filter opts)
         verbose (contains? opts :verbose)
         scenarios (cond->> (load-scenarios)
@@ -116,7 +127,7 @@
                      (println "Plugin dir:" (:plugin-dir env))
                      (println "")
                      (let [results (doall (map (fn [s]
-                                                 (let [r (run-test s env)]
+                                                 (let [r (run-repeated s env runs min-pass)]
                                                    (print-result r)
                                                    (when (and verbose (not (:passed r)))
                                                      (println "\n--- Output ---")

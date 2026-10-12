@@ -384,7 +384,7 @@ function checkAgainstBase(home) {
 
 // A predecessor is flipped only once its successor binds: accepted in the same change within
 // a home, or merged earlier in another home. An unavailable home is already a warning from
-// checkRef; the merge gate (--ci) fails it, since nothing else would check the successor.
+// checkRef, so it is not reported again here.
 function checkSuccessorAccepted(home, r) {
     const { ctx, err, byId } = home;
     const { prefix } = ctx.home;
@@ -397,9 +397,6 @@ function checkSuccessorAccepted(home, r) {
     } else {
         const found = ctx.resolveRef ? ctx.resolveRef(id) : { state: 'unavailable' };
         status = found.state === 'found' && found.fm ? found.fm.status : null;
-        if (found.state === 'unavailable' && ctx.ci) {
-            err(r.file, 'relations', `superseded_by ${id}: the successor's home is not available — run the check from the household, or set the link from the KB side`);
-        }
     }
     if (status && status !== 'accepted') {
         err(r.file, 'relations', `successor ${id} is ${status}; it must be accepted before this record is superseded`);

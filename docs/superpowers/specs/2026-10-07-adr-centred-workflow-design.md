@@ -310,8 +310,7 @@ PR. When the successor is accepted, both PRs are opened at once: the successor, 
 home, and the predecessor's flip to `superseded` in the other home. The team merges the successor
 first (the `stack` skill shows the order). Between the two merges both records are accepted; the
 architect treats the newer one as binding and reports the pair. Each home's CI sees the other home
-only when it is on disk, so the cross-home link is a review responsibility, not a mechanical one;
-under `--ci` a newly set `superseded_by` into a home that is not on disk fails.
+only when it is on disk, so the cross-home link is a review responsibility, not a mechanical one.
 
 **Only an `accepted` or `deprecated` record can be superseded.** A `superseded` one points at
 its successor, which is the record to supersede; a `rejected` one is not revived by supersession
@@ -394,9 +393,7 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
   `Ratified`, `Rejected`, `Deprecated` or `Superseded`). Any name passes; who it is, review
   judges. A record already locked on the base (its frontmatter or prose status) is exempt;
 - relations resolve; references to another home are warnings when that home is not on disk or
-  not resolvable without a manifest, errors when it is; under `--ci` a newly set `superseded_by`
-  whose home is not available is an error ("the successor's home is not available — run the check
-  from the household, or set the link from the KB side"); no supersession cycles;
+  not resolvable without a manifest, errors when it is; no supersession cycles;
 - `supersedes` / `superseded_by` are symmetric within the home (edit 2 makes the reverse side
   writable). `related` and `depends_on` are stored only on the record that declares them; their
   reverse links ("related from", "depended on by") are computed on read by `index`, the

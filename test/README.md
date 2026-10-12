@@ -42,10 +42,12 @@ bb test/run-tests.clj
 
 Each scenario runs `claude --print` from a workspace root with `--plugin-dir` pointing at
 this checkout, so the tests exercise the code in your working tree, not the installed
-plugin. The workspace root defaults to the bundled fixture in `test/fixtures/workspace/`
-(a `household.json` plus a small knowledge base with `payments`, `inventory`, and `device`
-domains that the scenarios assert against). Override either with
-`--workspace-root <dir>` or `--plugin-dir <dir>`.
+plugin. The workspace root defaults to a fresh copy of the bundled fixture in
+`test/fixtures/workspace/` (a `household.json` plus a small knowledge base with `payments`,
+`inventory`, and `device` domains that the scenarios assert against), made in a temp directory
+outside any git repository for each run and deleted afterwards; the runner prints its path as
+the workspace root. Override either with `--workspace-root <dir>` (used in place, not copied) or
+`--plugin-dir <dir>`.
 
 ### Filter by Name
 
@@ -73,8 +75,21 @@ Tests are defined in `scenarios.edn` as pure data:
 
 - **name**: Test identifier
 - **prompt**: What to send to Claude
-- **workdir**: Directory to run in (relative to knowledge repo root, usually ".")
+- **workdir**: Directory to run in (relative to knowledge repo root, usually "."); the runner
+  currently always runs from the workspace root, so a scenario that depends on the governed repo
+  names it in the prompt
 - **expects**: Regex patterns that must appear in output
+- **rejects** (optional): Regex patterns that must not appear, for outcomes a lenient `expects`
+  could hide (an agent accepted as a decider, a record filed in the wrong home)
+
+Scenarios assert on what a command prints before it writes. The runner pins
+`--permission-mode default`, allows only `Read`, `Glob`, `Grep`, `Bash(node *)` and agent and
+skill dispatch, and denies `Write`, `Edit`, `git` and `gh`, whatever the user's own permission
+settings say. `Bash(node *)` can still write files (`node -e`, `adr-lint backfill`), so the
+runner works on the temp copy: anything a scenario writes lands there, never in this checkout.
+Because the copy is not a git repository and git is denied, scenarios do not exercise the
+git-based steps (placement, `--base` checks). Prompts for commands that would otherwise write
+end with an instruction to stop after presenting the draft.
 
 ## How It Works
 

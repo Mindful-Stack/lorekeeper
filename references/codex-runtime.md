@@ -1,8 +1,8 @@
 # Codex runtime adaptation
 
-Lorekeeper's canonical workflows live in `commands/` and `agents/` because the
-same repository remains a Claude Code plugin. Apply these rules when following
-one of those files in Codex.
+Lorekeeper's canonical workflows live in `commands/` and `agents/` (the ADR
+workflow in `skills/recording-decisions/`) because the same repository remains a
+Claude Code plugin. Apply these rules when following one of those files in Codex.
 
 ## Resolve knowledge paths
 

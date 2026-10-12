@@ -112,15 +112,67 @@ git commit -m \"feat: add DeviceStatusDto\"
   :workdir "."
   :expects ["candidate|survey|discover|household.json|domain"]}
 
- {:name "command-adr-list"
-  :prompt "/lore:adr list"
-  :workdir "."
-  :expects ["ADR|decision record|adrs/"]}
-
  {:name "command-adr-new-triages-and-interviews"
   :prompt "/lore:adr Use a message queue between the order and inventory services"
   :workdir "."
-  :expects ["Tier|proposed|Context|Consequences"]}
+  :expects ["kb/ADR-000[12]" "(?i)\\b(record it|one line|no record|high[- ]tier|low[- ]tier|amend)\\b"]
+  :rejects ["Accepted \\d{4}-\\d{2}-\\d{2} by"]}
+
+ {:name "command-adr-list-spans-homes"
+  :prompt "/lore:adr list"
+  :workdir "."
+  :expects ["backend/ADR-0001" "kb/ADR-0001" "kb/ADR-0002"]}
+
+ {:name "command-adr-new-local-home-by-blast-radius"
+  :prompt "/lore:adr The backend keeps its own read model for device status in a separate Postgres schema, rebuilt from domain events. Interview answers: the governed repo is backend; only the backend service is affected; undoing it later means migrating the schema and rewriting every device query, weeks of work (one-way); it governs src/Application/Devices/** and src/Infrastructure/ReadModel/**; no security, privacy, billing, legal or contract sensitivity; the alternatives were querying the write tables directly and an in-process cache. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["backend/docs/adr/0002-|backend/ADR-0002" "blast_radius: (local|service)" "id: backend/ADR-0002"]
+  :rejects ["lore/knowledge/adrs/0003-"]}
+
+ {:name "command-adr-new-shared-home-by-blast-radius"
+  :prompt "/lore:adr Orders publish an OrderCancelled event that payments and inventory both consume. Interview answers: it is a contract between three services (cross-service); hard to undo once consumers exist (one-way); it governs backend:src/Orders/**; it touches billing. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["lore/knowledge/adrs/0003-|kb/ADR-0003" "blast_radius: cross-service" "id: kb/ADR-0003"]
+  :rejects ["backend/docs/adr/0002-"]}
+
+ {:name "command-adr-accept-requires-named-decider"
+  :prompt "/lore:adr accept kb/ADR-0002. Do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["(?i)who (approved|took|is taking|ratif)|named (human|person)"]
+  :rejects ["(?i)decided_by: \\[\\s*\"?[A-Za-z]" "Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]"]}
+
+ {:name "command-adr-accept-refuses-agent-decider"
+  :prompt "/lore:adr accept kb/ADR-0002 by Claude. Do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["(?i)\\b(human|person)\\b"]
+  :rejects ["(?i)decided_by: \\[\\s*\"?Claude" "Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]"]}
+
+ {:name "skill-adr-amend-a-proposal"
+  :prompt "kb/ADR-0002 is still proposed — change its scope to backend:src/Inventory/** and backend:src/Orders/**. Do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["scope:[^\\n]*backend:src/Inventory/\\*\\*[^\\n]*backend:src/Orders/\\*\\*|scope:[^\\n]*backend:src/Orders/\\*\\*[^\\n]*backend:src/Inventory/\\*\\*"]
+  :rejects ["kb/ADR-0003"]}
+
+ {:name "command-adr-observe-appends-dated-entry"
+  :prompt "/lore:adr observe kb/ADR-0001 The payment provider now supports webhooks v2, so F2 no longer holds. No trigger fired. Do not ask me questions. Stop after presenting the observation: do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["Later observations" "(?m)^[\\s>+]*[-*]\\s+\\**\\d{4}-\\d{2}-\\d{2}.*F2"]}
+
+ {:name "skill-adr-ratify-from-plain-words"
+  :prompt "Alex Doe decided kb/ADR-0002 and Sam Roe approved it — record that. Do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["decided_by:[^\\n]*Alex Doe" "Accepted \\d{4}-\\d{2}-\\d{2} by Sam Roe"]
+  :rejects ["decided_by:[^\\n]*Sam Roe" "(?i)decided_by: \\[\\s*\"?Claude"]}
+
+ {:name "skill-adr-what-binds-a-change"
+  :prompt "Which architecture decisions apply if I change src/Payments in the backend?"
+  :workdir "."
+  :expects ["kb/ADR-0001" "\\bR[12]\\b"]}
+
+ {:name "command-doctor-reports-adr-homes"
+  :prompt "/lore:doctor"
+  :workdir "."
+  :expects ["(?i)adr" "kb/ADR-0002"]}
 
  {:name "cultivate-bootstrap-prompts-for-purpose"
   :prompt "/lore:cultivate fresh-domain"

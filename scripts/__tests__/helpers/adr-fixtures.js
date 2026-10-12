@@ -59,7 +59,6 @@ function makeRecord(opts = {}) {
         related: [],
         implements: [],
         rfc: '',
-        aliases: [],
         ...(opts.fm || {}),
     };
     const lines = ['---'];

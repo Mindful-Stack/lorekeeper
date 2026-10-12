@@ -86,7 +86,9 @@ Use the `title` and `description` grepped from each node's frontmatter.
 If the argument is one of: `domain`, `frameworks`, `languages`, `general`, `learnings`, `adrs` -- Glob
 `<knowledge-path>/<argument>/**/*.md` and grep those files' `title`/`description`. The directory
 is the category, so no filtering is needed. For `adrs`, also grep `^status:` and show it in
-brackets after the number, sorted by number; `/lore:adr list` renders the same data as a table.
+brackets after the number, sorted by number. This lists the knowledge base's shared home only;
+records in each code repo's local home (`docs/adr/`) are not in the KB, so point at `/lore:adr list`,
+which renders every home as one table.
 
 ### Anything Else -> Search
 

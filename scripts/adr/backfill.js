@@ -15,6 +15,10 @@ const EMPTY_KEYS = [
 function backfill(text, id) {
     const eol = text.includes('\r\n') ? '\r\n' : '\n';
     const parsed = parseRecord(text);
+    // A record with no frontmatter is converted by hand: legacy records may be rewritten in place.
+    if (!parsed.found && !text.startsWith('---')) {
+        return { text, changed: false, added: [], error: 'no frontmatter: convert it by rewriting (legacy records may be rewritten in place)' };
+    }
     if (!parsed.found || parsed.errors.length) {
         return { text, changed: false, added: [], error: parsed.errors[0] || 'no frontmatter' };
     }

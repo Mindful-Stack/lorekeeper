@@ -149,7 +149,7 @@ Always get confirmation before making changes:
 ### Step 6: Apply (If Confirmed)
 
 Dispatch the **knowledge-updater** agent with:
-- **Type:** The knowledge type (`learning` for new learnings, `standard`/`domain`/`adr` for doc corrections). A *new* decision is not a doc correction: hand it to the recording-decisions skill (`/lore:adr`), which owns numbering and lifecycle. An `adr` update to an accepted record is refused by the agent; supersede instead.
+- **Type:** The knowledge type (`learning` for new learnings, `standard`/`domain` for doc corrections). Never `adr`: any ADR change, a correction included, goes to the recording-decisions skill (`/lore:adr`; a correction is its **amend** action).
 - **Content:** The approved content from Step 5
 - **Action:** `create` for new files, `update` for modifications
 - **File path:** For updates, the path to the file being modified

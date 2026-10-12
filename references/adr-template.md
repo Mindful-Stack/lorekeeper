@@ -5,7 +5,7 @@ description: "<the decision in one sentence, with its strongest because>"
 tags: [adr, <topic>]
 status: proposed            # proposed | accepted | rejected | deprecated | superseded
 date: YYYY-MM-DD
-decided_by: []              # named humans; required once accepted
+decided_by: []              # who took the decision; required once accepted
 consulted: []
 confidence: medium          # high | medium | low
 reversibility: one-way      # one-way | two-way
@@ -18,7 +18,6 @@ depends_on: []
 related: []
 implements: []              # reserved: behaviour-spec rule ids
 rfc:                        # optional URL
-aliases: []
 ---
 
 # ADR-NNNN: <short title>

@@ -20,7 +20,7 @@ bb test/run-tests.clj --filter "command-help"  # filter by name substring
 bb test/run-tests.clj --verbose                # show full output on failures
 ```
 
-The runner executes `claude --print` from a workspace root, passing `--plugin-dir` for this checkout so the scenarios exercise the working tree rather than the installed plugin. The workspace root defaults to the bundled fixture `test/fixtures/workspace/` (manifest plus a small KB with `payments`/`inventory`/`device` domains); `--workspace-root` and `--plugin-dir` override it.
+The runner executes `claude --print` from a workspace root, passing `--plugin-dir` for this checkout so the scenarios exercise the working tree rather than the installed plugin. The workspace root defaults to a fresh copy of the bundled fixture `test/fixtures/workspace/` (manifest plus a small KB with `payments`/`inventory`/`device` domains), made in a temp directory outside any git repo for each run and deleted afterwards; `--workspace-root` (used in place) and `--plugin-dir` override it.
 
 ### Init-script tests (Node)
 
@@ -56,7 +56,7 @@ It then:
 
 The two channels are not interchangeable: `systemMessage` is shown to the user but withheld from Claude, while `additionalContext` is injected into Claude's context but not shown to the user. Put anything the *model* must read (markers, router, instructions) in `additionalContext`; put anything the *user* should see (warnings, summaries) in `systemMessage`. The output JSON is assembled by hand, so every interpolated path/name is passed through `json_escape` first — a stray quote or backslash in a path would otherwise produce invalid JSON and silently break the whole message.
 
-Convention everywhere: **the last `Knowledge path:` line is the write target**, and the hook also emits the explicit `Team knowledge path:` marker for it. Multi-KB override semantics are whole-file replacement (a higher-priority KB's file fully replaces a lower-priority one at the same relative path — never section-level merging). Don't break either — skills/commands depend on them.
+Convention everywhere: **the last `Knowledge path:` line is the write target**, and the hook also emits the explicit `Team knowledge path:` marker for it. Multi-KB override semantics are whole-file replacement (a higher-priority KB's file fully replaces a lower-priority one at the same relative path — never section-level merging). Don't break either — skills/commands depend on them. ADR commands and agents take their homes from `adr-lint homes` instead.
 
 Commands and agents do not call this script directly. Instead, every command/agent markdown file says: *look for "Knowledge path:" markers in the session context and use them as `<knowledge-path>`*. The model substitutes the values at runtime. This is the only mechanism by which commands learn where the knowledge base is.
 
@@ -70,8 +70,10 @@ There is deliberately **no build step and no generated catalogue**. Frontmatter 
 
 The one deliberate exception is `scripts/adr-lint.js`: ADR validation has to run in CI and as a
 pre-commit hook, where Claude is not present, and it has to give the same answer every time. It
-validates and selects; it never generates a catalogue, and nothing reads its output back into
-the knowledge base.
+validates and selects, and its read-only helpers (`homes`, `index`, `next`) give the ADR command
+and agents the same answer the validator would: where the homes are, what the catalogue holds
+with its reverse links, which number is next. It never writes a catalogue, and nothing reads its
+output back into the knowledge base.
 
 ### Layer priority for knowledge
 
@@ -86,11 +88,11 @@ Whenever multiple knowledge sources address the same topic, the agreed priority 
 
 Hypothesis-confidence learnings never override; they're supplementary.
 
-Accepted ADRs (`adrs/`, `status: accepted`) sit outside the ladder: they are constraints, not standards, and no standard overrides one. Retrieval is the read-only `architect` agent (`bind` / `survey` / `check`), which pattern-identifier, brainstorming, and review dispatch in parallel with their usual agent; the reader and answerer stay ADR-agnostic. Authoring is `/lore:adr`; accepted records are immutable and the knowledge-updater agent refuses body edits to them.
+Accepted ADRs (in each code repo's `docs/adr/` local home and the KB's `adrs/` shared home, `status: accepted`) sit outside the ladder: they are constraints, not standards, and no standard overrides one. Retrieval is the read-only `architect` agent (`bind` / `survey` / `check`), which pattern-identifier, brainstorming, and review dispatch in parallel with their usual agent; the reader and answerer stay ADR-agnostic. Authoring is `/lore:adr`; accepted records are immutable and the knowledge-updater agent refuses body edits to them. Unlike other workflows, whose procedure lives in `commands/`, the ADR procedure lives in the `recording-decisions` skill (`SKILL.md`, one `actions/<action>.md` per action, and `reference/` for the record format and lifecycle); `commands/adr.md` is only an alias that reads it.
 
 ### Skill router vs. user-installed superpowers
 
-The SessionStart hook's systemMessage names skills like `pattern-identifier`, `brainstorming`, `test-driven-development`, `systematic-debugging`, `verification-before-completion`, `executing-plans`, `writing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `knowledge-update`, and `review`. The plugin's own skills are `pattern-identifier`, `knowledge-update`, `review`, `standards-curate`, `cultivate`, `cultivate-discovery`, and `recording-decisions` (the ADR gate; logic lives in `commands/adr.md`); the rest are bundled copies of the **superpowers** workflow skills under `skills/`. They have separate identities from the user-level superpowers skills with the same names — treat them as the plugin's own copies and edit them here. (If the user-level superpowers skills evolve, those changes are not automatically reflected here.)
+The SessionStart hook's systemMessage names skills like `pattern-identifier`, `brainstorming`, `test-driven-development`, `systematic-debugging`, `verification-before-completion`, `executing-plans`, `writing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `knowledge-update`, and `review`. The plugin's own skills are `pattern-identifier`, `knowledge-update`, `review`, `standards-curate`, `cultivate`, `cultivate-discovery`, and `recording-decisions` (the ADR gate, which also holds the ADR procedure); the rest are bundled copies of the **superpowers** workflow skills under `skills/`. They have separate identities from the user-level superpowers skills with the same names — treat them as the plugin's own copies and edit them here. (If the user-level superpowers skills evolve, those changes are not automatically reflected here.)
 
 ### Slash-command namespace
 

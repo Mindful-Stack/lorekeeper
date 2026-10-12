@@ -98,7 +98,7 @@ File: <knowledge-path>/domain/my-context.md
 | .NET patterns | `frameworks/dotnet/` |
 | Svelte patterns | `frameworks/svelte/` |
 | Business domain | `domain/` |
-| Architecture decision | `adrs/` — new decisions go through `/lore:adr` (numbering, lifecycle); use this command only to correct a *proposed* record |
+| Architecture decision | not here: any ADR edit goes to the `recording-decisions` skill (`/lore:adr`; a correction is its **amend** action) |
 
 ### 5. Present and Confirm
 
@@ -121,7 +121,7 @@ Show the user exactly what will change:
 ### 6. Apply Changes (if confirmed)
 
 Dispatch the **knowledge-updater** agent with:
-- **Type:** The knowledge type (`standard`/`domain`/`adr` for doc corrections; an `adr` update is refused by the agent if the record is already accepted — supersede it with `/lore:adr` instead)
+- **Type:** The knowledge type (`standard`/`domain` for doc corrections; never `adr`, which goes to `/lore:adr`)
 - **Content:** The approved content from Step 5
 - **Action:** `create` for new files, `update` for modifications
 - **File path:** For updates, the path to the file being modified

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { resolveHomes, homeOf, repoFromRemote, dirForPrefix } = require('../adr/homes');
-const { tmpDir, write, gitEnv, initRepo } = require('./helpers/adr-fixtures');
+const { makeRecord, tmpDir, write, gitEnv, git, initRepo, commitAll, runCli } = require('./helpers/adr-fixtures');
 
 const NO_ENV = { KNOWLEDGE_BASE_PATH: '' };
 
@@ -93,4 +93,46 @@ test('repoFromRemote matches ssh and https forms of the same URL', () => {
     const homes = { repos: [{ name: 'api', url: 'git@github.com:Example/api.git' }] };
     assert.equal(repoFromRemote(homes, 'https://github.com/example/api'), 'api');
     assert.equal(repoFromRemote(homes, 'https://github.com/example/other.git'), null);
+});
+
+// A repo `svc` with one commit, and a linked worktree of it beside it at ../wt-feat-x.
+function svcWithWorktree(t, origin) {
+    const parent = tmpDir(t);
+    const svc = path.join(parent, 'svc');
+    const env = gitEnv(parent);
+    initRepo(svc, env);
+    commitAll(svc, env, 'init');
+    if (origin) git(svc, env, 'remote', 'add', 'origin', origin);
+    const wt = path.join(parent, 'wt-feat-x');
+    git(svc, env, 'worktree', 'add', '-q', '-b', 'feat-x', wt);
+    return { svc, wt };
+}
+
+test('single repo: a linked worktree is named after its origin URL', (t) => {
+    const { wt } = svcWithWorktree(t, 'git@github.com:Acme/svc.git');
+    assert.equal(resolveHomes(wt, NO_ENV).localHomes[0].repo, 'svc');
+});
+
+test('single repo: a linked worktree without origin is named after the main worktree', (t) => {
+    const { wt } = svcWithWorktree(t, null);
+    assert.equal(resolveHomes(wt, NO_ENV).localHomes[0].repo, 'svc');
+});
+
+test('single repo: a plain repo without origin is named after its directory', (t) => {
+    const parent = tmpDir(t);
+    const root = path.join(parent, 'plain-repo');
+    initRepo(root, gitEnv(parent));
+    assert.equal(resolveHomes(root, NO_ENV).localHomes[0].repo, 'plain-repo');
+});
+
+test('CLI check and select infer the repo from origin in a linked worktree', (t) => {
+    const { wt } = svcWithWorktree(t, 'https://example.com/acme/svc.git');
+    const env = gitEnv(path.dirname(wt));
+    write(path.join(wt, 'docs', 'adr', '0001-a.md'), makeRecord({ prefix: 'svc', fm: { scope: ['src/**'] } }));
+    const r = runCli(wt, env, 'check', '--home', 'local', path.join(wt, 'docs', 'adr'));
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /id must be/);
+    write(path.join(wt, 'docs', 'adr', '0002-b.md'), makeRecord({ prefix: 'svc', number: '0002', fm: { id: undefined, scope: ['src/**'] } }));
+    const s = runCli(wt, env, 'select', '--paths', 'src/x.cs');
+    assert.match(s.stdout, /^svc\/ADR-0002\t/m);
 });

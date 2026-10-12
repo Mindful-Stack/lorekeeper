@@ -203,9 +203,9 @@ function conversionDiff(baseText, curText) {
     const b = { ...parsed.fm, status: baseStatus(parsed) };
     const c = parseRecord(curText).fm;
     const out = [];
-    // A record with no frontmatter carries its status as prose ("Superseded by the MVP approach"),
-    // so its conversion may map it to any settled status; it may never be reopened as a proposal.
-    const freeMapping = !parsed.found && c.status !== 'proposed';
+    // A record with no frontmatter carries its status as prose. Prose with no status word may map
+    // to any settled status; a parsed word moves only forward. Never reopened as a proposal.
+    const freeMapping = !parsed.found && b.status === undefined && c.status !== 'proposed';
     if (!freeMapping && !transitionAllowed(b.status, c.status)) out.push(`status ${b.status} -> ${c.status} is not an allowed transition`);
     // Prose gives no successor link, so a superseded result must name one either way.
     out.push(...successorNamed(parsed.found ? b : { ...b, status: undefined }, c));

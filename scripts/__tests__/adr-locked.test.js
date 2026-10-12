@@ -280,12 +280,26 @@ test('edit 5 repair: a literal block rewritten inline matches with or without it
     assert.ok(lockedDiff(block, changed).some((m) => /rfc changed/.test(m)));
 });
 
-test('a frontmatter-less legacy status in prose maps to any settled status, never back to proposed', () => {
+// B9a-2: free mapping is for prose with no status word; "Superseded by …" parses as superseded,
+// so its conversion now moves only forward (see the B9a-2 test below).
+test('a frontmatter-less legacy status in prose with no status word maps to any settled status, never back to proposed', () => {
     const { conversionDiff } = require('../adr/locked');
-    const bare = '# ADR-0001: Service architecture\n\n## Status\nSuperseded by MVP 1 approach (shared database, direct HTTP communication)\n\n## Context\nOld text.\n';
+    const bare = '# ADR-0001: Service architecture\n\n## Status\nReplaced by MVP 1 approach (shared database, direct HTTP communication)\n\n## Context\nOld text.\n';
     assert.deepEqual(conversionDiff(bare, makeRecord({ fm: { status: 'deprecated' }, sections: { Status: 'Deprecated 2026-10-10 by Alex Doe.' } })), []);
     assert.deepEqual(conversionDiff(bare, makeRecord({ status: 'rejected', fm: { decided_by: ['Alex Doe'] } })), []);
     assert.ok(conversionDiff(bare, makeRecord({ status: 'proposed', fm: { decided_by: [] } })).some((m) => /-> proposed is not an allowed transition/.test(m)));
     // A superseded result still names its successor.
     assert.ok(conversionDiff(bare, makeRecord({ fm: { status: 'superseded' } })).some((m) => /superseded sets superseded_by/.test(m)));
+});
+
+test('B9a-2: a prose status that parses keeps the transition rule; only unparseable prose maps freely', () => {
+    const { conversionDiff } = require('../adr/locked');
+    const accepted = '# ADR-0001: Sessions\n\n## Status\nAccepted 2024-03-01\n\n## Context\nOld text.\n';
+    const rejected = makeRecord({ status: 'rejected', sections: { Status: 'Accepted 2024-03-01\nRejected 2026-10-12 by Alex Doe: no.' } });
+    assert.ok(conversionDiff(accepted, rejected).some((m) => /accepted -> rejected is not an allowed transition/.test(m)));
+    const superseded = '# ADR-0001: Sessions\n\n## Status\nSuperseded by the MVP approach\n\n## Context\nOld text.\n';
+    const named = makeRecord({ fm: { status: 'superseded', superseded_by: 'kb/ADR-0002' }, sections: { Status: 'Superseded 2026-10-12 by kb/ADR-0002.' } });
+    assert.deepEqual(conversionDiff(superseded, named), []);
+    const prose = '# ADR-0001: Sessions\n\n## Status\nWe went with this in March.\n\n## Context\nOld text.\n';
+    assert.deepEqual(conversionDiff(prose, rejected), []);
 });

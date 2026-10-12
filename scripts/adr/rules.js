@@ -229,7 +229,8 @@ function checkRecord(home, r) {
     const deciders = R.decidedBy(fm);
     if (R.RATIFIED.has(fm.status)) {
         // Who should approve is not configured: the PR names it and the team's review handles it.
-        if (deciders.length === 0) need(['decided_by', 'deciders'], 'decided-by', `${fm.status} requires a named human in decided_by${nextStep(home.ownId(r))}`);
+        // decided_by names who took the decision; the ratifier goes in the Status line and the PR.
+        if (deciders.length === 0) need(['decided_by', 'deciders'], 'decided-by', `${fm.status} requires decided_by to name who took the decision${nextStep(home.ownId(r))}`);
     }
 
     // Relations. On a record locked on the base only a newly set superseded_by can change; a

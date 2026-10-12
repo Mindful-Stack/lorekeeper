@@ -114,8 +114,13 @@ test('a rejected high-tier record need not carry the tier extras; the same recor
 });
 
 test('accepted needs decided_by; legacy deciders counts', () => {
-    assert.ok(has(run([rec({ fm: { decided_by: [] } })]), 'decided-by', /requires a named human/));
+    assert.ok(has(run([rec({ fm: { decided_by: [] } })]), 'decided-by', /requires decided_by to name who took the decision/));
     assert.deepEqual(run([rec({ fm: { decided_by: undefined, deciders: ['Alex Doe'] } })]), []);
+});
+
+test('a proposal may already name who took the decision', () => {
+    const out = run([rec({ status: 'proposed', fm: { decided_by: ['Sam Roe'] } })]);
+    assert.deepEqual(out.map((v) => v.rule), ['proposed-shared']);
 });
 
 const LEGACY_FM = { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined };
@@ -220,7 +225,7 @@ test('proposed-shared, ride-along and decided-by name the next step', () => {
     const shared = run([rec({ status: 'proposed' })], { ci: true }).find((v) => v.rule === 'proposed-shared');
     assert.equal(shared.message, `a shared-home record merges only as accepted or rejected${next}`);
     const decided = run([rec({ fm: { decided_by: [] } })]).find((v) => v.rule === 'decided-by');
-    assert.equal(decided.message, `accepted requires a named human in decided_by${next}`);
+    assert.equal(decided.message, `accepted requires decided_by to name who took the decision${next}`);
     const proposed = rec({ prefix: 'api', status: 'proposed', fm: { reversibility: 'two-way' } });
     const b = base({}, { changedFiles: ['src/Sessions/Store.cs'] });
     const ride = run([proposed], { home: LOCAL, base: b }).find((v) => v.rule === 'ride-along');
@@ -519,7 +524,7 @@ test('B4: an unclassified base record is not locked; its conversion meets the fu
     assert.deepEqual(run([rewritten], { base: base({ [name]: UNCLASSIFIED() }) }), []);
     // Classified now, so not grandfathered: a missing decided_by is an error, not a warning.
     const noDecider = rec({ fm: { decided_by: [] }, sections: { Context: 'Rewritten.' } });
-    assert.ok(has(run([noDecider], { base: base({ [name]: UNCLASSIFIED() }) }), 'decided-by', /named human/));
+    assert.ok(has(run([noDecider], { base: base({ [name]: UNCLASSIFIED() }) }), 'decided-by', /who took the decision/));
     // Once classified on the base, the lock applies.
     assert.ok(has(run([rewritten], { base: base({ [name]: makeRecord() }) }), 'locked', /section "Context" changed/));
 });

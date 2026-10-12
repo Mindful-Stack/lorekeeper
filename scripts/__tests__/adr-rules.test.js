@@ -547,3 +547,38 @@ test('B4: a legacy record in the wrong home warns; a new or classified one fails
     const classifiedBase = makeRecord({ fm: { reversibility: 'two-way' } });
     assert.ok(has(run([service], { base: base({ [name]: classifiedBase }) }), 'home', /belongs in the local home/));
 });
+
+// B9a-1: a change that ratifies or rejects a record names who did it in the last Status line.
+test('B9a-1: ratifying names the ratifier in the last ## Status line', () => {
+    const name = '0001-session-storage.md';
+    const proposedBase = base({ [name]: makeRecord({ status: 'proposed' }) });
+    const unnamed = rec({ sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-12.' } });
+    assert.ok(has(run([unnamed], { base: proposedBase }), 'ratified-by', /last ## Status line/));
+    const untouched = rec({ sections: { Status: 'Proposed 2026-09-30.' } });
+    assert.ok(has(run([untouched], { base: proposedBase }), 'ratified-by', /last ## Status line/));
+    assert.ok(has(run([untouched], { base: proposedBase, ci: true }), 'ratified-by', /last ## Status line/));
+    const named = rec({ sections: { Status: 'Proposed 2026-09-30.\nAccepted 2026-10-12 by Alex Doe.' } });
+    assert.deepEqual(run([named], { base: proposedBase }), []);
+    // Born accepted in one change: no base copy, so the line is required too.
+    assert.deepEqual(run([named]), []);
+    assert.ok(has(run([unnamed]), 'ratified-by', /last ## Status line/));
+    // A rejection names the rejecter the same way; a supersession line names its successor.
+    const rejected = rec({ status: 'rejected', sections: { Status: 'Proposed 2026-09-30.\nRejected 2026-10-12: too costly.' } });
+    assert.ok(has(run([rejected], { base: proposedBase }), 'ratified-by', /last ## Status line/));
+    const rejectedNamed = rec({ status: 'rejected', sections: { Status: 'Proposed 2026-09-30.\nRejected 2026-10-12 by Alex Doe: too costly.' } });
+    assert.ok(!run([rejectedNamed], { base: proposedBase }).some((v) => v.rule === 'ratified-by'));
+    // The message names the next step.
+    const msg = run([unnamed]).find((v) => v.rule === 'ratified-by').message;
+    assert.ok(msg.endsWith('`/lore:adr accept kb/ADR-0001 by <name>` (or tell Claude who approved it)'), msg);
+});
+
+test('B9a-1: a record already locked on the base needs no named line it never had', () => {
+    const name = '0001-session-storage.md';
+    const old = makeRecord({ sections: { Status: 'Accepted 2024-01-01.' } });
+    assert.ok(!run([loadRecord(`/h/${name}`, old)], { base: base({ [name]: old }) }).some((v) => v.rule === 'ratified-by'));
+    // Nor does a frontmatter-less record whose prose already locks it, when it is converted.
+    const converted = rec({ sections: { Status: 'Accepted 2025-03-01' } });
+    assert.ok(!run([converted], { base: base({ [name]: BARE }) }).some((v) => v.rule === 'ratified-by'));
+    // Without a base the transition cannot be seen, so nothing is reported.
+    assert.ok(!run([loadRecord(`/h/${name}`, old)], { base: null }).some((v) => v.rule === 'ratified-by'));
+});

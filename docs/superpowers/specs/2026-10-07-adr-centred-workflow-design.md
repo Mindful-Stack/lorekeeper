@@ -385,6 +385,10 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
 - high-tier extras; `accepted` requires non-empty `decided_by` (who took the decision, any named
   human; who should approve is named in the PR, not checked against a list, and nothing checks
   that the approver is not a decider);
+- given `--base`, a change that moves a record to a locked status (or adds it locked) names who
+  did it: the last line of `## Status` matches `<Status> YYYY-MM-DD by <name>` (`Accepted`,
+  `Ratified`, `Rejected`, `Deprecated` or `Superseded`). Any name passes; who it is, review
+  judges. A record already locked on the base (its frontmatter or prose status) is exempt;
 - relations resolve; references to another home are warnings when that home is not on disk or
   not resolvable without a manifest, errors when it is; no supersession cycles;
 - `supersedes` / `superseded_by` are symmetric within the home (edit 2 makes the reverse side

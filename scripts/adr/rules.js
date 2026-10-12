@@ -13,6 +13,8 @@ const RELATION_KEYS = ['supersedes', 'depends_on', 'related', 'superseded_by'];
 const nextStep = (id) => ` — record a named human's approval: \`/lore:adr accept ${id} by <name>\` (or tell Claude who approved it)`;
 // Sections a rule can ask for (the high-tier extras).
 const RULE_SECTIONS = ['Considered options', 'Assumptions and invalidation triggers'];
+// The line a ratification, rejection or retirement appends to ## Status names who made it.
+const NAMED_STATUS_LINE = /^(Accepted|Ratified|Rejected|Deprecated|Superseded) \d{4}-\d{2}-\d{2} by \S/;
 
 function countBullets(content) {
     return content === null ? 0 : content.split('\n').filter((l) => /^[-*+]\s/.test(l)).length;
@@ -231,6 +233,14 @@ function checkRecord(home, r) {
         // Who should approve is not configured: the PR names it and the team's review handles it.
         // decided_by names who took the decision; the ratifier goes in the Status line and the PR.
         if (deciders.length === 0) need(['decided_by', 'deciders'], 'decided-by', `${fm.status} requires decided_by to name who took the decision${nextStep(home.ownId(r))}`);
+    }
+    // A change that locks a record names who ratified or rejected it in the last Status line; who
+    // that is, the PR's review judges. Seen only against a base: a record locked there is exempt.
+    if (ctx.base && R.LOCKED.has(fm.status) && !(baseText && R.LOCKED.has(R.baseStatus(parseRecord(baseText))))) {
+        const lines = (R.section(r, 'Status') || '').split('\n').map((l) => l.trim()).filter(Boolean);
+        if (!NAMED_STATUS_LINE.test(lines[lines.length - 1] || '')) {
+            err(r.file, 'ratified-by', `${fm.status} needs a last ## Status line naming who approved it ("<Status> YYYY-MM-DD by <name>.")${nextStep(home.ownId(r))}`);
+        }
     }
 
     // Relations. On a record locked on the base only a newly set superseded_by can change; a

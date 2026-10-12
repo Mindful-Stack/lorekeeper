@@ -294,7 +294,8 @@ options, a Decision with numbered MUST/MUST NOT rules (`kb/ADR-0007.R2`), Conseq
 *Assumptions and invalidation triggers*, and append-only *Later observations*. Frontmatter carries
 the classification (`reversibility`, `blast_radius`, `sensitivity`) that decides the home and the
 tier, a `scope` of globs that reviews select records by, and who took the decision in `decided_by`
-(the approver goes in the Status line, `Accepted YYYY-MM-DD by <name>.`, and the PR).
+(the approver goes in the Status line, `Accepted YYYY-MM-DD by <name>.`, which the check
+requires when a change accepts or rejects a record, and in the PR).
 High-tier records (one-way, cross-service or customer, or sensitive) get their own ADR-only PR and
 are accepted before implementation; low-tier ones may ride along in the implementation PR. There is
 no index file: the list is rendered on demand.

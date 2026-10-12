@@ -1,8 +1,8 @@
 # discover
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/recording-decisions/reference/record-format.md` and
-`${CLAUDE_PLUGIN_ROOT}/skills/recording-decisions/actions/record.md` first: its triage, draft and self-check
-steps apply to every pick.
+Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` and
+`<plugin-root>/skills/recording-decisions/actions/record.md` first: its triage and draft steps
+apply to every pick.
 
 Recover the decisions a codebase made without writing them down. Every pick arrives as a proposal
 that a named human then ratifies.
@@ -15,7 +15,8 @@ that a named human then ratifies.
    consecutively, and run one `bind` check for the batch: drop any pick an accepted record
    already covers.
 4. Draft every record with Context from the evidence. Where alternatives were not visibly weighed,
-   say so rather than inventing a debate. Fan out to subagents for more than three. Self-check.
+   say so rather than inventing a debate. Fan out to subagents for more than three. Run the
+   format's *Self-check*.
 5. Ask every open question together, then show the batch as one table (id, home, decision, tier)
    with a link to each draft, and get one approval.
 6. Apply once per home as a batch, `pr_title` `docs: propose <first id> to <last id> (discover)`.

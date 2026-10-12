@@ -1,14 +1,15 @@
 # The record format
 
-The template is `${CLAUDE_PLUGIN_ROOT}/references/adr-template.md`: read it before drafting and
-keep its keys and section order. The file is `<home>/NNNN-<problem-slug>.md`.
+The template is `<plugin-root>/references/adr-template.md`: read it before drafting or
+converting a legacy record, and keep its keys and section order. The file is
+`<home>/NNNN-<problem-slug>.md`.
 
 - `id` is `<prefix>/ADR-NNNN`; `title` is `"ADR-NNNN: …"`; `description` is the decision in one
   sentence with its strongest because (≤300 chars): listings show it, so it carries the decision.
 - `tags` includes `adr`; prefer tags already in use (`grep -rh '^tags:'` the home).
 - `status: proposed` on every draft. `decided_by` names the human(s) who took the decision, asked
   in the interview; a draft leaves it `[]` only until ratification fills it. The ratifier is not
-  in `decided_by`: **ratify** names them in the Status line (`Accepted YYYY-MM-DD by <name>.`)
+  in `decided_by`: **ratify** names them in the last Status line (`Accepted YYYY-MM-DD by <name>.`)
   and the PR, never guessed. `consulted` lists the people asked.
 - **Classification**: `reversibility` (`one-way` when undoing costs more than a day or breaks
   consumers, else `two-way`); `blast_radius` (`local` one module, `service` one repo,
@@ -34,3 +35,10 @@ in Y" bundles), plain sentences, and never mention chat sessions or AI authorshi
 
 Numbers are four digits, per home, never reused: `adr-lint next --base origin/<default> <home-dir>`
 (drop `--base` when that ref does not exist). The slug names the problem, never the answer.
+
+## Self-check
+
+Fix inline: one falsifiable Decision; every rule a MUST/MUST NOT; Context a losing proponent would
+accept; every fact sourced; two or three real options; a real negative; a trigger; classification
+matching the evidence; scope non-empty for high tier and in the home's syntax; every value inline;
+no AI authorship.

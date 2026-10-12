@@ -5,6 +5,8 @@ argument-hint: <what you decided or what changed>
 
 # ADR Command
 
-This is an alias for the `recording-decisions` skill. Read
-`${CLAUDE_PLUGIN_ROOT}/skills/recording-decisions/SKILL.md` and follow it, treating the argument as
-the user's request in plain words (no argument lists existing records).
+An alias for the `recording-decisions` skill. Invoke it with the Skill tool
+(`lore:recording-decisions`), passing the request below in plain words; no request lists existing
+records.
+
+Request: $ARGUMENTS

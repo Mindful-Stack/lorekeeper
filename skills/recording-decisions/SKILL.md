@@ -32,8 +32,9 @@ replacing record, never an edit of the old body.
 1. **Show the edit, confirm, then write.** Every write goes through the knowledge-updater, on a
    branch or worktree: never on a default branch, never force-pushed. Drafts in the scratchpad
    need no approval.
-2. **Only a named human ratifies.** Never infer the decider, never accept or reject on your own
-   initiative, and refuse an agent or bot as decider.
+2. **Only a named human ratifies.** Never infer the ratifier, never accept or reject on your own
+   initiative, and refuse an agent or bot. `decided_by` names who took the decision; the
+   ratifier goes in the Status line and the PR. Nobody approves their own decision.
 3. **Not interactive?** If you cannot ask a question and wait for the answer (`claude -p`, a CI
    job, a subagent), treat the session as not interactive: never write; draft, show what you
    would write with your assumptions stated, then stop. A ratification without a named human
@@ -108,11 +109,12 @@ Every write follows the same three steps: **show** the exact file or edit with i
 where it will land; **confirm** with the user; **apply** by dispatching the knowledge-updater with
 Type `adr`, the ADR action (the row you picked in *Understand the request*), the file(s), the
 Home (`shared` or `local:<repo>`), the homes JSON, the line
-`ADR lint: ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js` (written out as an absolute path), the
-decider or the people the user says should approve, and the user's preference about riding along
-on their branch. The updater decides where the change lands. If it returns findings, show them,
-fix them with the user, and apply again. Confirm with what it reports: where the change landed
-(in words, plus the PR URL or the branch) and the next step.
+`ADR lint: ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js` (written out as an absolute path), who
+took the decision (`decided_by`), the ratifier or the people the user says should approve, and
+the user's preference about riding along on their branch. The updater decides where the change
+lands. If it returns findings, show them, fix them with the user, and apply again. Confirm with
+what it reports: where the change landed (in words, plus the PR URL or the branch) and the next
+step.
 
 For a decision surfacing mid-brainstorm, draft the record and link it from the spec: the spec
 describes the design, the record defends the decision.

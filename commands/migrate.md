@@ -80,13 +80,13 @@ locked record allows.
 `reversibility` (unclassified), or no frontmatter at all. The rules for them:
 
 - **Converting** one rewrites it into the template, frontmatter and body, once, in one change
-  that classifies it. The result must meet every rule of a new record (description, tags, a named
-  human in `decided_by` when ratified, classification, the high-tier extras). The conversion keeps
-  the record's status moving only forward (never back to `proposed`; `accepted` may become only
-  `superseded` or `deprecated`) and keeps the deciders it records. A record with no frontmatter
-  has its status only as prose in `## Status`, so its conversion may map it to any settled status
-  (accepted, rejected, deprecated, or superseded with a named successor), never to `proposed`. Accepting a legacy
-  proposal through `/lore:adr` converts it in the same change.
+  that classifies it. The result must meet every rule of a new record (description, tags,
+  `decided_by` naming who took the decision when ratified, classification, the high-tier extras).
+  The conversion keeps the record's status moving only forward (never back to `proposed`; `accepted`
+  may become only `superseded` or `deprecated`) and keeps the deciders it records. A record with no
+  frontmatter has its status only as prose in `## Status`, so its conversion may map it to any
+  settled status (accepted, rejected, deprecated, or superseded with a named successor), never to
+  `proposed`. Accepting a legacy proposal through `/lore:adr` converts it in the same change.
 - **Until converted**, a legacy record with a locked status (`accepted`, `rejected`,
   `superseded`, `deprecated`) is locked: it changes only by the five edits, the backfill among
   them. After this step an unclassified accepted record stays locked until it is converted.

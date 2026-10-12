@@ -85,21 +85,24 @@ the `ADR lint:` script's `../references/` and `../skills/`).
 
 **Inputs.** The file(s) or the edit; the **ADR action** (`record`, `ratify`, `amend`,
 `note a change`, `replace`, `retire`, or a `discover` batch); the Home (`shared` or `local:<repo>`); the `homes` JSON; the
-`ADR lint:` path (`<ADR lint>`: every `adr-lint` command runs as `node <ADR lint> …`); the decider
-or the people who should approve; and whether the user wants to ride along on their branch. From
-the homes JSON: `<repo>` is the home's `repoRoot` (`sharedRepoRoot` for the KB), the git
-repository holding the home; `<relDir>` is `relDir` (`sharedRelDir`); `<default>` is
-`defaultBranch` (`sharedDefaultBranch`). A `null` `<repo>` means the home is not checked out: stop
-and say so. A `null` `<default>`: stop and ask the caller which branch to base on.
+`ADR lint:` path (`<ADR lint>`: every `adr-lint` command runs as `node <ADR lint> …`); who took
+the decision (`decided_by`), the ratifier or the people who should approve; and whether the user
+wants to ride along on their branch. From the homes JSON: `<repo>` is the home's `repoRoot`
+(`sharedRepoRoot` for the KB), the git repository holding the home; `<relDir>` is `relDir`
+(`sharedRelDir`); `<default>` is `defaultBranch` (`sharedDefaultBranch`). A `null` `<repo>` means
+the home is not checked out: stop and say so. A `null` `<default>`: stop and ask the caller which
+branch to base on.
 
 **Identity.** `NNNN-<problem-slug>.md`, numbered per home by the caller; `id` is `kb/ADR-NNNN` or
 `<repo>/ADR-NNNN`. Never renumber a record on the default branch; a draft in an unmerged PR may be
 renumbered on a reported collision (filename, `id`, `title` and inbound links together).
 
-**Frontmatter.** Every template key, each value inline. A new record is `proposed` with
-`decided_by: []`. Write `accepted`, `rejected` or `deprecated` only with the human names the
-caller passes, and refuse a name that is an agent or bot (Claude, Codex, Copilot, an AI or
-assistant, anything ending in `[bot]`). Legacy records may carry `deciders`: read it as
+**Frontmatter.** Every template key, each value inline. A new record is `proposed`, its
+`decided_by` naming who is taking the decision (`[]` until the caller knows). Write `accepted`,
+`rejected` or `deprecated` only with the human name the caller passes for who ratified or retired
+it; that name goes in the Status line (`Accepted YYYY-MM-DD by <name>.`), never into
+`decided_by`. Refuse a name that is an agent or bot (Claude, Codex, Copilot, an AI or assistant,
+anything ending in `[bot]`), in either place. Legacy records may carry `deciders`: read it as
 `decided_by` and never rename it.
 
 **Locked records.** Accepted, rejected, superseded and deprecated records are locked. A legacy
@@ -189,8 +192,10 @@ Warnings are reported, not blocking.
 
 **Commits and the PR.** Titles: `docs: propose ADR-NNNN - <title>`, `docs: accept ADR-NNNN`,
 `docs: reject ADR-NNNN`, `docs: amend ADR-NNNN`, `docs: observe ADR-NNNN`,
-`docs: deprecate ADR-NNNN`, `docs: supersede ADR-NNNN with <id>`; a batch uses the caller's `pr_title`. The PR body names the
-decider(s) or who should approve; for a high-tier record it adds "please have the area owners
+`docs: deprecate ADR-NNNN`, `docs: supersede ADR-NNNN with <id>`; a batch uses the caller's `pr_title`.
+The PR body names who took the decision (`decided_by`) and the approver (the ratifier) or who
+should approve; nobody approves their own decision, so the approver should not be among
+`decided_by` (if they are, say so); for a high-tier record it adds "please have the area owners
 review"; for a proposal it adds "once a named human approves it, tell Claude who approved it",
 and in the shared home or on a ride-along "the ADR check stays red until then". With no new PR
 (`pr-branch`, ride-along), return that text for the user's PR description.

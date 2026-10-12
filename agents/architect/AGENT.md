@@ -90,7 +90,8 @@ decided?" as `survey`.
 
 ```markdown
 ## Binding decisions
-- **kb/ADR-0004 — <title>** (`<path>`, accepted YYYY-MM-DD by <decided_by>): <description>.
+- **kb/ADR-0004 — <title>** (`<path>`, decided by <decided_by>, accepted YYYY-MM-DD by
+  <the ratifier on its Status line>): <description>.
   - kb/ADR-0004.R1 — "<rule, verbatim>"
   - kb/ADR-0004.R3 — "<rule, verbatim>"
 

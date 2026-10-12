@@ -14,15 +14,17 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/recording-decisions/reference/record-format.m
    **knowledge-reader** with "Prioritise domain context and architecture patterns." If the
    architect names a record that already covers the decision, stop and offer ratify or amend (a
    proposal), replace (an accepted record), or nothing. Grep the code so Context and the facts rest on evidence.
-3. **Interview, one question at a time,** skipping what the user already said: who uses it and
-   across which boundaries; the real alternatives and why they lost; **scope**; **facts** and where
-   each can be checked; and the classification as one plain multiple choice — "Is it a local
-   convention, one service, a contract between services, or visible to customers? Is it hard to
-   undo? Does it touch security, privacy, billing, legal or a contract?" Stop as soon as every
-   section can be written honestly.
+3. **Interview, one question at a time,** skipping what the user already said: who is taking
+   this decision (named humans, never an agent); who uses it and across which boundaries; the
+   real alternatives and why they lost; **scope**; **facts** and where each can be checked; and
+   the classification as one plain multiple choice — "Is it a local convention, one service, a
+   contract between services, or visible to customers? Is it hard to undo? Does it touch
+   security, privacy, billing, legal or a contract?" Stop as soon as every section can be written
+   honestly.
 4. **Draft** each decision (one interview may give several records): home from `blast_radius`,
-   number from `adr-lint next` (consecutive within a home), `status: proposed`, `decided_by: []`,
-   Status line `Proposed YYYY-MM-DD.` Write drafts to the session scratchpad.
+   number from `adr-lint next` (consecutive within a home), `status: proposed`, `decided_by`
+   naming who is taking it (`[]` only while unknown: ratification fills it), Status line
+   `Proposed YYYY-MM-DD.` Write drafts to the session scratchpad.
 5. **Self-check** and fix inline: one falsifiable Decision; every rule a MUST/MUST NOT; Context a
    losing proponent would accept; every fact sourced; two or three real options; a real negative;
    a trigger; classification matching the evidence; scope non-empty for high tier and in the home's

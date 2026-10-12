@@ -132,7 +132,7 @@ description: "<the decision in one sentence, with its strongest because>"
 tags: [adr, <topic>]
 status: proposed            # proposed | accepted | rejected | deprecated | superseded
 date: YYYY-MM-DD
-decided_by: []              # named humans; required for accepted
+decided_by: []              # who took the decision; required once accepted
 consulted: []
 confidence: medium          # high | medium | low
 reversibility: one-way      # one-way | two-way
@@ -204,12 +204,12 @@ them; the human reviewer confirms, and a wrong classification is itself a review
 
 | | High tier | Otherwise |
 |---|---|---|
-| Who decides | the PR names who should approve (the decider; the area's owners via the team's normal review); no mechanical check | the PR names who should approve (the decider); no mechanical check |
+| Who decides | `decided_by` names who took the decision; the PR names who should approve (someone other than the deciders; the area's owners via the team's normal review); no mechanical check | `decided_by` names who took the decision; the PR names who should approve (someone other than the deciders); no mechanical check |
 | PR venue | its own ADR-only PR, merged as `accepted` before implementation PRs | may ride in the implementation PR |
 | Validator extras (not for `rejected` records) | ≥1 invalidation trigger, ≥2 considered options, `scope` non-empty | — |
 
 **Ride-along ratification.** A low-tier record in an implementation PR is drafted `proposed`.
-Before merge, once the decider has approved the PR, the author tells Claude who approved it; the
+Before merge, once the approver has approved the PR, the author tells Claude who approved it; the
 record merges as `accepted` in the same PR. The validator enforces the
 ordering: a PR that changes files matching a record's `scope` and adds that record must carry it
 as `accepted` by the time checks pass on the final commit.
@@ -226,8 +226,13 @@ proposed ──(ratified, naming a human)──► accepted ──► superseded
   only); a proposal already on the default branch from before this rule is a grandfathered
   legacy proposal (see *The validator*), not a violation.
 - **accepted** — a named human ratified it. Agents never set `accepted` on their own initiative:
-  the only path is a ratification with the decider named by the user, which refuses an
-  agent-only identity. Acceptance **locks** the record (see *Amend or supersede*).
+  the only path is a ratification with the ratifier named by the user, which refuses an
+  agent-only identity. Acceptance **locks** the record (see *Amend or supersede*). `decided_by`
+  names who took the decision (asked when the record is drafted, filled at ratification if still
+  empty); the ratifier goes in the Status line (`Accepted YYYY-MM-DD by <name>.`) and the PR,
+  never in `decided_by`. Nobody approves their own decision: stated in the skill and the PR, not
+  checked by the validator. A rejection names the rejecter the same way
+  (`Rejected YYYY-MM-DD by <name>: <reason>.`), as does a retirement (`Deprecated …`).
 - **rejected** — kept, merged, and retrievable, so agents do not re-propose dead options. Locked.
 - **superseded / deprecated** — locked.
 
@@ -280,12 +285,12 @@ it and may rewrite anything in it, frontmatter and body, but its status moves on
 edit 1) and the deciders it already records stay. A base with no frontmatter has its status only
 as prose in `## Status` and records no deciders: its conversion may map that prose to any settled
 status (accepted, rejected, deprecated, or superseded naming its successor), never to `proposed`. The converted record is
-validated as a full new-format record (description, tags, status, a named human in `decided_by`
-when ratified, classification, and the high-tier extras). Once its base copy is classified, the
-full lock applies. A legacy record the change leaves unclassified keeps the grandfathered
-warnings (see *The validator*). A legacy record whose `blast_radius` belongs in the other home may
-be converted where it sits (a warning), and stays there or is superseded by a record in the right
-home.
+validated as a full new-format record (description, tags, status, `decided_by` naming who took
+the decision when ratified, classification, and the high-tier extras). Once its base copy is
+classified, the full lock applies. A legacy record the change leaves unclassified keeps the
+grandfathered warnings (see *The validator*). A legacy record whose `blast_radius` belongs in the
+other home may be converted where it sits (a warning), and stays there or is superseded by a record
+in the right home.
 
 **Observations** answer four things: when and where (date, PR or ticket), which statement
 (quoted, or a `F#` fact id), what is true now and its source, and what it means (no trigger fired
@@ -309,7 +314,8 @@ its successor, which is the record to supersede; a `rejected` one is not revived
 but by a new record that lists it in `related` and says in its Context why the option is back.
 
 **Agent-drafted records** must not reference chat logs or sessions, must not attribute authorship
-to an AI, and must leave `decided_by` for the human to name.
+to an AI, and must leave `decided_by` for the human to name (who took the decision, never an
+agent).
 
 ## Anchoring work to records
 
@@ -376,8 +382,9 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
 - id matches home and filename; number unique against `--base`;
 - home matches `blast_radius` (skipped for coinciding homes): an error, except on a legacy record
   (judged on its base copy, or on the record itself without a base), where it is a warning; `scope` syntax matches the home;
-- high-tier extras; `accepted` requires non-empty `decided_by` (any named human: who should
-  approve is named in the PR, not checked against a list);
+- high-tier extras; `accepted` requires non-empty `decided_by` (who took the decision, any named
+  human; who should approve is named in the PR, not checked against a list, and nothing checks
+  that the approver is not a decider);
 - relations resolve; references to another home are warnings when that home is not on disk or
   not resolvable without a manifest, errors when it is; no supersession cycles;
 - `supersedes` / `superseded_by` are symmetric within the home (edit 2 makes the reverse side
@@ -428,11 +435,13 @@ the homes step and the dispatch, `actions/<action>.md` one file per action, and 
 record format and the lifecycle.
 
 The skill picks one of these actions from the request (ambiguous → one question):
-- **record** — triage, interview (classification as one plain multiple choice), draft,
+- **record** — triage, interview (who is taking the decision; classification as one plain
+  multiple choice), draft,
   self-check, show, apply; the home follows `blast_radius`, the tier sets the PR shape.
 - **ratify** — accept or reject a proposal (legacy proposals included), naming the human
-  decider(s) and refusing an agent; accepting a legacy record converts it in the same change,
-  keeping its recorded deciders; a same-home accept flips the predecessor.
+  ratifier in the Status line (not `decided_by`, which names who took the decision and is filled
+  then if still empty) and refusing an agent; accepting a legacy record converts it in the same
+  change, keeping its recorded deciders; a same-home accept flips the predecessor.
 - **amend** — edit a record that is still proposed, where it lies (the user's branch, its PR
   branch, or its own PR); status and deciders unchanged.
 - **note a change** — a dated observation on a locked record.
@@ -467,8 +476,9 @@ home first, then the shared home; when both have it the command asks.
 - One branch-name rule: `adr/<repo>-NNNN-<action>-<YYYYMMDD>` (KB:
   `knowledge/adr-NNNN-<action>-<YYYYMMDD>`), `-2` if taken on the remote or locally, and nothing is
   ever force-pushed.
-- The PR body names the decider(s) or who should approve; a high-tier record asks the area owners
-  to review. Its report says where the change landed.
+- The PR body names who took the decision and the approver (or who should approve); nobody
+  approves their own decision; a high-tier record asks the area owners to review. Its report
+  says where the change landed.
 
 **`architect` agent**
 - Catalogue load greps every resolved local home, the team KB and shared KBs.

@@ -268,7 +268,9 @@ Quick start — just tell Claude what you decided or what changed:
    shows the proposed record.
 2. You confirm; Claude opens a PR (or stages it on your branch for a small local decision).
 3. The team reviews the PR.
-4. "Alex Doe approved it." Claude records the acceptance, naming Alex, on the same PR.
+4. "Alex Doe approved it." Claude records the acceptance, naming Alex as approver, on the same
+   PR. Nobody approves their own decision: the approver is someone other than those in
+   `decided_by`.
 5. Merge.
 
 | You say | Claude does |
@@ -291,7 +293,8 @@ The record (`references/adr-template.md`) is MADR-shaped: Context, *Facts relied
 options, a Decision with numbered MUST/MUST NOT rules (`kb/ADR-0007.R2`), Consequences,
 *Assumptions and invalidation triggers*, and append-only *Later observations*. Frontmatter carries
 the classification (`reversibility`, `blast_radius`, `sensitivity`) that decides the home and the
-tier, a `scope` of globs that reviews select records by, and the people in `decided_by`.
+tier, a `scope` of globs that reviews select records by, and who took the decision in `decided_by`
+(the approver goes in the Status line, `Accepted YYYY-MM-DD by <name>.`, and the PR).
 High-tier records (one-way, cross-service or customer, or sensitive) get their own ADR-only PR and
 are accepted before implementation; low-tier ones may ride along in the implementation PR. There is
 no index file: the list is rendered on demand.

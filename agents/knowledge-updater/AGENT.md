@@ -7,7 +7,7 @@ description: >
   All updates go through a PR flow — main is protected, no exceptions. ADRs may live in a
   code repo's local home as well as the knowledge base; their placement and validation rules
   are in the ADR section.
-tools: [Glob, Grep, Read, Bash]
+tools: [Glob, Grep, Read, Write, Edit, Bash]
 ---
 
 # Knowledge Updater Agent
@@ -80,8 +80,8 @@ The caller drafts and the user has confirmed; you place, validate and commit. Th
 plugin's `references/adr-template.md` and the rules are in its `commands/adr.md` (next to the
 `ADR lint:` script's `../references/` and `../commands/`).
 
-**Inputs.** The file(s) or the edit; the action (`record`, `ratify`, `note a change`, `replace`,
-`retire`, or a `discover` batch); the Home (`shared` or `local:<repo>`); the `homes` JSON; the
+**Inputs.** The file(s) or the edit; the **ADR action** (`record`, `ratify`, `amend`,
+`note a change`, `replace`, `retire`, or a `discover` batch); the Home (`shared` or `local:<repo>`); the `homes` JSON; the
 `ADR lint:` path (`<ADR lint>`: every `adr-lint` command runs as `node <ADR lint> …`); the decider
 or the people who should approve; and whether the user wants to ride along on their branch. From
 the homes JSON: `<repo>` is the home's `repoRoot` (`sharedRepoRoot` for the KB), the git
@@ -122,7 +122,8 @@ A worktree is `<tmp>/<branch-dir>` (the branch with each `/` replaced by `-`); r
 `worktree add`, run `git -C <worktree> rev-parse --show-toplevel` and use the path it prints as
 `<worktree>` from then on, and check it prints the same path before every commit and push. Write
 and validate in `<worktree>/<relDir>`. `gh` has no `-C`: pass `--repo <owner/name>` from
-`git -C <repo> remote get-url origin`.
+`git -C <repo> remote get-url origin`. Write the record with the Write tool and make the five
+edits with Edit; Bash is for git, gh, mktemp and the validator.
 
 **Placement — you decide.** After `git -C <repo> fetch origin`, find the record and pick one:
 
@@ -223,7 +224,8 @@ single-line `description:`.
 ## Output
 
 Return:
-- **PR URL** — the created PR
+- **PR URL** — the created PR (or, for an ADR ride-along / pr-branch placement, the landing
+  described under Report)
 - **Branch name** — for reference
 - **Files changed** — list of files created or modified
 

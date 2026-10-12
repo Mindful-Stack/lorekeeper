@@ -114,7 +114,8 @@ takes only the five edits. Details are in `/lore:migrate`.
 
 Every write follows the same three steps: **show** the exact file or edit with its path, tier and
 where it will land; **confirm** with the user; **apply** by dispatching the knowledge-updater with
-Type `adr`, the file(s), the Home (`shared` or `local:<repo>`), the homes JSON, the line
+Type `adr`, the ADR action (the row you picked in *Understand the request*), the file(s), the
+Home (`shared` or `local:<repo>`), the homes JSON, the line
 `ADR lint: ${CLAUDE_PLUGIN_ROOT}/scripts/adr-lint.js` (written out as an absolute path), the
 decider or the people the user says should approve, and the user's preference about riding along
 on their branch. The updater decides where the change lands. If it returns findings, show them,

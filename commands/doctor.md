@@ -96,7 +96,8 @@ Report per home: the number of records, errors and warnings, grouped by rule. Th
   renumbered or deleted record, or a typo); a supersession that is not symmetric (`superseded_by`
   set on one record while its successor does not list it in `supersedes`); or a flip left undone
   (an accepted record whose predecessor in the same home is not yet `superseded` by it, or a
-  `superseded_by` without `status: superseded`).
+  `superseded_by` without `status: superseded`). Doctor is the one check that sees every home, so
+  it also reports a cross-home pair while its two PRs are still in flight.
 - **Warnings on records from before the ADR-centred format** (`id`, `reversibility` or the other
   classification keys missing) — one summary line per home, suggesting `/lore:migrate` for the
   backfill. Do not list every record.

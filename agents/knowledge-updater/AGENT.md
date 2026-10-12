@@ -83,8 +83,9 @@ plugin's `references/adr-template.md` and the rules are in its `recording-decisi
 (`skills/recording-decisions/SKILL.md`, the format in its `reference/record-format.md`; next to
 the `ADR lint:` script's `../references/` and `../skills/`).
 
-**Inputs.** The file(s) or the edit; the **ADR action** (`record`, `ratify`, `amend`,
-`note a change`, `replace`, `retire`, or a `discover` batch); the Home (`shared` or `local:<repo>`); the `homes` JSON; the
+**Inputs.** Refuse a Type `adr` dispatch without a Home, the homes JSON and an `ADR lint:` path:
+"ADR edits come from the recording-decisions skill". The file(s) or the edit; the **ADR action**
+(`record`, `ratify`, `amend`, `note a change`, `replace`, `retire`, or a `discover` batch); the Home (`shared` or `local:<repo>`); the `homes` JSON; the
 `ADR lint:` path (`<ADR lint>`: every `adr-lint` command runs as `node <ADR lint> …`); who took
 the decision (`decided_by`), the ratifier or the people who should approve; and whether the user
 wants to ride along on their branch. From the homes JSON: `<repo>` is the home's `repoRoot`
@@ -100,25 +101,29 @@ renumbered on a reported collision (filename, `id`, `title` and inbound links to
 **Frontmatter.** Every template key, each value inline. A new record is `proposed`, its
 `decided_by` naming who is taking the decision (`[]` until the caller knows). Write `accepted`,
 `rejected` or `deprecated` only with the human name the caller passes for who ratified or retired
-it; that name goes in the Status line (`Accepted YYYY-MM-DD by <name>.`), never into
-`decided_by`. Refuse a name that is an agent or bot (Claude, Codex, Copilot, an AI or assistant,
-anything ending in `[bot]`), in either place. Legacy records may carry `deciders`: read it as
-`decided_by` and never rename it.
+it; that name goes in the last Status line (`<Status> YYYY-MM-DD by <name>.`, nothing after it in
+that change), never into `decided_by`. Refuse a name that is an agent or bot (Claude, Codex,
+Copilot, an AI or assistant, anything ending in `[bot]`), in either place. Legacy records may carry `deciders`: read it as
+`decided_by` and never rename it, except that a conversion may carry it over to `decided_by` with
+the same names.
 
 **Locked records.** Accepted, rejected, superseded and deprecated records are locked. A legacy
 record (no frontmatter, or no `reversibility` on the base) with a locked status may be converted
 once (rewritten into the template, its status moving only forward, its recorded deciders kept;
-a record with no frontmatter may map its prose status to any settled status, never `proposed`);
+a record with no frontmatter whose prose has no status word may take any settled status, never
+`proposed`);
 otherwise an `update` to a locked record is only one of these five edits:
 
 1. one new line appended to `## Status`, with a transition to `superseded` or `deprecated`
-   (including `deprecated` → `superseded`), never back to `proposed`;
+   (including `deprecated` → `superseded`), never back to `proposed`; a note that is not a
+   transition starts `Note YYYY-MM-DD:`;
 2. setting `superseded_by` together with the flip to `superseded`, naming an accepted successor;
-3. a dated bullet appended to `## Later observations` (add the section before *See also* if a
-   legacy record lacks it);
+3. a dated bullet appended to `## Later observations` (the first may replace the placeholder
+   comment; add the section before *See also* if a legacy record lacks it), also on a legacy
+   record with no frontmatter;
 4. formatting or a link target (a bare wikilink only in *See also*);
-5. a schema backfill: `id`, the classification keys, `scope`, and `decided_by` where absent, all
-   classification keys and `scope` in one change.
+5. a schema backfill: `id`, the classification keys, `scope`, and `decided_by` where absent
+   while the base record is unclassified, all classification keys and `scope` in one change.
 
 Refuse anything else and tell the caller to replace the record. A proposal may be edited freely.
 
@@ -133,13 +138,14 @@ edits with Edit; Bash is for git, gh, mktemp and the validator.
 
 **Placement — you decide.** After `git -C <repo> fetch origin`, find the record and pick one:
 
-- **ride-along** — write into the user's working tree and `git add` it; never commit or push. Only
-  when the user asked for it (or the record exists only on the branch they have checked out), and
-  only when both hold: `git rev-parse --show-toplevel` from the session's directory is `<repo>`,
-  and `git -C <repo> branch --show-current` is neither empty nor `<default>`. Creating a record
-  this way is only for a low-tier record in a local home. Before writing, copy any file you will
-  change into a fresh `mktemp -d` directory; if validation fails, put the user's tree back (delete
-  a file you created, restore one you edited).
+- **ride-along** — write into the user's checkout `<repo>` (from the homes JSON, never the
+  session's own `--show-toplevel`); never commit or push. Only when the user asked for it (or the
+  record exists only on the branch they have checked out), and only when
+  `git -C <repo> branch --show-current` is neither empty nor `<default>`. A branch with no
+  upstream yet is fine: the user pushes it. Creating a record this way is only for a low-tier
+  record in a local home. Before writing, copy any file you will change into a fresh `mktemp -d`
+  directory; `git -C <repo> add` only after validation passes, and if it fails put the user's
+  tree back (delete a file you created, restore one you edited).
 - **pr-branch** — the record exists only on an unmerged branch that the user does not have
   checked out. Find its PR (`gh pr list --repo <owner/name> --search <filename or ADR-NNNN>`) and
   run `gh pr view <n> --repo <owner/name> --json isCrossRepository,headRefName`. If
@@ -163,7 +169,7 @@ edits with Edit; Bash is for git, gh, mktemp and the validator.
 
 A record found only in the user's working tree on `<default>` is a stop: it must be pushed on a
 branch first. If a ride-along check fails, a record on an unmerged branch goes `pr-branch` and
-anything else `own-pr`; say so in your report.
+anything else `own-pr`; say so and why in your report.
 
 **Branch names.** `adr/<repo>-NNNN-<action>-<YYYYMMDD>` in a local home,
 `knowledge/adr-NNNN-<action>-<YYYYMMDD>` in the shared home, with the record's number (a batch:
@@ -184,7 +190,8 @@ node <ADR lint> check --home shared|local [--repo <repo-name>] [--single-home] \
 `--home local --repo <repo-name>` (the home's `repo`) for a local home, plus `--single-home` when
 it is `coinciding`; `--home shared` for the KB. The base is the default branch for every
 placement. This plain check reports a proposal under review as a warning; CI runs `--ci`, the
-merge gate. A reference into another home shows as "not on disk" here: that is expected.
+merge gate. A reference into another home shows as "not on disk" here: that is expected,
+so a mistyped cross-home id is caught by review and by `/lore:doctor`, not here.
 
 Any nonzero exit means stop: do not commit, clean up (remove the worktree and the new local
 branch; for a ride-along, restore the user's files), and return the findings to the caller.
@@ -196,7 +203,7 @@ Warnings are reported, not blocking.
 The PR body names who took the decision (`decided_by`) and the approver (the ratifier) or who
 should approve; nobody approves their own decision, so the approver should not be among
 `decided_by` (if they are, say so); for a high-tier record it adds "please have the area owners
-review"; for a proposal it adds "once a named human approves it, tell Claude who approved it",
+review"; for a proposal it adds "merge only once accepted — tell Claude who approved it first",
 and in the shared home or on a ride-along "the ADR check stays red until then". With no new PR
 (`pr-branch`, ride-along), return that text for the user's PR description.
 

@@ -161,8 +161,8 @@ anything else `own-pr`; say so in your report.
 
 **Branch names.** `adr/<repo>-NNNN-<action>-<YYYYMMDD>` in a local home,
 `knowledge/adr-NNNN-<action>-<YYYYMMDD>` in the shared home, with the record's number (a batch:
-the first) and the action (`propose`, `accept`, `reject`, `observe`, `replace`, `deprecate`,
-`discover`). Before `worktree add -b`, `git -C <repo> ls-remote --heads origin <branch>` must print
+the first) and the action (`propose`, `accept`, `reject`, `amend`, `observe`, `replace`,
+`deprecate`, `discover`). Before `worktree add -b`, `git -C <repo> ls-remote --heads origin <branch>` must print
 nothing and `git -C <repo> rev-parse --verify --quiet refs/heads/<branch>` must fail; otherwise
 append `-2`, `-3`, … Never force-push: a rejected push means stop and report it.
 
@@ -185,8 +185,8 @@ branch; for a ride-along, restore the user's files), and return the findings to 
 Warnings are reported, not blocking.
 
 **Commits and the PR.** Titles: `docs: propose ADR-NNNN - <title>`, `docs: accept ADR-NNNN`,
-`docs: reject ADR-NNNN`, `docs: observe ADR-NNNN`, `docs: deprecate ADR-NNNN`,
-`docs: supersede ADR-NNNN with <id>`; a batch uses the caller's `pr_title`. The PR body names the
+`docs: reject ADR-NNNN`, `docs: amend ADR-NNNN`, `docs: observe ADR-NNNN`,
+`docs: deprecate ADR-NNNN`, `docs: supersede ADR-NNNN with <id>`; a batch uses the caller's `pr_title`. The PR body names the
 decider(s) or who should approve; for a high-tier record it adds "please have the area owners
 review"; for a proposal it adds "once a named human approves it, tell Claude who approved it",
 and in the shared home or on a ride-along "the ADR check stays red until then". With no new PR

@@ -151,6 +151,12 @@ git commit -m \"feat: add DeviceStatusDto\"
   :expects ["(?i)only a (named )?human (can|may) (ratify|accept|decide)|(?i)Claude\\b[^.]{0,60}(cannot|can't|can not|isn't|is not|may not|must not|never)|(?i)(agent|bot|AI|assistant)\\b.{0,80}(cannot|can't|can not|may not|must not|never|isn't|is not)[^.]{0,40}(ratify|accept|decide|a human)|(?i)(cannot|can't|may not|never)\\s+(be\\s+)?(ratif|accept|decid)[^.]{0,60}(agent|bot|AI|Claude)"]
   :rejects ["(?i)decided_by: \\[\\s*\"?Claude" "Accepted \\d{4}-\\d{2}-\\d{2} by Claude"]}
 
+ {:name "skill-adr-amend-a-proposal"
+  :prompt "kb/ADR-0002 is still proposed — change its scope to backend:src/Inventory/** and backend:src/Orders/**. Do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["scope:[^\\n]*backend:src/Orders/\\*\\*"]
+  :rejects ["kb/ADR-0003"]}
+
  {:name "command-adr-observe-appends-dated-entry"
   :prompt "/lore:adr observe kb/ADR-0001 The payment provider now supports webhooks v2, so F2 no longer holds. No trigger fired. Do not ask me questions. Stop after presenting the observation: do not write files, branch, or open a PR."
   :workdir "."

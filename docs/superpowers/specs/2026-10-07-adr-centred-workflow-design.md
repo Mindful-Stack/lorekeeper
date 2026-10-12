@@ -429,6 +429,8 @@ grammar; an old leading keyword (`accept 0004 by X`) is plain text that happens 
 - **ratify** — accept or reject a proposal (legacy proposals included), naming the human
   decider(s) and refusing an agent; accepting a legacy record converts it in the same change,
   keeping its recorded deciders; a same-home accept flips the predecessor.
+- **amend** — edit a record that is still proposed, where it lies (the user's branch, its PR
+  branch, or its own PR); status and deciders unchanged.
 - **note a change** — a dated observation on a locked record.
 - **replace** — a successor that supersedes an accepted or deprecated record, always in its own
   PR; across homes, its acceptance opens the predecessor's flip PR at the same time.
@@ -513,7 +515,7 @@ Three implementation plans, in order:
   spelling change rejected), a migration backfill passing against `--base`, and a `related` link
   to an accepted record passing without a reverse edit.
 - Babashka scenarios: `/lore:adr` new (local vs shared home by blast radius), `accept` refusing
-  without a named decider, `observe` on an accepted record, `check` reporting Critical on a
+  without a named decider, `amend` of a proposal in place, `observe` on an accepted record, `check` reporting Critical on a
   contradiction and on an uncovered choice, `ADR-Exempt` downgrade. The fixture workspace gains a
   second repo with a `docs/adr/` home.
 

@@ -83,7 +83,7 @@ Always display available commands:
 
 | Command | Description |
 |---------|-------------|
-| `/lore:adr <what you decided or what changed>` | Architecture decision records in plain words: record a decision, say who approved it, note a change, replace or retire one, ask what binds a change, list, or discover |
+| `/lore:adr <what you decided or what changed>` | Architecture decision records in plain words: record a decision, say who approved it, amend a proposal, note a change, replace or retire one, ask what binds a change, list, or discover |
 | `/lore:cultivate` | Cultivate a bounded-context domain — with arg: bootstrap/refine/audit; without arg: discover candidates + audit existing |
 | `/lore:doctor` | Run full workspace + KB diagnostic |
 | `/lore:explore [query]` | Browse and search knowledge nodes |

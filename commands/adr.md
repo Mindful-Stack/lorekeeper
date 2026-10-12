@@ -1,5 +1,5 @@
 ---
-description: Record, ratify, observe, replace, retire, list, or discover architecture decision records (ADRs) — or say which ones bind a change. Takes plain words ("Alex approved kb/ADR-0004", "what applies to src/Billing?"). Use when a hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) or to recover decisions already baked into the code.
+description: Record, ratify, amend, observe, replace, retire, list, or discover architecture decision records (ADRs) — or say which ones bind a change. Takes plain words ("Alex approved kb/ADR-0004", "what applies to src/Billing?"). Use when a hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) or to recover decisions already baked into the code.
 ---
 
 # ADR Command
@@ -17,6 +17,7 @@ The argument is the request, in plain words. There are no subcommands to learn.
 ```
 /lore:adr Use PostgreSQL as the primary datastore
 /lore:adr Alex Doe approved kb/ADR-0004
+/lore:adr Change 0007's scope to src/Billing/** and src/Invoices/**
 /lore:adr billing-api/ADR-0002: invoices now exceed the 10k/day in F2
 /lore:adr Replace 0002: move session state from cookies to bearer tokens
 /lore:adr What decisions apply to src/Billing in billing-api?
@@ -36,6 +37,7 @@ Pick one action from what the user says. If two fit, ask one question.
 |---|---|
 | a decision, a choice, a title ("Use X for Y", "we decided …") | **record** |
 | who approved or turned down a proposal ("accept 0004 by Alex", "Sam rejected kb/ADR-0003") | **ratify** |
+| an edit to a record that is still proposed ("change 0007's scope …") | **amend** |
 | a fact a record relies on changed ("F2 no longer holds", "invoices now …") | **note a change** |
 | a record is replaced, or they changed their mind about it ("supersede 0002 with …") | **replace** |
 | a record no longer applies and nothing replaces it ("deprecate 0005, by Sam") | **retire** |
@@ -192,9 +194,19 @@ fix them with the user, and apply again. Confirm with what it reports: where the
    `Superseded YYYY-MM-DD by <this id>.` In another home, see **replace**.
 6. **Show, confirm, apply,** and say the PR can merge once checks pass.
 
+### amend
+
+1. **Find the proposal** as for ratify (working tree, open PR branch, or `origin/<default>`). It
+   must be `proposed`; a locked record takes **note a change** or **replace** instead.
+2. **Edit** what the user asked and nothing else. Keep `status: proposed` and `decided_by: []`,
+   and re-run the record self-check on the sections you touched. A new `blast_radius` that moves
+   the record to the other home makes it a new record there instead.
+3. **Show, confirm, apply.** The updater places it like a ratification: on the user's branch if
+   the record is there, else on its PR branch, else in its own PR.
+
 ### note a change
 
-1. The record must be locked; a proposal is amended directly instead.
+1. The record must be locked; a proposal takes **amend** instead.
 2. Draft one dated bullet answering when and where (date, PR or ticket), which statement (quoted,
    or its `F#`), what is true now and its source, and what it means. Example:
    `- 2026-11-02 (PR 412): F2 no longer holds — invoices reach 14k/day (source: billing
@@ -206,8 +218,8 @@ fix them with the user, and apply again. Confirm with what it reports: where the
 ### replace
 
 Only an `accepted` or `deprecated` record can be replaced. A `superseded` one points at its
-successor: offer to replace that. A `proposed` one is amended instead. A `rejected` option comes
-back as a new record with `related: [<id>]` whose Context says why.
+successor: offer to replace that. A `proposed` one takes **amend** instead. A `rejected` option
+comes back as a new record with `related: [<id>]` whose Context says why.
 
 1. Run **record** with the new decision: the draft carries `supersedes: [<old id>]`, its Context
    opens with what changed, and it classifies itself (so it may land in another home). The

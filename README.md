@@ -162,7 +162,7 @@ new handle and need nothing.
 | Command | Description |
 |---------|-------------|
 | `/lore:help` | Show status and help |
-| `/lore:adr` | Architecture decision records in plain words: record, ratify, note a change, replace, retire, what binds, list, discover |
+| `/lore:adr` | Architecture decision records in plain words: record, ratify, amend, note a change, replace, retire, what binds, list, discover |
 | `/lore:init` | Detect workspace state and scaffold or retrofit accordingly |
 | `/lore:migrate` | Bring household.json up to the schema the current plugin expects; optionally refresh template tooling |
 | `/lore:cultivate` | Cultivate a bounded-context domain. With a name: bootstrap/refine/audit. Without: discover candidate domains in the codebase + audit existing ones |
@@ -275,6 +275,7 @@ Quick start — just tell Claude what you decided or what changed:
 |---|---|
 | "We'll use PostgreSQL for orders" | records a proposed decision and opens its PR |
 | "Alex Doe approved kb/ADR-0004" / "Sam rejected 0003" | accepts or rejects it, naming that person |
+| "Change 0007's scope to src/Billing/**" (still proposed) | edits the proposal on its branch or PR |
 | "F2 in api/ADR-0002 no longer holds: invoices hit 14k/day" | appends a dated observation to the locked record |
 | "Replace 0002: sessions move to bearer tokens" | proposes a successor; 0002 is superseded when the successor is accepted |
 | "0005 no longer applies, Sam decided" | marks it deprecated |

@@ -417,9 +417,10 @@ Exit non-zero with one line per violation (`path: rule: message`). Tests in
 ## Command and agent changes
 
 **Front door: the `recording-decisions` skill.** The user says what they decided or what changed;
-the skill triggers on a hard-to-reverse choice surfacing, an approval or rejection, a changed
-fact, a replaced or dropped decision, "what applies to this change", or a request to list or
-discover. It shows the edit, confirms, then writes, and never ratifies on its own. `/lore:adr
+the skill triggers on a hard-to-reverse choice surfacing, a named person approving or rejecting a
+proposed record, a relied-on fact no longer holding, a replaced or dropped decision, "what binds
+this change", or a request to list or discover, and not on PR approvals, reversible conventions
+or routine choices. The SessionStart router sends anything about ADRs to it. It shows the edit, confirms, then writes, and never ratifies on its own. `/lore:adr
 <plain words>` (`commands/adr.md`, `skills/lore-adr`) is the explicit shortcut: no subcommand
 grammar; an old leading keyword (`accept 0004 by X`) is plain text that happens to be clear.
 

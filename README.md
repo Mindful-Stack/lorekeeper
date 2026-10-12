@@ -273,14 +273,14 @@ Quick start — just tell Claude what you decided or what changed:
 
 | You say | Claude does |
 |---|---|
-| "We'll use PostgreSQL for orders" | records a proposed decision and opens its PR |
-| "Alex Doe approved kb/ADR-0004" / "Sam rejected 0003" | accepts or rejects it, naming that person |
-| "Change 0007's scope to src/Billing/**" (still proposed) | edits the proposal on its branch or PR |
-| "F2 in api/ADR-0002 no longer holds: invoices hit 14k/day" | appends a dated observation to the locked record |
-| "Replace 0002: sessions move to bearer tokens" | proposes a successor; 0002 is superseded when the successor is accepted |
-| "0005 no longer applies, Sam decided" | marks it deprecated |
-| "Which decisions apply if I change src/Payments?" | lists the accepted records and rules that bind the change |
-| "List our decisions" / "find the decisions the code already made" | lists every home / drafts the implicit ones as proposals |
+| "Use PostgreSQL as the primary datastore" | **record**: a proposed record and its PR |
+| "Alex Doe approved kb/ADR-0004" / "Sam rejected kb/ADR-0003" | **ratify**: accepts or rejects it, naming that person |
+| "Change 0007's scope to src/Billing/** and src/Invoices/**" | **amend**: edits the record while it is still proposed |
+| "billing-api/ADR-0002: invoices now exceed the 10k/day in F2" | **note a change**: a dated observation on the locked record |
+| "Replace 0002: move session state from cookies to bearer tokens" | **replace**: a successor; 0002 is superseded when the successor is accepted |
+| "Deprecate 0005, by Sam" | **retire**: marks it deprecated |
+| "What decisions apply to src/Billing in billing-api?" | **what binds**: the accepted records and rules that bind the change |
+| "list" / "find the decisions the code already made" | **list** every home / **discover** the implicit ones as proposals |
 
 The `recording-decisions` skill picks this up from plain conversation; `/lore:adr <plain words>`
 is the explicit shortcut. Claude always shows the edit and asks before writing, works on a branch

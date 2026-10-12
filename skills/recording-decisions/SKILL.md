@@ -1,6 +1,6 @@
 ---
 name: recording-decisions
-description: Use when a hard-to-reverse choice surfaces during design, planning, implementation, or review (a framework, storage, auth, API-contract, integration, hosting, or data-model choice); when someone says a decision or proposal was approved or rejected; when a fact a decision relies on changed; when a decision is replaced or no longer applies; when asked which decisions apply to a change or area; or when asked to list or discover architecture decision records (ADRs).
+description: Architecture decision records (ADRs) from plain words. Use when a hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, hosting, data model); when a named person approved or rejected a proposed decision record; when a fact an accepted record relies on no longer holds; when a decision is replaced, superseded, deprecated or dropped; when asked which decisions bind a change, path or area; or to list or discover ADRs. Not for PR approvals, reversible conventions, or routine implementation choices.
 ---
 
 # Recording Decisions
@@ -9,17 +9,12 @@ An architecture decision record captures one hard-to-reverse decision, the force
 the consequences accepted by making it. It is written **before** the code that depends on it. The
 user just says what they decided or what changed; this skill picks the action.
 
-## You say → it does
+For example:
 
-| You say | It does |
-|---|---|
-| "We'll use PostgreSQL for orders" (or a choice surfaces mid-design) | **record**: triage, a short interview, a proposed record, a PR |
-| "Alex Doe approved kb/ADR-0004" / "Sam rejected 0003" | **ratify**: accepts or rejects the proposal, naming that person |
-| "F2 in billing-api/ADR-0002 no longer holds: invoices hit 14k/day" | **note a change**: a dated observation on the record |
-| "Replace 0002: sessions move to bearer tokens" | **replace**: a new record that supersedes the old one |
-| "0005 no longer applies, Sam decided" | **retire**: marks it deprecated |
-| "Which decisions apply if I change src/Payments?" | **what binds**: the accepted records and rules that apply |
-| "List our decisions" / "find the decisions the code already made" | **list** / **discover** |
+- "We'll use PostgreSQL for orders" (or a choice surfacing mid-design) → **record** a proposal.
+- "Alex Doe approved kb/ADR-0004" → **ratify** it, naming Alex Doe.
+- "billing-api/ADR-0002: invoices now exceed the 10k/day in F2" → **note a change** on the record.
+- "What decisions apply to src/Billing?" → **what binds** the change.
 
 ## The rule
 

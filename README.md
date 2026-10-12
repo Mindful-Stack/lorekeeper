@@ -313,7 +313,8 @@ node scripts/adr-lint.js backfill --dry-run <adr-dir>                         # 
 
 A plain `check` reports a proposal that is not yet accepted (in the shared home, or riding along
 with code in its scope) as a warning; `--ci` makes it an error, so CI is the merge gate and always
-passes `--ci`, which needs `--base`. CI has no `household.json`, so it names the home: `--home local` in a code repo,
+passes `--ci`, which needs `--base`. A local proposal in its own ADR-only PR is not gated: its PR says to
+merge it only once accepted. CI has no `household.json`, so it names the home: `--home local` in a code repo,
 `--home shared` in a knowledge-base repo. Without `--home`, a code repo with no knowledge base on disk counts as
 a single coinciding home, which turns off the check that each record sits in the home its
 `blast_radius` belongs to. Pass `--single-home` only in a repo that has no knowledge base at all.

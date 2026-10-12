@@ -37,7 +37,9 @@ replacing record, never an edit of the old body.
 3. **Not interactive?** If you cannot ask a question and wait for the answer (`claude -p`, a CI
    job, a subagent), treat the session as not interactive: never write; draft, show what you
    would write with your assumptions stated, then stop. A ratification without a named human
-   stops and says one is required.
+   stops and says one is required. This governs authoring, not applying: the knowledge-updater
+   is dispatched only after the user confirmed, and it applies that confirmed edit under its
+   placement safeguards.
 4. **Record before building.** High-tier code waits for its record to be accepted; a low-tier
    record is accepted before its PR merges.
 5. **Locked records change by the five edits only.** Anything else is a replacing record.

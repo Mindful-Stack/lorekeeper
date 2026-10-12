@@ -5,8 +5,8 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/recording-decisions/reference/record-format.m
 
 1. **Find the record** (in the working tree, on the open PR branch that carries it, or on
    `origin/<default>`). To read a record that is only on a PR branch,
-   `git -C <repo> fetch origin <branch>` and `git show origin/<branch>:<relDir>/<file>`; never
-   switch branches. Accept needs `status: proposed`, or a legacy record (accepting a legacy
+   `git -C <repo> fetch origin <branch>` and
+   `git -C <repo> show origin/<branch>:<relDir>/<file>`; never switch branches. Accept needs `status: proposed`, or a legacy record (accepting a legacy
    accepted record converts it). Reject needs `status: proposed` (legacy proposals included); an
    accepted record is never rejected.
 2. **Name the decider.** Use the names the user gave; otherwise ask "Who approved this?" Never

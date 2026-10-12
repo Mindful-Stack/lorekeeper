@@ -154,7 +154,7 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "skill-adr-amend-a-proposal"
   :prompt "kb/ADR-0002 is still proposed — change its scope to backend:src/Inventory/** and backend:src/Orders/**. Do not write files, branch, or open a PR."
   :workdir "."
-  :expects ["scope:[^\\n]*backend:src/Orders/\\*\\*"]
+  :expects ["scope:[^\\n]*backend:src/Inventory/\\*\\*[^\\n]*backend:src/Orders/\\*\\*|scope:[^\\n]*backend:src/Orders/\\*\\*[^\\n]*backend:src/Inventory/\\*\\*"]
   :rejects ["kb/ADR-0003"]}
 
  {:name "command-adr-observe-appends-dated-entry"

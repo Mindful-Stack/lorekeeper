@@ -76,7 +76,9 @@ Follow DDD structure: Purpose, Key Entities, Ubiquitous Language, Integration Po
 
 ### ADRs (shared home `knowledge/adrs/`, or a code repo's local home)
 
-The caller drafts and the user has confirmed; you place, validate and commit. The format is the
+The caller drafts and the user has confirmed; you place, validate and commit. The skill's
+"not interactive: never write" rule is for authoring, not for you: you are dispatched only after
+that confirmation, so apply the caller's confirmed edit under the placement safeguards below. The format is the
 plugin's `references/adr-template.md` and the rules are in its `recording-decisions` skill
 (`skills/recording-decisions/SKILL.md`, the format in its `reference/record-format.md`; next to
 the `ADR lint:` script's `../references/` and `../skills/`).

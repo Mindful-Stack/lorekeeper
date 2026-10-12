@@ -6,5 +6,6 @@ description: Record, ratify, amend, observe, replace, retire, list, or discover 
 # Lore adr
 
 Read `../../references/codex-runtime.md`, resolve the knowledge paths, then follow
-`../../commands/adr.md`. The user's words are the request: its *Understand the
-request* table picks the action; no words lists existing records.
+`../../skills/recording-decisions/SKILL.md`. The user's words are the request:
+its *Understand the request* table picks the action; no words lists existing
+records.

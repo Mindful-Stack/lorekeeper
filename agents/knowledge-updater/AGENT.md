@@ -77,8 +77,9 @@ Follow DDD structure: Purpose, Key Entities, Ubiquitous Language, Integration Po
 ### ADRs (shared home `knowledge/adrs/`, or a code repo's local home)
 
 The caller drafts and the user has confirmed; you place, validate and commit. The format is the
-plugin's `references/adr-template.md` and the rules are in its `commands/adr.md` (next to the
-`ADR lint:` script's `../references/` and `../commands/`).
+plugin's `references/adr-template.md` and the rules are in its `recording-decisions` skill
+(`skills/recording-decisions/SKILL.md`, the format in its `reference/record-format.md`; next to
+the `ADR lint:` script's `../references/` and `../skills/`).
 
 **Inputs.** The file(s) or the edit; the **ADR action** (`record`, `ratify`, `amend`,
 `note a change`, `replace`, `retire`, or a `discover` batch); the Home (`shared` or `local:<repo>`); the `homes` JSON; the

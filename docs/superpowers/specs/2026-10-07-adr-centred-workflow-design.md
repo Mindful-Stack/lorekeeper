@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-07
 **Status:** approved design, ready for implementation plans (three, see *Delivery*)
-**Touches:** `commands/adr.md`, `skills/lore-adr`, `skills/recording-decisions`, `agents/architect`,
+**Touches:** `commands/adr.md`, `skills/lore-adr`, `skills/recording-decisions` (with its `actions/` and `reference/`), `agents/architect`,
 `agents/knowledge-updater`, `skills/brainstorming`, `skills/writing-plans`, `skills/review`,
 `commands/doctor.md`, `scripts/` (new validator), `references/adr-template.md`, `README.md`
 
@@ -421,10 +421,13 @@ the skill triggers on a hard-to-reverse choice surfacing, a named person approvi
 proposed record, a relied-on fact no longer holding, a replaced or dropped decision, "what binds
 this change", or a request to list or discover, and not on PR approvals, reversible conventions
 or routine choices. The SessionStart router sends anything about ADRs to it. It shows the edit, confirms, then writes, and never ratifies on its own. `/lore:adr
-<plain words>` (`commands/adr.md`, `skills/lore-adr`) is the explicit shortcut: no subcommand
-grammar; an old leading keyword (`accept 0004 by X`) is plain text that happens to be clear.
+<plain words>` (`commands/adr.md`, `skills/lore-adr`) is the explicit shortcut, an alias that
+reads the skill: no subcommand grammar; an old leading keyword (`accept 0004 by X`) is plain text
+that happens to be clear. The procedure lives in the skill: `SKILL.md` holds the request table,
+the homes step and the dispatch, `actions/<action>.md` one file per action, and `reference/` the
+record format and the lifecycle.
 
-`commands/adr.md` picks one of these actions from the request (ambiguous → one question):
+The skill picks one of these actions from the request (ambiguous → one question):
 - **record** — triage, interview (classification as one plain multiple choice), draft,
   self-check, show, apply; the home follows `blast_radius`, the tier sets the PR shape.
 - **ratify** — accept or reject a proposal (legacy proposals included), naming the human

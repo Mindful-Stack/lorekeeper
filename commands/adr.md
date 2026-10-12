@@ -137,8 +137,8 @@ fix them with the user, and apply again. Confirm with what it reports: where the
    `adr-lint select --repo <repo> --paths <a,b>` when the code paths are known, repo-relative),
    and the
    **knowledge-reader** with "Prioritise domain context and architecture patterns." If the
-   architect names a record that already covers the decision, stop and offer ratify, replace, or
-   nothing. Grep the code so Context and the facts rest on evidence.
+   architect names a record that already covers the decision, stop and offer ratify or amend (a
+   proposal), replace (an accepted record), or nothing. Grep the code so Context and the facts rest on evidence.
 3. **Interview, one question at a time,** skipping what the user already said: who uses it and
    across which boundaries; the real alternatives and why they lost; **scope**; **facts** and where
    each can be checked; and the classification as one plain multiple choice — "Is it a local

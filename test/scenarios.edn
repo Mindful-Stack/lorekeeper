@@ -120,7 +120,7 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "command-adr-new-triages-and-interviews"
   :prompt "/lore:adr Use a message queue between the order and inventory services"
   :workdir "."
-  :expects ["Tier|proposed|Context|Consequences"]}
+  :expects ["Tier|proposed|Context|Consequences|(?i)amend `?kb/ADR-0002"]}
 
  {:name "command-adr-list-spans-homes"
   :prompt "/lore:adr list"

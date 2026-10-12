@@ -2,6 +2,7 @@
   "name": "lore",
   "version": "2.11.0",
   "description": "Lorekeeper — AI-assisted knowledge base plugin for Claude Code: docs-first development standards, domain context, and PR review",
+  "license": "MIT",
   "author": {
     "name": "Lorekeeper Plugin Contributors"
   },

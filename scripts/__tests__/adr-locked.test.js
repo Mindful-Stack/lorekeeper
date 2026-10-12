@@ -303,3 +303,10 @@ test('B9a-2: a prose status that parses keeps the transition rule; only unparsea
     const prose = '# ADR-0001: Sessions\n\n## Status\nWe went with this in March.\n\n## Context\nOld text.\n';
     assert.deepEqual(conversionDiff(prose, rejected), []);
 });
+
+test('B9a-4: an appended Status line that opens with a status word matches the frontmatter status', () => {
+    const lied = S({ Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nRejected 2026-10-12 by Bob.' });
+    assert.ok(lockedDiff(BASE, lied).some((m) => /Status line says rejected, but status is accepted/.test(m)));
+    const note = S({ Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nNote 2026-10-12: renamed the store.' });
+    assert.deepEqual(lockedDiff(BASE, note), []);
+});

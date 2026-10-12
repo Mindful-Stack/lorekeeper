@@ -5,7 +5,7 @@
 // mechanical; none judges whether a sentence kept its meaning.
 
 const { parseRecord, decodeBlock, sections, isEmpty } = require('./frontmatter');
-const { BACKFILL_KEYS, isUnclassified, decidedBy, baseStatus } = require('./records');
+const { BACKFILL_KEYS, STATUS_WORD, isUnclassified, decidedBy, baseStatus } = require('./records');
 
 const APPEND_ONLY = new Set(['Status', 'Later observations']);
 const DATED_ENTRY = /^[-*+]\s+\**\s*\d{4}-\d{2}-\d{2}/;
@@ -164,6 +164,9 @@ function lockedDiff(baseText, curText) {
             } else if (base.heading === 'Status') {
                 statusGrew = extra.trim() !== '';
                 if (nonBlankLines(extra) > 1) out.push('append one line to ## Status per change (a transition or a note)');
+                // A line that reads as a status must be the record's status, or the prose misleads.
+                const word = STATUS_WORD.exec(extra.trim());
+                if (word && word[1].toLowerCase() !== c.fm.status) out.push(`the Status line says ${word[1].toLowerCase()}, but status is ${c.fm.status}`);
             } else if (extra.trim() !== '' && undatedObservation(extra)) {
                 out.push('each later observation is a bullet that starts with its date');
             }

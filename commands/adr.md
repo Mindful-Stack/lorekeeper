@@ -1,5 +1,6 @@
 ---
 description: Record, ratify, amend, observe, replace, retire, list, or discover architecture decision records (ADRs) — or say which ones bind a change. Takes plain words ("Alex approved kb/ADR-0004", "what applies to src/Billing?"). Use when a hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) or to recover decisions already baked into the code.
+argument-hint: <what you decided or what changed>
 ---
 
 # ADR Command
@@ -174,7 +175,9 @@ fix them with the user, and apply again. Confirm with what it reports: where the
 ### ratify
 
 1. **Find the record** (in the working tree, on the open PR branch that carries it, or on
-   `origin/<default>`). Accept needs `status: proposed`, or a legacy record (accepting a legacy
+   `origin/<default>`). To read a record that is only on a PR branch,
+   `git -C <repo> fetch origin <branch>` and `git show origin/<branch>:<relDir>/<file>`; never
+   switch branches. Accept needs `status: proposed`, or a legacy record (accepting a legacy
    accepted record converts it). Reject needs `status: proposed` (legacy proposals included); an
    accepted record is never rejected.
 2. **Name the decider.** Use the names the user gave; otherwise ask "Who approved this?" Never
@@ -229,7 +232,8 @@ comes back as a new record with `related: [<id>]` whose Context says why.
 3. On **ratify** of the successor: in the same home, the predecessor flips in the same PR. In
    another home, open both PRs at once — the accepted successor in its home and the predecessor's
    flip in its own — and tell the user to merge the successor first (use the `stack` skill to show
-   the order). Nothing checks the link across homes mechanically: the reviewers do.
+   the order or, where no stack skill is available, list the two PR URLs with "merge the
+   successor first"). Nothing checks the link across homes mechanically: the reviewers do.
 
 A record in the wrong home is replaced by one in the right home whose Context says "refiled;
 decision unchanged", or is left where it is.
@@ -283,8 +287,10 @@ that a named human then ratifies.
    need no approval.
 2. **Only a named human ratifies.** Never infer the decider, never accept or reject on your own
    initiative, and refuse an agent or bot as decider.
-3. **Not interactive?** Never write. Draft and show what you would write with your assumptions
-   stated, then stop. A ratification without a named human stops and says one is required.
+3. **Not interactive?** If you cannot ask a question and wait for the answer (`claude -p`, a CI
+   job, a subagent), treat the session as not interactive: never write; draft, show what you
+   would write with your assumptions stated, then stop. A ratification without a named human
+   stops and says one is required.
 4. **Record before building.** High-tier code waits for its record to be accepted; a low-tier
    record is accepted before its PR merges.
 5. **Locked records change by the five edits only.** Anything else is a replacing record.

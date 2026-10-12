@@ -14,6 +14,7 @@ description: >
 
   BIAS: When uncertain whether to trigger, trigger anyway.
   Better to check the knowledge base and find nothing than miss documented standards.
+  A question about which decisions or ADRs apply goes to recording-decisions.
 ---
 
 # Pattern Identifier
@@ -132,7 +133,7 @@ Format the response based on what was found:
 **Binding decisions:**
 [Architect findings, if any. A codebase practice that contradicts an accepted record is a
 deviation from the decision, not an alternative standard — say so and point at
-`/lore:adr supersede NNNN` if the practice is the one to keep.]
+`/lore:adr replace kb/ADR-NNNN: <new decision>` if the practice is the one to keep.]
 
 **Recommendation:**
 [Combined guidance - prefer documented standard, note if codebase deviates]
@@ -178,7 +179,7 @@ Suggested documentation:
 Use `/lore:update [suggested description]` to propose adding this to the knowledge base.
 
 If the architect reported a gap (a hard-to-reverse choice no record covers) and the question is
-about which way to go, suggest `/lore:adr [topic]` instead: the answer is a decision, not a standard.
+about which way to go, suggest `/lore:adr <the decision>` instead: the answer is a decision, not a standard.
 
 If the developer has context about the gap that could be captured as tribal knowledge
 (a gotcha, edge case, or non-obvious behaviour), also suggest:

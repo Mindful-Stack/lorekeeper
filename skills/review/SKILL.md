@@ -115,8 +115,9 @@ Go through each changed file. Check against ALL loaded knowledge.
 
 Fold the architect's report in as findings. A contradiction with an accepted record is at least
 **Important**, cites the record by path and section, and suggests either conforming or superseding
-it with `/lore:adr supersede NNNN`. A fired invalidation trigger is **Important** too. An uncovered
-hard-to-reverse choice is **Minor**, pointing at `/lore:adr <topic>`.
+it with `/lore:adr replace kb/ADR-NNNN: <new decision>`. A fired invalidation trigger is
+**Important** too. An uncovered hard-to-reverse choice is **Minor**, pointing at
+`/lore:adr <the decision>`.
 
 **Categorize findings:**
 - **Critical** - Security vulnerabilities, data loss risks, must fix before merge

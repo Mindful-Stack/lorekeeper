@@ -56,7 +56,7 @@ It then:
 
 The two channels are not interchangeable: `systemMessage` is shown to the user but withheld from Claude, while `additionalContext` is injected into Claude's context but not shown to the user. Put anything the *model* must read (markers, router, instructions) in `additionalContext`; put anything the *user* should see (warnings, summaries) in `systemMessage`. The output JSON is assembled by hand, so every interpolated path/name is passed through `json_escape` first — a stray quote or backslash in a path would otherwise produce invalid JSON and silently break the whole message.
 
-Convention everywhere: **the last `Knowledge path:` line is the write target**, and the hook also emits the explicit `Team knowledge path:` marker for it. Multi-KB override semantics are whole-file replacement (a higher-priority KB's file fully replaces a lower-priority one at the same relative path — never section-level merging). Don't break either — skills/commands depend on them.
+Convention everywhere: **the last `Knowledge path:` line is the write target**, and the hook also emits the explicit `Team knowledge path:` marker for it. Multi-KB override semantics are whole-file replacement (a higher-priority KB's file fully replaces a lower-priority one at the same relative path — never section-level merging). Don't break either — skills/commands depend on them. ADR commands and agents take their homes from `adr-lint homes` instead.
 
 Commands and agents do not call this script directly. Instead, every command/agent markdown file says: *look for "Knowledge path:" markers in the session context and use them as `<knowledge-path>`*. The model substitutes the values at runtime. This is the only mechanism by which commands learn where the knowledge base is.
 

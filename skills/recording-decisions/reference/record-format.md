@@ -12,10 +12,10 @@ converting a legacy record, and keep its keys and section order. The file is
   in `decided_by`: **ratify** names them in the last Status line (`Accepted YYYY-MM-DD by <name>.`)
   and the PR, never guessed. `consulted` lists the people asked.
 - **Classification**: `reversibility` (`one-way` when undoing costs more than a day or breaks
-  consumers, else `two-way`); `blast_radius` (`local` one module, `service` one repo,
-  `cross-service` contracts between repos or services, `customer` visible to users);
+  consumers, else `two-way`); `blast_radius` picks the home (`repo` affects only this repo,
+  `shared` crosses repos or is visible to customers);
   `sensitivity` (any of `security`, `privacy`, `billing`, `legal`, `contract`, or `[]`).
-- **High tier** = `one-way`, or `cross-service`/`customer`, or any sensitivity. It needs two
+- **High tier** = `one-way`, or `shared`, or any sensitivity. It needs two
   considered options, an invalidation trigger and a non-empty `scope`, and gets its own ADR-only
   PR, accepted before implementation. A low-tier record may ride along in the implementation PR.
 - `scope`: globs for the governed code, relative to the repo root in a local record

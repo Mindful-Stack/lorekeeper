@@ -1,6 +1,6 @@
 ---
 name: lore-adr
-description: Record, ratify, amend, observe, replace, retire, list, or discover architecture decision records (ADRs), or say which ones bind a change — from plain words such as "Alex approved kb/ADR-0004".
+description: Record, ratify, amend, observe, replace, list, or discover architecture decision records (ADRs), or say which ones bind a change — from plain words such as "Alex approved kb/ADR-0004".
 ---
 
 # Lore adr

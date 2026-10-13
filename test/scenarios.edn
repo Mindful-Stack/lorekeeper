@@ -124,15 +124,15 @@ git commit -m \"feat: add DeviceStatusDto\"
   :expects ["backend/ADR-0001" "kb/ADR-0001" "kb/ADR-0002"]}
 
  {:name "command-adr-new-local-home-by-blast-radius"
-  :prompt "/lore:adr The backend keeps its own read model for device status in a separate Postgres schema, rebuilt from domain events. Interview answers: the governed repo is backend; only the backend service is affected; undoing it later means migrating the schema and rewriting every device query, weeks of work (one-way); it governs src/Application/Devices/** and src/Infrastructure/ReadModel/**; no security, privacy, billing, legal or contract sensitivity; the alternatives were querying the write tables directly and an in-process cache. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
+  :prompt "/lore:adr The backend keeps its own read model for device status in a separate Postgres schema, rebuilt from domain events. Interview answers: the governed repo is backend; it affects only this repo; undoing it later means migrating the schema and rewriting every device query, weeks of work (one-way); it governs src/Application/Devices/** and src/Infrastructure/ReadModel/**; no security, privacy, billing, legal or contract sensitivity; the alternatives were querying the write tables directly and an in-process cache. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
   :workdir "."
-  :expects ["backend/docs/adr/0002-|backend/ADR-0002" "blast_radius: (local|service)" "id: backend/ADR-0002"]
+  :expects ["backend/docs/adr/0002-|backend/ADR-0002" "blast_radius: repo" "id: backend/ADR-0002"]
   :rejects ["lore/knowledge/adrs/0003-"]}
 
  {:name "command-adr-new-shared-home-by-blast-radius"
-  :prompt "/lore:adr Orders publish an OrderCancelled event that payments and inventory both consume. Interview answers: it is a contract between three services (cross-service); hard to undo once consumers exist (one-way); it governs backend:src/Orders/**; it touches billing. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
+  :prompt "/lore:adr Orders publish an OrderCancelled event that payments and inventory both consume. Interview answers: it is a contract shared across three repos; hard to undo once consumers exist (one-way); it governs backend:src/Orders/**; it touches billing. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
   :workdir "."
-  :expects ["lore/knowledge/adrs/0003-|kb/ADR-0003" "blast_radius: cross-service" "id: kb/ADR-0003"]
+  :expects ["lore/knowledge/adrs/0003-|kb/ADR-0003" "blast_radius: shared" "id: kb/ADR-0003"]
   :rejects ["backend/docs/adr/0002-"]}
 
  {:name "command-adr-accept-requires-named-decider"

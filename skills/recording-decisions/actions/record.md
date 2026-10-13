@@ -12,11 +12,11 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` first
 2. **Interview, one question at a time,** skipping what the user already said: who is taking
    this decision (named humans, never an agent); who uses it and across which boundaries; the
    real alternatives and why they lost; **scope**; **facts** and where each can be checked; and
-   the classification as one plain multiple choice — "Is it a local convention, one service, a
-   contract between services, or visible to customers? Is it hard to undo? Does it touch
+   the classification as plain choices — "Does it affect only this repo, or is it shared across
+   repos or visible to customers?" (`repo` / `shared`), "Is it hard to undo?", and "Does it touch
    security, privacy, billing, legal or a contract?" Stop as soon as every section can be written
    honestly.
-3. **Triage from the classification**, never as a second question. `local`, `two-way` and no
+3. **Triage from the classification**, never as a second question. `repo`, `two-way` and no
    sensitivity: offer **one line** in a standard or a learning instead, unless it keeps being
    re-debated or the user wants a record. Routine choices need **no record** (the PR description
    is enough); a decision with no code behind it (a tool, a process) belongs in an RFC or meeting
@@ -28,7 +28,7 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` first
    *Self-check* and fix inline.
 5. **Show** the file:
 
-   > **Proposed ADR** — `billing-api/ADR-0003` (low tier: two-way, service)
+   > **Proposed ADR** — `billing-api/ADR-0003` (low tier: two-way, repo)
    >
    > **File:** `billing-api/docs/adr/0003-invoice-numbering.md`
    >

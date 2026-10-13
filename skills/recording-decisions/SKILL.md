@@ -1,6 +1,6 @@
 ---
 name: recording-decisions
-description: Architecture decision records (ADRs) from plain words. Use when a hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, hosting, data model); when a named person approved or rejected a proposed decision record; when a fact an accepted record relies on no longer holds; when a decision is replaced, superseded, deprecated or dropped; when asked which decisions bind a change, path or area; or to list or discover ADRs. Not for PR approvals, reversible conventions, or routine implementation choices.
+description: Architecture decision records (ADRs) from plain words. Use when a hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, hosting, data model); when a named person approved or rejected a proposed decision record; when a fact an accepted record relies on no longer holds; when a decision is replaced, superseded, retired or dropped; when asked which decisions bind a change, path or area; or to list or discover ADRs. Not for PR approvals, reversible conventions, or routine implementation choices.
 ---
 
 # Recording Decisions
@@ -62,14 +62,14 @@ Pick one action from what the user says. If two fit, ask one question.
 | an edit to a record that is still proposed ("change 0007's scope …") | **amend** |
 | a fact a record relies on changed, "observe" or "note on" ("F2 no longer holds") | **note a change** |
 | a record is replaced, or they changed their mind about it ("supersede 0002 with …") | **replace** |
-| a record no longer applies and nothing replaces it ("deprecate 0005, by Sam") | **retire** |
+| a record no longer applies ("retire 0005", "drop 0005") | **replace**, with a short successor that says what is true now |
 | which decisions apply to a change, a path, or a topic | **what binds** |
 | nothing, or `list`, optionally a status | **list** |
 | find the decisions the code already made | **discover** |
 
 **This file holds no procedure.** Once you know the action, Read
 `<plugin-root>/skills/recording-decisions/actions/<action>.md` (`record`, `ratify`, `amend`,
-`note-a-change`, `replace`, `retire`, `what-binds`, `list`, `discover`) and follow it. Do not show
+`note-a-change`, `replace`, `what-binds`, `list`, `discover`) and follow it. Do not show
 or write anything before you have read it. Each action names the reference files it needs.
 
 ## Homes
@@ -77,8 +77,8 @@ or write anything before you have read it. Each action names the reference files
 A record lives in exactly one **home**: the **local home** `docs/adr/` (or the configured
 `adr.localDir` / `repos[].adrDir`) inside the repo whose code it governs, ids `<repo>/ADR-NNNN`;
 or the **shared home** `adrs/` in the team knowledge base, ids `kb/ADR-NNNN`. The record's
-`blast_radius` decides the home, so the user is never asked where it goes: `local` and `service`
-go local, `cross-service` and `customer` go shared. When the two coincide (one repo, or no KB),
+`blast_radius` decides the home, so the user is never asked where it goes: `repo` goes local,
+`shared` goes shared. When the two coincide (one repo, or no KB),
 there is one home and ids use the local prefix. Numbers are per home and never reused.
 
 For every action except list, run `node <plugin-root>/scripts/adr-lint.js homes` once and pass its

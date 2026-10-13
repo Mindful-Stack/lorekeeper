@@ -102,7 +102,7 @@ Report per home: the number of records, errors and warnings, grouped by rule. Th
   classification keys missing) — one summary line per home, suggesting `/lore:migrate` for the
   backfill. Do not list every record.
 - **Records in the wrong home** (`home` warnings: a `blast_radius` that belongs in the other home,
-  such as a legacy cross-service record converted in a local home) — list each by qualified id:
+  such as a legacy record converted as `shared` in a local home) — list each by qualified id:
   "consider replacing it with a record in the right home, or leave it where it is".
 - **Open proposals** (`proposed-shared` warnings in the shared home) — list each by its
   qualified id (`kb/ADR-NNNN`, from its home and number): each needs a named human to accept or

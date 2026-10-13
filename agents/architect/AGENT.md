@@ -9,7 +9,7 @@ tools: [Glob, Grep, Read]
 Answer one question about architecture decisions and return a compact report. Records live in
 **homes**: each code repo's local home (`<repo>/docs/adr/` unless configured otherwise) holds the
 decisions that govern that repo, and the team KB's shared home (`<team-knowledge-path>/adrs/`)
-holds the cross-service and customer-facing ones. Other teams' KBs may have an `adrs/` too; read
+holds the ones shared across repos or visible to customers. Other teams' KBs may have an `adrs/` too; read
 them as binding context, never as the team's own.
 
 Every record has a qualified id — `<repo>/ADR-NNNN`, `kb/ADR-NNNN`, or `<kb-dir>/ADR-NNNN` for
@@ -137,7 +137,7 @@ requirement somebody once had.
 4. Turn evidence into candidates: the requirement, the choice, evidence paths, whether an
    alternative was visibly weighed (`yes` with the path, `no`, `unclear`), a **proposed
    classification** (`reversibility`, `blast_radius`, `sensitivity`, with one line of reasoning),
-   the **governed repo** (or `shared` for a cross-service or customer-facing choice), and a
+   the **governed repo** (or `shared` for a choice shared across repos or visible to customers), and a
    proposed `scope`. Keep only choices that cost more than a day to reverse, cross module or
    service boundaries, or are visibly re-debated; fold lesser items into the candidate they
    belong to. Cap at fifteen, most consequential first.
@@ -149,7 +149,7 @@ requirement somebody once had.
 
 ### Foundation and stack
 1. **<topic>** — <choice>; evidence: `<path>`, `<path>`; alternatives weighed: yes (`<path>`) | no | unclear.
-   Proposed: one-way, service, sensitivity [] → home `api`; scope `src/**`.
+   Proposed: one-way, repo, sensitivity [] → home `api`; scope `src/**`.
 
 ### Data and storage
 2. …

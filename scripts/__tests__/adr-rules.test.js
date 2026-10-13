@@ -74,11 +74,11 @@ test('id must match the home prefix and the filename number', () => {
     assert.ok(has(run([rec({ number: '0002', fm: { id: 'kb/ADR-0001' } })]), 'id', /must be kb\/ADR-0002/));
 });
 
-test('home: a service record in the shared home is an error, skipped when homes coincide', () => {
-    const r = rec({ fm: { blast_radius: 'service', scope: ['api:src/**'] } });
+test('home: a repo record in the shared home is an error, skipped when homes coincide', () => {
+    const r = rec({ fm: { blast_radius: 'repo', scope: ['api:src/**'] } });
     assert.ok(has(run([r]), 'home', /belongs in the local home/));
     const one = { kind: 'local', prefix: 'api', repo: 'api', coinciding: true };
-    const local = rec({ prefix: 'api', fm: { blast_radius: 'cross-service' } });
+    const local = rec({ prefix: 'api', fm: { blast_radius: 'shared' } });
     assert.ok(!run([local], { home: one }).some((v) => v.rule === 'home'));
 });
 
@@ -162,13 +162,13 @@ test('classifying a legacy record checks it in full; the home stays green afterw
     const backfilled = backfill(makeRecord(thin), 'kb/ADR-0001').text;
     const classifiedText = backfilled
         .replace(/^reversibility:.*$/m, 'reversibility: one-way')
-        .replace(/^blast_radius:.*$/m, 'blast_radius: cross-service');
+        .replace(/^blast_radius:.*$/m, 'blast_radius: shared');
     assert.notEqual(classifiedText, backfilled);
     const name = '0001-session-storage.md';
     // The classifying change itself converts the record, so it must meet the high-tier rules.
     const classified = loadRecord(`/h/${name}`, classifiedText);
     assert.ok(has(run([classified], { base: base({ [name]: backfilled }) }), 'high-tier', /invalidation trigger/));
-    const full = classify(backfill(makeRecord({ fm: thin.fm }), 'kb/ADR-0001').text, { reversibility: 'one-way', blast_radius: 'cross-service', scope: '[api:src/Sessions/**]' });
+    const full = classify(backfill(makeRecord({ fm: thin.fm }), 'kb/ADR-0001').text, { reversibility: 'one-way', blast_radius: 'shared', scope: '[api:src/Sessions/**]' });
     assert.deepEqual(errors(run([loadRecord(`/h/${name}`, full)], { base: base({ [name]: backfilled }) })), []);
     // A later, unrelated change to the home: base is the classified record, whatever it lacks.
     const later = rec({ number: '0002', slug: 'other', fm: { decided_by: ['arch-team'] } });
@@ -297,13 +297,13 @@ test('C1: a backfilled id must equal the implied id', () => {
 
 test('C1: a legacy record classified into the other home warns (B4)', () => {
     const b = base({ '0001-session-storage.md': BACKFILLED() });
-    const cur = loadRecord('/h/0001-session-storage.md', classify(BACKFILLED(), { reversibility: 'two-way', blast_radius: 'service', scope: '[api:src/**]' }));
+    const cur = loadRecord('/h/0001-session-storage.md', classify(BACKFILLED(), { reversibility: 'two-way', blast_radius: 'repo', scope: '[api:src/**]' }));
     assert.ok(has(run([cur], { base: b }), 'home', /belongs in the local home; leave it here, or supersede it with a record there/, 'warning'));
 });
 
 test('C1: a correct classification of a locked legacy record is clean', () => {
     const b = base({ '0001-session-storage.md': BACKFILLED() });
-    const cur = loadRecord('/h/0001-session-storage.md', classify(BACKFILLED(), { reversibility: 'two-way', blast_radius: 'cross-service', scope: '[api:src/Sessions/**]' }));
+    const cur = loadRecord('/h/0001-session-storage.md', classify(BACKFILLED(), { reversibility: 'two-way', blast_radius: 'shared', scope: '[api:src/Sessions/**]' }));
     assert.deepEqual(run([cur], { base: b }), []);
 });
 
@@ -319,7 +319,7 @@ test('C1: two records with the same explicit id are an error', () => {
 // as it is now; any error would block every later change to the home.
 test('I4: an identical base and current produce no errors, whatever shape the home is in', () => {
     const legacyFm = { ...LEGACY_FM, decided_by: undefined, deciders: ['Alex Doe'] };
-    const half = BACKFILLED().replace('blast_radius:', 'blast_radius: cross-service');
+    const half = BACKFILLED().replace('blast_radius:', 'blast_radius: shared');
     const shapes = {
         'legacy accepted': [makeRecord({ fm: legacyFm })],
         'half-classified': [half],
@@ -464,10 +464,8 @@ test('fix3-9 (I3): a record accepted on the base tip since the fork cannot be ed
 test('fix4-1: a locked record with an unreadable block key it keeps can still take an allowed edit', () => {
     const name = '0001-session-storage.md';
     const was = blockYamlLegacy().replace(/^rfc:.*$/m, 'rfc: >2\n  one\n  two');
-    const deprecated = was
-        .replace('status: accepted', 'status: deprecated')
-        .replace('Accepted 2026-10-01 by Alex Doe.', 'Accepted 2026-10-01 by Alex Doe.\nDeprecated 2026-11-01.');
-    const vs = run([loadRecord(`/h/${name}`, deprecated)], { base: base({ [name]: was }) });
+    const noted = was.replace('Accepted 2026-10-01 by Alex Doe.', 'Accepted 2026-10-01 by Alex Doe.\nNote 2026-11-01: see kb/ADR-0002.');
+    const vs = run([loadRecord(`/h/${name}`, noted)], { base: base({ [name]: was }) });
     assert.ok(has(vs, 'frontmatter', /block value under "rfc"/, 'warning'));
     // The readable block keys can be rewritten inline, so they stay errors; nothing else fails.
     assert.deepEqual(errors(vs).map((v) => v.message).sort(), [
@@ -536,15 +534,15 @@ test('B4: an unclassified record accepted on both base and tip may be converted 
 
 test('B4: a legacy record in the wrong home warns; a new or classified one fails', () => {
     const name = '0001-session-storage.md';
-    const service = rec({ fm: { reversibility: 'two-way', blast_radius: 'service', scope: ['api:src/**'] } });
+    const repoRecord = rec({ fm: { reversibility: 'two-way', blast_radius: 'repo', scope: ['api:src/**'] } });
     for (const legacyBase of [BARE, UNCLASSIFIED()]) {
-        const vs = run([service], { base: base({ [name]: legacyBase }) });
+        const vs = run([repoRecord], { base: base({ [name]: legacyBase }) });
         assert.deepEqual(errors(vs), []);
         assert.ok(has(vs, 'home', /belongs in the local home; leave it here, or supersede it with a record there/, 'warning'));
     }
-    assert.ok(has(run([service]), 'home', /belongs in the local home/));
+    assert.ok(has(run([repoRecord]), 'home', /belongs in the local home/));
     const classifiedBase = makeRecord({ fm: { reversibility: 'two-way' } });
-    assert.ok(has(run([service], { base: base({ [name]: classifiedBase }) }), 'home', /belongs in the local home/));
+    assert.ok(has(run([repoRecord], { base: base({ [name]: classifiedBase }) }), 'home', /belongs in the local home/));
 });
 
 // B9a-1: a change that ratifies or rejects a record names who did it in the last Status line.
@@ -599,8 +597,11 @@ test('B9a-7: a frontmatter-less accepted record takes a dated observation or a S
     const observed = at(`${BARE}\n## Later observations\n- 2026-10-12 (PR 9): the store moved to Redis; the decision holds.\n`);
     assert.deepEqual(errors(observed), []);
     assert.ok(has(observed, 'frontmatter', /no frontmatter/, 'warning'));
+    const noted = BARE.replace('Accepted 2025-03-01', 'Accepted 2025-03-01\nNote 2026-10-12: the store moved to Redis.');
+    assert.deepEqual(errors(at(noted)), []);
+    // Deprecated is no longer a status: an accepted record moves only to superseded.
     const deprecated = BARE.replace('Accepted 2025-03-01', 'Accepted 2025-03-01\nDeprecated 2026-10-12 by Alex Doe: sessions are gone.');
-    assert.deepEqual(errors(at(deprecated)), []);
+    assert.ok(has(at(deprecated), 'locked', /accepted -> deprecated/));
     // Everything else stays locked.
     assert.ok(has(at(BARE.replace('on the server', 'in cookies')), 'locked', /section "Decision" changed/));
     assert.ok(has(at(`${BARE}\n## Later observations\n- The store moved.\n`), 'locked', /starts with its date/));
@@ -611,4 +612,46 @@ test('B9a-7: a frontmatter-less accepted record takes a dated observation or a S
     // A frontmatter-less record that is not locked on the base still needs frontmatter.
     const proposal = BARE.replace('Accepted 2025-03-01', 'Proposed 2025-03-01');
     assert.ok(has(run([loadRecord(`/h/${name}`, `${proposal}\nMore.\n`)], { base: base({ [name]: proposal }) }), 'frontmatter', /no frontmatter/));
+});
+
+test('schema: deprecated is not a status; a new record using it fails and says to supersede', () => {
+    const vs = run([rec({ fm: { status: 'deprecated' } })]);
+    assert.ok(has(vs, 'schema', /status must be one of proposed, accepted, rejected, superseded/));
+    assert.ok(has(vs, 'schema', /deprecated is no longer a status; supersede it with a short successor/));
+});
+
+test('schema: blast_radius is repo or shared; an old value names the mapping', () => {
+    for (const old of ['local', 'service', 'cross-service', 'customer']) {
+        const vs = run([rec({ fm: { blast_radius: old } })]);
+        assert.ok(has(vs, 'schema', /blast_radius must be one of repo, shared: use `repo` \(was local\/service\) or `shared` \(was cross-service\/customer\)/), old);
+    }
+});
+
+test('home: a shared record in a local home is an error', () => {
+    assert.ok(has(run([rec({ prefix: 'api', fm: { blast_radius: 'shared' } })], { home: LOCAL }), 'home', /blast_radius shared belongs in the shared home/));
+});
+
+test('tier: high when one-way, shared or sensitive; low only for a two-way repo record with no tags', () => {
+    const { isHighTier } = require('../adr/records');
+    assert.equal(isHighTier({ reversibility: 'two-way', blast_radius: 'repo', sensitivity: [] }), false);
+    assert.equal(isHighTier({ reversibility: 'one-way', blast_radius: 'repo', sensitivity: [] }), true);
+    assert.equal(isHighTier({ reversibility: 'two-way', blast_radius: 'shared', sensitivity: [] }), true);
+    assert.equal(isHighTier({ reversibility: 'two-way', blast_radius: 'repo', sensitivity: ['billing'] }), true);
+});
+
+test('legacy deprecated: an untouched grandfathered record keeps its lock and only warns', () => {
+    const name = '0001-session-storage.md';
+    const dep = makeRecord({ fm: { ...LEGACY_FM, status: 'deprecated', decided_by: undefined, deciders: ['Alex Doe'] }, sections: { Status: 'Accepted 2024-01-01.\nDeprecated 2025-01-01.' } });
+    const vs = run([loadRecord(`/h/${name}`, dep)], { base: base({ [name]: dep }) });
+    assert.deepEqual(errors(vs), []);
+    assert.ok(has(vs, 'schema', /deprecated is no longer a status; supersede it with a short successor/, 'warning'));
+    assert.ok(has(run([], { base: base({ [name]: dep }) }), 'locked', /never deleted/));
+    const edited = dep.replace('Old.', 'x').replace(/## Context\n[^\n]*/, '## Context\nRewritten.');
+    assert.ok(has(run([loadRecord(`/h/${name}`, edited)], { base: base({ [name]: dep }) }), 'locked', /Context" changed/));
+    // A frontmatter-less record whose prose says Deprecated warns the same way.
+    const prose = BARE.replace('Accepted 2025-03-01', 'Accepted 2025-03-01\nDeprecated 2025-06-01');
+    const pv = run([loadRecord(`/h/${name}`, prose)], { base: base({ [name]: prose }) });
+    assert.deepEqual(errors(pv), []);
+    assert.ok(has(pv, 'schema', /deprecated is no longer a status/, 'warning'));
+    assert.ok(has(run([], { base: base({ [name]: prose }) }), 'locked', /never deleted/));
 });

@@ -5,11 +5,12 @@
 // mechanical; none judges whether a sentence kept its meaning.
 
 const { parseRecord, decodeBlock, sections, isEmpty } = require('./frontmatter');
-const { BACKFILL_KEYS, STATUS_WORD, isUnclassified, decidedBy, baseStatus } = require('./records');
+const { BACKFILL_KEYS, STATUS_WORD, LEGACY_DEPRECATED, DEPRECATED_HINT, isUnclassified, decidedBy, baseStatus } = require('./records');
 
 const APPEND_ONLY = new Set(['Status', 'Later observations']);
 const DATED_ENTRY = /^[-*+]\s+\**\s*\d{4}-\d{2}-\d{2}/;
-const STATUS_MOVES = { accepted: ['superseded', 'deprecated'], deprecated: ['superseded'] };
+// Rejected and superseded are terminal. A legacy deprecated record moves only to superseded.
+const STATUS_MOVES = { accepted: ['superseded'], [LEGACY_DEPRECATED]: ['superseded'] };
 
 // Edit 4: formatting and link targets may change; nothing else. Link text survives the
 // normalisation, so a changed link text is still a change. A markdown link or an aliased
@@ -217,7 +218,8 @@ function conversionDiff(baseText, curText) {
     // A record with no frontmatter carries its status as prose. Prose with no status word may map
     // to any settled status; a parsed word moves only forward. Never reopened as a proposal.
     const freeMapping = !parsed.found && b.status === undefined && c.status !== 'proposed';
-    if (!freeMapping && !transitionAllowed(b.status, c.status)) out.push(`status ${b.status} -> ${c.status} is not an allowed transition`);
+    if (c.status === LEGACY_DEPRECATED) out.push(DEPRECATED_HINT);
+    else if (!freeMapping && !transitionAllowed(b.status, c.status)) out.push(`status ${b.status} -> ${c.status} is not an allowed transition`);
     // Prose gives no successor link, so a superseded result must name one either way.
     out.push(...successorNamed(parsed.found ? b : { ...b, status: undefined }, c));
     const was = decidedBy(b);

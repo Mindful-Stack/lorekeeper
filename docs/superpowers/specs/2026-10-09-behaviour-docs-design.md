@@ -149,7 +149,7 @@ rule list names it (`Changes: kb/contract.R3 (knowledge-base#NN)`); the architec
 flight in <PR>", not a finding, like in-flight cross-home ADR pairs. The KB's CI validates the
 doc; a code repo's CI sees only the KB's default branch.
 
-When an ADR a rule cites is superseded or deprecated, the rule is not edited automatically: the
+When an ADR a rule cites is superseded, the rule is not edited automatically: the
 validator warns on the `Source:`, and the superseding PR (or a follow-up) updates the rule.
 
 **Brainstorming** runs `select --paths` over the planned paths and, only when a doc is selected,
@@ -212,7 +212,7 @@ local home; a new doc, and any shared-home edit, is `own-pr`.
   a `###` under *Rules* that is not `<prefix>.R<n> <name>`, a duplicate id, an unresolvable
   `Source:` or `related` (through the ADR resolver; an unknown home is unavailable, not missing),
   `scope` syntax wrong for the home (the ADR `SHARED_SCOPE`/`PREFIXED` rules), no *Not yet
-  decided*. Warnings: a rule without SHALL/MUST or an example, a superseded or deprecated source,
+  decided*. Warnings: a rule without SHALL/MUST or an example, a superseded source,
   a glob matching no file in a checked-out repo, a *Known deviations* id not in the doc.
 - **`select`** adds a `kind` column (`adr|behaviour`); a behaviour doc's status is `-` and its id
   is `<home>/<prefix>`.

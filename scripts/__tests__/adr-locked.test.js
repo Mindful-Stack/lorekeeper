@@ -304,6 +304,19 @@ test('B9a-2: a prose status that parses keeps the transition rule; only unparsea
     assert.deepEqual(conversionDiff(prose, rejected), []);
 });
 
+test('a prose "Superseded by" with no frontmatter may convert to deprecated: prose names no successor record', () => {
+    const { conversionDiff } = require('../adr/locked');
+    const prose = '# ADR-0001: Service architecture\n\n## Status\nSuperseded by MVP 1 approach (shared database, direct HTTP communication)\n\n## Context\nOld text.\n';
+    const deprecated = makeRecord({ fm: { status: 'deprecated' }, sections: { Status: 'Deprecated 2026-10-10 by Alex Doe.' } });
+    assert.deepEqual(conversionDiff(prose, deprecated), []);
+    // Still forward only otherwise: never rejected, never back to accepted or proposed.
+    assert.ok(conversionDiff(prose, makeRecord({ status: 'rejected', fm: { decided_by: ['Alex Doe'] } })).some((m) => /superseded -> rejected is not an allowed transition/.test(m)));
+    assert.ok(conversionDiff(prose, makeRecord({ fm: { decided_by: ['Alex Doe'] } })).some((m) => /superseded -> accepted is not an allowed transition/.test(m)));
+    // A base that has frontmatter names its successor, so superseded stays superseded.
+    const fmBase = makeRecord({ fm: { status: 'superseded', superseded_by: 'kb/ADR-0002', reversibility: undefined } });
+    assert.ok(conversionDiff(fmBase, makeRecord({ fm: { status: 'deprecated' } })).some((m) => /superseded -> deprecated is not an allowed transition/.test(m)));
+});
+
 test('B9a-4: an appended Status line that opens with a status word matches the frontmatter status', () => {
     const lied = S({ Status: 'Proposed 2026-09-30.\nAccepted 2026-10-01 by Alex Doe.\nRejected 2026-10-12 by Bob.' });
     assert.ok(lockedDiff(BASE, lied).some((m) => /Status line says rejected, but status is accepted/.test(m)));

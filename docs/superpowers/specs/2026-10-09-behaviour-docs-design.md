@@ -1,50 +1,54 @@
 # Behaviour docs — design
 
-**Date:** 2026-10-09
-**Status:** approved design, ready for implementation plans (three, see *Delivery*)
+**Date:** 2026-10-09, amended 2026-10-13 to fit what shipped in 3.0.0 (#28) and the pilot doc
+**Status:** approved design, ready for implementation plans (two, see *Delivery*)
 **Builds on:** `2026-10-07-adr-centred-workflow-design.md` (homes, `select`, the review check)
-**Touches:** `scripts/adr-lint.js` (new `behaviour` checks, `select` extended), `agents/architect`,
-`skills/review`, `skills/brainstorming`, `skills/writing-plans`, `agents/plan-compliance-reviewer`,
-new `commands/behaviour.md` + `skills/lore-behaviour`, `scripts/manifest-schema.json`, `README.md`
+**Touches:** `scripts/adr-lint.js` + `scripts/adr/` (`homes`, `check`, `select`, `index`),
+`agents/architect`, `agents/knowledge-updater`, `skills/review`, `skills/brainstorming`,
+`skills/cultivate`, new `skills/documenting-behaviour` + `commands/behaviour.md` +
+`skills/lore-behaviour`, `README.md`
 
 ## Goal
 
 Give reviewers and agents the one thing code cannot express: what must stay true, and why it
 matters. ADRs already record why a hard-to-reverse choice was made. This design adds the
 living counterpart: **behaviour docs**, which state the rules the system must keep, organised by
-capability, kept current in the same PR that changes the behaviour, and checked by the same
+capability, kept current alongside the change that alters the behaviour, and read by the same
 review step that checks ADRs.
 
-## The model: two durable documents and one spec section
+## The model: two durable documents
 
-| | ADR | Behaviour doc | Spec |
-|---|---|---|---|
-| Answers | **Why** we chose this | **What must be true now** | What this one change does |
-| Changes | Locked once accepted; superseded to change | Edited in the PR that changes the behaviour | Archived after merge |
-| Human review | The record itself | The rule diff, surfaced in the PR | Skim |
-| Example | "Grants are scoped to an org or a project, because…" | "org.R7: a person may only grant roles strictly below their own" | "Add invite batching" |
+| | ADR | Behaviour doc |
+|---|---|---|
+| Answers | **Why** we chose this | **What must be true now** |
+| Changes | Locked once accepted; superseded to change | Edited with the change that alters the behaviour |
+| Human review | The record itself | The rule diff, listed in the PR |
+| Example | "Grants are scoped to an org or a project, because…" | "org.R7: a person may only grant roles strictly below their own" |
 
-They connect as **ADR → rule → code**. A rule that follows from a decision cites it
-(`source: kb/ADR-0009.R2`) instead of restating it; a rule nobody decided explicitly has
-`source: none`. A spec's required **Behaviour** section lists the rules the change relies on and
-the rules it adds, changes or removes; the implementing PR applies those edits. That is the only
-way rules are promoted from a change into a document.
+They connect as **ADR → rule → code**. A rule that follows from a decision names it in a
+`Source:` line and need not restate it. The ADR's reserved `implements:` field stays empty: the
+reverse direction (which rules implement a record) is computed on read from `Source:` lines, like
+`relatedFrom`.
 
 A developer asks two questions: *is this a decision?* → an ADR; *must this stay true?* → a rule.
 
-**Domain nodes in the knowledge base hold concepts and ownership only** (terms, what owns what,
-which ADRs and behaviour docs apply). They link to behaviour docs and never carry rules.
+**Domain nodes in the knowledge base hold concepts and ownership** (terms, what owns what, which
+ADRs apply) and link to their capability's behaviour docs; the doc does not link back. The
+rule-shaped text domain nodes carry today (mostly *Key Workflows*) moves into behaviour docs over
+time; `cultivate` refine may propose the move.
 
 ## Non-goals
 
 - **Grading rules as "invariant" vs "behaviour".** A pilot (30 rules for one capability, marked
-  by the decision owner) found the decider's grade differed from the drafter's on 10 of 26 kept
-  rules, in both directions, and the invariant share was 58%. The line is not stable enough to
-  split documents or tooling on. Every rule is simply a rule.
+  by hand) found the marker's grade differed from the drafter's on 10 of 26 kept rules, in both
+  directions, and the invariant share was 58%. The line is not stable enough to split documents
+  or tooling on. Every rule is simply a rule.
 - **Documenting everything.** Docs are created capability by capability when work touches a
   capability. The review check applies only where a doc's scope matches the diff.
 - **Narrating the code.** A rule states an observable guarantee and an example; it never explains
   how the implementation works.
+- **Gating who approves.** No owner, approval mode or CODEOWNERS check: the PR names who should
+  approve a rule change, as for ADRs. A repo may add CODEOWNERS itself; Lorekeeper never reads it.
 
 ## Where behaviour docs live
 
@@ -57,20 +61,20 @@ The same two homes as ADRs, resolved the same way (see the ADR design's *Resolvi
 
 Configuration extends the `adr` block's siblings: `household.json` gains an optional
 `"behaviour": { "localDir": "docs/behaviour", "sharedDir": "behaviour" }` and a per-repo
-`repos[].behaviourDir`. `.lorekeeper/config.json` accepts the same keys.
+`repos[].behaviourDir`. `.lorekeeper/config.json` accepts the same keys. No manifest schema
+change; a household whose own manifest tests restrict the `adr` keys must allow these too.
 
 ## The document
 
 ```markdown
 ---
-capability: organizations-roles-invitations
+title: "Organizations, roles and invitations"
+description: "Who can create, join, administer and leave an organization and its projects."
+tags: [behaviour, organizations]
 prefix: org
-owner: <person or code-host handle>
-approval: reviewer            # reviewer | owner
 scope: ["src/server/Endpoints/Orgs/**", "src/server/Endpoints/Invites/**", "src/client/src/lib/authz/**"]
-related_adrs: [app/ADR-0008, app/ADR-0009]
-domain: "[[domain/tenancy-and-membership]]"
-retired: []                   # rule ids removed from this doc; never reused
+related: [app/ADR-0008, app/ADR-0009]
+domain: tenancy-and-membership
 ---
 
 # Organizations, roles and invitations
@@ -80,141 +84,175 @@ Two or three plain sentences a non-engineer understands.
 
 ## Rules
 
+**Creating an organization**
+
 ### org.R1 Creator becomes Owner
 Whoever creates an organization SHALL become its Owner in the same step.
 - Example: WHEN a signed-in user creates "Acme" THEN they are Acme's Owner.
-- Source: none
-- Scope: (optional; narrows the doc scope for this rule)
 
 ### org.R7 Strictly-below grant authority
 …
-- Source: app/ADR-0009.R2
+- Source: app/ADR-0009            (a record, or one of its rules: kb/ADR-0001.R2)
+
+## Known deviations
+- org.R2: organizations cannot be deleted at all yet (SCRUM-426).
 
 ## Not yet decided
 - One line per open question, with the evidence that raised it.
 ```
 
-- **Ids.** `<prefix>.R<n>`, qualified by home outside it (`app/org.R7`, `kb/contract.R3`).
-  Numbers only grow. A removed rule's id goes into `retired:` and is never reused.
-- **Size.** A rule is one SHALL sentence plus at most two examples. A doc that passes about three
-  screens of rules is split by sub-capability.
+- **Frontmatter.** `title`, `description` and `tags` make a KB-home doc a KB node that
+  `/lore:doctor` and the knowledge-reader see (local docs carry them too). Values are inline. The
+  filename and title name the capability; there is no `capability:` key. `prefix` matches
+  `^[a-z][a-z0-9-]*$`, is unique per home, and may not be `adr`. `related` holds qualified ADR
+  ids, resolved like an ADR's `related`. `domain` is a domain node's slug as plain text (never a
+  wikilink: a local home cannot resolve one). `related` and `domain` are optional.
+- **Ids.** A rule is `<prefix>.R<n>`, qualified by home outside it (`app/org.R7`,
+  `kb/contract.R3`); the doc itself is `<home>/<prefix>` (`app/org`). Numbers only grow, by
+  convention: the skill picks one above the highest number the doc has ever had (its git history
+  answers what a removed id said). When two PRs claim the same id, the later-merging one
+  renumbers, as with ADR numbers.
+- **Groups.** Rules are always `###` headings. A group is a bold label line between them, never a
+  heading. Checked against the pilot doc (Grantigo/portal#1027): its 32 rule headings stand as
+  they are; its six `### <group>` headings become bold labels.
+- **Rule shape (guidance, not a gate).** A rule is one observable guarantee in SHALL/MUST
+  sentences plus an example. Split a rule whose SHALLs name different actors or different
+  outcomes; several SHALLs about one guarantee are fine (20 of the pilot's 32 rules have two or
+  three). A doc that passes about three screens of rules is split by sub-capability; the new doc
+  gets its own prefix, and moved rules get new ids there.
+- **`Source:`** is optional; absent means the rule was not decided by a record. It names a record
+  (`portal/ADR-0009`) or a rule (`kb/ADR-0001.R2`); a rule id is checked only when the record has
+  numbered rules, so legacy records are cited whole. A rule may restate its source in its own
+  words, but the ADR wins: where they differ, the rule is what gets fixed.
+- **Known deviations** (optional): `- <rule id>[, <rule id>…]: <what the code does instead>
+  (<ticket>)`, for intended rules the code does not meet yet. It is how a derived doc records a
+  bug without dropping the rule it breaks.
 - **Not yet decided** is required (it may say "none"). It tells agents where not to invent an
   answer.
-- **Evidence** (file and line, test names) is kept out of the final doc: it rots and duplicates
-  the code. It lives in the derivation draft and in the PR that introduced the rule.
+- **Scope** is doc-level only; split a doc rather than narrowing per rule. Globs follow the home's
+  syntax (prefixed `repo:glob` in the shared home). Prefer directory globs to file names.
+- **Evidence** (file and line, test names) is kept out of the doc: it rots and duplicates the code.
+  The derivation draft is kept in the PR that introduced the doc (as a comment, or under the
+  archived-spec path).
+- **Rule-tagged tests** (optional): a test name or trait carrying the rule id (`org.R18`) is a
+  strong signal for the review. Not required, not validated.
 
-## Lifecycle and approval
+## Lifecycle
 
-Behaviour docs are living. A rule changes in the PR that changes the behaviour, and that PR's
-*Decisions* section lists the rule edits (added, changed, removed ids), so the human reviewer
-reviews the rule diff, not only the code.
+Behaviour docs are living. **In a local home**, a rule changes in the PR that changes the
+behaviour. The PR body lists the rule edits (added, changed, removed ids) next to its ADR
+*Decisions* and names who should approve them, so the human reviewer reviews the rule diff, not
+only the code. Nothing checks that list against the doc diff mechanically.
 
-- `approval: reviewer` (default): the PR's normal approval covers the rule edits; the `owner` is
-  informed.
-- `approval: owner`: the owner must approve rule edits. The validator requires a CODEOWNERS entry
-  for the doc's path naming the owner, so the code host enforces it. Intended for capabilities
-  where a wrong rule costs money or exposure (billing, security, privacy).
+**In the shared home**, the doc changes in its own KB PR alongside the code PR. The code PR's
+rule list names it (`Changes: kb/contract.R3 (knowledge-base#NN)`); the architect reports "edit in
+flight in <PR>", not a finding, like in-flight cross-home ADR pairs. The KB's CI validates the
+doc; a code repo's CI sees only the KB's default branch.
 
-When an ADR a rule cites is superseded, the rule is not edited automatically: the validator warns
-on any `Source:` that points at a superseded or deprecated record, and the superseding PR updates
-the rule.
+When an ADR a rule cites is superseded or deprecated, the rule is not edited automatically: the
+validator warns on the `Source:`, and the superseding PR (or a follow-up) updates the rule.
 
-## The spec's Behaviour section
-
-Brainstorming adds a required section to every spec:
-
-```markdown
-## Behaviour
-Relies on: app/org.R5, app/org.R7
-Adds: org.R31 <one SHALL sentence>
-Changes: org.R17 <new sentence> (was: <old sentence>)
-Removes: org.R12 (<why>)
-No documented capability affected: <say so explicitly when true>
-```
-
-Writing-plans copies the section into the plan's *Governing decisions and rules* header together
-with the binding ADR rules. The plan-compliance reviewer checks that the implementing PR applied
-every Adds/Changes/Removes line to the doc.
+**Brainstorming** runs `select --paths` over the planned paths and, only when a doc is selected,
+asks whether the change adds, changes or removes any of its rules. The answer becomes part of the
+design and, in the implementing PR, the doc edit and its PR-body list. No spec section is
+required and nothing is copied into the plan.
 
 ## Enforcement in review
 
-The ADR review step gains behaviour docs:
+The ADR review step gains behaviour docs. The architect's catalogue greps behaviour homes too;
+every rule in a doc on the default branch binds, a doc on a PR branch is a draft, and `bind`
+returns matching rules beside binding ADRs.
 
 1. **Candidate selection (deterministic):** `adr-lint.js select` returns behaviour docs whose
-   `scope` (document or rule level) matches the diff, from the local and shared homes, next to the
-   ADRs.
-2. **Judgment:** the architect's `check` mode reports two more finding classes, both
-   **Critical**:
-   - **rule contradicted**: the diff breaks a rule in a selected doc and the PR does not change
-     that rule;
-   - **behaviour changed, doc not updated**: the diff changes observable behaviour a selected doc
-     describes, and the doc is not edited in the PR.
-   A diff touching a documented capability whose PR carries no *Behaviour*/rule edits is not a
-   finding by itself; only an actual change of behaviour is.
-3. **Escape hatch:** the existing `ADR-Exempt: <reason>` line covers behaviour findings too. One
-   line, one log.
+   `scope` matches the diff, from both homes, next to the ADRs.
+2. **Judgment:** the architect's `check` mode reports one more finding class: **the diff disagrees
+   with rule `<id>` and the doc is untouched**, which the review maps to **Important**. When the
+   rule's `Source:` is an accepted ADR, the disagreement is also a contradiction with that record,
+   and it is reported through that existing finding at its severity (Critical in the ADR design).
+   For each selected doc, `check` reads the changed files at base and at head, not only the hunks,
+   so it can tell a rule the diff broke from one that was already broken. A rule listed in *Known
+   deviations* is not reported while the code still shows the deviation; a PR that touches the
+   deviation without fixing it gets at most a note. Rule-tagged tests the diff edits or deletes
+   are a strong signal.
+3. **Escape hatch:** the ADR `ADR-Exempt:` line covers behaviour findings too, per finding where
+   possible: `ADR-Exempt: <id> — <reason>` exempts that rule or record only; the bare form still
+   covers the PR. Every exemption is echoed into the review summary.
 
-## Creating a doc: derive and mark
+## The skill
 
-`/lore:behaviour` (new command and skill):
+**Front door: the `documenting-behaviour` skill**, in the recording-decisions layout: `SKILL.md`
+holds the request table, the homes step and the dispatch; `actions/<action>.md` one file per
+action; `reference/doc-format.md` the format above. `/lore:behaviour <plain words>`
+(`commands/behaviour.md`, Codex `skills/lore-behaviour`) is an alias that reads the skill; there
+is no subcommand grammar. Actions:
 
-- **`derive <capability>`**: an agent reads the code, tests and related ADRs and writes a draft:
-  rules with an example and evidence each, *Not yet decided* and *Discrepancies* (code vs ADRs vs
-  docs vs UI). Draft only; nothing committed.
-- **`mark <draft>`**: walks the decision owner through the draft with multiple-choice questions
-  (up to four per round): intended / bug / undecided per rule, a follow-up asking which part is
-  wrong for every bug, then each open question. It records the answers in the draft and reports
-  the time taken.
-- **`finish <draft>`**: writes the doc in its home without evidence or marking fields; bugs and
-  decisions-that-become-work are listed as a findings report for the team's tracker (filing is a
-  separate, confirmed step); discrepancies with ADRs become proposed observations. Opens the PR.
+- **derive** — an agent reads the code, tests and related ADRs and writes a scratchpad draft:
+  rules with an example and evidence each, a proposed `scope` (directory globs from the evidence
+  files), deviation candidates, *Not yet decided*, and *Discrepancies* (code vs ADRs vs docs vs
+  UI). Draft only. The person edits it into the doc by hand: a bug keeps its intended rule plus a
+  deviation with a ticket; an undecided rule moves to *Not yet decided*.
+- **edit** (add, change or remove a rule: show, confirm, write) and **list** (docs and rule
+  counts per home).
 
-The pilot measured about 70 minutes to mark 30 rules and 6 questions interactively. The derive
-step should aim for shorter rules (one sentence plus one example) to bring that down.
+**Writes go through the knowledge-updater** with a new Type `behaviour` (Home, homes JSON and lint
+path required, as for `adr`). Branches: `behaviour/<repo>-<prefix>-<action>-<YYYYMMDD>` in a
+local home, `knowledge/behaviour-<prefix>-<action>-<YYYYMMDD>` in the shared home, `-2`, … when
+taken. Ride-along on the user's implementing branch is the default placement for a rule edit in a
+local home; a new doc, and any shared-home edit, is `own-pr`.
 
-## The validator
+## The validator and CLI
 
-`adr-lint.js` gains a `behaviour` check, run by the skill, pre-commit and CI:
+`adr-lint` grows rather than forks:
 
-- frontmatter: required keys, `approval` enum, inline values, `prefix` unique per home;
-- rule headings match `### <prefix>.R<n> <name>`; ids unique; no id in both the doc and `retired`;
-  given `--base`, a removed id must appear in `retired` and no retired id may reappear;
-- each rule has exactly one SHALL/MUST sentence and at least one example;
-- `Source:` is `none` or a resolvable ADR rule id; superseded/deprecated targets warn;
-- `scope` syntax matches the home (prefixed `repo:glob` in the shared home);
-- `approval: owner` requires a CODEOWNERS entry for the doc naming the owner;
-- `Not yet decided` section present.
-
-## Command and agent changes
-
-- **`architect`**: `bind` returns matching behaviour rules beside binding ADRs; `check` gains the
-  two finding classes.
-- **`review`**: severity mapping and the shared escape hatch.
-- **`brainstorming`**: the required *Behaviour* section.
-- **`writing-plans`**: *Governing decisions and rules* header.
-- **`plan-compliance-reviewer`**: checks the Behaviour section was applied.
-- **`/lore:behaviour`**: `derive`, `mark`, `finish`, plus `list` (docs and rule counts per home).
+- **`homes`** JSON gains the behaviour dirs (`localHomes[].behaviourDir`, and the shared one with
+  its repo root, relative dir and default branch). The architect greps their frontmatter.
+- **`check <dir>`** recognises a behaviour dir through the same `--home/--repo/--single-home/
+  --base/--ci` flags, so pre-commit and CI add one line per home kind. Errors: missing
+  `title`/`description`/`tags`/`prefix`/`scope`, non-inline values, a bad or duplicate `prefix`,
+  a `###` under *Rules* that is not `<prefix>.R<n> <name>`, a duplicate id, an unresolvable
+  `Source:` or `related` (through the ADR resolver; an unknown home is unavailable, not missing),
+  `scope` syntax wrong for the home (the ADR `SHARED_SCOPE`/`PREFIXED` rules), no *Not yet
+  decided*. Warnings: a rule without SHALL/MUST or an example, a superseded or deprecated source,
+  a glob matching no file in a checked-out repo, a *Known deviations* id not in the doc.
+- **`select`** adds a `kind` column (`adr|behaviour`); a behaviour doc's status is `-` and its id
+  is `<home>/<prefix>`.
+- **`index`** lists, per record, the rules that cite it in `Source:` ("implemented by").
 
 ## Delivery
 
-Three implementation plans, in order:
+Two implementation plans:
 
-- **D. Format, homes and validator**: document format, configuration, `adr-lint` behaviour check,
-  `select` extended, tests.
-- **E. Derive, mark, finish**: the `/lore:behaviour` command and skill.
-- **F. Workflow enforcement**: architect finding classes, review mapping, brainstorming Behaviour
-  section, writing-plans header, plan-compliance check.
+- **D. Format, homes and review**: document format, configuration, `homes`/`check`/`select`/
+  `index`, the architect's catalogue and finding, the review mapping and exemption, the
+  `cultivate` domain template's *Behaviour docs* link list, tests. It lands with or after ADR
+  Plan C, which has not shipped (`skills/review` has no `select` step and no `ADR-Exempt`;
+  `writing-plans` has no *Governing decisions* header). Plan C must leave hooks for: parsing
+  `select` output with a `kind` column; a severity table keyed by finding class, so this finding
+  is one row; `ADR-Exempt` taking an optional id; `check` reading selected candidates' files at
+  base and head.
+- **E. The skill**: `documenting-behaviour` with `derive` (draft only), `edit` and `list`, the
+  aliases, the knowledge-updater Type and the brainstorming question.
 
 ## Testing
 
-- Validator fixtures per rule, including retired-id reuse across `--base`, owner approval without
-  CODEOWNERS, and a source pointing at a superseded ADR.
-- Babashka scenarios: `select` returning a behaviour doc by scope; `check` reporting *rule
-  contradicted* and *behaviour changed, doc not updated*; a PR that updates the rule passes;
-  `ADR-Exempt` downgrades both.
+- Validator fixtures per rule, including the pilot's shapes: bold-label groups, multi-SHALL
+  rules, a whole-record `Source:` on a legacy ADR; plus a non-rule `###`, prefix `adr`, a dead
+  scope glob, a superseded source, a KB-home doc without `tags`.
+- Babashka scenarios: `select` by scope with `kind`; `check` reporting Important on an untouched
+  doc, an ADR-sourced rule through the ADR contradiction, a known deviation not reported, an
+  in-flight KB PR, a per-id `ADR-Exempt`.
 
 ## Open items
 
-- A readable rendering for non-technical owners if reading markdown on the code host proves a
-  barrier.
-- Whether `derive` can propose `scope` globs reliably, or the human sets them at `finish`.
+- **`mark` and `finish`** (interactive marking, a findings report, writing the doc from a marked
+  draft) are deferred. The pilot took about 70 minutes to mark 30 rules and 6 questions; build
+  them only if hand-editing derived drafts proves too slow.
+- **Cross-checking the PR's rule-edit list against the doc diff** (`check --pr-body`) is
+  deferred; add it if the two drift in practice.
+- **Renumbering and moving** rules (splits, local→shared moves) is done by hand for now.
+- **Choices made where the review left it open, simplest first:** groups as bold labels (not
+  `####` rules); `title`/`description`/`tags` required in both homes; no `--base`-dependent rules;
+  a split gives moved rules new ids rather than aliases; a thin `edit` action so rule edits
+  reach the knowledge-updater through the skill.
+- A readable rendering for non-technical readers, if markdown on the code host is a barrier.
+- Whether `derive` proposes `scope` globs reliably, or the person sets them by hand.

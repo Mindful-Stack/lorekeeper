@@ -286,7 +286,8 @@ missing frontmatter stays a warning. One change may **convert** a legacy record:
 it and may rewrite anything in it, frontmatter and body, but its status moves only forward (as in
 edit 1) and the deciders it already records stay. A base with no frontmatter has its status only
 as prose in `## Status` and records no deciders: a status word opening a line there (the last one
-counts) moves only forward like a frontmatter status; prose with no status word may map to any
+counts) moves only forward like a frontmatter status, except that prose `superseded` may also
+become `deprecated` (prose names no successor record); prose with no status word may map to any
 settled status (accepted, rejected, deprecated, or superseded naming its successor), never to `proposed`. The converted record is
 validated as a full new-format record (description, tags, status, `decided_by` naming who took
 the decision when ratified, classification, and the high-tier extras). Once its base copy is
@@ -403,7 +404,8 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
   and classified) may only differ by the five edits in *Amend or supersede*. A legacy record with
   a locked status keeps that lock until a change converts it; the conversion is checked as a
   new-format record whose status moves only forward (a frontmatter-less base whose `## Status`
-  has no status word may map to any settled status, never `proposed`) and whose recorded deciders stay;
+  has no status word may map to any settled status, never `proposed`; prose `superseded` may also
+  become `deprecated`) and whose recorded deciders stay;
 - a transition to `superseded` names the successor in `superseded_by`;
 - given `--base`, a record locked on the base tip but not at the merge base (accepted on the base
   since this branch forked) must be unchanged from the merge base; any edit to it fails with

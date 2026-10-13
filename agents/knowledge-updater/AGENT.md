@@ -111,7 +111,7 @@ the same names.
 record (no frontmatter, or no `reversibility` on the base) with a locked status may be converted
 once (rewritten into the template, its status moving only forward, its recorded deciders kept;
 a record with no frontmatter whose prose has no status word may take any settled status, never
-`proposed`);
+`proposed`, and prose "Superseded by …" may also become `deprecated`);
 otherwise an `update` to a locked record is only one of these five edits:
 
 1. one new line appended to `## Status`, with a transition to `superseded` or `deprecated`

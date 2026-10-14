@@ -124,10 +124,12 @@ Whoever creates an organization SHALL become its Owner in the same step.
 - **`Source:`** is optional; absent means the rule was not decided by a record. It names a record
   (`app/ADR-0009`) or a rule (`kb/ADR-0001.R2`); a rule id is checked only when the record has
   numbered rules, so legacy records are cited whole. A rule may restate its source in its own
-  words, but the ADR wins: where they differ, the rule is what gets fixed. A rule that makes a
-  security, privacy, billing, legal or contract decision should have a `Source:`: if nobody has
-  recorded that decision, it needs an ADR first. This is a process rule; the review flags it
-  (see *Enforcement in review*), nothing blocks on it.
+  words, but the ADR wins: where they differ, the rule is what gets fixed.
+- **The doc is where product behaviour is decided.** A rule without a `Source:` is decided by the
+  doc itself: the PR that adds or changes it is the decision, its approval is the record, and git
+  shows who and when. Product policies (who sees what, who may do what, consent, billing access)
+  belong here, not in ADRs, unless they are hard-to-reverse architecture. A repo that wants a
+  named group to approve changes to a sensitive doc adds a CODEOWNERS line for it.
 - **Known deviations** (optional): `- <rule id>[, <rule id>…]: <what the code does instead>
   (<ticket>)`, for intended rules the code does not meet yet. It is how a derived doc records a
   bug without dropping the rule it breaks.
@@ -173,8 +175,7 @@ returns matching rules beside binding ADRs.
 2. **Judgment:** the architect's `check` mode reports one more finding class: **the diff disagrees
    with rule `<id>` and the doc is untouched**, which the review maps to **Critical**, the same as
    contradicting an accepted ADR. When the rule's `Source:` is an accepted ADR, it is reported once,
-   through that record's finding. A second, **Important** finding: a PR adds or changes a rule that
-   makes a security, privacy, billing, legal or contract decision and the rule has no `Source:`.
+   through that record's finding.
    For each selected doc, `check` reads the changed files at base and at head, not only the hunks,
    so it can tell a rule the diff broke from one that was already broken. A rule listed in *Known
    deviations* is not reported while the code still shows the deviation; a PR that touches the

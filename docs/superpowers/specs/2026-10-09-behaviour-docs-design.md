@@ -122,7 +122,7 @@ Whoever creates an organization SHALL become its Owner in the same step.
   three). A doc that passes about three screens of rules is split by sub-capability; the new doc
   gets its own prefix, and moved rules get new ids there.
 - **`Source:`** is optional; absent means the rule was not decided by a record. It names a record
-  (`portal/ADR-0009`) or a rule (`kb/ADR-0001.R2`); a rule id is checked only when the record has
+  (`app/ADR-0009`) or a rule (`kb/ADR-0001.R2`); a rule id is checked only when the record has
   numbered rules, so legacy records are cited whole. A rule may restate its source in its own
   words, but the ADR wins: where they differ, the rule is what gets fixed. A rule that makes a
   security, privacy, billing, legal or contract decision should have a `Source:`: if nobody has

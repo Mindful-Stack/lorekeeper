@@ -48,7 +48,8 @@ time; `cultivate` refine may propose the move.
 - **Narrating the code.** A rule states an observable guarantee and an example; it never explains
   how the implementation works.
 - **Gating who approves.** No owner, approval mode or CODEOWNERS check: the PR names who should
-  approve a rule change, as for ADRs. A repo may add CODEOWNERS itself; Lorekeeper never reads it.
+  approve a rule change, as for ADRs. A repo may add CODEOWNERS itself, one line per doc or
+  folder, and GitHub enforces it; Lorekeeper never reads or checks it.
 
 ## Where behaviour docs live
 
@@ -123,7 +124,10 @@ Whoever creates an organization SHALL become its Owner in the same step.
 - **`Source:`** is optional; absent means the rule was not decided by a record. It names a record
   (`portal/ADR-0009`) or a rule (`kb/ADR-0001.R2`); a rule id is checked only when the record has
   numbered rules, so legacy records are cited whole. A rule may restate its source in its own
-  words, but the ADR wins: where they differ, the rule is what gets fixed.
+  words, but the ADR wins: where they differ, the rule is what gets fixed. A rule that makes a
+  security, privacy, billing, legal or contract decision should have a `Source:`: if nobody has
+  recorded that decision, it needs an ADR first. This is a process rule; the review flags it
+  (see *Enforcement in review*), nothing blocks on it.
 - **Known deviations** (optional): `- <rule id>[, <rule id>…]: <what the code does instead>
   (<ticket>)`, for intended rules the code does not meet yet. It is how a derived doc records a
   bug without dropping the rule it breaks.
@@ -132,8 +136,9 @@ Whoever creates an organization SHALL become its Owner in the same step.
 - **Scope** is doc-level only; split a doc rather than narrowing per rule. Globs follow the home's
   syntax (prefixed `repo:glob` in the shared home). Prefer directory globs to file names.
 - **Evidence** (file and line, test names) is kept out of the doc: it rots and duplicates the code.
-  The derivation draft is kept in the PR that introduced the doc (as a comment, or under the
-  archived-spec path).
+  The derivation draft is required for a derived doc and is kept in the PR that introduced it (as
+  a comment, or under the archived-spec path). That PR states, per rule, whether it was marked
+  intended, bug or undecided, and by which named person. Agents derive; only people mark.
 - **Rule-tagged tests** (optional): a test name or trait carrying the rule id (`org.R18`) is a
   strong signal for the review. Not required, not validated.
 
@@ -166,9 +171,10 @@ returns matching rules beside binding ADRs.
 1. **Candidate selection (deterministic):** `adr-lint.js select` returns behaviour docs whose
    `scope` matches the diff, from both homes, next to the ADRs.
 2. **Judgment:** the architect's `check` mode reports one more finding class: **the diff disagrees
-   with rule `<id>` and the doc is untouched**, which the review maps to **Important**. When the
-   rule's `Source:` is an accepted ADR, the disagreement is also a contradiction with that record,
-   and it is reported through that existing finding at its severity (Critical in the ADR design).
+   with rule `<id>` and the doc is untouched**, which the review maps to **Critical**, the same as
+   contradicting an accepted ADR. When the rule's `Source:` is an accepted ADR, it is reported once,
+   through that record's finding. A second, **Important** finding: a PR adds or changes a rule that
+   makes a security, privacy, billing, legal or contract decision and the rule has no `Source:`.
    For each selected doc, `check` reads the changed files at base and at head, not only the hunks,
    so it can tell a rule the diff broke from one that was already broken. A rule listed in *Known
    deviations* is not reported while the code still shows the deviation; a PR that touches the
@@ -177,6 +183,13 @@ returns matching rules beside binding ADRs.
 3. **Escape hatch:** the ADR `ADR-Exempt:` line covers behaviour findings too, per finding where
    possible: `ADR-Exempt: <id> — <reason>` exempts that rule or record only; the bare form still
    covers the PR. Every exemption is echoed into the review summary.
+
+### Until the review check ships
+
+Nothing reads behaviour docs at review time before plan D's review step lands. Until then the
+household runs it as process: a PR that changes a documented behaviour lists the rule edits in its
+*Decisions* section (a PR-template line), the reviewer reads the doc for the touched scope, and a
+repo may add a CODEOWNERS line for docs it wants an owner to approve.
 
 ## The skill
 

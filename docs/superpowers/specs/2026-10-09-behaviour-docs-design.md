@@ -114,7 +114,7 @@ Whoever creates an organization SHALL become its Owner in the same step.
   answers what a removed id said). When two PRs claim the same id, the later-merging one
   renumbers, as with ADR numbers.
 - **Groups.** Rules are always `###` headings. A group is a bold label line between them, never a
-  heading. Checked against the pilot doc (Grantigo/portal#1027): its 32 rule headings stand as
+  heading. Checked against the pilot doc: its 32 rule headings stand as
   they are; its six `### <group>` headings become bold labels.
 - **Rule shape (guidance, not a gate).** A rule is one observable guarantee in SHALL/MUST
   sentences plus an example. Split a rule whose SHALLs name different actors or different

@@ -489,7 +489,8 @@ home first, then the shared home; when both have it the command asks.
   `knowledge/adr-NNNN-<action>-<YYYYMMDD>`), `-2` if taken on the remote or locally, and nothing is
   ever force-pushed.
 - The PR body names who took the decision and the approver (or who should approve); nobody
-  approves their own decision; a high-tier record asks the area owners to review. Its report
+  approves their own decision; a high-tier record asks for review by whoever the
+  team's ADR process names for high-tier approvals (for example the CTO or tech lead). Its report
   says where the change landed.
 
 **`architect` agent**

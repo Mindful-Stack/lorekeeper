@@ -203,8 +203,8 @@ Warnings are reported, not blocking.
 `docs: supersede ADR-NNNN with <id>`; a batch uses the caller's `pr_title`.
 The PR body names who took the decision (`decided_by`) and the approver (the ratifier) or who
 should approve; nobody approves their own decision, so the approver should not be among
-`decided_by` (if they are, say so); for a high-tier record it adds "please have the area owners
-review"; for a proposal it adds "merge only once accepted — tell Claude who approved it first",
+`decided_by` (if they are, say so); for a high-tier record it asks for review by whoever the team's ADR process names for high-tier
+approvals (for example the CTO or tech lead); for a proposal it adds "merge only once accepted — tell Claude who approved it first",
 and in the shared home or on a ride-along "the ADR check stays red until then". With no new PR
 (`pr-branch`, ride-along), return that text for the user's PR description.
 

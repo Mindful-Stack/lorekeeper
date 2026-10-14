@@ -21,8 +21,8 @@ into noise that costs context and attention.
 
 ## Non-goals
 
-- **Behaviour specs** (durable, stakeholder-readable descriptions of what the system does). This
-  design reserves `implements:` on a record and leaves the format to a separate design.
+- **Behaviour docs** (durable, stakeholder-readable descriptions of what the system does): see
+  `2026-10-09-behaviour-docs-design.md`. `implements:` on a record stays empty; rules cite records.
 - **Wrapping an ADR CLI.** `adr-tools` is unmaintained, depends on bash/sed/awk, and its
   supersede edits silently break on frontmatter. Structure is enforced by a validator instead.
 - **RFC tooling.** RFCs are exploratory documents kept wherever a team collaborates. A record
@@ -143,7 +143,7 @@ supersedes: []
 superseded_by:
 depends_on: []
 related: []
-implements: []              # reserved: behaviour-spec rule ids
+implements: []              # stays empty: computed from behaviour docs' Source: lines
 rfc:                        # optional URL
 ---
 
@@ -547,5 +547,5 @@ Three implementation plans, in order:
 
 ## Open items for later designs
 
-- Behaviour specs: format, home, editing flow for non-technical owners, `implements:` checks.
+- Behaviour docs: designed in `2026-10-09-behaviour-docs-design.md`.
 - Gardener: scheduled link suggestions, fact checks against *Facts relied on*, stale proposals.

@@ -83,12 +83,14 @@ locked record allows.
   that classifies it. The result must meet every rule of a new record (description, tags,
   `decided_by` naming who took the decision when ratified, classification, the high-tier extras).
   The conversion keeps the record's status moving only forward (never back to `proposed`; `accepted`
-  may become only `superseded` or `deprecated`) and keeps the deciders it records. A record with no
-  frontmatter has its status only as prose in `## Status`, so its conversion may map it to any
-  settled status (accepted, rejected, deprecated, or superseded with a named successor), never to
-  `proposed`. Accepting a legacy proposal through `/lore:adr` converts it in the same change.
+  may become only `superseded`) and keeps the deciders it records. A record with no frontmatter has
+  its status only as prose in `## Status`; when the prose has no status word, its conversion may
+  map it to any settled status (accepted, rejected, or superseded with a named successor), never
+  to `proposed`. There is no `deprecated` any more: a legacy record that says deprecated (in
+  frontmatter or prose) only warns, and converts only to `superseded`, by a short accepted
+  successor that says what is true now. Accepting a legacy proposal through `/lore:adr` converts it in the same change.
 - **Until converted**, a legacy record with a locked status (`accepted`, `rejected`,
-  `superseded`, `deprecated`) is locked: it changes only by the five edits, the backfill among
+  `superseded`, or a legacy `deprecated`) is locked: it changes only by the five edits, the backfill among
   them. After this step an unclassified accepted record stays locked until it is converted.
 - **Once the classified copy is on the default branch,** the full lock applies.
 - A legacy record whose `blast_radius` belongs in the other home only warns: it stays where it

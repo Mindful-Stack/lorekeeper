@@ -9,7 +9,7 @@ decided_by: [Alex Doe]
 consulted: [Sam Roe]
 confidence: high
 reversibility: one-way
-blast_radius: cross-service
+blast_radius: shared
 sensitivity: [billing]
 scope: ["backend:src/Payments/**", "backend:src/Orders/**"]
 supersedes: []

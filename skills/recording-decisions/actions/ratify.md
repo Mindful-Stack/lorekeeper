@@ -22,7 +22,8 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` and
    record into the template from its old text, keeping its meaning, its Status lines and its
    recorded deciders verbatim (`deciders` may carry over as `decided_by` with the same names;
    `decided_by` is added only when none are recorded); a status its prose already states only
-   moves forward. Show any such change with the edit.
+   moves forward. A legacy `deprecated` record is never accepted: **replace** it. Show any such
+   change with the edit.
 4. **Edit.** The Status line naming the ratifier is the last line of `## Status`. Accept:
    `status: accepted` and `Accepted YYYY-MM-DD by <ratifier>.` (re-ratifying a legacy record
    already accepted: `Ratified YYYY-MM-DD by <ratifier>.`). Reject: `status: rejected` and

@@ -50,7 +50,7 @@ function makeRecord(opts = {}) {
         consulted: [],
         confidence: 'medium',
         reversibility: 'one-way',
-        blast_radius: shared ? 'cross-service' : 'service',
+        blast_radius: shared ? 'shared' : 'repo',
         sensitivity: [],
         scope: shared ? ['api:src/Sessions/**'] : ['src/Sessions/**'],
         supersedes: [],

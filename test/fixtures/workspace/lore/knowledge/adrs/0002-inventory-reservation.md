@@ -9,7 +9,7 @@ decided_by: []
 consulted: []
 confidence: medium
 reversibility: one-way
-blast_radius: cross-service
+blast_radius: shared
 sensitivity: []
 scope: ["backend:src/Inventory/**"]
 supersedes: []

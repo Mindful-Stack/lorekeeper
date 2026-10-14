@@ -13,8 +13,8 @@ const RELATION_KEYS = ['supersedes', 'depends_on', 'related', 'superseded_by'];
 const nextStep = (id) => ` — record a named human's approval: \`/lore:adr accept ${id} by <name>\` (or tell Claude who approved it)`;
 // Sections a rule can ask for (the high-tier extras).
 const RULE_SECTIONS = ['Considered options', 'Assumptions and invalidation triggers'];
-// The line a ratification, rejection or retirement appends to ## Status names who made it.
-const NAMED_STATUS_LINE = /^(Accepted|Ratified|Rejected|Deprecated|Superseded) \d{4}-\d{2}-\d{2} by \S/;
+// The line a ratification, rejection or supersession appends to ## Status names who made it.
+const NAMED_STATUS_LINE = /^(Accepted|Ratified|Rejected|Superseded) \d{4}-\d{2}-\d{2} by \S/;
 
 function countBullets(content) {
     return content === null ? 0 : content.split('\n').filter((l) => /^[-*+]\s/.test(l)).length;
@@ -62,7 +62,7 @@ function describe(r, ctx) {
     const b = baseText ? parseRecord(baseText) : null;
     const lockedOnBase = !!b && isLocked(b);
     const legacyOnBase = !!b && (!b.found || R.isUnclassified(b.fm));
-    const legacyLockedOnBase = legacyOnBase && R.LOCKED.has(R.baseStatus(b));
+    const legacyLockedOnBase = legacyOnBase && R.lockedStatus(R.baseStatus(b));
     const frozenOnBase = lockedOnBase || (legacyLockedOnBase && R.isUnclassified(r.fm));
     const keys = new Set();
     if (frozenOnBase) {
@@ -77,7 +77,7 @@ function describe(r, ctx) {
     }
     let mode = 'none';
     if (frozenOnBase) mode = 'base';
-    else if (!ctx.base && R.LOCKED.has(r.fm.status)) mode = 'warn';
+    else if (!ctx.base && R.lockedStatus(r.fm.status)) mode = 'warn';
     return {
         baseText,
         baseFm: b ? b.fm : null,
@@ -147,6 +147,7 @@ function checkRecord(home, r) {
     const bareLocked = r.found === false && info.legacyLockedOnBase;
     r.errors.forEach((e, i) => (untouched || bareLocked || stuck(r.errorKeys[i]) ? warn : err)(r.file, 'frontmatter', e));
     if (r.errors.length && Object.keys(fm).length === 0) {
+        if (R.baseStatus(r) === R.LEGACY_DEPRECATED) warn(r.file, 'schema', R.DEPRECATED_HINT);
         if (bareLocked) for (const m of lockedDiff(baseText, r.text)) err(r.file, 'locked', m);
         return;
     }
@@ -177,12 +178,17 @@ function checkRecord(home, r) {
     if (!isEmpty(fm.tags) && (!Array.isArray(fm.tags) || !fm.tags.includes('adr'))) {
         fix(['tags'], 'schema', 'tags must be an inline list that includes adr');
     }
-    const enums = [
-        ['status', R.STATUSES], ['confidence', R.CONFIDENCE],
-        ['reversibility', R.REVERSIBILITY], ['blast_radius', R.BLAST_RADIUS],
-    ];
+    if (fm.status === R.LEGACY_DEPRECATED && gf) {
+        warn(r.file, 'schema', R.DEPRECATED_HINT);
+    } else if (!isEmpty(fm.status) && !R.STATUSES.includes(fm.status)) {
+        const hint = fm.status === R.LEGACY_DEPRECATED ? `; ${R.DEPRECATED_HINT}` : '';
+        fix(['status'], 'schema', `status must be one of ${R.STATUSES.join(', ')}${hint}`);
+    }
+    const enums = [['confidence', R.CONFIDENCE], ['reversibility', R.REVERSIBILITY], ['blast_radius', R.BLAST_RADIUS]];
     for (const [key, values] of enums) {
-        if (!isEmpty(fm[key]) && !values.includes(fm[key])) fix([key], 'schema', `${key} must be one of ${values.join(', ')}`);
+        if (isEmpty(fm[key]) || values.includes(fm[key])) continue;
+        const hint = key === 'blast_radius' ? `: ${R.BLAST_HINT}` : '';
+        fix([key], 'schema', `${key} must be one of ${values.join(', ')}${hint}`);
     }
     if (!isEmpty(fm.date) && !/^\d{4}-\d{2}-\d{2}$/.test(fm.date)) fix(['date'], 'schema', 'date must be YYYY-MM-DD');
     for (const s of asList(fm.sensitivity)) {
@@ -204,9 +210,8 @@ function checkRecord(home, r) {
     if (!isEmpty(fm.title) && !String(fm.title).startsWith(`ADR-${r.number}:`)) fix(['title'], 'id', `title must start with "ADR-${r.number}:"`);
 
     // Home and scope syntax.
-    if (!h.coinciding && !isEmpty(fm.blast_radius)) {
-        const allowed = h.kind === 'shared' ? R.SHARED_BLAST : R.LOCAL_BLAST;
-        if (!allowed.has(fm.blast_radius)) {
+    if (!h.coinciding && R.BLAST_RADIUS.includes(fm.blast_radius)) {
+        if (fm.blast_radius !== (h.kind === 'shared' ? 'shared' : 'repo')) {
             const want = h.kind === 'shared' ? 'local home' : 'shared home';
             // A legacy record converted where it sits may stay there, or be refiled by a record in
             // the right home that supersedes it; a new or classified one is written in the right home.
@@ -242,7 +247,7 @@ function checkRecord(home, r) {
     }
     // A change that locks a record names who ratified or rejected it in the last Status line; who
     // that is, the PR's review judges. Seen only against a base: a record locked there is exempt.
-    if (ctx.base && R.LOCKED.has(fm.status) && !(baseText && R.LOCKED.has(R.baseStatus(parseRecord(baseText))))) {
+    if (ctx.base && R.LOCKED.has(fm.status) && !(baseText && R.lockedStatus(R.baseStatus(parseRecord(baseText))))) {
         const lines = (R.section(r, 'Status') || '').split('\n').map((l) => l.trim()).filter(Boolean);
         if (!NAMED_STATUS_LINE.test(lines[lines.length - 1] || '')) {
             err(r.file, 'ratified-by', `${fm.status} needs a last ## Status line naming who approved it ("<Status> YYYY-MM-DD by <name>.")${nextStep(home.ownId(r))}`);
@@ -302,7 +307,7 @@ function checkAcrossRecords(home) {
                 const message = `superseded_by ${succ}, but ${succ} does not list ${ownId(r)} in supersedes`;
                 // A locked, untouched successor with no supersedes at all is a legacy record that
                 // can never gain the key; linking its predecessor is still right, so this warns.
-                if (home.info.get(s).untouched && R.LOCKED.has(s.fm.status) && isEmpty(s.fm.supersedes)) home.warn(r.file, 'relations', message);
+                if (home.info.get(s).untouched && R.lockedStatus(s.fm.status) && isEmpty(s.fm.supersedes)) home.warn(r.file, 'relations', message);
                 else between([r, s], r.file, 'relations', message);
             }
         }
@@ -351,12 +356,12 @@ function checkAgainstBase(home) {
     for (const name of base.baseNames) {
         if (names.has(name)) continue;
         // A frontmatter-less legacy record carries its status in ## Status.
-        if (R.LOCKED.has(R.baseStatus(parseRecord(base.textAt(name) || '')))) {
+        if (R.lockedStatus(R.baseStatus(parseRecord(base.textAt(name) || '')))) {
             err(name, 'locked', 'a locked record is never deleted or renamed');
             continue;
         }
         const tip = base.tipTextAt ? base.tipTextAt(name) : null;
-        if (tip && R.LOCKED.has(R.baseStatus(parseRecord(tip)))) {
+        if (tip && R.lockedStatus(R.baseStatus(parseRecord(tip)))) {
             err(name, 'locked', `accepted on ${base.ref} since this branch forked; rebase onto ${base.ref}`);
         }
     }
@@ -364,7 +369,7 @@ function checkAgainstBase(home) {
     // covered by the duplicate-number check above. A record that is not locked may be renamed:
     // its new name keeps the number its old name, deleted in this change, held.
     const renamed = (owner) => !names.has(owner) && base.textAt(owner) !== null
-        && !R.LOCKED.has(R.baseStatus(parseRecord(base.textAt(owner))));
+        && !R.lockedStatus(R.baseStatus(parseRecord(base.textAt(owner))));
     for (const r of records) {
         const owner = base.textAt(r.name) === null && base.tipNumbers.get(r.number);
         if (owner && owner !== r.name && !renamed(owner)) err(r.file, 'number', `ADR-${r.number} is already ${owner} on the base branch; renumber this record`);

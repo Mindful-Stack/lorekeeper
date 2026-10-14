@@ -9,7 +9,7 @@ decided_by: [Sam Roe]
 consulted: []
 confidence: medium
 reversibility: two-way
-blast_radius: service
+blast_radius: repo
 sensitivity: []
 scope: ["src/Application/Devices/**"]
 supersedes: []

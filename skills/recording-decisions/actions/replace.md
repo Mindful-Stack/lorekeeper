@@ -2,8 +2,12 @@
 
 Read `<plugin-root>/skills/recording-decisions/reference/lifecycle.md` first.
 
-Only an `accepted` or `deprecated` record can be replaced. A `superseded` one points at its
-successor: offer to replace that. A `proposed` one takes **amend** instead. A `rejected` option
+Only an `accepted` record (or a legacy `deprecated` one) can be replaced. A `superseded` one points
+at its successor: offer to replace that.
+
+A record that no longer applies, with nothing new in its place, is replaced the same way: the
+successor is short and its Decision states what is true now (for example, "the API keeps no
+sessions"). A `proposed` one takes **amend** instead. A `rejected` option
 comes back as a new record with `related: [<id>]` whose Context says why.
 
 1. Run `record.md` with the new decision: the draft carries `supersedes: [<old id>]`, its Context

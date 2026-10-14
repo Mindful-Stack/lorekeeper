@@ -85,7 +85,7 @@ the `ADR lint:` script's `../references/` and `../skills/`).
 
 **Inputs.** Refuse a Type `adr` dispatch without a Home, the homes JSON and an `ADR lint:` path:
 "ADR edits come from the recording-decisions skill". The file(s) or the edit; the **ADR action**
-(`record`, `ratify`, `amend`, `note a change`, `replace`, `retire`, or a `discover` batch); the Home (`shared` or `local:<repo>`); the `homes` JSON; the
+(`record`, `ratify`, `amend`, `note a change`, `replace`, or a `discover` batch); the Home (`shared` or `local:<repo>`); the `homes` JSON; the
 `ADR lint:` path (`<ADR lint>`: every `adr-lint` command runs as `node <ADR lint> …`); who took
 the decision (`decided_by`), the ratifier or the people who should approve; and whether the user
 wants to ride along on their branch. From the homes JSON: `<repo>` is the home's `repoRoot`
@@ -99,24 +99,25 @@ branch to base on.
 renumbered on a reported collision (filename, `id`, `title` and inbound links together).
 
 **Frontmatter.** Every template key, each value inline. A new record is `proposed`, its
-`decided_by` naming who is taking the decision (`[]` until the caller knows). Write `accepted`,
-`rejected` or `deprecated` only with the human name the caller passes for who ratified or retired
-it; that name goes in the last Status line (`<Status> YYYY-MM-DD by <name>.`, nothing after it in
+`decided_by` naming who is taking the decision (`[]` until the caller knows). Write `accepted` or
+`rejected` only with the human name the caller passes for who ratified it; that name goes in the last Status line (`<Status> YYYY-MM-DD by <name>.`, nothing after it in
 that change), never into `decided_by`. Refuse a name that is an agent or bot (Claude, Codex,
 Copilot, an AI or assistant, anything ending in `[bot]`), in either place. Legacy records may carry `deciders`: read it as
 `decided_by` and never rename it, except that a conversion may carry it over to `decided_by` with
 the same names.
 
-**Locked records.** Accepted, rejected, superseded and deprecated records are locked. A legacy
-record (no frontmatter, or no `reversibility` on the base) with a locked status may be converted
-once (rewritten into the template, its status moving only forward, its recorded deciders kept;
-a record with no frontmatter whose prose has no status word may take any settled status, never
-`proposed`);
+**Locked records.** Accepted, rejected and superseded records are locked, and so is a legacy
+`deprecated` one (there is no `deprecated` status any more). A legacy record (no frontmatter, or
+no `reversibility` on the base) with a locked status may be converted once (rewritten into the
+template, its status moving only forward, its recorded deciders kept; a record with no
+frontmatter whose prose has no status word may take any settled status, never `proposed`; a
+conversion never lands on `deprecated`, and a legacy deprecated record converts only to
+`superseded`);
 otherwise an `update` to a locked record is only one of these five edits:
 
-1. one new line appended to `## Status`, with a transition to `superseded` or `deprecated`
-   (including `deprecated` → `superseded`), never back to `proposed`; a note that is not a
-   transition starts `Note YYYY-MM-DD:`;
+1. one new line appended to `## Status`, with a transition to `superseded` (also from a legacy
+   `deprecated`), never back to `proposed`; a note that is not a transition starts
+   `Note YYYY-MM-DD:`;
 2. setting `superseded_by` together with the flip to `superseded`, naming an accepted successor;
 3. a dated bullet appended to `## Later observations` (the first may replace the placeholder
    comment; add the section before *See also* if a legacy record lacks it), also on a legacy
@@ -158,7 +159,7 @@ edits with Edit; Bash is for git, gh, mktemp and the validator.
   Edit, validate, commit, `git -C <worktree> push origin HEAD:<branch>`, remove the worktree. No
   new PR.
 - **own-pr** — everything else: a new record, an edit of a record on `origin/<default>`, and
-  always a replace's new successor, a predecessor flip in another home, a retire, and every new
+  always a replace's new successor, a predecessor flip in another home, and every new
   high-tier record.
   ```bash
   git -C <repo> worktree add -b <branch> <worktree> origin/<default>
@@ -174,7 +175,7 @@ anything else `own-pr`; say so and why in your report.
 **Branch names.** `adr/<repo>-NNNN-<action>-<YYYYMMDD>` in a local home,
 `knowledge/adr-NNNN-<action>-<YYYYMMDD>` in the shared home, with the record's number (a batch:
 the first) and the action (`propose`, `accept`, `reject`, `amend`, `observe`, `replace`,
-`deprecate`, `discover`). Before `worktree add -b`, `git -C <repo> ls-remote --heads origin <branch>` must print
+`discover`). Before `worktree add -b`, `git -C <repo> ls-remote --heads origin <branch>` must print
 nothing and `git -C <repo> rev-parse --verify --quiet refs/heads/<branch>` must fail; otherwise
 append `-2`, `-3`, … Never force-push: a rejected push means stop and report it.
 
@@ -199,7 +200,7 @@ Warnings are reported, not blocking.
 
 **Commits and the PR.** Titles: `docs: propose ADR-NNNN - <title>`, `docs: accept ADR-NNNN`,
 `docs: reject ADR-NNNN`, `docs: amend ADR-NNNN`, `docs: observe ADR-NNNN`,
-`docs: deprecate ADR-NNNN`, `docs: supersede ADR-NNNN with <id>`; a batch uses the caller's `pr_title`.
+`docs: supersede ADR-NNNN with <id>`; a batch uses the caller's `pr_title`.
 The PR body names who took the decision (`decided_by`) and the approver (the ratifier) or who
 should approve; nobody approves their own decision, so the approver should not be among
 `decided_by` (if they are, say so); for a high-tier record it adds "please have the area owners

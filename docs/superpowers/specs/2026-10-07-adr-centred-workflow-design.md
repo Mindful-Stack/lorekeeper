@@ -58,12 +58,12 @@ The record's `blast_radius` decides the home; the user is never asked "where":
 
 | `blast_radius` | Home |
 |---|---|
-| `local`, `service` | local home of the governed repo |
-| `cross-service`, `customer` | shared home |
+| `repo` (affects only this repo) | local home of the governed repo |
+| `shared` (shared across repos, or visible to customers) | shared home |
 
-Household-wide decisions use `cross-service`.
+Household-wide decisions use `shared`. Choosing the home is `blast_radius`'s only job.
 
-Rationale (recorded because it was contested): cross-service records are always high tier
+Rationale (recorded because it was contested): shared records are always high tier
 (below), so they already get their own PR before implementation; moving them to the KB costs no
 PR atomicity the tier rule had not already spent. CI review workflows that mount the KB then see
 exactly the records that can bind a diff: the repo's own local records plus every shared one. A
@@ -130,13 +130,13 @@ id: kb/ADR-0007
 title: "ADR-0007: <short title — may state the decision>"
 description: "<the decision in one sentence, with its strongest because>"
 tags: [adr, <topic>]
-status: proposed            # proposed | accepted | rejected | deprecated | superseded
+status: proposed            # proposed | accepted | rejected | superseded
 date: YYYY-MM-DD
 decided_by: []              # who took the decision; required once accepted
 consulted: []
 confidence: medium          # high | medium | low
 reversibility: one-way      # one-way | two-way
-blast_radius: cross-service # local | service | cross-service | customer
+blast_radius: shared        # repo | shared
 sensitivity: []             # any of: security, privacy, billing, legal, contract
 scope: ["billing-api:src/Billing/**", "metering-worker:src/**"]
 supersedes: []
@@ -200,7 +200,7 @@ path.
 Every record carries `reversibility`, `blast_radius`, `sensitivity`. The drafting agent proposes
 them; the human reviewer confirms, and a wrong classification is itself a review finding.
 
-**High tier** = `one-way`, or `cross-service`/`customer`, or any `sensitivity` tag.
+**High tier** = `one-way`, or `shared`, or any `sensitivity` tag.
 
 | | High tier | Otherwise |
 |---|---|---|
@@ -217,7 +217,7 @@ as `accepted` by the time checks pass on the final commit.
 ## Lifecycle
 
 ```
-proposed ──(ratified, naming a human)──► accepted ──► superseded | deprecated
+proposed ──(ratified, naming a human)──► accepted ──► superseded
     └────────────────────────────────────────► rejected
 ```
 
@@ -232,9 +232,10 @@ proposed ──(ratified, naming a human)──► accepted ──► superseded
   empty); the ratifier goes in the Status line (`Accepted YYYY-MM-DD by <name>.`) and the PR,
   never in `decided_by`. Nobody approves their own decision: stated in the skill and the PR, not
   checked by the validator. A rejection names the rejecter the same way
-  (`Rejected YYYY-MM-DD by <name>: <reason>.`), as does a retirement (`Deprecated …`).
+  (`Rejected YYYY-MM-DD by <name>: <reason>.`).
 - **rejected** — kept, merged, and retrievable, so agents do not re-propose dead options. Locked.
-- **superseded / deprecated** — locked.
+- **superseded** — locked. Rejected and superseded are terminal. There is no `deprecated`: a
+  decision that no longer applies is superseded by a short record that says what is true now.
 
 ## Amend or supersede
 
@@ -242,13 +243,13 @@ A **proposed** record is a draft: any part of it may change, as often as needed,
 accepted or rejected.
 
 Once a record is **accepted**, it is locked, and stays locked whatever its later status
-(`superseded`, `deprecated`). A locked record is evidence of what was decided and what was known
+(`superseded`). A locked record is evidence of what was decided and what was known
 at the time, so its body is never rewritten. Exactly five kinds of edit are allowed, each one
 checkable by the validator without judging meaning:
 
 | # | Allowed edit | What it looks like |
 |---|---|---|
-| 1 | **Status line** | One line appended to `## Status` per change (and the matching `status:` value), for a transition to `superseded` or `deprecated` (including `deprecated` → `superseded`), or a note (a note sets no frontmatter). A line that opens with a status word (`Accepted`, `Rejected`, …) must name the record's `status:`, so a note never reads as a transition. The line starts on a new line, never appended to the last sentence. Never a transition back to `proposed`. |
+| 1 | **Status line** | One line appended to `## Status` per change (and the matching `status:` value), for a transition to `superseded` (also from a legacy `deprecated`), or a note (a note sets no frontmatter). A line that opens with a status word (`Accepted`, `Rejected`, …) must name the record's `status:`, so a note never reads as a transition. The line starts on a new line, never appended to the last sentence. Never a transition back to `proposed`. |
 | 2 | **Supersede link** | Setting `superseded_by:`, only in the change that moves `status` to `superseded` (1) or on a record already `superseded` whose link is empty, never changed once set; the successor it names must already be `accepted` (in the same PR within a home; across homes, merged first, which review checks), and a non-empty `superseded_by` means `status: superseded`; a transition to `superseded` sets it. |
 | 3 | **Later observation** | A dated entry appended at the end of `## Later observations`, starting on a new line; every top-level line appended is a bullet that starts with its date (indented lines continue the entry above). Earlier entries are never edited; a wrong one is corrected by a newer one. An HTML comment there (the template's placeholder) may be removed. |
 | 4 | **Format and link repair** | Formatting only (the section text is identical after normalising whitespace, paired emphasis markers outside code spans, and list bullets), or a link target only: a markdown link's or aliased wikilink's target may change in any section, its text may not; a bare wikilink or autolink, whose target is its text, may change only in *See also*. |
@@ -270,7 +271,7 @@ How common situations map onto the rule:
 | An invalidation trigger fired | Observation (3) naming the trigger, then a superseding record |
 | A rule needs to change, be added or be removed, however small | Superseding record |
 | The scope or classification was wrong | Superseding record |
-| The decision no longer applies and nothing replaces it | Status line (1): `deprecated` |
+| The decision no longer applies and nothing replaces it | A short superseding record that says what is true now |
 | A broken link, a renamed file path in *See also*, mangled formatting | Repair (4) |
 | A record accepted before this design lacks `id` or classification | Backfill (5), or convert it by rewriting in place (see *Legacy records*) |
 | A new record relates to or depends on an accepted one | Nothing: reverse links are computed (see *The validator*) |
@@ -287,7 +288,9 @@ it and may rewrite anything in it, frontmatter and body, but its status moves on
 edit 1) and the deciders it already records stay. A base with no frontmatter has its status only
 as prose in `## Status` and records no deciders: a status word opening a line there (the last one
 counts) moves only forward like a frontmatter status; prose with no status word may map to any
-settled status (accepted, rejected, deprecated, or superseded naming its successor), never to `proposed`. The converted record is
+settled status (accepted, rejected, or superseded naming its successor), never to `proposed`. A legacy
+`deprecated` record (frontmatter or prose) keeps its lock and only warns; a conversion never lands
+on `deprecated`, and a legacy deprecated record converts only to `superseded`. The converted record is
 validated as a full new-format record (description, tags, status, `decided_by` naming who took
 the decision when ratified, classification, and the high-tier extras). Once its base copy is
 classified, the full lock applies. A legacy record the change leaves unclassified keeps the
@@ -312,7 +315,7 @@ first (the `stack` skill shows the order). Between the two merges both records a
 architect treats the newer one as binding and reports the pair. Each home's CI sees the other home
 only when it is on disk, so the cross-home link is a review responsibility, not a mechanical one.
 
-**Only an `accepted` or `deprecated` record can be superseded.** A `superseded` one points at
+**Only an `accepted` record (or a legacy `deprecated` one) can be superseded.** A `superseded` one points at
 its successor, which is the record to supersede; a `rejected` one is not revived by supersession
 but by a new record that lists it in `related` and says in its Context why the option is back.
 
@@ -381,7 +384,8 @@ household's homes, or a single repo's local home and its KB); a standalone KB ch
 marks a repo with no KB (one coinciding home) when `--home` is passed. `--base` needs the
 base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
 
-- frontmatter schema: required keys, enum values, inline values only;
+- frontmatter schema: required keys, enum values, inline values only; an old `blast_radius`
+  value names the mapping (`repo` was local/service, `shared` was cross-service/customer);
 - id matches home and filename; number unique against `--base`;
 - home matches `blast_radius` (skipped for coinciding homes): an error, except on a legacy record
   (judged on its base copy, or on the record itself without a base), where it is a warning; `scope` syntax matches the home;
@@ -390,7 +394,7 @@ base ref fetched (CI: `fetch-depth: 0` or an explicit fetch). Checks:
   that the approver is not a decider);
 - given `--base`, a change that moves a record to a locked status (or adds it locked) names who
   did it: the last line of `## Status` matches `<Status> YYYY-MM-DD by <name>` (`Accepted`,
-  `Ratified`, `Rejected`, `Deprecated` or `Superseded`). Any name passes; who it is, review
+  `Ratified`, `Rejected` or `Superseded`). Any name passes; who it is, review
   judges. A record already locked on the base (its frontmatter or prose status) is exempt;
 - relations resolve; references to another home are warnings when that home is not on disk or
   not resolvable without a manifest, errors when it is; no supersession cycles;
@@ -453,14 +457,14 @@ The skill picks one of these actions from the request (ambiguous → one questio
 - **amend** — edit a record that is still proposed, where it lies (the user's branch, its PR
   branch, or its own PR); status and deciders unchanged.
 - **note a change** — a dated observation on a locked record.
-- **replace** — a successor that supersedes an accepted or deprecated record, always in its own
-  PR; across homes, its acceptance opens the predecessor's flip PR at the same time.
-- **retire** — deprecate, naming a human, in its own PR.
+- **replace** — a successor that supersedes an accepted (or legacy deprecated) record, always in
+  its own PR; across homes, its acceptance opens the predecessor's flip PR at the same time. A
+  record that no longer applies is replaced by a short successor that says what is true now.
 - **what binds** — `select --paths` and the architect's `bind` mode; read-only.
 - **list** — `adr-lint index` with relations; validation of every home is `/lore:doctor`.
 - **discover** — the architect's `survey`, drafted as proposals in one batch per home.
 
-There is no move, retire-to, alias or "Supersession proposed" note: a record in the wrong home
+There is no move, retire, alias or "Supersession proposed" note: a record in the wrong home
 stays or is replaced by one in the right home. A bare number resolves in the governed repo's local
 home first, then the shared home; when both have it the command asks.
 

@@ -427,18 +427,18 @@ test('B4d: once the converted record is on the base, the lock applies', (t) => {
     assert.match(r.stdout, /locked: section "Decision" changed/);
 });
 
-test('B4e: a converted legacy cross-service record in a local home warns; a new one fails', (t) => {
+test('B4e: a converted legacy shared record in a local home warns; a new one fails', (t) => {
     const w = workspace(t);
     const file = legacyOnMain(w, w.local, w.api, LEGACY_BARE);
-    const crossService = makeRecord({ prefix: 'api', fm: { blast_radius: 'cross-service' } });
-    write(file, crossService);
+    const sharedRecord = makeRecord({ prefix: 'api', fm: { blast_radius: 'shared' } });
+    write(file, sharedRecord);
     const legacy = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
     assert.equal(legacy.code, 0, legacy.stdout + legacy.stderr);
-    assert.match(legacy.stdout, /home: warning: blast_radius cross-service belongs in the shared home; leave it here, or supersede it with a record there/);
-    write(path.join(w.local, '0002-audit-log.md'), crossService.replace(/0001/g, '0002'));
+    assert.match(legacy.stdout, /home: warning: blast_radius shared belongs in the shared home; leave it here, or supersede it with a record there/);
+    write(path.join(w.local, '0002-audit-log.md'), sharedRecord.replace(/0001/g, '0002'));
     const fresh = runCli(w.root, w.env, 'check', '--base', 'main', w.local);
     assert.equal(fresh.code, 1, fresh.stdout);
-    assert.match(fresh.stdout, /0002-audit-log\.md: home: blast_radius cross-service belongs in the shared home/);
+    assert.match(fresh.stdout, /0002-audit-log\.md: home: blast_radius shared belongs in the shared home/);
 });
 
 test('B4f: backfill skips a frontmatter-less record and says to convert it by rewriting', (t) => {
@@ -562,25 +562,25 @@ test('B5a: reject on a pr-branch: an incomplete high-tier proposal passes once i
     assert.equal(r.code, 0, r.stdout + r.stderr);
 });
 
-test('B5b: accepting an unclassified legacy proposal as cross-service in its local home passes against the base, with a home warning', (t) => {
+test('B5b: accepting an unclassified legacy proposal as shared in its local home passes against the base, with a home warning', (t) => {
     const w = workspace(t);
     const legacy = makeRecord({ prefix: 'api', status: 'proposed', fm: { id: undefined, reversibility: undefined, blast_radius: undefined, sensitivity: undefined, scope: undefined } });
     write(path.join(w.local, '0001-session-storage.md'), legacy);
     commitAll(w.api, w.env, 'legacy proposal');
-    const converted = makeRecord({ prefix: 'api', fm: { blast_radius: 'cross-service' } });
+    const converted = makeRecord({ prefix: 'api', fm: { blast_radius: 'shared' } });
     // The old accept step 2 linted the classified, still-proposed record in a scratch copy, which
     // has no base, so it cannot see the record is legacy: the wrong home is an error there.
     const scratch = path.join(tmpDir(t), 'adr');
-    write(path.join(scratch, '0001-session-storage.md'), makeRecord({ prefix: 'api', status: 'proposed', fm: { blast_radius: 'cross-service' } }));
+    write(path.join(scratch, '0001-session-storage.md'), makeRecord({ prefix: 'api', status: 'proposed', fm: { blast_radius: 'shared' } }));
     const lost = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', scratch);
     assert.equal(lost.code, 1, lost.stdout);
-    assert.match(lost.stdout, /home: blast_radius cross-service belongs in the shared home/);
+    assert.match(lost.stdout, /home: blast_radius shared belongs in the shared home/);
     const wt = updaterWorktree(t, w, w.api, null, 'origin/main');
     const file = path.join(wt, 'docs', 'adr', '0001-session-storage.md');
     write(file, converted);
     const r = runCli(w.root, w.env, 'check', '--home', 'local', '--repo', 'api', '--base', 'origin/main', path.dirname(file));
     assert.equal(r.code, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /home: warning: blast_radius cross-service belongs in the shared home; leave it here, or supersede it with a record there/);
+    assert.match(r.stdout, /home: warning: blast_radius shared belongs in the shared home; leave it here, or supersede it with a record there/);
 });
 
 test('B9a-3: --ci without --base is a usage error, so a CI job cannot drop the lock silently', (t) => {

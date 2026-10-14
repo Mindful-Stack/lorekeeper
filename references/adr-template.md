@@ -3,13 +3,13 @@ id: <home>/ADR-NNNN
 title: "ADR-NNNN: <short title — may state the decision>"
 description: "<the decision in one sentence, with its strongest because>"
 tags: [adr, <topic>]
-status: proposed            # proposed | accepted | rejected | deprecated | superseded
+status: proposed            # proposed | accepted | rejected | superseded
 date: YYYY-MM-DD
 decided_by: []              # who took the decision; required once accepted
 consulted: []
 confidence: medium          # high | medium | low
 reversibility: one-way      # one-way | two-way
-blast_radius: service       # local | service (local home); cross-service | customer (shared home)
+blast_radius: repo          # repo (the repo's docs/adr) | shared (the KB's adrs/)
 sensitivity: []             # any of: security, privacy, billing, legal, contract
 scope: []                   # local: ["src/Billing/**"]; shared: ["billing-api:src/**"]
 supersedes: []

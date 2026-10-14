@@ -4,15 +4,18 @@ const fs = require('fs');
 const path = require('path');
 const { parseRecord, sections, isEmpty, asList } = require('./frontmatter');
 
-const STATUSES = ['proposed', 'accepted', 'rejected', 'deprecated', 'superseded'];
-const LOCKED = new Set(['accepted', 'rejected', 'deprecated', 'superseded']);
-const RATIFIED = new Set(['accepted', 'deprecated', 'superseded']);
+const STATUSES = ['proposed', 'accepted', 'rejected', 'superseded'];
+const LOCKED = new Set(['accepted', 'rejected', 'superseded']);
+const RATIFIED = new Set(['accepted', 'superseded']);
+// A status legacy records may still carry: they keep the lock and only warn until superseded.
+const LEGACY_DEPRECATED = 'deprecated';
+const DEPRECATED_HINT = 'deprecated is no longer a status; supersede it with a short successor';
 const CONFIDENCE = ['high', 'medium', 'low'];
 const REVERSIBILITY = ['one-way', 'two-way'];
-const BLAST_RADIUS = ['local', 'service', 'cross-service', 'customer'];
+// Picks the record's home: `repo` -> the repo's docs/adr, `shared` -> the KB.
+const BLAST_RADIUS = ['repo', 'shared'];
+const BLAST_HINT = 'use `repo` (was local/service) or `shared` (was cross-service/customer)';
 const SENSITIVITY = ['security', 'privacy', 'billing', 'legal', 'contract'];
-const LOCAL_BLAST = new Set(['local', 'service']);
-const SHARED_BLAST = new Set(['cross-service', 'customer']);
 // Keys this design introduced; edit 5 (schema backfill) may add them to a locked record.
 const BACKFILL_KEYS = ['id', 'reversibility', 'blast_radius', 'sensitivity', 'scope', 'decided_by'];
 const KNOWN_KEYS = new Set([
@@ -74,7 +77,7 @@ function decidedBy(fm) {
 function isHighTier(fm) {
     if (isEmpty(fm.reversibility) || isEmpty(fm.blast_radius)) return true;
     return fm.reversibility === 'one-way'
-        || SHARED_BLAST.has(fm.blast_radius)
+        || fm.blast_radius === 'shared'
         || asList(fm.sensitivity).length > 0;
 }
 
@@ -84,7 +87,14 @@ function isUnclassified(fm) {
 }
 
 // A Status line that opens with one of these reads as that status.
-const STATUS_WORD = /^(Proposed|Accepted|Rejected|Deprecated|Superseded)\b/i;
+const STATUS_WORD = /^(Proposed|Accepted|Rejected|Superseded)\b/i;
+// Legacy prose may still say Deprecated; it reads as the legacy status.
+const PROSE_STATUS_WORD = /^(Proposed|Accepted|Rejected|Superseded|Deprecated)\b/i;
+
+// A status that locks a record, counting the legacy deprecated one.
+function lockedStatus(status) {
+    return LOCKED.has(status) || status === LEGACY_DEPRECATED;
+}
 
 // A record's status: its frontmatter `status`, or for a record with no frontmatter the last
 // status word that opens a line of its `## Status` section (`Accepted 2024-03-01` -> accepted).
@@ -93,7 +103,7 @@ function baseStatus(parsed) {
     const status = sections(parsed.body).find((s) => s.heading === 'Status');
     let last;
     for (const line of status ? status.content.split('\n') : []) {
-        const m = STATUS_WORD.exec(line.trim());
+        const m = PROSE_STATUS_WORD.exec(line.trim());
         if (m) last = m[1].toLowerCase();
     }
     return last;
@@ -115,7 +125,7 @@ function section(record, heading) {
 }
 
 module.exports = {
-    STATUSES, LOCKED, STATUS_WORD, baseStatus, RATIFIED, CONFIDENCE, REVERSIBILITY, BLAST_RADIUS, SENSITIVITY,
-    LOCAL_BLAST, SHARED_BLAST, BACKFILL_KEYS, KNOWN_KEYS, FILE_RE, ID_RE,
+    STATUSES, LOCKED, LEGACY_DEPRECATED, DEPRECATED_HINT, lockedStatus, STATUS_WORD, baseStatus, RATIFIED,
+    CONFIDENCE, REVERSIBILITY, BLAST_RADIUS, BLAST_HINT, SENSITIVITY, BACKFILL_KEYS, KNOWN_KEYS, FILE_RE, ID_RE,
     impliedId, loadRecord, loadHome, decidedBy, isHighTier, isUnclassified, qualify, section,
 };

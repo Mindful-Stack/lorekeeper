@@ -162,7 +162,7 @@ new handle and need nothing.
 | Command | Description |
 |---------|-------------|
 | `/lore:help` | Show status and help |
-| `/lore:adr` | Architecture decision records in plain words: record, ratify, amend, note a change, replace, retire, what binds, list, discover |
+| `/lore:adr` | Architecture decision records in plain words: record, ratify, amend, note a change, replace, what binds, list, discover |
 | `/lore:init` | Detect workspace state and scaffold or retrofit accordingly |
 | `/lore:migrate` | Bring household.json up to the schema the current plugin expects; optionally refresh template tooling |
 | `/lore:cultivate` | Cultivate a bounded-context domain. With a name: bootstrap/refine/audit. Without: discover candidate domains in the codebase + audit existing ones |
@@ -259,8 +259,8 @@ Propose updates to the knowledge base:
 Architecture decision records are first-class knowledge: one hard-to-reverse decision per record,
 numbered per home (`NNNN-<problem>.md`), reviewed through a PR, binding once a named human accepts
 it, and locked from then on. A record lives in one of two **homes**, chosen by its `blast_radius`:
-the governed repo's `docs/adr/` for a decision that stays inside one service (`<repo>/ADR-NNNN`),
-or the team knowledge base's `adrs/` for cross-service and customer-facing ones (`kb/ADR-NNNN`).
+`repo` puts it in the governed repo's `docs/adr/` (`<repo>/ADR-NNNN`), `shared` in the team
+knowledge base's `adrs/` for decisions shared across repos or visible to customers (`kb/ADR-NNNN`).
 
 Quick start — just tell Claude what you decided or what changed:
 
@@ -280,7 +280,7 @@ Quick start — just tell Claude what you decided or what changed:
 | "Change 0007's scope to src/Billing/** and src/Invoices/**" | **amend**: edits the record while it is still proposed |
 | "billing-api/ADR-0002: invoices now exceed the 10k/day in F2" | **note a change**: a dated observation on the locked record |
 | "Replace 0002: move session state from cookies to bearer tokens" | **replace**: a successor; 0002 is superseded when the successor is accepted |
-| "Deprecate 0005, by Sam" | **retire**: marks it deprecated |
+| "0005 no longer applies" | **replace**: a short successor that says what is true now |
 | "What decisions apply to src/Billing in billing-api?" | **what binds**: the accepted records and rules that bind the change |
 | "list" / "find the decisions the code already made" | **list** every home / **discover** the implicit ones as proposals |
 
@@ -296,7 +296,7 @@ the classification (`reversibility`, `blast_radius`, `sensitivity`) that decides
 tier, a `scope` of globs that reviews select records by, and who took the decision in `decided_by`
 (the approver goes in the Status line, `Accepted YYYY-MM-DD by <name>.`, which the check
 requires when a change accepts or rejects a record, and in the PR).
-High-tier records (one-way, cross-service or customer, or sensitive) get their own ADR-only PR and
+High-tier records (one-way, shared, or sensitive) get their own ADR-only PR and
 are accepted before implementation; low-tier ones may ride along in the implementation PR. There is
 no index file: the list is rendered on demand.
 

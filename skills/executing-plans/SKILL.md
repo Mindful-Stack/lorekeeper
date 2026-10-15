@@ -38,6 +38,7 @@ After all tasks complete and verified:
 1. Run the full test suite to ensure nothing is broken
 2. Summarise what was implemented
 3. Present the result to the developer
+4. If the work is delivered as a pull request, its description carries a `## Decisions` section in the format of `<plugin-root>/references/pr-decisions.md` (records followed or added, rule edits, or "No new decisions"), copied from the plan's *Governing decisions* when there is one.
 
 ## When to Stop and Ask for Help
 

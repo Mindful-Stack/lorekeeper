@@ -55,6 +55,11 @@ Terms: the **sequence** (full merge order) splits into **segments** (maximal sam
    - [ ] other-owner/other-repo#78 — what it does
    ```
 
+   Each PR body also carries its own `## Decisions` section in the format of
+   `<plugin-root>/references/pr-decisions.md` (records followed or added, rule edits, or "No new
+   decisions"), copied from the plan's *Governing decisions* when there is one — the `## Stack`
+   checklist coordinates merge order, it does not replace it.
+
    GitHub renders every reference with its live state, cross-repo included, so the badges stay current without maintenance — only the ordering is static text, and the ordering never changes. **The checklist is the gate:** merge strictly top to bottom (for a fan-out, root first, then the leaves in any order), and read the Stack section before merging, since each reference's badge shows whether its predecessors have landed. Each PR must be **independently deployable against the currently merged state of the others** — that is what makes a partially-merged stack safe.
 
    The checklist is also **context for reviewers**. Each PR is reviewed in isolation, so without it a reviewer of one PR can't see the siblings and will re-raise cross-repo concerns ("is the downstream consumer updated yet?", "does this leave the other repos inconsistent?") — often the *same* concern on several PRs. The `_These move together_` line, plus the sibling refs, answers that up front so per-PR review doesn't re-litigate the coordination.

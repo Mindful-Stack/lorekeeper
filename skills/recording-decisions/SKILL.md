@@ -66,6 +66,7 @@ Pick one action from what the user says. If two fit, ask one question.
 | which decisions apply to a change, a path, or a topic | **what binds** |
 | nothing, or `list`, optionally a status | **list** |
 | find the decisions the code already made | **discover** |
+| the review is blocking on a record, or how to exempt a PR ("ADR-Exempt", "why is review blocking?") | no action: explain from `<plugin-root>/references/pr-decisions.md` — conform, replace the record, record the uncovered choice, or add an `ADR-Exempt` line with a reason. Never write the exemption into the PR yourself without the user's words for the reason. |
 
 **This file holds no procedure.** Once you know the action, Read
 `<plugin-root>/skills/recording-decisions/actions/<action>.md` (`record`, `ratify`, `amend`,

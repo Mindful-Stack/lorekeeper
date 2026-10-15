@@ -201,6 +201,8 @@ Warnings are reported, not blocking.
 **Commits and the PR.** Titles: `docs: propose ADR-NNNN - <title>`, `docs: accept ADR-NNNN`,
 `docs: reject ADR-NNNN`, `docs: amend ADR-NNNN`, `docs: observe ADR-NNNN`,
 `docs: supersede ADR-NNNN with <id>`; a batch uses the caller's `pr_title`.
+The PR body also carries a `## Decisions` section in the format of the plugin's
+`references/pr-decisions.md`: `Adds: <id>` for a new record, or `Accepts: <id>` for a ratification.
 The PR body names who took the decision (`decided_by`) and the approver (the ratifier) or who
 should approve; nobody approves their own decision, so the approver should not be among
 `decided_by` (if they are, say so); for a high-tier record it adds "please have the area owners

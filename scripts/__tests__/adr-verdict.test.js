@@ -136,3 +136,45 @@ test('decisionsSection: true / false from the PR body, null without one', () => 
     assert.equal(verdict({ findings: [], exemptions: [], prBody: '## Summary\nx' }).decisionsSection, false);
     assert.equal(verdict({ findings: [], exemptions: [] }).decisionsSection, null);
 });
+
+test('HTML comments and fenced code blocks do not count as exemptions', () => {
+    const text = [
+        '<!--',
+        'ADR-Exempt: hidden',
+        '-->',
+        '```text',
+        'ADR-Exempt: kb/ADR-0001 — in a fence',
+        '```',
+        '<!-- ADR-Exempt: x -->',
+        'ADR-Exempt: kb/ADR-0002 — visible',
+    ].join('\n');
+    const { exemptions, invalid } = parseExemptions([{ source: 'pr-body', text }]);
+    assert.equal(exemptions.length, 1);
+    assert.equal(exemptions[0].target, 'kb/ADR-0002');
+    assert.equal(invalid.length, 0);
+});
+
+test('parseExemptions strips unterminated HTML comments and code fences', () => {
+    const text = 'ADR-Exempt: kb/ADR-0001 — before\n<!--\nADR-Exempt: hidden\n(no close)';
+    const { exemptions } = parseExemptions([{ source: 'pr-body', text }]);
+    assert.equal(exemptions.length, 1);
+    assert.equal(exemptions[0].target, 'kb/ADR-0001');
+});
+
+test('an introduced contradiction with exemption only in HTML comment still blocks', () => {
+    const ex = parseExemptions([{ source: 'pr-body', text: '<!-- ADR-Exempt: kb/ADR-0001 — hidden -->' }]);
+    const v = verdict({ findings: [f('contradiction', ['kb/ADR-0001'])], exemptions: ex.exemptions });
+    assert.equal(v.blocking, 1);
+});
+
+test('parseFindings rejects markdown with more than one adr-findings block', () => {
+    const md = '```adr-findings\n{"findings":[]}\n```\ntext\n```adr-findings\n{"findings":[]}\n```';
+    assert.throws(() => parseFindings(md), /more than one adr-findings block/);
+});
+
+test('verdict throws on unknown finding class, protecting against prototype pollution', () => {
+    assert.throws(
+        () => verdict({ findings: [{ class: '__proto__', ids: [], summary: 'x', introduced: true }], exemptions: [] }),
+        /unknown class __proto__/
+    );
+});

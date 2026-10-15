@@ -31,8 +31,39 @@ function fail(message) {
     return e;
 }
 
+// Strip HTML comments (<!-- … -->, non-greedy, multi-line, unterminated strips to end) and
+// fenced code blocks (``` or ~~~ delimiters, unterminated strips to end).
+function visibleText(text) {
+    // Strip HTML comments: <!-- to --> (non-greedy), unterminated strips to end
+    let result = text.replace(/<!--[\s\S]*?-->|<!--[\s\S]*/g, '');
+    // Strip fenced code blocks: line starting with ``` or ~~~, up to matching close (unterminated strips to end)
+    const lines = result.split('\n');
+    const visible = [];
+    let inFence = false;
+    let fenceChar = null;
+    for (const line of lines) {
+        const fenceMatch = /^(```|~~~)/.exec(line);
+        if (fenceMatch) {
+            if (!inFence) {
+                inFence = true;
+                fenceChar = fenceMatch[1];
+            } else if (fenceMatch[1] === fenceChar) {
+                inFence = false;
+                fenceChar = null;
+            } else {
+                visible.push(line);
+            }
+        } else if (!inFence) {
+            visible.push(line);
+        }
+    }
+    return visible.join('\n');
+}
+
 // Accepts the JSON document, or a markdown report holding it in an ```adr-findings block.
 function parseFindings(text) {
+    const blocks = text.match(/```adr-findings\s*\n([\s\S]*?)\n```/g);
+    if (blocks && blocks.length > 1) throw fail('more than one adr-findings block');
     const block = /```adr-findings\s*\n([\s\S]*?)\n```/.exec(text);
     let doc;
     try {
@@ -57,7 +88,8 @@ function parseExemptions(sources) {
     const exemptions = [];
     const invalid = [];
     for (const { source, text } of sources) {
-        for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
+        const visible = visibleText(text);
+        for (const line of visible.replace(/\r\n/g, '\n').split('\n')) {
             const m = LINE_RE.exec(line);
             if (!m) continue;
             const value = m[1].trim();
@@ -103,6 +135,7 @@ function exemptionFor(finding, exemptions) {
 function verdict({ findings, exemptions, invalidExemptions = [], prBody = null }) {
     const used = exemptions.map(() => false);
     const out = findings.map((x) => {
+        if (!Object.prototype.hasOwnProperty.call(SEVERITY, x.class)) throw fail(`unknown class ${x.class}`);
         let severity = SEVERITY[x.class];
         // Only an explicit false: a finding built without the key was introduced by this change.
         if (x.introduced === false && severity === 'critical') severity = 'important';
@@ -130,4 +163,4 @@ function verdict({ findings, exemptions, invalidExemptions = [], prBody = null }
     };
 }
 
-module.exports = { SEVERITY, TARGET_RE, parseFindings, parseExemptions, verdict };
+module.exports = { SEVERITY, TARGET_RE, visibleText, parseFindings, parseExemptions, verdict };

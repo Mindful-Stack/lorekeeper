@@ -113,3 +113,21 @@ test('fix4-6: git C-quoted paths are decoded (Unicode, quote, tab, backslash)', 
     const mixed = 'diff --git a/src/plain.cs "b/src/\\303\\251.cs"\nrename from src/plain.cs\nrename to "src/\\303\\251.cs"\n';
     assert.deepEqual(parsePatchPaths(mixed).sort(), ['src/plain.cs', 'src/é.cs']);
 });
+
+test('C1: select returns each pick\'s home, and null for a cited id that resolves nowhere', () => {
+    const candidates = [
+        { id: 'api/ADR-0001', kind: 'local', status: 'accepted', file: 'a', scope: ['src/**'] },
+        { id: 'kb/ADR-0001', kind: 'shared', status: 'accepted', file: 'b', scope: ['api:src/**'] },
+    ];
+    const out = select({ candidates, repo: 'api', paths: ['src/x.cs'], cited: ['kb/ADR-0009'] });
+    assert.deepEqual(out.map((o) => [o.id, o.home]), [
+        ['api/ADR-0001', 'local'],
+        ['kb/ADR-0001', 'shared'],
+        ['kb/ADR-0009', null],
+    ]);
+});
+
+test('C1: parseCitedIds skips ADR-Exempt lines, even inside Decisions', () => {
+    const body = '## Decisions\n- Follows kb/ADR-0001.\nADR-Exempt: kb/ADR-0002 — load test only\n';
+    assert.deepEqual(parseCitedIds(body), ['kb/ADR-0001']);
+});

@@ -20,7 +20,7 @@ const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
                  [--strict] [--ci] <dir>
   adr-lint select (--diff <patch-file|-> | --paths <path,...>) [--repo <name>] [--pr-body <file>]
-                  [--cwd <dir>]
+                  [--cwd <dir>] [--json]
   adr-lint backfill [--home local|shared] [--repo <name>] [--dry-run] <dir>
   adr-lint homes [--cwd <dir>]                      (JSON)
   adr-lint index [--cwd <dir>] [--status <status>] [--json]
@@ -33,7 +33,7 @@ class UsageError extends Error {}
 const BOOLEAN_FLAGS = new Set(['strict', 'single-home', 'dry-run', 'json', 'ci']);
 const FLAGS = {
     check: ['home', 'repo', 'single-home', 'base', 'strict', 'ci'],
-    select: ['diff', 'paths', 'repo', 'pr-body', 'cwd'],
+    select: ['diff', 'paths', 'repo', 'pr-body', 'cwd', 'json'],
     backfill: ['home', 'repo', 'dry-run'],
     homes: ['cwd'],
     index: ['cwd', 'status', 'json'],
@@ -215,6 +215,16 @@ function cmdSelect(flags) {
         : parsePatchPaths(readInput(flags.diff, 'diff'));
     const prBody = flags['pr-body'] ? readInput(flags['pr-body'], 'pr-body') : '';
     const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody) });
+    if (flags.json) {
+        // `kind` is the document kind; behaviour docs (a later plan) add `behaviour` rows.
+        console.log(JSON.stringify({
+            repo,
+            candidates: picked.map((p) => ({
+                id: p.id, kind: 'adr', home: p.home, status: p.status, file: p.file ? display(p.file) : null, reasons: p.reasons,
+            })),
+        }, null, 2));
+        return 0;
+    }
     for (const p of picked) {
         console.log([p.id, p.status, p.file ? display(p.file) : '-', p.reasons.join(',')].join('\t'));
     }

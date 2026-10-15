@@ -145,12 +145,15 @@ function parseCitedIds(prBody) {
     if (start === -1) return [];
     const rest = lines.slice(start + 1);
     const stop = rest.findIndex((l) => /^#{1,6}\s/.test(l));
-    const text = (stop === -1 ? rest : rest.slice(0, stop)).join('\n');
+    const text = (stop === -1 ? rest : rest.slice(0, stop))
+        // An exemption names a record it is NOT following; it is not a citation.
+        .filter((l) => !/^\s*(?:[-*>]\s*)?ADR-Exempt:/i.test(l))
+        .join('\n');
     return [...new Set(text.match(/[A-Za-z0-9._-]+\/ADR-\d{4}/g) || [])];
 }
 
 // candidates: [{ id, kind: 'local'|'shared', status, file, scope: string[] }]
-// Returns [{ id, status, file, reasons: ['scope'|'cited'] }], sorted by id.
+// Returns [{ id, home: 'local'|'shared'|null, status, file, reasons: ['scope'|'cited'] }], sorted by id.
 function select({ candidates, repo, paths, cited }) {
     const out = [];
     for (const c of candidates) {
@@ -162,11 +165,11 @@ function select({ candidates, repo, paths, cited }) {
                 .map((s) => s.slice(repo.length + 1));
         if (paths.some((p) => globs.some((g) => matchesGlob(p, g)))) reasons.push('scope');
         if (cited.includes(c.id)) reasons.push('cited');
-        if (reasons.length) out.push({ id: c.id, status: c.status, file: c.file, reasons });
+        if (reasons.length) out.push({ id: c.id, home: c.kind, status: c.status, file: c.file, reasons });
     }
     // A cited id that resolves nowhere is reported, not dropped: the reviewer must see it.
     for (const id of cited) {
-        if (!candidates.some((c) => c.id === id)) out.push({ id, status: 'missing', file: '', reasons: ['cited'] });
+        if (!candidates.some((c) => c.id === id)) out.push({ id, home: null, status: 'missing', file: '', reasons: ['cited'] });
     }
     // Codepoint order, not locale order: Plan C parses this output.
     return out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));

@@ -590,3 +590,29 @@ test('B9a-3: --ci without --base is a usage error, so a CI job cannot drop the l
     assert.equal(r.code, 2, r.stdout + r.stderr);
     assert.match(r.stderr, /--ci needs --base <ref>/);
 });
+
+test('C1: select --json prints repo and candidates with kind adr and home', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.local, '0001-cache.md'), makeRecord({ prefix: 'api', fm: { scope: ['src/Sessions/**'] } }));
+    const patch = path.join(w.root, 'change.patch');
+    write(patch, 'diff --git a/src/Sessions/Store.cs b/src/Sessions/Store.cs\n--- a/src/Sessions/Store.cs\n+++ b/src/Sessions/Store.cs\n');
+    const r = runCli(w.api, w.env, 'select', '--repo', 'api', '--diff', patch, '--json');
+    assert.equal(r.code, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.repo, 'api');
+    assert.deepEqual(out.candidates.map((c) => [c.id, c.kind, c.home, c.status, c.reasons]), [
+        ['api/ADR-0001', 'adr', 'local', 'accepted', ['scope']],
+        ['kb/ADR-0001', 'adr', 'shared', 'accepted', ['scope']],
+    ]);
+    assert.match(out.candidates[0].file, /0001-cache\.md$/);
+});
+
+test('C1: select without --json still prints TSV', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const patch = path.join(w.root, 'change.patch');
+    write(patch, '+++ b/src/Sessions/Store.cs\n');
+    const r = runCli(w.api, w.env, 'select', '--repo', 'api', '--diff', patch);
+    assert.match(r.stdout, /^kb\/ADR-0001\taccepted\t[^\t]+\tscope$/m);
+});

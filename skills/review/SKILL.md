@@ -63,33 +63,46 @@ Detect the language and framework of the current project:
 |-----------|-------------|
 | "review my PR" / "review the PR" | `gh pr diff` |
 | "review PR 123" | `gh pr diff 123` |
-| "review my changes" / "review my work" | `git diff main...HEAD` |
+| "review my changes" / "review my work" | `git diff <default ref>...HEAD` |
 | "review my latest commit" / "review last commit" | `git show HEAD` |
 | "review my staged changes" | `git diff --staged` |
-| "review {file}" | `git diff main...HEAD -- {file}` |
+| "review {file}" | `git diff <default ref>...HEAD -- {file}` |
 | "review the last N commits" | `git diff HEAD~N...HEAD` |
 | "review <file>.patch" / `patch <file>` | use that file as the patch |
 
-When auto-detecting (no explicit target): try `gh pr diff` first, fall back to `git diff main...HEAD`.
+**Default ref:** `origin/HEAD` when it is set, else `main`. This is "the" base branch wherever
+this skill needs one and none more specific was given — here and as Step 3's last Base-ref
+fallback — so name it once and reuse it, rather than guessing separately in each place.
+
+When auto-detecting (no explicit target): try `gh pr diff` first, fall back to `git diff <default ref>...HEAD`.
 
 ### Step 3: Get the Diff, the PR Description and the Base
 
 Fetch everything **before** dispatching any agent. The architect has only Glob, Grep and Read,
-so it must be handed files. Save into your scratchpad directory (or `/tmp`):
+so it must be handed files.
+
+**Run directory:** every review run gets its own fresh directory,
+`<scratch>/lore-review-<YYYYMMDD-HHMMSS>/` — never a fixed name. Create it as part of saving the
+first file below, in one command, rather than as a separate empty-directory step:
 
 ```bash
-gh pr diff [<number>] > <scratch>/lore-review.patch          # or git diff / git show, per Step 2
-gh pr view [<number>] --json body -q .body > <scratch>/lore-review-body.md   # PR targets only
+mkdir -p <dir> && gh pr diff [<number>] > <dir>/patch     # or git diff / git show, per Step 2
+gh pr view [<number>] --json body -q .body > <dir>/body.md   # PR targets only
 ```
 
-For `patch <file>`, use that file and the `body <file>` given, if any.
+For `patch <file>`, use that file and the `body <file>` given, if any — they stand in for
+`<dir>/patch` and `<dir>/body.md` everywhere below. A fresh directory per run is what makes the
+base snapshot and the findings file safe to take for granted later: `<dir>/base` (Step 3) has
+never existed before this run, and `<dir>/findings.md` (Step 5) has never been read before, so
+neither the snapshot call nor the Write tool can collide with a previous run's leftovers.
 
 Read the saved patch so you have the changed-file list and can summarise what the change does.
 
-**Base ref:** the `base <ref>` argument (CI passes it, since `actions/checkout` sets no
-`origin/HEAD` and CI runs allow no `gh` here), else the PR's base branch (`gh pr view --json
-baseRefName`, as `origin/<name>`), else the ref Step 2 diffed against (`origin/HEAD`, i.e. `main`).
-Without git or a known base, skip the snapshot below and say so in the summary.
+**Base ref:** the `base <ref>` argument, else the PR's base branch (`gh pr view --json
+baseRefName`, as `origin/<name>`), else Step 2's default ref. **Non-interactive runs (CI) must
+pass `base <ref>`:** `actions/checkout` sets no `origin/HEAD`, and CI allows no `gh` to look up a
+PR's base branch either, so without the argument this skill cannot find a base at all and takes
+no snapshot. Without git or a known base, skip the snapshot below and say so in the summary.
 
 **Snapshot revision** — the left side of the diff being reviewed, not always the base ref above:
 - `commit` → `HEAD~1`
@@ -104,16 +117,17 @@ Without git or a known base, skip the snapshot below and say so in the summary.
 skip it. One call:
 
 ```bash
-node <plugin-root>/scripts/adr-lint.js snapshot --diff <patch path> \
-  --base <rev> --out <scratch>/lore-review-base
+node <plugin-root>/scripts/adr-lint.js snapshot --diff <dir>/patch \
+  --base <rev> --out <dir>/base
 ```
 
 It writes the base-revision copy of every path the patch touches under `--out`, plus
 `<out>/MANIFEST.tsv` (header `# base <sha> head worktree`, then `<path>\t<state>` per changed
 file — `present`, `absent`, `skipped` past its 200-file default cap, or `unavailable` when a git
 command failed or the path was unsafe), and prints `{base, out, counts}`. It exits 2 on a bad
-`--base` or outside a git repository. On a non-zero exit, pass the architect no snapshot
-directory and say so in the summary.
+`--base`, outside a git repository, or a non-empty `--out` (why this skill always hands it a
+fresh `<dir>/base` that cannot already contain a previous run's files). On a non-zero exit, pass
+the architect no snapshot directory and say so in the summary.
 
 ### Step 4: Select, then Load Review Context
 
@@ -166,8 +180,9 @@ check)`.
 
 Otherwise, take the architect's `adr-findings` block **verbatim** — fences included;
 `adr-lint verdict` reads the fenced block itself, not bare JSON — and write it, with the Write
-tool, into one file: `findings-out <file>` when the target gave one, else
-`<scratch>/lore-review-findings.md`. Do not edit, re-classify or drop entries. **Write it only
+tool, into one file: `findings-out <file>` when the target gave one, else `<dir>/findings.md`
+(the run directory from Step 3, never read before this run, so the Write tool has nothing stale
+to refuse). Do not edit, re-classify or drop entries. **Write it only
 when every step succeeded:** select exited 0 and the architect returned a valid block — the same
 condition that already gates this step. Writing the one file CI also consumes is the point:
 `findings-out` needs no separate gate beyond this one, and CI fails closed on the missing file,

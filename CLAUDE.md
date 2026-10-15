@@ -70,7 +70,7 @@ There is deliberately **no build step and no generated catalogue**. Frontmatter 
 
 The one deliberate exception is `scripts/adr-lint.js`: ADR validation has to run in CI and as a
 pre-commit hook, where Claude is not present, and it has to give the same answer every time. It
-validates and selects, and its read-only helpers (`homes`, `index`, `next`) give the ADR command
+validates, selects, and computes the review verdict (the CI merge gate), and its read-only helpers (`homes`, `index`, `next`) give the ADR command
 and agents the same answer the validator would: where the homes are, what the catalogue holds
 with its reverse links, which number is next. It never writes a catalogue, and nothing reads its
 output back into the knowledge base.
@@ -88,7 +88,7 @@ Whenever multiple knowledge sources address the same topic, the agreed priority 
 
 Hypothesis-confidence learnings never override; they're supplementary.
 
-Accepted ADRs (in each code repo's `docs/adr/` local home and the KB's `adrs/` shared home, `status: accepted`) sit outside the ladder: they are constraints, not standards, and no standard overrides one. Retrieval is the read-only `architect` agent (`bind` / `survey` / `check`), which pattern-identifier, brainstorming, and review dispatch in parallel with their usual agent; the reader and answerer stay ADR-agnostic. Authoring is `/lore:adr`; accepted records are immutable and the knowledge-updater agent refuses body edits to them. Unlike other workflows, whose procedure lives in `commands/`, the ADR procedure lives in the `recording-decisions` skill (`SKILL.md`, one `actions/<action>.md` per action, and `reference/` for the record format and lifecycle); `commands/adr.md` is only an alias that reads it.
+Accepted ADRs (in each code repo's `docs/adr/` local home and the KB's `adrs/` shared home, `status: accepted`) sit outside the ladder: they are constraints, not standards, and no standard overrides one. Retrieval is the read-only `architect` agent (`bind` / `survey` / `check`), which pattern-identifier, brainstorming, and review dispatch in parallel with their usual agent; the reader and answerer stay ADR-agnostic. Authoring is `/lore:adr`; accepted records are immutable and the knowledge-updater agent refuses body edits to them. Unlike other workflows, whose procedure lives in `commands/`, the ADR procedure lives in the `recording-decisions` skill (`SKILL.md`, one `actions/<action>.md` per action, and `reference/` for the record format and lifecycle); `commands/adr.md` is only an alias that reads it. Review severities for ADR findings come from `adr-lint verdict`, not from prose.
 
 ### Skill router vs. user-installed superpowers
 

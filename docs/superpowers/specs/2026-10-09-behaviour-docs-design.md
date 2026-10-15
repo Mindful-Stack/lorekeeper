@@ -4,7 +4,7 @@
 **Status:** approved design, ready for implementation plans (two, see *Delivery*)
 **Builds on:** `2026-10-07-adr-centred-workflow-design.md` (homes, `select`, the review check)
 **Touches:** `scripts/adr-lint.js` + `scripts/adr/` (`homes`, `check`, `select`, `index`),
-`agents/architect`, `agents/knowledge-updater`, `skills/review`, `skills/brainstorming`,
+`agents/architect`, `agents/knowledge-updater`, `skills/reviewing-changes`, `skills/brainstorming`,
 `skills/cultivate`, new `skills/documenting-behaviour` + `commands/behaviour.md` +
 `skills/lore-behaviour`, `README.md`
 
@@ -238,9 +238,10 @@ Two implementation plans:
 
 - **D. Format, homes and review**: document format, configuration, `homes`/`check`/`select`/
   `index`, the architect's catalogue and finding, the review mapping and exemption, the
-  `cultivate` domain template's *Behaviour docs* link list, tests. It lands with or after ADR
-  Plan C, which has not shipped (`skills/review` has no `select` step and no `ADR-Exempt`;
-  `writing-plans` has no *Governing decisions* header). Plan C must leave hooks for: parsing
+  `cultivate` domain template's *Behaviour docs* link list, tests. It lands after ADR Plan C,
+  which left the hooks: `select --json`'s `kind` field; `SEVERITY` and `TARGET_RE`/
+  `LOOKS_TARGETED_RE` in `scripts/adr/verdict.js`; and `adr-lint snapshot`'s base copies,
+  `MANIFEST.tsv`, and the `introduced` flag. Plan C must leave hooks for: parsing
   `select` output with a `kind` column; a severity table keyed by finding class, so this finding
   is one row; `ADR-Exempt` taking an optional id; `check` reading selected candidates' files at
   base and head.

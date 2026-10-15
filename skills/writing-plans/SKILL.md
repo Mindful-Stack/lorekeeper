@@ -68,10 +68,13 @@ a verdict on whether the plan may proceed. Print it before saying anything else 
 Say which record and why, and that it must be accepted (or replaced, or its trigger resolved)
 first.
 
-**A binding rule the spec's goal contradicts is not this stop condition.** That is an ordinary
-finding for *Self-Review* check 6, once tasks exist to check it against: write the header, draft
-the task anyway, and let check 6 catch and resolve the contradiction (fix the task's approach, or
-raise a superseding record) rather than aborting before any plan content exists.
+**A binding rule the spec's goal contradicts is a second stop condition.** Write the *Governing
+decisions* header first, unconditionally — it always lands, even when what follows is a stop.
+Then check: does the spec's stated goal itself require what a quoted rule forbids (not a task's
+incidental approach, which check 6 still covers)? If so, stop before drafting that task: quote the
+rule and the conflict, and say the spec needs a superseding record (or the rule replaced) before
+this plan can proceed. Check 6 is the last look for a contradiction introduced while drafting, not
+the enforcement point for one already visible in the spec.
 
 **Low-tier drafts from brainstorming.** If the spec's `## Decisions` section holds a drafted
 `proposed` record in a fenced ```markdown block (brainstorming stores low-tier drafts there, to be
@@ -79,7 +82,8 @@ applied as a ride-along rather than ratified up front), copy each one into the p
 - list it in the *Governing decisions* header as "Proposed (low tier, applied in Task N)" — never
   as binding;
 - schedule an early task, before any task that builds on it, that applies it via the
-  **recording-decisions** skill as a ride-along on the implementing branch.
+  **recording-decisions** skill as a ride-along on the implementing branch, and lists the applied
+  record under *Adds* in the PR's `## Decisions` section (`references/pr-decisions.md`).
 
 ## Bite-Sized Task Granularity
 

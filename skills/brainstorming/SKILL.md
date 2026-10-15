@@ -35,22 +35,25 @@ You MUST create a task for each of these items and complete them in order:
 4. **Present design** — in sections scaled to their complexity, get user approval after each section
 5. **List the decisions** — before writing the spec, list every decision the design makes, one line
    each, and classify it: *hard to reverse?* (will code depend on it, and does changing it later cost
-   more than a day?) For each hard-to-reverse one, invoke **recording-decisions** to draft a
-   `proposed` record, unless a binding record from step 1 already covers it. Note each record's tier
-   (high = one-way, shared, or any sensitivity). Reversible ones go in the spec as plain design.
+   more than a day?) For each hard-to-reverse one, invoke **recording-decisions** to **draft and
+   show** a `proposed` record — tell it not to apply yet ("draft only; do not apply") — unless a
+   binding record from step 1 already covers it. Note each record's tier (high = one-way, shared, or
+   any sensitivity). Reversible ones go in the spec as plain design.
 6. **Write design doc** — save to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md` with a
-   `## Decisions` section: the binding records it follows (by id), the records it proposes (by id and
-   tier), and "No new decisions" when there are none; commit
+   `## Decisions` section: the binding records it follows (by id); for each proposed record, its
+   id-to-be/title, tier, and the full drafted record text in a fenced ```markdown block, so a later
+   session can apply it without this chat; "No new decisions" when there are none; commit
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written spec** — ask user to review the spec file before proceeding
-9. **Transition** — if any proposed record is **high tier**: open its ADR-only PR through
-   recording-decisions (show the record, the user confirms, the knowledge-updater applies it
-   as `own-pr`). Then stop with "ADR PR opened: <link>. Resume with writing-plans once it is
-   accepted." If the user declines, or the session cannot ask (non-interactive), do not open
-   anything: stop with the draft and say that the record must be proposed and accepted before
-   planning. **Low-tier** drafts are not opened now. They ride along in the implementing PR and
-   are listed under *Adds* in its *Decisions* section. With no high-tier proposal, invoke
-   writing-plans.
+9. **Transition** — if any proposed record is **high tier**: apply it from the spec's stored draft
+   text through recording-decisions (show the record, the user confirms, the knowledge-updater
+   applies it as `own-pr`). Then stop with "ADR PR opened: <link>. Resume with writing-plans once
+   <id> is accepted." If the user declines, or the session cannot ask (non-interactive), do not
+   open anything: stop, name each pending high-tier record by id/title, and say that it must be
+   proposed and accepted before planning can resume. **Low-tier** drafts are not applied now.
+   writing-plans/implementation applies each stored draft as a ride-along in the implementing PR
+   through recording-decisions, listed under *Adds* in the PR's *Decisions* section. With no
+   high-tier proposal, invoke writing-plans.
 
 ## Process Flow
 
@@ -130,7 +133,9 @@ digraph brainstorming {
 
 **Documentation:**
 
-- Write the validated design (spec) to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md`
+- Write the validated design (spec) to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md`, including
+  the `## Decisions` section (binding records followed; each proposed record's id-to-be/title, tier,
+  and full drafted text; or "No new decisions")
   - (User preferences for spec location override this default)
 - Use elements-of-style:writing-clearly-and-concisely skill if available
 - Commit the design document to git

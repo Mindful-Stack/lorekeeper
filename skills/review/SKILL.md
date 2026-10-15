@@ -31,6 +31,8 @@ When invoked via `/lore:review [target]`:
 - `commit` - Review latest commit
 - `staged` - Review staged changes
 - `last <N>` - Review last N commits
+- `patch <file>` - Review a saved patch (CI). Optional: `body <file>` (the PR description),
+  `repo <name>` (the repo the patch belongs to), `base <ref>`, `findings-out <file>`
 
 ## Knowledge Paths
 
@@ -66,41 +68,71 @@ Detect the language and framework of the current project:
 | "review my staged changes" | `git diff --staged` |
 | "review {file}" | `git diff main...HEAD -- {file}` |
 | "review the last N commits" | `git diff HEAD~N...HEAD` |
+| "review <file>.patch" / `patch <file>` | use that file as the patch |
 
 When auto-detecting (no explicit target): try `gh pr diff` first, fall back to `git diff main...HEAD`.
 
-### Step 3: Get the Diff
+### Step 3: Get the Diff, the PR Description and the Base
 
-Fetch the diff **before** dispatching any agent: the architect agent has only Glob/Grep/Read and
-cannot run `gh` or `git` itself, so it must be handed the diff. Save it to a file in your
-scratchpad directory (or `/tmp`) and keep the path for Step 4.
+Fetch everything **before** dispatching any agent. The architect has only Glob, Grep and Read,
+so it must be handed files. Save into your scratchpad directory (or `/tmp`):
 
 ```bash
-# For PR (try first if user mentions "PR")
-gh pr diff [<number>] > <scratchpad>/lore-review-<target>.patch 2>/dev/null
-
-# For local changes (fallback)
-git diff main...HEAD > <scratchpad>/lore-review-changes.patch
-
-# For latest commit
-git show HEAD > <scratchpad>/lore-review-head.patch
-
-# For staged changes
-git diff --staged > <scratchpad>/lore-review-staged.patch
+gh pr diff [<number>] > <scratch>/lore-review.patch          # or git diff / git show, per Step 2
+gh pr view [<number>] --json body -q .body > <scratch>/lore-review-body.md   # PR targets only
 ```
+
+For `patch <file>`, use that file and the `body <file>` given, if any.
 
 Read the saved patch so you have the changed-file list and can summarise what the change does.
 
-### Step 4: Load Review Context
+**Base ref:** the `base <ref>` argument (CI passes it, since `actions/checkout` sets no
+`origin/HEAD` and CI runs allow no `gh` here), else the PR's base branch (`gh pr view --json
+baseRefName`, as `origin/<name>`), else the default branch (`origin/HEAD`). Without git or a known base,
+skip the snapshots below and say so in the summary.
 
-Dispatch two agents in parallel (both Task calls in one message):
+**Base snapshots:** take them only when HEAD is the reviewed change's head commit (CI, or
+local `changes`/`commit` targets). For a `gh pr diff` of a PR that is not checked out, skip
+them. Use separate commands, never a `$(…)` substitution (permission rules do not
+auto-approve those):
+
+```bash
+git merge-base <base> HEAD                      # once; call the result <mb>
+git ls-tree --name-only <mb> -- <path>          # per changed file: empty output = absent on base
+git show <mb>:<path> > <scratch>/lore-review-base/<path>   # only when ls-tree printed the path
+```
+
+Create directories with the Write tool, or with `mkdir -p` as its own command. Do at most 40
+files, which is up to 40 `git show` calls. Write `<scratch>/lore-review-base/MANIFEST.tsv`:
+first the line `# base <mb> head worktree`, then `<path>\t<state>` for **every** changed file.
+State is `present`, `absent`, `skipped` (past the cap) or `unavailable` (a git command
+failed). If the merge base itself fails, write no snapshots and say so in the summary.
+
+### Step 4: Select, then Load Review Context
+
+**Select (deterministic).** Run, with the repo name from `repo <name>`, else omit `--repo` and
+let it infer from `origin`:
+
+```bash
+node <plugin-root>/scripts/adr-lint.js select --json --diff <scratch>/lore-review.patch \
+  [--repo <name>] [--pr-body <scratch>/lore-review-body.md]
+```
+
+`<plugin-root>` is `${CLAUDE_PLUGIN_ROOT}`, written out as an absolute path. Do not redirect the
+output to a file. Pass the JSON it prints to the architect inline: a redirect is a file write,
+which non-interactive runs may refuse. Exit 2 means it
+could not tell the repo. Interactive: ask. Non-interactive: report "ADR check could not run:
+<stderr>", print `**ADR check:** could not run (select exit 2)`, and never write `findings-out`.
+
+Then dispatch two agents in parallel (both Task calls in one message):
 
 - the **knowledge-reader** agent with the changed files/areas and hint:
   "Be thorough — include all standards, learnings, and review checklists that apply to these changes.
   Don't filter by relevance ranking, but scope to what was changed."
-- the **architect** agent in `check` mode with the **path to the saved patch**, the changed-file
-  list, and a one-paragraph summary of what the diff does. It reads the patch itself and cites
-  changed lines from it; without the patch it can only echo your summary.
+- the **architect** agent in `check` mode with: the patch path, the select JSON (inline), the base
+  snapshot directory (if any), the PR description path (if any), the changed-file list, and a
+  one-paragraph summary of the diff. It cites changed lines from the patch and ends with an
+  `adr-findings` block.
 
 Include both outputs in your review context.
 
@@ -109,22 +141,54 @@ Also check for repo-specific knowledge:
 - If found, Read those files
 - Also Read `CLAUDE.md` if it exists
 
-### Step 5: Review Against Knowledge
+### Step 5: ADR Verdict
+
+Take the architect's `adr-findings` block verbatim (do not edit, re-classify or drop entries) and
+pipe it to the verdict:
+
+```bash
+node <plugin-root>/scripts/adr-lint.js verdict --findings - \
+  [--pr-body <scratch>/lore-review-body.md] [--base <base>] <<'ADR_FINDINGS'
+<the block's JSON>
+ADR_FINDINGS
+```
+
+Pass `--base` only when reviewing local changes with no PR (it reads `ADR-Exempt` commit
+trailers). Exit 0: nothing blocks. Exit 1: blocking findings remain. Exit 2: the block was missing
+or invalid. Say so, and count it as one blocking finding: the check failed closed.
+
+With `findings-out <file>`, also write the block's JSON to that file (CI runs the verdict itself
+from it). Use the Write tool. **Write it only when every step succeeded:** select exited 0 and
+the architect returned a valid block. On any earlier failure, write nothing and say why. CI then
+fails closed on the missing file, never on an empty findings list that hides a failed step. If
+the write itself is refused, say so plainly.
+
+The summary line's counts come from the verdict's `blocking` and `exempted` fields. Never count
+them yourself.
+
+Use the verdict's `severity` for every ADR finding. Do not re-rate them. Exempted findings
+stay in the report as Important with their exemption reason.
+
+### Step 6: Review Against Knowledge
 
 Go through each changed file. Check against ALL loaded knowledge.
 
-Fold the architect's report in as findings. A contradiction with an accepted record is at least
-**Important**, cites the record by path and section, and suggests either conforming or superseding
-it with `/lore:adr replace kb/ADR-NNNN: <new decision>`. A fired invalidation trigger is
-**Important** too. An uncovered hard-to-reverse choice is **Minor**, pointing at
-`/lore:adr <the decision>`.
+Fold the ADR findings in at the verdict's severities, each citing the record by id and section:
+- contradiction → conform, or replace the record (`/lore:adr replace <id>: <new decision>`);
+- uncovered choice → record it (`/lore:adr <the decision>`) in this PR, or exempt it;
+- fired trigger → note the change on the record; the decision goes back to its deciders;
+- stale fact → include the observation the architect drafted;
+- dangling citation → fix the id in the PR description or code.
+
+A PR whose description has no `## Decisions` section (verdict `decisionsSection: false`) gets one
+Minor finding pointing at `<plugin-root>/references/pr-decisions.md`.
 
 **Categorize findings:**
-- **Critical** - Security vulnerabilities, data loss risks, must fix before merge
+- **Critical** - Security vulnerabilities, data loss risks, unexempted ADR findings the verdict marks critical; must fix before merge
 - **Important** - Should fix, significant impact on maintainability/correctness
 - **Minor** - Nice to fix, style/conventions, optional
 
-### Step 6: Output in Standard Format
+### Step 7: Output in Standard Format
 
 Use severity level indicators and be specific:
 
@@ -132,6 +196,8 @@ Use severity level indicators and be specific:
 ## Code Review Results
 
 **Summary:** Reviewed X files, found Y issues (Z critical, W important, V minor)
+**ADR check:** <blocking> blocking, <exempted> exempted (verdict exit <code>)
+<one line per exemption: `ADR-Exempt (<source>): <target or "whole PR"> — <reason>` + `(unused)` when it matched nothing; one line per invalid exemption>
 
 ### Critical Issues
 - **[file:line]** Description of the issue
@@ -146,7 +212,7 @@ Use severity level indicators and be specific:
 - **[file:line]** Description
 ```
 
-### Step 6b: Posting to the PR (when asked)
+### Step 7b: Posting to the PR (when asked)
 
 If the user wants the review left **on the PR** (not just printed in chat):
 
@@ -171,9 +237,10 @@ When knowledge conflicts, later layers override:
 
 ## Critical Rules
 
-1. **Problems only** - No summaries without issues, no filler
+1. **Problems only** - no summaries without issues, except the ADR check line
 2. **Be specific** - Always include file:line references
 3. **Use severity levels** - Critical/Important/Minor
 4. **Repo standards win** - Check for `docs/standards/` overrides
 5. **Actionable feedback** - Always explain how to fix
 6. **Inline over top-level** - When posting to a PR, anchor each finding to its file:line; reserve top-level comments for PR-wide remarks
+7. **ADR check line always printed** - Even with no findings; it is how CI logs and humans see the gate.

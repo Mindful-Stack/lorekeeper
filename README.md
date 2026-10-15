@@ -391,15 +391,20 @@ jobs:
         run: |
           claude -p "/lore:review patch $OUT/pr.patch body $OUT/pr-body.md repo ${{ github.event.repository.name }} base origin/${{ github.base_ref }} findings-out $OUT/adr-findings.json" \
             --plugin-dir "$LORE" \
+            --add-dir "$LORE" --add-dir "$KNOWLEDGE_BASE_PATH" \
             --allowedTools Read Glob Grep Task Agent Skill Write "Bash(node *)" "Bash(git merge-base *)"
+        env: { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" }  # or a Claude Code OAuth token, per your setup
       - run: node "$LORE/scripts/adr-lint.js" verdict --findings "$OUT/adr-findings.json" --pr-body "$OUT/pr-body.md"
 ```
 
 - **`--allowedTools`:** without it, a non-interactive run refuses the review's `node` calls and
   the findings write, and the verdict exits 2 on every PR.
+- **`--add-dir`:** the plugin and the KB live outside the checkout (`$LORE`,
+  `$KNOWLEDGE_BASE_PATH`), so Read/Glob/Grep need both added explicitly for a non-interactive
+  run to reach them.
 - **`gh` only outside `claude`:** the diff and the PR body are fetched with plain `gh` calls
-  before the review runs; `gh` is never in `--allowedTools`, so the review itself cannot reach
-  the network or the PR beyond the files it was handed.
+  before the review runs; `gh` is not in `--allowedTools`, so the review works only from the
+  diff and body it was handed.
 - **`base origin/${{ github.base_ref }}` is mandatory:** `actions/checkout` sets no
   `origin/HEAD`, and CI has no `gh pr view` fallback inside the review either, so without this
   argument the review cannot find a base at all.

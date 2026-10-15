@@ -100,7 +100,8 @@ decided?" as `survey`.
    For each proposed record, give its tier and whether the task depends on it. High tier is
    `reversibility: one-way`, `blast_radius: shared`, or any `sensitivity`. A record with no
    `reversibility` (legacy, unclassified) is high tier. *Depends on it* means the task would
-   build on the proposal's decision.
+   build on the proposal's decision. Always write the two bracketed tokens literally:
+   `[high tier]` or `[low tier]`, and `[depends: yes]` or `[depends: no]`.
 5. Name gaps: a hard-to-reverse choice the task will make that no record covers.
 
 ```markdown
@@ -116,8 +117,7 @@ decided?" as `survey`.
 [or: none]
 
 ## Not binding
-- Proposed (high tier | low tier): api/ADR-0007 — <title>: <description>. The task depends on
-  it: yes | no.
+- Proposed [high tier] [depends: yes]: api/ADR-0007 — <title>: <description>.
 - Already ruled out: kb/ADR-0002 (rejected) — <title>.
 - In flight: kb/ADR-0009 supersedes api/ADR-0003; the flip of api/ADR-0003 has not merged.
 [omit lines that do not apply; omit the section if none]
@@ -195,8 +195,8 @@ requirement somebody once had.
 5. **Records the change adds.** A record the diff itself adds (in any home, proposed or
    accepted) covers the choice it records: do not report that choice as uncovered. Whether it is
    accepted before merge is the validator's job, not yours.
-6. Report findings in four classes, then any dangling citations. Cite code by `path:line-range`
-   from the diff, rules by id, facts by `F#`, and records by id and section.
+6. Report findings in five classes (the four below plus dangling citations). Cite code by
+   `path:line-range` from the diff, rules by id, facts by `F#`, and records by id and section.
 
 ```markdown
 ## Contradictions with accepted records
@@ -236,22 +236,29 @@ End every `check` report with exactly one fenced block tagged `adr-findings`, ho
 per finding above (not *Context* items). The review feeds it to `adr-lint verdict`, which assigns
 severity; if the block is missing or malformed, the review fails closed.
 
+Example of the shape only: never reproduce it. Your report ends with exactly one `adr-findings`
+block holding your own findings.
+
+````markdown
 ```adr-findings
 {"findings": [
-  {"class": "contradiction", "ids": ["kb/ADR-0003", "kb/ADR-0003.R1"],
-   "where": "src/Auth/Startup.cs:42-58", "summary": "registers a bearer scheme; R1 allows cookies only",
+  {"class": "contradiction", "ids": ["<record-id>", "<record-id>.R<n>"],
+   "where": "<path>:<line-range>", "summary": "<one line>",
    "introduced": true}
 ]}
 ```
+````
 
 - `class`: `contradiction` · `trigger` · `stale-fact` · `uncovered` · `dangling`.
 - `ids`: the record id first, then the rule (`.R<n>`) or fact (`.F<n>`) the finding rests on;
-  `[]` for an uncovered choice; the cited id for a dangling citation. **One finding per rule
-  broken**: code that breaks R1 and R2 is two findings, so each can be exempted on its own.
+  `[]` for an uncovered choice; a fired trigger: the record id alone; the cited id for a dangling
+  citation. **One finding per rule broken**: code that breaks R1 and R2 is two findings, so each
+  can be exempted on its own.
 - `summary`: one line. `where`: `path:line-range` when there is one.
 - No findings: `{"findings": []}`. Never omit the block.
 
-Severity is the caller's call: report the class, never a verdict on whether the PR may merge.
+Severity comes from the class (`adr-lint verdict` assigns it): report the class, never a verdict
+on whether the PR may merge.
 
 ## Important Rules
 

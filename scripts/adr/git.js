@@ -87,7 +87,9 @@ function defaultBranch(root) {
 function exemptTrailers(root, ref) {
     const mb = mergeBase(root, ref);
     if (!mb) return null;
-    return lines(git(root, ['log', '--format=%(trailers:key=ADR-Exempt,valueonly,unfold)', `${mb}..HEAD`]));
+    const output = git(root, ['log', '--format=%(trailers:key=ADR-Exempt,valueonly,unfold)', `${mb}..HEAD`]);
+    if (output === null) return null;
+    return lines(output);
 }
 
 module.exports = {

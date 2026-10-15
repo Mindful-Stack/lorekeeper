@@ -359,13 +359,14 @@ function cmdVerdict(flags) {
         if (!root) throw new UsageError('--base needs a git repository');
         if (!G.revExists(root, flags.base)) throw new UsageError(`base ref ${flags.base} not found; fetch it first`);
         const values = G.exemptTrailers(root, flags.base);
-        if (values === null) throw new UsageError(`no merge base between ${flags.base} and HEAD; fetch the full history`);
+        if (values === null) throw new UsageError(`cannot read ADR-Exempt trailers between ${flags.base} and HEAD; fetch the full history`);
         // Each trailer value is the text after `ADR-Exempt:`, so give it its key back.
         sources.push({ source: 'trailer', text: values.map((v) => `ADR-Exempt: ${v}`).join('\n') });
     }
     const { exemptions, invalid } = V.parseExemptions(sources);
+    let v;
     try {
-        var v = V.verdict({ findings, exemptions, invalidExemptions: invalid, prBody });
+        v = V.verdict({ findings, exemptions, invalidExemptions: invalid, prBody });
     } catch (e) {
         if (!e.invalidFindings) throw e;
         throw new UsageError(e.message);

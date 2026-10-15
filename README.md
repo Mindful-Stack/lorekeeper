@@ -379,7 +379,19 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       # check out the plugin to $LORE and the knowledge base to $KNOWLEDGE_BASE_PATH here
-      - run: node "$LORE/scripts/adr-lint.js" homes   # must show the shared home; fail fast if not
+      - name: Shared ADR home is the trusted knowledge base
+        run: |
+          node "$LORE/scripts/adr-lint.js" homes | node -e '
+            const fs = require("fs"), path = require("path");
+            const h = JSON.parse(fs.readFileSync(0, "utf8"));
+            const real = (p) => { try { return fs.realpathSync(p); } catch (e) { return null; } };
+            const kb = real(process.env.KNOWLEDGE_BASE_PATH);
+            const home = real(h.sharedHome);
+            const under = !!kb && !!home && (home === kb || home.startsWith(kb + path.sep));
+            if (h.sharedHomeExists !== true || real(h.sharedRoot) !== kb || !under) {
+              console.error(`shared ADR home ${h.sharedHome} (KB ${h.sharedRoot}) is not the trusted KNOWLEDGE_BASE_PATH ${process.env.KNOWLEDGE_BASE_PATH}`);
+              process.exit(1);
+            }'
       - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} docs/adr
       - name: Fetch the diff and body
         run: |
@@ -399,6 +411,10 @@ jobs:
 
 - **`--allowedTools`:** without it, a non-interactive run refuses the review's `node` calls and
   the findings write, and the verdict exits 2 on every PR.
+- **Shared-home preflight:** `adr-lint homes` resolves the KB from the PR's own
+  `.lorekeeper/config.json` before `$KNOWLEDGE_BASE_PATH`, so a PR could point the shared home at
+  records it wrote itself. The step fails unless the shared home exists, the KB root is
+  `$KNOWLEDGE_BASE_PATH` (compared as realpaths), and the shared home lies inside it.
 - **`--add-dir`:** the plugin and the KB live outside the checkout (`$LORE`,
   `$KNOWLEDGE_BASE_PATH`), so Read/Glob/Grep need both added explicitly for a non-interactive
   run to reach them.

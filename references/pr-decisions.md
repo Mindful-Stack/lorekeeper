@@ -38,11 +38,14 @@ Put these lines after the *Decisions* section, not inside it. Exemptions are nev
 citations either way.
 
 - With an id, it exempts the findings on that record (or only that rule or fact). A finding that
-  lists several rules is cleared only when every rule it names is exempted.
+  lists several rules is cleared only when every rule it names is exempted. An exempted finding is
+  still reported, as Important, and every exemption is listed in the review summary, so
+  exemptions stay visible and can be tuned.
 - Without one, it exempts every finding in the PR; prefer the id form.
-- A reason is required. A line with an id and no reason is ignored (listed as invalid), never
-  widened to the whole PR. An exempted finding is still reported, as Important, and every
-  exemption is listed in the review summary, so exemptions stay visible and can be tuned.
+- One id per line. A line that starts with a record id must be exactly `<id> — <reason>`
+  (separator `—`, `–`, `--`, `-` or `:` with a space after it): a comma list of ids, a missing
+  separator, a malformed id or a missing reason makes the line invalid. It is listed in the review
+  and exempts nothing — it never widens to the whole PR.
 - Only visible text counts: a line inside an HTML comment or a fenced code block is ignored. Keep
   example `ADR-Exempt` lines in a PR template inside an HTML comment for exactly this reason — the
   template documents the syntax without accidentally exempting anything.

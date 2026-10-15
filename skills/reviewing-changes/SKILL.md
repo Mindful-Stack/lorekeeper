@@ -1,11 +1,35 @@
 ---
-name: review
+name: reviewing-changes
 description: Review code changes, PRs, commits, or diffs using team standards. Use when the user asks to review code, check a PR, look at changes, review a commit, review their work, or provide code feedback.
 ---
 
 # Code Review
 
 Review code changes using team standards and knowledge base.
+
+## Required: the ADR check runs on every review
+
+Every review — any target, local or CI, however small the diff — runs the ADR pipeline and
+prints its result. This is not advice to weigh: the ADR check is a merge gate, and the gate is
+`adr-lint verdict`'s **exit code**, not your judgment. Reading the patch and the ADR files
+yourself, and writing a correct review from them, does **not** replace any step below; a review
+without the verdict's line is an incomplete review, whatever else it says.
+
+You MUST complete each of these items, in order (as tasks, if you track tasks):
+
+1. **Patch** — get the diff into a file (Step 3).
+2. **Select** — run `node <plugin-root>/scripts/adr-lint.js select --json …` (Step 4).
+3. **Architect check** — dispatch the **architect** agent in `check` mode with the select JSON;
+   it ends with an `adr-findings` block (Step 4).
+4. **Verdict** — feed that block, verbatim, to `node <plugin-root>/scripts/adr-lint.js verdict`
+   (Step 5).
+5. **ADR check line** — the review's output opens with
+   `**ADR check:** <blocking> blocking, <exempted> exempted (verdict exit <code>)`, the counts
+   copied from the verdict's JSON, then its exemption lines (Step 7).
+
+If a step cannot run, do not skip to a hand-written review: print
+`**ADR check:** could not run (<which step and why>)` as Steps 4 and 5 define, and carry on with
+the rest of the review.
 
 ## When This Skill Activates
 
@@ -44,7 +68,9 @@ If no `Knowledge path:` marker is present in the session context, tell the user:
 "No knowledge base configured — run `/lore:init` to set one up, or see the SessionStart message
 for other options, then restart Claude Code."
 
-## How to Review
+## Procedure
+
+Follow the steps in order. Steps 3–5 and 7 implement the required ADR check above.
 
 ### Step 1: Detect Project Context
 
@@ -134,7 +160,9 @@ the architect no snapshot directory and say so in the summary.
 `<plugin-root>` is the plugin's root directory: two levels above this skill's own base directory,
 the path shown when the skill loads. `$CLAUDE_PLUGIN_ROOT` is not set in Bash, so write that
 absolute path out literally in every command below (`skills/recording-decisions/SKILL.md` names
-the same convention).
+the same convention). Run each `adr-lint` call as a command of its own, with no `; echo $?` or
+`&&` chain: the tool result already reports the exit code, and permission rules approve a bare
+`node …` call where they may stop a chain.
 
 **Select (deterministic).** Run, using the patch path and (if there is one) the PR-description
 path from Step 3 — for `patch <file> body <file>` these are exactly the given files — and the
@@ -218,7 +246,9 @@ stay in the report as Important with their exemption reason.
 
 Go through each changed file. Check against ALL loaded knowledge.
 
-Fold the ADR findings in at the verdict's severities, each citing the record by id and section:
+Fold the ADR findings in at the verdict's severities, each citing its ids exactly as the verdict
+JSON gives them — a rule id such as `<repo>/ADR-NNNN.R1` stays whole, not split into a record and
+a rule — so CI logs and readers can search for them:
 - contradiction → conform, or replace the record (`/lore:adr replace <id>: <new decision>`);
 - uncovered choice → record it (`/lore:adr <the decision>`) in this PR, or exempt it — it has no
   id, so only the bare `ADR-Exempt: <reason>` form exempts it;
@@ -236,15 +266,16 @@ Minor finding pointing at `<plugin-root>/references/pr-decisions.md`.
 
 ### Step 7: Output in Standard Format
 
-Use severity level indicators and be specific:
+Use severity level indicators and be specific. The ADR check line comes first, filled from the
+verdict's JSON (Step 5) — or the `could not run (…)` form when a step failed:
 
 ```markdown
 ## Code Review Results
 
-**Summary:** Reviewed X files, found Y issues (Z critical, W important, V minor)
 **ADR check:** <blocking> blocking, <exempted> exempted (verdict exit <code>)
 <one line per exemption: `ADR-Exempt (<source>): <target or "whole PR"> — <reason>` + `(unused)` when it matched nothing>
 <one line per invalid exemption: `ADR-Exempt invalid (<source>): <line> — <problem>`>
+**Summary:** Reviewed X files, found Y issues (Z critical, W important, V minor)
 
 ### Critical Issues
 - **[file:line]** Description of the issue

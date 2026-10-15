@@ -77,7 +77,7 @@ output back into the knowledge base.
 
 ### Layer priority for knowledge
 
-Whenever multiple knowledge sources address the same topic, the agreed priority (encoded in `agents/knowledge-reader/AGENT.md`, `agents/knowledge-question-answerer/AGENT.md`, and `skills/review/SKILL.md`) is:
+Whenever multiple knowledge sources address the same topic, the agreed priority (encoded in `agents/knowledge-reader/AGENT.md`, `agents/knowledge-question-answerer/AGENT.md`, and `skills/reviewing-changes/SKILL.md`) is:
 
 1. Repo-specific `docs/standards/` (highest)
 2. Verified learnings (`learnings/` with `confidence: verified`)

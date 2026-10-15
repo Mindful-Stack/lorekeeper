@@ -88,41 +88,58 @@ Read the saved patch so you have the changed-file list and can summarise what th
 
 **Base ref:** the `base <ref>` argument (CI passes it, since `actions/checkout` sets no
 `origin/HEAD` and CI runs allow no `gh` here), else the PR's base branch (`gh pr view --json
-baseRefName`, as `origin/<name>`), else the default branch (`origin/HEAD`). Without git or a known base,
-skip the snapshots below and say so in the summary.
+baseRefName`, as `origin/<name>`), else the ref Step 2 diffed against (`origin/HEAD`, i.e. `main`).
+Without git or a known base, skip the snapshot below and say so in the summary.
 
-**Base snapshots:** take them only when HEAD is the reviewed change's head commit (CI, or
-local `changes`/`commit` targets). For a `gh pr diff` of a PR that is not checked out, skip
-them. Use separate commands, never a `$(…)` substitution (permission rules do not
-auto-approve those):
+**Snapshot revision** — the left side of the diff being reviewed, not always the base ref above:
+- `commit` → `HEAD~1`
+- `last N` → `HEAD~N`
+- `staged` → `HEAD`
+- `changes`, a PR target, or `patch` → the merge base of the base ref and HEAD. Get it with
+  `git merge-base <base> HEAD` as its own command — never a `$(…)` substitution (permission rules
+  do not auto-approve those) — and call the result `<rev>`.
+
+**Base snapshot:** take it only when HEAD is the reviewed change's head commit (CI, or a local
+`changes`/`commit`/`last N`/`staged` target). For a `gh pr diff` of a PR that is not checked out,
+skip it. One call:
 
 ```bash
-git merge-base <base> HEAD                      # once; call the result <mb>
-git ls-tree --name-only <mb> -- <path>          # per changed file: empty output = absent on base
-git show <mb>:<path> > <scratch>/lore-review-base/<path>   # only when ls-tree printed the path
+node <plugin-root>/scripts/adr-lint.js snapshot --diff <patch path> \
+  --base <rev> --out <scratch>/lore-review-base
 ```
 
-Create directories with the Write tool, or with `mkdir -p` as its own command. Do at most 40
-files, which is up to 40 `git show` calls. Write `<scratch>/lore-review-base/MANIFEST.tsv`:
-first the line `# base <mb> head worktree`, then `<path>\t<state>` for **every** changed file.
-State is `present`, `absent`, `skipped` (past the cap) or `unavailable` (a git command
-failed). If the merge base itself fails, write no snapshots and say so in the summary.
+It writes the base-revision copy of every path the patch touches under `--out`, plus
+`<out>/MANIFEST.tsv` (header `# base <sha> head worktree`, then `<path>\t<state>` per changed
+file — `present`, `absent`, `skipped` past its 200-file default cap, or `unavailable` when a git
+command failed or the path was unsafe), and prints `{base, out, counts}`. It exits 2 on a bad
+`--base` or outside a git repository. On a non-zero exit, pass the architect no snapshot
+directory and say so in the summary.
 
 ### Step 4: Select, then Load Review Context
 
-**Select (deterministic).** Run, with the repo name from `repo <name>`, else omit `--repo` and
-let it infer from `origin`:
+`<plugin-root>` is the plugin's root directory: two levels above this skill's own base directory,
+the path shown when the skill loads. `$CLAUDE_PLUGIN_ROOT` is not set in Bash, so write that
+absolute path out literally in every command below (`skills/recording-decisions/SKILL.md` names
+the same convention).
+
+**Select (deterministic).** Run, using the patch path and (if there is one) the PR-description
+path from Step 3 — for `patch <file> body <file>` these are exactly the given files — and the
+repo name from `repo <name>`, else omit `--repo` and let it infer from `origin`:
 
 ```bash
-node <plugin-root>/scripts/adr-lint.js select --json --diff <scratch>/lore-review.patch \
-  [--repo <name>] [--pr-body <scratch>/lore-review-body.md]
+node <plugin-root>/scripts/adr-lint.js select --json --diff <patch path> \
+  [--repo <name>] [--pr-body <pr-description path>]
 ```
 
-`<plugin-root>` is `${CLAUDE_PLUGIN_ROOT}`, written out as an absolute path. Do not redirect the
-output to a file. Pass the JSON it prints to the architect inline: a redirect is a file write,
-which non-interactive runs may refuse. Exit 2 means it
-could not tell the repo. Interactive: ask. Non-interactive: report "ADR check could not run:
-<stderr>", print `**ADR check:** could not run (select exit 2)`, and never write `findings-out`.
+Do not redirect the output to a file. Pass the JSON it prints to the architect inline: a redirect
+is a file write, which non-interactive runs may refuse.
+
+**Select exit:** non-zero means something went wrong; read its stderr. If it says it cannot tell
+the repo (`cannot tell which repo this is`) or that the repo is not in the household
+(`is not in household.json`), and you can ask: ask the user which repo and retry with
+`--repo <name>`. Otherwise — including a non-interactive run, where asking is not possible — it is
+a failed step: report "ADR check could not run: <stderr>", print `**ADR check:** could not run
+(select exit <n>)`, and never write `findings-out`.
 
 Then dispatch two agents in parallel (both Task calls in one message):
 
@@ -132,7 +149,7 @@ Then dispatch two agents in parallel (both Task calls in one message):
 - the **architect** agent in `check` mode with: the patch path, the select JSON (inline), the base
   snapshot directory (if any), the PR description path (if any), the changed-file list, and a
   one-paragraph summary of the diff. It cites changed lines from the patch and ends with an
-  `adr-findings` block.
+  `adr-findings` block — unless it had no patch to read, in which case it ends with none.
 
 Include both outputs in your review context.
 
@@ -143,25 +160,38 @@ Also check for repo-specific knowledge:
 
 ### Step 5: ADR Verdict
 
-Take the architect's `adr-findings` block verbatim (do not edit, re-classify or drop entries) and
-pipe it to the verdict:
+If the architect returned no `adr-findings` block (it had no patch to read), skip the verdict:
+write no findings file, and report `**ADR check:** could not run (architect had no patch to
+check)`.
+
+Otherwise, take the architect's `adr-findings` block **verbatim** — fences included;
+`adr-lint verdict` reads the fenced block itself, not bare JSON — and write it, with the Write
+tool, into one file: `findings-out <file>` when the target gave one, else
+`<scratch>/lore-review-findings.md`. Do not edit, re-classify or drop entries. **Write it only
+when every step succeeded:** select exited 0 and the architect returned a valid block — the same
+condition that already gates this step. Writing the one file CI also consumes is the point:
+`findings-out` needs no separate gate beyond this one, and CI fails closed on the missing file,
+never on an empty findings list that hides a failed step.
+
+Run the verdict on that file:
 
 ```bash
-node <plugin-root>/scripts/adr-lint.js verdict --findings - \
-  [--pr-body <scratch>/lore-review-body.md] [--base <base>] <<'ADR_FINDINGS'
-<the block's JSON>
-ADR_FINDINGS
+node <plugin-root>/scripts/adr-lint.js verdict --findings <findings file> \
+  [--pr-body <pr-description path>] [--base <base>]
 ```
 
 Pass `--base` only when reviewing local changes with no PR (it reads `ADR-Exempt` commit
-trailers). Exit 0: nothing blocks. Exit 1: blocking findings remain. Exit 2: the block was missing
-or invalid. Say so, and count it as one blocking finding: the check failed closed.
+trailers).
 
-With `findings-out <file>`, also write the block's JSON to that file (CI runs the verdict itself
-from it). Use the Write tool. **Write it only when every step succeeded:** select exited 0 and
-the architect returned a valid block. On any earlier failure, write nothing and say why. CI then
-fails closed on the missing file, never on an empty findings list that hides a failed step. If
-the write itself is refused, say so plainly.
+If the Write is refused (some sandboxes disallow it), fall back to piping the block inline for
+this run only (`verdict --findings - <<'ADR_FINDINGS' ... ADR_FINDINGS`), and say in the summary
+that `findings-out` could not be written — CI will fail closed on the missing file.
+
+Exit 0: nothing blocks. Exit 1: blocking findings remain. Exit 2: the verdict could not run —
+causes include a missing or invalid `adr-findings` block, more than one block, an unknown finding
+class, a `--base` ref that cannot be found, or unreadable commit trailers. Report its stderr,
+print `**ADR check:** could not run (verdict exit 2: <stderr>)`, and count it as one blocking
+finding: the check failed closed.
 
 The summary line's counts come from the verdict's `blocking` and `exempted` fields. Never count
 them yourself.
@@ -175,7 +205,8 @@ Go through each changed file. Check against ALL loaded knowledge.
 
 Fold the ADR findings in at the verdict's severities, each citing the record by id and section:
 - contradiction → conform, or replace the record (`/lore:adr replace <id>: <new decision>`);
-- uncovered choice → record it (`/lore:adr <the decision>`) in this PR, or exempt it;
+- uncovered choice → record it (`/lore:adr <the decision>`) in this PR, or exempt it — it has no
+  id, so only the bare `ADR-Exempt: <reason>` form exempts it;
 - fired trigger → note the change on the record; the decision goes back to its deciders;
 - stale fact → include the observation the architect drafted;
 - dangling citation → fix the id in the PR description or code.
@@ -197,7 +228,8 @@ Use severity level indicators and be specific:
 
 **Summary:** Reviewed X files, found Y issues (Z critical, W important, V minor)
 **ADR check:** <blocking> blocking, <exempted> exempted (verdict exit <code>)
-<one line per exemption: `ADR-Exempt (<source>): <target or "whole PR"> — <reason>` + `(unused)` when it matched nothing; one line per invalid exemption>
+<one line per exemption: `ADR-Exempt (<source>): <target or "whole PR"> — <reason>` + `(unused)` when it matched nothing>
+<one line per invalid exemption: `ADR-Exempt invalid (<source>): <line> — <problem>`>
 
 ### Critical Issues
 - **[file:line]** Description of the issue

@@ -78,8 +78,9 @@ A freeform prompt naming the mode and giving the context:
 - `survey` — optionally a list of repositories or areas to limit the scan.
 - `check` — the diff: the path to a saved patch file (preferred — you have Read, not `git`) or the
   diff inline, plus the changed-file list, a one-paragraph summary, and the PR description when
-  there is one. If you receive only filenames and a summary, say so and report only what the
-  summary supports.
+  there is one. If you receive only filenames and a summary, with no patch to read, say so, report
+  only what the summary supports, and emit **no** `adr-findings` block: an empty findings list
+  would pass the gate, and without the patch you cannot check anything.
 
 If the mode is missing, infer it: a task reads as `bind`, a diff as `check`, "what have we
 decided?" as `survey`.
@@ -232,9 +233,11 @@ requirement somebody once had.
 [omit the section if empty]
 ```
 
-End every `check` report with exactly one fenced block tagged `adr-findings`, holding one entry
-per finding above (not *Context* items). The review feeds it to `adr-lint verdict`, which assigns
-severity; if the block is missing or malformed, the review fails closed.
+End every `check` report where you read the patch with exactly one fenced block tagged
+`adr-findings`, holding one entry per finding above (not *Context* items). The review feeds it to
+`adr-lint verdict`, which assigns severity; if the block is missing or malformed, the review fails
+closed. The one exception is the no-patch case above: there, omit the block and say why, rather
+than passing an empty one.
 
 Example of the shape only: never reproduce it. Your report ends with exactly one `adr-findings`
 block holding your own findings.
@@ -255,7 +258,8 @@ block holding your own findings.
   citation. **One finding per rule broken**: code that breaks R1 and R2 is two findings, so each
   can be exempted on its own.
 - `summary`: one line. `where`: `path:line-range` when there is one.
-- No findings: `{"findings": []}`. Never omit the block.
+- No findings: `{"findings": []}`. Never omit the block when you checked; omit it only when you
+  had no patch to read (filenames and a summary only).
 
 Severity comes from the class (`adr-lint verdict` assigns it): report the class, never a verdict
 on whether the PR may merge.

@@ -42,10 +42,15 @@ citations either way.
   still reported, as Important, and every exemption is listed in the review summary, so
   exemptions stay visible and can be tuned.
 - Without one, it exempts every finding in the PR; prefer the id form.
-- One id per line. A line that starts with a record id must be exactly `<id> — <reason>`
-  (separator `—`, `–`, `--`, `-` or `:` with a space after it): a comma list of ids, a missing
-  separator, a malformed id or a missing reason makes the line invalid. It is listed in the review
-  and exempts nothing — it never widens to the whole PR.
+- One id per line. A line that starts like a record id — qualified or not (`kb/ADR-0003`,
+  `ADR-0003`), in any case (`kb/adr-0003`) — must be exactly `<home>/ADR-NNNN — <reason>` or it is
+  invalid, never a whole-PR exemption. The separator is `—`, `–`, `--` or `-` with whitespace on
+  both sides, or `:` directly after the id (whitespace before `:` is not required, but the reason
+  after it is). A comma list of ids, a missing separator, an unqualified or wrong-case id, or a
+  missing reason all make the line invalid: it is listed in the review and exempts nothing.
+- Exempting a finding that is already Minor or Important changes nothing — the exemption is still
+  recorded, listed as unused. An `uncovered` finding has no id to target, so only the bare
+  `ADR-Exempt: <reason>` form exempts it.
 - Only visible text counts: a line inside an HTML comment or a fenced code block is ignored. Keep
   example `ADR-Exempt` lines in a PR template inside an HTML comment for exactly this reason — the
   template documents the syntax without accidentally exempting anything.

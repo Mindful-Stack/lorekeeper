@@ -178,3 +178,31 @@ test('verdict throws on unknown finding class, protecting against prototype poll
         /unknown class __proto__/
     );
 });
+
+test('fences indented by up to 3 spaces are still fences (CommonMark)', () => {
+    const text = [
+        '   ```',
+        'ADR-Exempt: kb/ADR-0001 — hidden',
+        '   ```',
+    ].join('\n');
+    const { exemptions } = parseExemptions([{ source: 'pr-body', text }]);
+    assert.equal(exemptions.length, 0);
+});
+
+test('a fence closed only by "```js" (not same delimiter) continues stripping', () => {
+    const text = [
+        '```',
+        'ADR-Exempt: kb/ADR-0001 — in fence',
+        '```js',
+        'ADR-Exempt: kb/ADR-0002 — also in fence',
+        '```',
+    ].join('\n');
+    const { exemptions } = parseExemptions([{ source: 'pr-body', text }]);
+    assert.equal(exemptions.length, 0);
+});
+
+test('decisionsSection ignores ## Decisions inside HTML comments', () => {
+    const prBody = 'Some text\n<!-- ## Decisions\nNo new decisions. -->\n## Summary\nDone';
+    const v = verdict({ findings: [], exemptions: [], prBody });
+    assert.equal(v.decisionsSection, false);
+});

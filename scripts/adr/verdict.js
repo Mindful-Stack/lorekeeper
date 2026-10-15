@@ -32,26 +32,31 @@ function fail(message) {
 }
 
 // Strip HTML comments (<!-- … -->, non-greedy, multi-line, unterminated strips to end) and
-// fenced code blocks (``` or ~~~ delimiters, unterminated strips to end).
+// fenced code blocks (``` or ~~~ delimiters, 0-3 spaces indent, unterminated strips to end).
+// A closing fence must be the same delimiter with only whitespace after it.
 function visibleText(text) {
     // Strip HTML comments: <!-- to --> (non-greedy), unterminated strips to end
     let result = text.replace(/<!--[\s\S]*?-->|<!--[\s\S]*/g, '');
-    // Strip fenced code blocks: line starting with ``` or ~~~, up to matching close (unterminated strips to end)
+    // Strip fenced code blocks: 0-3 spaces + ``` or ~~~, up to matching close (unterminated strips to end)
     const lines = result.split('\n');
     const visible = [];
     let inFence = false;
     let fenceChar = null;
     for (const line of lines) {
-        const fenceMatch = /^(```|~~~)/.exec(line);
-        if (fenceMatch) {
+        const openMatch = /^ {0,3}(```|~~~)/.exec(line);
+        if (openMatch) {
             if (!inFence) {
                 inFence = true;
-                fenceChar = fenceMatch[1];
-            } else if (fenceMatch[1] === fenceChar) {
-                inFence = false;
-                fenceChar = null;
+                fenceChar = openMatch[1];
             } else {
-                visible.push(line);
+                // Check if this closes the fence: same delimiter + only whitespace after
+                const closeMatch = new RegExp(`^ {0,3}${fenceChar.replace(/`/g, '\\`')}\\s*$`).exec(line);
+                if (closeMatch) {
+                    inFence = false;
+                    fenceChar = null;
+                } else {
+                    visible.push(line);
+                }
             }
         } else if (!inFence) {
             visible.push(line);
@@ -159,7 +164,7 @@ function verdict({ findings, exemptions, invalidExemptions = [], prBody = null }
         findings: out,
         exemptions: exemptions.map((e, i) => ({ ...e, used: used[i] })),
         invalidExemptions,
-        decisionsSection: prBody === null ? null : /^#{1,6}\s+Decisions\s*$/m.test(prBody),
+        decisionsSection: prBody === null ? null : /^#{1,6}\s+Decisions\s*$/m.test(visibleText(prBody)),
     };
 }
 

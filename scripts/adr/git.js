@@ -82,6 +82,14 @@ function defaultBranch(root) {
     return m ? m[1] : null;
 }
 
+// The ADR-Exempt trailer values on the commits this branch adds over `ref`
+// (`git log --help`, PRETTY FORMATS, %(trailers:key=…,valueonly,unfold)).
+function exemptTrailers(root, ref) {
+    const mb = mergeBase(root, ref);
+    if (!mb) return null;
+    return lines(git(root, ['log', '--format=%(trailers:key=ADR-Exempt,valueonly,unfold)', `${mb}..HEAD`]));
+}
+
 module.exports = {
-    gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, originUrl, repoName, defaultBranch,
+    gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, originUrl, repoName, defaultBranch, exemptTrailers,
 };

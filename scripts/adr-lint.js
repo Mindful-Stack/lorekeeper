@@ -15,6 +15,7 @@ const { checkHome } = require('./adr/rules');
 const { backfill } = require('./adr/backfill');
 const { parsePatchPaths, parseCitedIds, select } = require('./adr/select');
 const C = require('./adr/catalogue');
+const V = require('./adr/verdict');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
@@ -25,8 +26,9 @@ const USAGE = `usage:
   adr-lint homes [--cwd <dir>]                      (JSON)
   adr-lint index [--cwd <dir>] [--status <status>] [--json]
   adr-lint next [--base <ref>] <dir>
+  adr-lint verdict --findings <file|-> [--pr-body <file>] [--base <ref>] [--cwd <dir>]   (JSON)
 
-exit codes: 0 ok (warnings allowed), 1 violations, 2 usage or environment error`;
+exit codes: 0 ok (warnings allowed), 1 violations or blocking findings, 2 usage or environment error`;
 
 class UsageError extends Error {}
 
@@ -38,6 +40,7 @@ const FLAGS = {
     homes: ['cwd'],
     index: ['cwd', 'status', 'json'],
     next: ['base'],
+    verdict: ['findings', 'pr-body', 'base', 'cwd'],
 };
 
 // `known` lists the flags the subcommand takes; any other flag is a usage error, so a typo
@@ -338,6 +341,39 @@ function cmdNext(flags, positional) {
     return 0;
 }
 
+function cmdVerdict(flags) {
+    if (!flags.findings) throw new UsageError('verdict needs --findings <file|->');
+    let findings;
+    try {
+        findings = V.parseFindings(readInput(flags.findings, 'findings'));
+    } catch (e) {
+        if (!e.invalidFindings) throw e;
+        throw new UsageError(e.message);
+    }
+    const sources = [];
+    const prBody = flags['pr-body'] ? readInput(flags['pr-body'], 'pr-body') : null;
+    if (prBody !== null) sources.push({ source: 'pr-body', text: prBody });
+    if (flags.base) {
+        const cwd = path.resolve(flags.cwd || process.cwd());
+        const root = G.gitRoot(cwd);
+        if (!root) throw new UsageError('--base needs a git repository');
+        if (!G.revExists(root, flags.base)) throw new UsageError(`base ref ${flags.base} not found; fetch it first`);
+        const values = G.exemptTrailers(root, flags.base);
+        if (values === null) throw new UsageError(`no merge base between ${flags.base} and HEAD; fetch the full history`);
+        // Each trailer value is the text after `ADR-Exempt:`, so give it its key back.
+        sources.push({ source: 'trailer', text: values.map((v) => `ADR-Exempt: ${v}`).join('\n') });
+    }
+    const { exemptions, invalid } = V.parseExemptions(sources);
+    try {
+        var v = V.verdict({ findings, exemptions, invalidExemptions: invalid, prBody });
+    } catch (e) {
+        if (!e.invalidFindings) throw e;
+        throw new UsageError(e.message);
+    }
+    console.log(JSON.stringify(v, null, 2));
+    return v.blocking > 0 ? 1 : 0;
+}
+
 function main(argv) {
     const [cmd, ...rest] = argv.slice(2);
     try {
@@ -345,6 +381,7 @@ function main(argv) {
         const { flags, positional } = parseArgs(rest, FLAGS[cmd]);
         if (cmd === 'check') return cmdCheck(flags, positional);
         if (cmd === 'select') return cmdSelect(flags);
+        if (cmd === 'verdict') return cmdVerdict(flags);
         if (cmd === 'homes') return cmdHomes(flags);
         if (cmd === 'index') return cmdIndex(flags);
         if (cmd === 'next') return cmdNext(flags, positional);

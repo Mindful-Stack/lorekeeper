@@ -309,6 +309,8 @@ repair, a schema backfill). It has no dependencies:
 node scripts/adr-lint.js check --ci --home local --base origin/main docs/adr  # CI: fetch-depth: 0
 node scripts/adr-lint.js select --repo api --diff change.patch                # records a diff touches
 node scripts/adr-lint.js backfill --dry-run <adr-dir>                         # add id + classification keys
+node scripts/adr-lint.js verdict --findings adr-findings.json --pr-body pr-body.md  # CI gate: exit 1 = blocking
+node scripts/adr-lint.js snapshot --diff change.patch --base origin/main --out base/  # base copies for the `introduced` check
 ```
 
 A plain `check` reports a proposal that is not yet accepted (in the shared home, or riding along
@@ -332,6 +334,87 @@ To run it before every commit in a repo with a local ADR home, add `.git/hooks/p
 plugin="${LOREKEEPER_PLUGIN_DIR:?set LOREKEEPER_PLUGIN_DIR to the lorekeeper checkout}"
 exec node "$plugin/scripts/adr-lint.js" check --home local --base origin/main docs/adr
 ```
+
+### Enforcing decisions in review and CI
+
+`/lore:review` selects the records a change touches (`adr-lint select`), has the architect check
+the code against them, and asks `adr-lint verdict` whether anything blocks:
+
+| Finding | Severity |
+|---|---|
+| contradicts an accepted record | Critical (blocks) |
+| hard-to-reverse choice no record covers | Critical (blocks) |
+| fires a record's invalidation trigger | Critical (blocks) |
+| makes a *Facts relied on* entry false | Minor (draft an observation) |
+| cites an id that resolves nowhere | Important |
+
+A finding the base branch already had is reported as Important, not blocking. To merge past a
+blocking finding, add `ADR-Exempt: <id> — <reason>` (or `ADR-Exempt: <reason>` for the whole PR)
+to the PR description; see `references/pr-decisions.md`. Exemptions are always listed in the
+review.
+
+`adr-lint verdict --findings <file> --pr-body <file>` prints a JSON verdict (`blocking` and
+`exempted` counts, per-finding severity, exemption bookkeeping) and exits `0` when nothing
+blocks, `1` when a finding still blocks, and `2` when it could not judge — findings missing or
+invalid, more than one `adr-findings` block, an unknown finding class, a `--base` ref that
+cannot be found, or unreadable commit trailers. A CI job gates on the exit code, not on review
+prose. A sketch:
+
+```yaml
+on:
+  pull_request:
+    # `edited`: adding or removing an ADR-Exempt line must re-run the gate.
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+concurrency:
+  group: adr-check-${{ github.event.number }}
+  cancel-in-progress: true          # a superseded run never leaves the final result
+jobs:
+  adr-check:
+    runs-on: ubuntu-latest
+    env:
+      LORE: ${{ github.workspace }}/../lorekeeper          # this plugin, checked out here
+      KNOWLEDGE_BASE_PATH: ${{ github.workspace }}/../kb   # the team KB (shared ADR home)
+      OUT: ${{ github.workspace }}/.adr-review             # inside the workspace: Write may refuse elsewhere
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      # check out the plugin to $LORE and the knowledge base to $KNOWLEDGE_BASE_PATH here
+      - run: node "$LORE/scripts/adr-lint.js" homes   # must show the shared home; fail fast if not
+      - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} docs/adr
+      - name: Fetch the diff and body
+        run: |
+          rm -rf "$OUT" && mkdir -p "$OUT"
+          gh pr diff ${{ github.event.number }} > "$OUT/pr.patch"
+          gh pr view ${{ github.event.number }} --json body -q .body > "$OUT/pr-body.md"
+        env: { GH_TOKEN: "${{ github.token }}" }
+      - name: Review
+        run: |
+          claude -p "/lore:review patch $OUT/pr.patch body $OUT/pr-body.md repo ${{ github.event.repository.name }} base origin/${{ github.base_ref }} findings-out $OUT/adr-findings.json" \
+            --plugin-dir "$LORE" \
+            --allowedTools Read Glob Grep Task Agent Skill Write "Bash(node *)" "Bash(git merge-base *)"
+      - run: node "$LORE/scripts/adr-lint.js" verdict --findings "$OUT/adr-findings.json" --pr-body "$OUT/pr-body.md"
+```
+
+- **`--allowedTools`:** without it, a non-interactive run refuses the review's `node` calls and
+  the findings write, and the verdict exits 2 on every PR.
+- **`gh` only outside `claude`:** the diff and the PR body are fetched with plain `gh` calls
+  before the review runs; `gh` is never in `--allowedTools`, so the review itself cannot reach
+  the network or the PR beyond the files it was handed.
+- **`base origin/${{ github.base_ref }}` is mandatory:** `actions/checkout` sets no
+  `origin/HEAD`, and CI has no `gh pr view` fallback inside the review either, so without this
+  argument the review cannot find a base at all.
+- **`fetch-depth: 0`:** the merge-base and base-snapshot commands need history, not just the PR's
+  tip commit.
+- **`OUT` inside the workspace:** the findings file lives in a directory the job clears with
+  `rm -rf` before the run, so a file the PR itself committed at that path can never stand in for
+  the review's output; outside the workspace, Claude's Write tool may refuse the path outright.
+- **Fails closed:** a missing or invalid findings file exits 2. The review writes none when
+  any step before the verdict failed.
+- **Cost of `edited`:** every description edit re-runs the whole review. A team that wants
+  cheaper re-runs can cache the findings file per head commit and re-run only `verdict` on
+  `edited`.
+- **Required check:** make the job a required status check. A repository's admin bypass
+  stays the emergency override.
 
 The canonical record template is `references/adr-template.md`.
 

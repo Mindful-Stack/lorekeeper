@@ -17,9 +17,10 @@ const BLOCKING = new Set(['critical']);
 // An exemption target: a qualified record id, optionally one of its rules or facts.
 // Behaviour rule ids (`<home>/<prefix>.R<n>`) are added here by the behaviour-doc plan.
 const TARGET_RE = /^[A-Za-z0-9._-]+\/ADR-\d{4}(?:\.[RF]\d+)?$/;
-// Anything that starts like a record id is meant as a targeted exemption: it is either a
-// well-formed `<id> — <reason>` or invalid, never a whole-PR exemption.
-const LOOKS_TARGETED_RE = /^[A-Za-z0-9._-]+\/ADR-\d/;
+// Anything that starts like a record id — qualified (`<home>/ADR-nnnn`) or not, in any case —
+// is meant as a targeted exemption: it is either a well-formed `<id> — <reason>` (TARGET_RE,
+// which still requires the qualified, exact-case form) or invalid, never a whole-PR exemption.
+const LOOKS_TARGETED_RE = /^(?:[A-Za-z0-9._-]+\/)?ADR-\d/i;
 // A list bullet or quote marker before the key is allowed (Decisions-style lists invite it), and
 // the key is case-insensitive, as git's trailer `key=` match is.
 const LINE_RE = /^\s*(?:[-*>]\s*)?ADR-Exempt:(.*)$/i;

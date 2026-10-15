@@ -79,11 +79,13 @@ test('malformed targeted lines are invalid, never whole-PR; bullets and case are
         'ADR-Exempt: kb/ADR-0001.R1, kb/ADR-0002.R1 — a list',
         'ADR-Exempt: kb/ADR-00001 — five digits',
         'ADR-Exempt: kb/ADR-0001.R1, — stray comma',
+        'ADR-Exempt: ADR-0003 — unqualified',
+        'ADR-Exempt: kb/adr-0003 — lower case id',
         '- ADR-Exempt: kb/ADR-0003 — bulleted',
         '> adr-exempt: kb/ADR-0004 — quoted, lower case',
     ].join('\n');
     const { exemptions, invalid } = parseExemptions([{ source: 'pr-body', text }]);
-    assert.equal(invalid.length, 4);
+    assert.equal(invalid.length, 6);
     assert.deepEqual(exemptions.map((e) => e.target), ['kb/ADR-0003', 'kb/ADR-0004']);
     assert.ok(exemptions.every((e) => e.target !== null));
 });

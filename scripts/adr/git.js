@@ -44,6 +44,27 @@ function listDir(root, ref, relDir) {
     return lines(git(root, ['ls-tree', '--name-only', `${ref}:${relDir}`]));
 }
 
+// The full sha of a commit-ish, so a snapshot keeps naming the exact commit it read even if
+// `ref` (a branch) later moves. Null when `ref` does not resolve to a commit.
+function fullSha(root, ref) {
+    const out = git(root, ['rev-parse', `${ref}^{commit}`]);
+    return out === null ? null : out.trim();
+}
+
+// Whether `relPath` exists at `ref` (a blob or a tree): true/false from `ls-tree --name-only
+// <ref> -- <path>` printing something or nothing, null when the git command itself failed.
+function lsTreePresent(root, ref, relPath) {
+    const out = git(root, ['ls-tree', '--name-only', ref, '--', relPath]);
+    return out === null ? null : out.trim() !== '';
+}
+
+// Like showFile, but the exact bytes git stored: spawnSync with no `encoding`, so a binary
+// blob is not mangled by a decode/re-encode round trip through a string. Null on failure.
+function showBuffer(root, ref, relPath) {
+    const r = spawnSync('git', [...PINNED, 'show', `${ref}:${relPath}`], { cwd: root });
+    return r.status === 0 ? r.stdout : null;
+}
+
 // Files changed between `ref` and the working tree, plus untracked files, so the result is
 // the same in CI (clean checkout) and in a local run before committing.
 function changedFiles(root, ref) {
@@ -94,4 +115,5 @@ function exemptTrailers(root, ref) {
 
 module.exports = {
     gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, originUrl, repoName, defaultBranch, exemptTrailers,
+    fullSha, lsTreePresent, showBuffer,
 };

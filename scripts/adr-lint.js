@@ -16,6 +16,7 @@ const { backfill } = require('./adr/backfill');
 const { parsePatchPaths, parseCitedIds, select } = require('./adr/select');
 const C = require('./adr/catalogue');
 const V = require('./adr/verdict');
+const S = require('./adr/snapshot');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
@@ -27,6 +28,7 @@ const USAGE = `usage:
   adr-lint index [--cwd <dir>] [--status <status>] [--json]
   adr-lint next [--base <ref>] <dir>
   adr-lint verdict --findings <file|-> [--pr-body <file>] [--base <ref>] [--cwd <dir>]   (JSON)
+  adr-lint snapshot --diff <patch-file|-> --base <rev> --out <dir> [--cwd <dir>] [--max <n>]   (JSON)
 
 exit codes: 0 ok (warnings allowed), 1 violations or blocking findings, 2 usage or environment error`;
 
@@ -41,6 +43,7 @@ const FLAGS = {
     index: ['cwd', 'status', 'json'],
     next: ['base'],
     verdict: ['findings', 'pr-body', 'base', 'cwd'],
+    snapshot: ['diff', 'base', 'out', 'cwd', 'max'],
 };
 
 // `known` lists the flags the subcommand takes; any other flag is a usage error, so a typo
@@ -375,6 +378,32 @@ function cmdVerdict(flags) {
     return v.blocking > 0 ? 1 : 0;
 }
 
+function cmdSnapshot(flags) {
+    const cwd = path.resolve(flags.cwd || process.cwd());
+    const root = G.gitRoot(cwd);
+    if (!root) throw new UsageError(`snapshot needs ${display(cwd)} to be inside a git repository`);
+    if (!flags.diff) throw new UsageError('snapshot needs --diff <patch-file|->');
+    if (!flags.out) throw new UsageError('snapshot needs --out <dir>');
+    if (!flags.base) throw new UsageError('snapshot needs --base <rev>');
+    if (!G.revExists(root, flags.base)) {
+        throw new UsageError(`base ref ${flags.base} not found; fetch it first (CI: fetch-depth: 0 or an explicit git fetch)`);
+    }
+    let max = 200;
+    if (flags.max !== undefined) {
+        if (!/^[1-9]\d*$/.test(flags.max)) throw new UsageError('--max must be a positive integer');
+        max = Number(flags.max);
+    }
+    const base = G.fullSha(root, flags.base);
+    const patch = readInput(flags.diff, 'diff');
+    const paths = [...new Set(parsePatchPaths(patch))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const out = path.resolve(flags.out);
+    const counts = S.snapshot({
+        root, base, paths, out, max,
+    });
+    console.log(JSON.stringify({ base, out: display(out), counts }, null, 2));
+    return 0;
+}
+
 function main(argv) {
     const [cmd, ...rest] = argv.slice(2);
     try {
@@ -383,6 +412,7 @@ function main(argv) {
         if (cmd === 'check') return cmdCheck(flags, positional);
         if (cmd === 'select') return cmdSelect(flags);
         if (cmd === 'verdict') return cmdVerdict(flags);
+        if (cmd === 'snapshot') return cmdSnapshot(flags);
         if (cmd === 'homes') return cmdHomes(flags);
         if (cmd === 'index') return cmdIndex(flags);
         if (cmd === 'next') return cmdNext(flags, positional);

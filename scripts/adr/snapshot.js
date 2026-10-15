@@ -14,20 +14,26 @@ const G = require('./git');
 // written straight into the manifest, forge a second, attacker-chosen manifest line.
 const CONTROL_CHAR_RE = /[\x00-\x1f\x7f]/;
 
-// A relative path with a `..` segment, an absolute one, or one holding a control character, is
-// refused outright: no git call, no fs touch. This alone stops `../evil`, `/etc/passwd`-shaped
-// and NUL/tab/newline-shaped entries. Exported for direct unit tests: the property this guards
-// does not depend on git also happening to refuse the same path (it sometimes does not).
+// A relative path with a `..`, `.` or empty segment (the last also catches a leading or
+// trailing slash, and a doubled one, since split('/') puts an empty string either side of it),
+// an absolute path, or one holding a control character, is refused outright: no git call, no
+// fs touch. Only a canonical path is accepted, because git's own pathspec matching normalizes
+// `.`/`..` away (see `lsTreeEntry`'s exact-match check below) — a non-canonical spelling must
+// never be treated as if it named whatever git resolved it to. Exported for direct unit tests:
+// the property this guards does not depend on git also happening to refuse the same path (it
+// sometimes does not).
 function looksUnsafe(relPath) {
-    return path.isAbsolute(relPath) || CONTROL_CHAR_RE.test(relPath) || relPath.split('/').some((seg) => seg === '..');
+    if (path.isAbsolute(relPath) || CONTROL_CHAR_RE.test(relPath)) return true;
+    return relPath.split('/').some((seg) => seg === '' || seg === '.' || seg === '..');
 }
 
-// A manifest path field: plain when it is printable and does not start with `"` (which would
-// otherwise be read back as the start of a JSON-escaped field); JSON-escaped otherwise, so a
-// control character never becomes a stray line break or tab inside the manifest, and a path
-// that happens to start with a literal `"` cannot be confused with an escaped one either.
+// A manifest path field: plain when it is printable, does not start with `"` (which would
+// otherwise be read back as the start of a JSON-escaped field) and does not start with `#`
+// (which would otherwise be mistaken for the header line); JSON-escaped otherwise, so a control
+// character never becomes a stray line break or tab inside the manifest, and a path that
+// happens to start with a literal `"` or `#` cannot be confused with those two other meanings.
 function manifestField(p) {
-    return CONTROL_CHAR_RE.test(p) || p.startsWith('"') ? JSON.stringify(p) : p;
+    return CONTROL_CHAR_RE.test(p) || p.startsWith('"') || p.startsWith('#') ? JSON.stringify(p) : p;
 }
 
 // `candidateReal` is inside `outReal` (or is it), both already realpath'd. Exported alongside
@@ -65,14 +71,14 @@ function writeUnderOut(outReal, relPath, buf) {
 }
 
 // One path's state: 'skipped' (beyond --max), 'unavailable' (unsafe path, a git command failed,
-// the entry at `base` is not a blob — a tree/directory or a commit/gitlink — or the write
-// itself was refused), 'absent' (not in the tree at `base`), or 'present' (written under
-// `out`).
+// ls-tree resolved the pathspec to a different name than the one asked for, the entry at
+// `base` is not a blob — a tree/directory or a commit/gitlink — or the write itself was
+// refused), 'absent' (not in the tree at `base`), or 'present' (written under `out`).
 function classify(root, base, outReal, relPath, index, max) {
     if (index >= max) return 'skipped';
     if (looksUnsafe(relPath)) return 'unavailable';
     const entry = G.lsTreeEntry(root, base, relPath);
-    if (entry === null) return 'unavailable';
+    if (entry === null || entry === 'mismatch') return 'unavailable';
     if (entry === 'absent') return 'absent';
     if (entry.type !== 'blob') return 'unavailable';
     const buf = G.showBuffer(root, base, relPath);

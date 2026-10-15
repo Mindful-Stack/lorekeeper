@@ -51,17 +51,23 @@ function fullSha(root, ref) {
     return out === null ? null : out.trim();
 }
 
-// The single tree entry for `relPath` at `ref`: the full `ls-tree` line (not --name-only), so
-// the caller can tell a blob from a tree (a directory) or a commit (a gitlink) — each needs a
-// different outcome, not just "is it there". Returns `{ mode, type, sha }`, the string
-// `'absent'` when ls-tree printed nothing, or null when the git command itself failed.
+// The single tree entry for `relPath` at `ref`: the full `ls-tree` line (not --name-only), read
+// with `-z` (NUL-terminated entries, paths never C-quoted) so a path with an unusual byte is
+// read back exactly rather than guessed at by splitting on `\n`. git's own pathspec matching
+// normalizes a `.`/`..` in the path before matching (e.g. `a/../b` resolves to `b`), so the
+// entry's own name field is checked against `relPath` verbatim: only an exact match is
+// accepted, letting the caller tell a blob from a tree (a directory) or a commit (a gitlink),
+// each needing a different outcome. Returns `{ mode, type, sha }` on an exact match, the string
+// `'absent'` when ls-tree printed nothing, the string `'mismatch'` when it printed an entry
+// whose name is not `relPath`, or null when the git command itself failed.
 function lsTreeEntry(root, ref, relPath) {
-    const out = git(root, ['ls-tree', ref, '--', relPath]);
+    const out = git(root, ['ls-tree', '-z', ref, '--', relPath]);
     if (out === null) return null;
-    const line = out.split('\n').find((l) => l !== '');
-    if (!line) return 'absent';
-    const m = /^(\d+) (\S+) (\S+)\t/.exec(line);
-    return m ? { mode: m[1], type: m[2], sha: m[3] } : null;
+    const entry = out.split('\0').find((e) => e !== '');
+    if (!entry) return 'absent';
+    const m = /^(\d+) (\S+) (\S+)\t([\s\S]*)$/.exec(entry);
+    if (!m || m[4] !== relPath) return 'mismatch';
+    return { mode: m[1], type: m[2], sha: m[3] };
 }
 
 // Like showFile, but the exact bytes git stored: spawnSync with no `encoding`, so a binary

@@ -216,6 +216,17 @@ test('looksUnsafe: absolute paths, .. segments (even internal ones) and control 
     assert.equal(Snap.looksUnsafe('src/a.cs'), false);
 });
 
+// Canonical-paths-only: an empty segment (a doubled or leading/trailing slash) and a `.`
+// segment are just as able to misname what gets written as a `..` one, so they are unsafe too.
+test('looksUnsafe: empty segments (a//b, a trailing slash) and . segments are also unsafe', () => {
+    assert.equal(Snap.looksUnsafe('a//b'), true);
+    assert.equal(Snap.looksUnsafe('src/'), true);
+    assert.equal(Snap.looksUnsafe('/src'), true);
+    assert.equal(Snap.looksUnsafe('./src/b.cs'), true);
+    assert.equal(Snap.looksUnsafe('src/./b.cs'), true);
+    assert.equal(Snap.looksUnsafe('src/a.cs'), false);
+});
+
 test('withinOut: a path under --out is within it; its own ancestor or a sibling is not', () => {
     const out = path.join(path.sep, 'tmp', 'adr-snapshot-out');
     assert.equal(Snap.withinOut(out, out), true);
@@ -278,4 +289,55 @@ test('non-empty --out is refused without touching it', (t) => {
     assert.equal(r.code, 2);
     assert.match(r.stderr, /--out .* is not empty; pass a fresh directory/);
     assert.equal(fs.readFileSync(path.join(out, 'marker.txt'), 'utf8'), 'keep me\n');
+});
+
+// Distinguishes: a directory-shaped path (trailing slash) and a path with a leading `./` are
+// both refused by looksUnsafe before any git call — not merely "absent" because nothing is
+// literally tracked under that exact string, which would be the wrong reason for the same
+// outcome.
+test('canonical paths: a trailing-slash directory path and a leading ./ path are both unavailable', (t) => {
+    const { root, env } = repo(t);
+    write(path.join(root, 'src', 'b.cs'), 'content\n');
+    commitAll(root, env, 'add src/b.cs');
+    const patch = patchFor(root, [['src/', 'src/'], ['./src/b.cs', './src/b.cs']]);
+    const out = path.join(root, 'out');
+    const r = runCli(root, env, 'snapshot', '--diff', patch, '--base', 'main', '--out', out);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const manifest = fs.readFileSync(path.join(out, 'MANIFEST.tsv'), 'utf8');
+    assert.match(manifest, /^src\/\tunavailable$/m);
+    assert.match(manifest, /^\.\/src\/b\.cs\tunavailable$/m);
+    assert.ok(!fs.existsSync(path.join(out, 'src')));
+});
+
+// Distinguishes: the manifest header always starts a real line with "# "; a data path that
+// itself starts with "#" must be escaped so no data line can be mistaken for it.
+test('manifest escaping: a path starting with # cannot look like the header line', (t) => {
+    const { root, env } = repo(t);
+    commitAll(root, env, 'empty');
+    const weirdPath = '# base 0000 head worktree';
+    const patch = patchFor(root, [[weirdPath, weirdPath]]);
+    const out = path.join(root, 'out');
+    const r = runCli(root, env, 'snapshot', '--diff', patch, '--base', 'main', '--out', out);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const manifest = fs.readFileSync(path.join(out, 'MANIFEST.tsv'), 'utf8');
+    const lines = manifest.split('\n').filter(Boolean);
+    assert.equal(lines.length, 2);
+    assert.match(lines[0], /^# base [0-9a-f]{40} head worktree$/);
+    assert.equal(lines[1], `${JSON.stringify(weirdPath)}\tabsent`);
+});
+
+// Distinguishes: --out existing as a regular file is a clean usage error (exit 2), not an
+// uncaught ENOTDIR from fs.readdirSync/fs.mkdirSync crashing the process; and the file is left
+// alone either way.
+test('--out that exists as a regular file is refused, not an uncaught ENOTDIR', (t) => {
+    const { root, env } = repo(t);
+    commitAll(root, env, 'empty');
+    const patch = path.join(root, 'change.patch');
+    write(patch, '');
+    const out = path.join(root, 'out-is-a-file');
+    fs.writeFileSync(out, 'not a directory\n');
+    const r = runCli(root, env, 'snapshot', '--diff', patch, '--base', 'main', '--out', out);
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /--out .* is not a directory/);
+    assert.equal(fs.readFileSync(out, 'utf8'), 'not a directory\n');
 });

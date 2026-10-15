@@ -40,6 +40,14 @@ You review completed work against the plan. You are focused on **plan alignment*
 - Dispatch **knowledge-reader** to load relevant standards for the changed files
 - Verify the implementation follows loaded standards
 
+### 5. Governing Decisions
+- Read the plan's *Governing decisions* header (the caller passes the plan path or the header)
+- For each quoted rule, check the task's code does not contradict it
+- A contradiction is **Critical** and cites the rule id (`kb/ADR-0003.R1`) and `file:line`
+- A header that says "None" means there is nothing to check here. A plan with no header at all
+  gets one Important note about the **plan**, not the implementation: plans written before this
+  rule have none. Do not mark the task non-compliant for it.
+
 ## How to Review
 
 1. Read the task description from the plan (provided by the caller)
@@ -59,6 +67,7 @@ You review completed work against the plan. You are focused on **plan alignment*
 ### Requirements Check
 - [requirement 1]: ✅ Implemented | ❌ Missing | ⚠️ Partial
 - [requirement 2]: ✅ Implemented | ❌ Missing | ⚠️ Partial
+- Governing decisions: ✅ No rule contradicted | ❌ <id>.R<n> at file:line
 
 ### Deviations
 - [deviation description]: Justified ✅ | Problematic ❌

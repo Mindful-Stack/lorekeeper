@@ -28,7 +28,7 @@ For each task:
 1. Mark as in_progress
 2. Follow each step exactly (plan has bite-sized steps)
    - If the task involves a different domain/tech than previously loaded, dispatch **knowledge-reader** with implementation hints
-   - After completing the task, dispatch **plan-compliance-reviewer** to verify implementation matches the plan
+   - After completing the task, dispatch **plan-compliance-reviewer** with the task text and the plan path, to verify the implementation matches the plan and its *Governing decisions*
 3. Run verifications as specified
 4. Mark as completed
 

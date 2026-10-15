@@ -16,6 +16,9 @@ Task tool (general-purpose):
 
     Read the brief: [path to .agent/sdd/task-N-brief.md]
 
+    Read the plan's Governing decisions header: [path to the plan] (section "Governing decisions").
+    Code that contradicts a quoted rule is a ❌ issue, citing the rule id.
+
     ## What Implementer Claims They Built
 
     Read their report: [path to .agent/sdd/task-N-report.md]

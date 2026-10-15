@@ -9,13 +9,30 @@ const fs = require('fs');
 const path = require('path');
 const G = require('./git');
 
-// A relative path with a `..` segment, or an absolute one, is refused outright: no git call,
-// no fs touch. This alone stops `../evil` and `/etc/passwd`-shaped entries.
+// A control character (0x00-0x1f, 0x7f) in a path is refused on its own: a NUL would make
+// spawnSync throw synchronously (git's argv is a C string), and a tab or newline would, if
+// written straight into the manifest, forge a second, attacker-chosen manifest line.
+const CONTROL_CHAR_RE = /[\x00-\x1f\x7f]/;
+
+// A relative path with a `..` segment, an absolute one, or one holding a control character, is
+// refused outright: no git call, no fs touch. This alone stops `../evil`, `/etc/passwd`-shaped
+// and NUL/tab/newline-shaped entries. Exported for direct unit tests: the property this guards
+// does not depend on git also happening to refuse the same path (it sometimes does not).
 function looksUnsafe(relPath) {
-    return path.isAbsolute(relPath) || relPath.split('/').some((seg) => seg === '..');
+    return path.isAbsolute(relPath) || CONTROL_CHAR_RE.test(relPath) || relPath.split('/').some((seg) => seg === '..');
 }
 
-// `candidateReal` is inside `outReal` (or is it), both already realpath'd.
+// A manifest path field: plain when it is printable and does not start with `"` (which would
+// otherwise be read back as the start of a JSON-escaped field); JSON-escaped otherwise, so a
+// control character never becomes a stray line break or tab inside the manifest, and a path
+// that happens to start with a literal `"` cannot be confused with an escaped one either.
+function manifestField(p) {
+    return CONTROL_CHAR_RE.test(p) || p.startsWith('"') ? JSON.stringify(p) : p;
+}
+
+// `candidateReal` is inside `outReal` (or is it), both already realpath'd. Exported alongside
+// `looksUnsafe` for direct unit tests of the two guards that together hold the containment
+// property, independent of whatever git itself does or does not accept.
 function withinOut(outReal, candidateReal) {
     const rel = path.relative(outReal, candidateReal);
     return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
@@ -47,15 +64,17 @@ function writeUnderOut(outReal, relPath, buf) {
     }
 }
 
-// One path's state: 'skipped' (beyond --max), 'unavailable' (unsafe path, or a git command
-// failed, or the write itself was refused), 'absent' (not in the tree at `base`), or 'present'
-// (written under `out`).
+// One path's state: 'skipped' (beyond --max), 'unavailable' (unsafe path, a git command failed,
+// the entry at `base` is not a blob — a tree/directory or a commit/gitlink — or the write
+// itself was refused), 'absent' (not in the tree at `base`), or 'present' (written under
+// `out`).
 function classify(root, base, outReal, relPath, index, max) {
     if (index >= max) return 'skipped';
     if (looksUnsafe(relPath)) return 'unavailable';
-    const presentAtBase = G.lsTreePresent(root, base, relPath);
-    if (presentAtBase === null) return 'unavailable';
-    if (!presentAtBase) return 'absent';
+    const entry = G.lsTreeEntry(root, base, relPath);
+    if (entry === null) return 'unavailable';
+    if (entry === 'absent') return 'absent';
+    if (entry.type !== 'blob') return 'unavailable';
     const buf = G.showBuffer(root, base, relPath);
     if (buf === null) return 'unavailable';
     return writeUnderOut(outReal, relPath, buf) ? 'present' : 'unavailable';
@@ -76,10 +95,10 @@ function snapshot({
     paths.forEach((p, i) => {
         const state = classify(root, base, outReal, p, i, max);
         counts[state]++;
-        manifest.push(`${p}\t${state}`);
+        manifest.push(`${manifestField(p)}\t${state}`);
     });
     fs.writeFileSync(path.join(out, 'MANIFEST.tsv'), `${manifest.join('\n')}\n`);
     return counts;
 }
 
-module.exports = { snapshot };
+module.exports = { snapshot, looksUnsafe, withinOut };

@@ -51,11 +51,17 @@ function fullSha(root, ref) {
     return out === null ? null : out.trim();
 }
 
-// Whether `relPath` exists at `ref` (a blob or a tree): true/false from `ls-tree --name-only
-// <ref> -- <path>` printing something or nothing, null when the git command itself failed.
-function lsTreePresent(root, ref, relPath) {
-    const out = git(root, ['ls-tree', '--name-only', ref, '--', relPath]);
-    return out === null ? null : out.trim() !== '';
+// The single tree entry for `relPath` at `ref`: the full `ls-tree` line (not --name-only), so
+// the caller can tell a blob from a tree (a directory) or a commit (a gitlink) — each needs a
+// different outcome, not just "is it there". Returns `{ mode, type, sha }`, the string
+// `'absent'` when ls-tree printed nothing, or null when the git command itself failed.
+function lsTreeEntry(root, ref, relPath) {
+    const out = git(root, ['ls-tree', ref, '--', relPath]);
+    if (out === null) return null;
+    const line = out.split('\n').find((l) => l !== '');
+    if (!line) return 'absent';
+    const m = /^(\d+) (\S+) (\S+)\t/.exec(line);
+    return m ? { mode: m[1], type: m[2], sha: m[3] } : null;
 }
 
 // Like showFile, but the exact bytes git stored: spawnSync with no `encoding`, so a binary
@@ -115,5 +121,5 @@ function exemptTrailers(root, ref) {
 
 module.exports = {
     gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, originUrl, repoName, defaultBranch, exemptTrailers,
-    fullSha, lsTreePresent, showBuffer,
+    fullSha, lsTreeEntry, showBuffer,
 };

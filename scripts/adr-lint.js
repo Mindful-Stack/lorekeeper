@@ -397,6 +397,11 @@ function cmdSnapshot(flags) {
     const patch = readInput(flags.diff, 'diff');
     const paths = [...new Set(parsePatchPaths(patch))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     const out = path.resolve(flags.out);
+    // A stale or attacker-primed --out (a leftover file, a planted symlink) is refused outright
+    // rather than written into; never deleted, so the caller can look at it and decide.
+    if (fs.existsSync(out) && fs.readdirSync(out).length > 0) {
+        throw new UsageError(`--out ${display(out)} is not empty; pass a fresh directory`);
+    }
     const counts = S.snapshot({
         root, base, paths, out, max,
     });

@@ -66,7 +66,7 @@ Pick one action from what the user says. If two fit, ask one question.
 | which decisions apply to a change, a path, or a topic | **what binds** |
 | nothing, or `list`, optionally a status | **list** |
 | find the decisions the code already made | **discover** |
-| the review is blocking on a record ("why is review blocking?", "can I merge anyway?") | no action: explain from `<plugin-root>/references/pr-decisions.md` — conform, replace the record, or record the uncovered choice in this PR; to merge anyway, a member of the repository's bypass group overrides the required check. |
+| the review is blocking on a record ("why is review blocking?", "can I merge anyway?") | no action: explain from `<plugin-root>/references/pr-decisions.md` — conform, or replace the record; for an uncovered choice, low tier: add the record and have it accepted in this PR before merge, high tier: open its own ADR PR and wait until it is accepted; to merge anyway, a member of the repository's bypass group overrides the required check. |
 
 **This file holds no procedure.** Once you know the action, Read
 `<plugin-root>/skills/recording-decisions/actions/<action>.md` (`record`, `ratify`, `amend`,

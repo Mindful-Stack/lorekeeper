@@ -105,9 +105,11 @@ When auto-detecting (no explicit target): try `gh pr diff` first, fall back to `
 Fetch everything **before** dispatching any agent. The architect has only Glob, Grep and Read,
 so it must be handed files.
 
-**Run directory:** every review run gets its own fresh directory,
-`<scratch>/lore-review-<YYYYMMDD-HHMMSS>/` — never a fixed name. Create it as part of saving the
-first file below, in one command, rather than as a separate empty-directory step:
+**Run directory:** `<scratch>` is the session's scratchpad directory, when one is announced in the
+environment; otherwise `$TMPDIR` (or `/tmp` if that is unset too). Every review run gets its own
+fresh directory under it, `<scratch>/lore-review-<YYYYMMDD-HHMMSS>/` — never a fixed name. Create
+it as part of saving the first file below, in one command, rather than as a separate
+empty-directory step:
 
 ```bash
 mkdir -p <dir> && gh pr diff [<number>] > <dir>/patch     # or git diff / git show, per Step 2
@@ -168,22 +170,23 @@ Also check for repo-specific knowledge:
 
 ### Step 5: ADR Verdict
 
-If the architect had no patch to check (it ends its report with no `adr-findings` block for that
-reason), skip the verdict: write no findings file, and report `**ADR check:** could not run
-(architect had no patch to check)`.
+Whenever the architect returned a report, write it and run the verdict on it — including a report
+that ends with no `adr-findings` block (the architect had no patch to check, for example). Do not
+judge the reason yourself and skip the gate: `adr-lint verdict`'s `parseFindings` already exits 2
+on a report with zero, more than one, or an unterminated block, so a missing block fails the gate
+mechanically, the same way any other invalid-findings report does. The only case with nothing to
+write is Step 4's select failure, which never reaches this step — its own `could not run (select
+exit <n>)` line already covers it.
 
-Otherwise, write the architect's **entire report, verbatim** — every section, not just the
-`adr-findings` block — with the Write tool, into one file: `findings-out <file>` when the target
-gave one, else `<dir>/findings.md` (the run directory from Step 3, never read before this run, so
-the Write tool has nothing stale to refuse). Do not edit, re-classify, drop entries, or extract
-"the" `adr-findings` block yourself — `adr-lint verdict`'s `parseFindings` finds the fenced block
-inside the report on its own, and rejects a report with zero, more than one, or an unterminated
-block, so a report that smuggles in a second block can no longer be defeated by having you pick
-one of them to write. **Write it only when every step succeeded:** select exited 0 and the
-architect returned a report — the same condition that already gates this step. Writing the one
-file CI also consumes is the point: `findings-out` holds the architect's full report, needs no
-separate gate beyond this one, and CI fails closed on the missing file, never on an empty
-findings list that hides a failed step.
+Write the architect's **entire report, verbatim** — every section, not just the `adr-findings`
+block — with the Write tool, into one file: `findings-out <file>` when the target gave one, else
+`<dir>/findings.md` (the run directory from Step 3, never read before this run, so the Write tool
+has nothing stale to refuse). Do not edit, re-classify, drop entries, or extract "the"
+`adr-findings` block yourself — `parseFindings` finds the fenced block inside the report on its
+own, so a report that smuggles in a second block can no longer be defeated by having you pick one
+of them to write. Writing the one file CI also consumes is the point: `findings-out` holds the
+architect's full report, needs no separate gate beyond this one, and CI fails closed on the
+missing file, never on an empty findings list that hides a failed step.
 
 Run the verdict on that file:
 
@@ -212,7 +215,8 @@ Fold the ADR findings in at the verdict's severities, each citing its ids exactl
 JSON gives them — a rule id such as `<repo>/ADR-NNNN.R1` stays whole, not split into a record and
 a rule — so CI logs and readers can search for them:
 - contradiction → conform, or replace the record (`/lore:adr replace <id>: <new decision>`);
-- uncovered choice → record it (`/lore:adr <the decision>`) in this PR;
+- uncovered choice → low tier: add the record and have it accepted in this PR before merge; high
+  tier: open its own ADR PR (`/lore:adr <the decision>`) and wait until it is accepted;
 - fired trigger → note the change on the record; the decision goes back to its deciders;
 - stale fact → include the observation the architect drafted;
 - dangling citation → fix the id in the PR description or code.

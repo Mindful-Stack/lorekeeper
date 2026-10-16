@@ -155,8 +155,9 @@ Then dispatch two agents in parallel (both Task calls in one message):
   "Be thorough — include all standards, learnings, and review checklists that apply to these changes.
   Don't filter by relevance ranking, but scope to what was changed."
 - the **architect** agent in `check` mode with: the patch path, the select JSON (inline), the PR
-  description path (if any), the changed-file list, and a one-paragraph summary of the diff. It cites changed lines from the patch and ends with an
-  `adr-findings` block — unless it had no patch to read, in which case it ends with none.
+  description path (if any), the changed-file list, and a one-paragraph summary of the diff. It
+  cites changed lines from the patch and ends with an `adr-findings` block — unless it had no
+  patch to read, in which case it ends with none.
 
 Include both outputs in your review context.
 
@@ -193,9 +194,8 @@ that `findings-out` could not be written — CI will fail closed on the missing 
 
 Exit 0: nothing blocks. Exit 1: blocking findings remain. Exit 2: the verdict could not run —
 causes include a missing or invalid `adr-findings` block, more than one block, or an unknown
-finding class. Report its stderr,
-print `**ADR check:** could not run (verdict exit 2: <stderr>)`, and count it as one blocking
-finding: the check failed closed.
+finding class. Report its stderr, print `**ADR check:** could not run (verdict exit 2:
+<stderr>)`, and count it as one blocking finding: the check failed closed.
 
 The summary line's count comes from the verdict's `blocking` field. Never count it yourself.
 

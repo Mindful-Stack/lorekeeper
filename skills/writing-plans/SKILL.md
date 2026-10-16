@@ -63,7 +63,7 @@ a verdict on whether the plan may proceed. Print it before saying anything else 
 
 **Stop condition.** Stop before writing any task when the architect's report contains either:
 - a line carrying both literal tokens `[high tier]` and `[depends: yes]` (under *Not binding*); or
-- a *Triggers fired* section that is not exactly `none`.
+- a *Triggers fired* section that lists any entry.
 
 Say which record and why, and that it must be accepted (or replaced, or its trigger resolved)
 first.
@@ -76,14 +76,22 @@ rule and the conflict, and say the spec needs a superseding record (or the rule 
 this plan can proceed. Check 6 is the last look for a contradiction introduced while drafting, not
 the enforcement point for one already visible in the spec.
 
-**Low-tier drafts from brainstorming.** If the spec's `## Decisions` section holds a drafted
-`proposed` record in a fenced ```markdown block (brainstorming stores low-tier drafts there, to be
-applied as a ride-along rather than ratified up front), copy each one into the plan:
-- list it in the *Governing decisions* header as "Proposed (low tier, applied in Task N)" — never
-  as binding;
-- schedule an early task, before any task that builds on it, that applies it via the
-  **recording-decisions** skill as a ride-along on the implementing branch, and lists the applied
-  record under *Adds* in the PR's `## Decisions` section (`references/pr-decisions.md`).
+**Drafts from brainstorming.** If the spec's `## Decisions` section holds a drafted `proposed`
+record in a fenced ```markdown block, read its `Tier: high` or `Tier: low` line — brainstorming
+writes one per draft, both tiers stored the same way. Handle each by its tier:
+
+- **High tier is a third stop condition, unless the draft is already an accepted record in the
+  catalogue.** Check the architect's *Binding decisions* (from *Governing Decisions* above) — or,
+  once the draft has a real id, `adr-lint index --status accepted --json` — for a record matching
+  it. If none is accepted yet, stop before writing any task: name the draft (id-to-be/title) and
+  say it must have its own ADR PR opened (recording-decisions skill) and accepted before this plan
+  can proceed.
+- **Low tier** drafts alone become the ride-along apply task: copy each one into the plan,
+  - list it in the *Governing decisions* header as "Proposed (low tier, applied in Task N)" — never
+    as binding;
+  - schedule an early task, before any task that builds on it, that applies it via the
+    **recording-decisions** skill as a ride-along on the implementing branch, and lists the applied
+    record under *Adds* in the PR's `## Decisions` section (`references/pr-decisions.md`).
 
 ## Bite-Sized Task Granularity
 

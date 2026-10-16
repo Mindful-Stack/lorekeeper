@@ -41,8 +41,9 @@ You MUST create a task for each of these items and complete them in order:
    any sensitivity). Reversible ones go in the spec as plain design.
 6. **Write design doc** — save to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md` with a
    `## Decisions` section: the binding records it follows (by id); for each proposed record, its
-   id-to-be/title, tier, and the full drafted record text in a fenced ```markdown block, so a later
-   session can apply it without this chat; "No new decisions" when there are none; commit
+   id-to-be/title, a `Tier: high` or `Tier: low` line, and the full drafted record text in a fenced
+   ```markdown block, so a later session can apply it without this chat and never has to infer the
+   tier; "No new decisions" when there are none; commit
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written spec** — ask user to review the spec file before proceeding
 9. **Transition** — if any proposed record is **high tier**: apply it from the spec's stored draft
@@ -134,8 +135,8 @@ digraph brainstorming {
 **Documentation:**
 
 - Write the validated design (spec) to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md`, including
-  the `## Decisions` section (binding records followed; each proposed record's id-to-be/title, tier,
-  and full drafted text; or "No new decisions")
+  the `## Decisions` section (binding records followed; each proposed record's id-to-be/title, a
+  `Tier: high` or `Tier: low` line, and full drafted text; or "No new decisions")
   - (User preferences for spec location override this default)
 - Use elements-of-style:writing-clearly-and-concisely skill if available
 - Commit the design document to git

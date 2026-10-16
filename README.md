@@ -381,11 +381,10 @@ jobs:
             const fs = require("fs"), path = require("path");
             const h = JSON.parse(fs.readFileSync(0, "utf8"));
             const real = (p) => { try { return fs.realpathSync(p); } catch (e) { return null; } };
-            const kb = real(process.env.KNOWLEDGE_BASE_PATH);
+            const trusted = real(path.join(process.env.KNOWLEDGE_BASE_PATH, "knowledge", "adrs"));
             const home = real(h.sharedHome);
-            const under = !!kb && !!home && (home === kb || home.startsWith(kb + path.sep));
-            if (h.sharedHomeExists !== true || real(h.sharedRoot) !== kb || !under) {
-              console.error(`shared ADR home ${h.sharedHome} (KB ${h.sharedRoot}) is not the trusted KNOWLEDGE_BASE_PATH ${process.env.KNOWLEDGE_BASE_PATH}`);
+            if (h.sharedHomeExists !== true || !trusted || home !== trusted) {
+              console.error(`shared ADR home ${h.sharedHome} is not the trusted KNOWLEDGE_BASE_PATH/knowledge/adrs (${trusted})`);
               process.exit(1);
             }'
       - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} docs/adr
@@ -409,8 +408,11 @@ jobs:
   the findings write, and the verdict exits 2 on every PR.
 - **Shared-home preflight:** `adr-lint homes` resolves the KB from the PR's own
   `.lorekeeper/config.json` before `$KNOWLEDGE_BASE_PATH`, so a PR could point the shared home at
-  records it wrote itself. The step fails unless the shared home exists, the KB root is
-  `$KNOWLEDGE_BASE_PATH` (compared as realpaths), and the shared home lies inside it.
+  records it wrote itself — including by setting `adr.sharedDir` to something like `..` to walk
+  the resolved home out of `knowledge/adrs` entirely while it still passes a looser "lies inside
+  the KB" check. The step fails unless the shared home exists and its realpath is **exactly**
+  `$KNOWLEDGE_BASE_PATH/knowledge/adrs` — the one location this job trusts, not merely somewhere
+  under it.
 - **`--add-dir`:** the plugin and the KB live outside the checkout (`$LORE`,
   `$KNOWLEDGE_BASE_PATH`), so Read/Glob/Grep need both added explicitly for a non-interactive
   run to reach them.

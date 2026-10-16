@@ -651,6 +651,22 @@ test('C3: verdict reads the block out of a full report file, not just bare JSON 
     assert.equal(v.blocking, 1);
 });
 
+test('C3: a report with no adr-findings block at all exits 2', (t) => {
+    const w = workspace(t);
+    const file = path.join(w.root, 'findings.md');
+    write(file, [
+        '## Contradictions with accepted records',
+        'none',
+        '',
+        '## Triggers fired',
+        'none',
+        '',
+    ].join('\n'));
+    const r = runCli(w.api, w.env, 'verdict', '--findings', file);
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /not valid JSON/);
+});
+
 test('C3: a findings file that does not exist exits 2 (CI fails closed when the review wrote none)', (t) => {
     const w = workspace(t);
     const r = runCli(w.api, w.env, 'verdict', '--findings', path.join(w.root, 'never-written.json'));

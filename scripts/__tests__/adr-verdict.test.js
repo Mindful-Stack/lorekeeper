@@ -61,6 +61,49 @@ test('parseFindings rejects a single opener with no closing fence', () => {
     assert.throws(() => parseFindings(md), /not terminated/);
 });
 
+// Regression: a complete block followed by a SECOND opener indented two spaces. CommonMark
+// allows 0-3 spaces of indentation before a fence; the old opener regex was anchored at column
+// 0, so this second opener (holding a contradiction) was invisible to the cardinality check and
+// the verdict silently read only the first, empty block: blocking: 0.
+test('parseFindings counts a second opener indented up to 3 spaces (CommonMark fence indentation)', () => {
+    const md = [
+        '```adr-findings',
+        '{"findings":[]}',
+        '```',
+        '  ```adr-findings',
+        '{"findings":[{"class":"contradiction","ids":["kb/ADR-0001"],"summary":"hidden"}]}',
+        '```',
+    ].join('\n');
+    assert.throws(() => parseFindings(md), /more than one adr-findings block/);
+});
+
+test('parseFindings accepts a four-backtick opener (CommonMark: a run of 3 or more)', () => {
+    const md = ['````adr-findings', '{"findings":[{"class":"stale-fact","ids":["kb/ADR-0001.F1"],"summary":"x"}]}', '````'].join('\n');
+    const [x] = parseFindings(md);
+    assert.equal(x.class, 'stale-fact');
+});
+
+test('parseFindings accepts a tilde fence', () => {
+    const md = ['~~~adr-findings', '{"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '~~~'].join('\n');
+    const [x] = parseFindings(md);
+    assert.equal(x.class, 'dangling');
+});
+
+test('parseFindings rejects a closer with trailing text after the fence (not a valid CommonMark closer)', () => {
+    const md = ['```adr-findings', '{"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '``` oops'].join('\n');
+    assert.throws(() => parseFindings(md), /not terminated/);
+});
+
+test('parseFindings requires the closer to use the same fence character as the opener', () => {
+    const md = ['```adr-findings', '{"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '~~~'].join('\n');
+    assert.throws(() => parseFindings(md), /not terminated/);
+});
+
+test('parseFindings requires the closer run to be at least as long as the opener\'s', () => {
+    const md = ['````adr-findings', '{"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '```'].join('\n');
+    assert.throws(() => parseFindings(md), /not terminated/);
+});
+
 // The review now writes the architect's whole report (every section, not just the fenced block)
 // to the findings file; parseFindings must find the one block inside it unaided.
 test('parseFindings reads the block out of a full architect report, headed sections and all', () => {
@@ -87,6 +130,18 @@ test('verdict throws on unknown finding class, protecting against prototype poll
         () => verdict({ findings: [{ class: '__proto__', ids: [], summary: 'x' }] }),
         /unknown class __proto__/
     );
+});
+
+test('parseFindings rejects a non-string "where"', () => {
+    assert.throws(
+        () => parseFindings('{"findings":[{"class":"trigger","ids":[],"summary":"x","where":42}]}'),
+        /where must be a string/
+    );
+});
+
+test('parseFindings accepts a string "where" and keeps it', () => {
+    const [x] = parseFindings('{"findings":[{"class":"trigger","ids":[],"summary":"x","where":"kb/ADR-0001"}]}');
+    assert.equal(x.where, 'kb/ADR-0001');
 });
 
 test('parseFindings ignores an extra key, so older architect output still parses', () => {

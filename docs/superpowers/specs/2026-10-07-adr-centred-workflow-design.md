@@ -350,40 +350,28 @@ agent).
    and classifies each finding — **contradiction** with an accepted record, an **uncovered**
    hard-to-reverse choice no record covers, a fired invalidation **trigger**, a **stale fact** (a
    `Facts relied on` entry the diff shows false), or a **dangling** citation (an id resolving
-   nowhere). A finding naming several rules is reported once per rule broken. The report ends with
+   nowhere). A finding may name several rules. The report ends with
    an `adr-findings` block holding classes only, no severities; if the architect could not read the
    whole patch it emits none, so the gate fails closed instead of passing on an empty list.
-3. **Verdict (deterministic):** `adr-lint verdict` turns that block, plus the PR body and (for local
-   reviews) commit trailers, into a severity per finding from one table keyed by class —
-   contradiction, uncovered and trigger are Critical and block; a dangling citation is Important; a
-   stale fact is Minor — and exits 1 while anything still blocks. CI gates on that exit code, not on
-   the model's prose. A finding the base copy already had (`introduced: false`) is capped at
-   Important: it isn't this change's fault.
-4. **Escape hatch:** `ADR-Exempt: <reason>` in the PR description, or as a commit trailer (read with
-   `--base`) when reviewing local changes with no PR, exempts every finding; `ADR-Exempt: <id> —
-   <reason>` exempts only the findings naming that id or a rule under it, and a finding naming
-   several rules clears only once every one of them is exempted. A line counts only in visible
-   text — never inside an HTML comment or a fenced code block — one id per line; any line starting
-   like a record id (`ADR-\d`, any case, with or without a home) is either a well-formed, qualified
-   `<id> — <reason>` or invalid, never a whole-PR exemption. An unused or reasonless exemption is
-   listed, not applied, and every exemption is echoed into the review summary so it stays visible.
+3. **Verdict (deterministic):** `adr-lint verdict` turns that block into a severity per finding
+   from one table keyed by class — contradiction, uncovered and trigger are Critical and block; a
+   dangling citation is Important; a stale fact is Minor — and exits 1 while anything blocks. CI
+   gates on that exit code, not on the model's prose. The review reads the PR description itself
+   and reports a missing *Decisions* section as one Minor finding.
+4. **Override:** every Critical finding blocks. The remedies are to conform, replace the record,
+   or record the uncovered choice in the PR. The only override is the repository's admin bypass
+   of the required check, used by the team's bypass group.
 
 The check is blocking from the start. Its prompt is expected to need tuning; false positives are
-collected from exemptions and fed back.
+collected from bypassed merges and fed back.
 
 ## The validator
 
 `scripts/adr-lint.js` (Node, no dependencies, cross-platform), with subcommands `check`,
 `select` (from a patch with `--diff`, or from planned paths with `--paths`), `backfill`,
-`verdict` (turns an `adr-findings` block plus a PR body and commit trailers into a severity
-verdict; exits 0 when nothing blocks, 1 when a finding still blocks, 2 on a usage error or an
-invalid findings document — more than one `adr-findings` block, an unknown class, or unreadable
-commit trailers), `snapshot` (writes the base-revision copy of a patch's changed paths under
-`--out`, plus a `MANIFEST.tsv` recording each path's state — present, absent, skipped past its
-file cap, or unavailable, the last covering an unsafe or control-character path, a git failure, or
-anything that isn't a blob at a canonical path; nothing is ever written outside `--out`, and a
-non-empty `--out` is refused; the review takes the snapshot at the left side of the reviewed
-diff), and three read-only helpers the commands use instead of re-deriving the rules in prose: `homes` (the
+`verdict` (turns an `adr-findings` block into a severity verdict; exits 0 when nothing blocks,
+1 when a finding blocks, 2 on a usage error or an invalid findings document — more than one
+`adr-findings` block, invalid JSON, or an unknown class), and three read-only helpers the commands use instead of re-deriving the rules in prose: `homes` (the
 resolved homes, the governed repo, and per home its `repoRoot` (the git toplevel holding it,
 `null` when not checked out), `relDir` (its path inside that repo) and the default branch read
 from that repo (`origin/HEAD` when set, else asked of origin with `git ls-remote --symref`, else
@@ -549,18 +537,19 @@ Three implementation plans, in order:
   `select` integration, `doctor`, and the `adr-lint` helpers they call (`homes`, `index`, `next`,
   `select --paths`).
 - **C. Workflow enforcement** — `review` severity mapping (for the architect's four classes) and
-  escape hatch, `recording-decisions`, `brainstorming` terminal state, `writing-plans` header,
+  the verdict gate, `recording-decisions`, `brainstorming` terminal state, `writing-plans` header,
   plan-compliance review.
 
 ## Testing
 
 - `adr-lint` unit tests: one fixture per rule, valid and invalid, including coinciding homes,
   cross-home warnings, the ride-along rule, each of the five locked-record edits (and a
-  spelling change rejected), a migration backfill passing against `--base`, and a `related` link
-  to an accepted record passing without a reverse edit.
+  spelling change rejected), a migration backfill passing against `--base`, a `related` link
+  to an accepted record passing without a reverse edit, and `verdict`'s severity table and
+  fail-closed validation.
 - Babashka scenarios: `/lore:adr` new (local vs shared home by blast radius), `accept` refusing
   without a named decider, `amend` of a proposal in place, `observe` on an accepted record, `check` reporting Critical on a
-  contradiction and on an uncovered choice, `ADR-Exempt` downgrade. The fixture workspace gains a
+  contradiction and on an uncovered choice. The fixture workspace gains a
   second repo with a `docs/adr/` home.
 
 ## Open items for later designs

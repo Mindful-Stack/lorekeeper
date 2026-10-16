@@ -501,8 +501,9 @@ home first, then the shared home; when both have it the command asks.
 **`architect` agent**
 - Catalogue load greps every resolved local home, the team KB and shared KBs.
 - `bind` and `check` take the `select` output first, then synonym expansion.
-- `check` returns the four finding classes (contradiction, fired trigger, stale fact, uncovered
-  choice); the review that dispatches it assigns their severities (Plan C). It reports `rejected`
+- `check` returns five finding classes (contradiction, fired trigger, stale fact, uncovered
+  choice, dangling citation) in one `adr-findings` block; `adr-lint verdict` assigns their
+  severities (Plan C). It reports `rejected`
   and `superseded` records in the area as "already ruled out" and in-flight cross-home pairs.
 - With no tools beyond Glob, Grep and Read, the architect takes the catalogue (`adr-lint index
   --json`) and `select` output from its caller, and falls back to resolving the homes itself.

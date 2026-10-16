@@ -536,7 +536,7 @@ Three implementation plans, in order:
 - **B. Writing records** — `/lore:adr` actions, `knowledge-updater`, `architect` catalogue and
   `select` integration, `doctor`, and the `adr-lint` helpers they call (`homes`, `index`, `next`,
   `select --paths`).
-- **C. Workflow enforcement** — `review` severity mapping (for the architect's four classes) and
+- **C. Workflow enforcement** — `review` severity mapping (for the architect's five classes) and
   the verdict gate, `recording-decisions`, `brainstorming` terminal state, `writing-plans` header,
   plan-compliance review.
 

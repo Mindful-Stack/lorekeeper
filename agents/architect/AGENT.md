@@ -28,14 +28,6 @@ another team's KB — and numbered rules in its Decision (`R1`, `R2`, …), cite
   path and `cited` when the PR cites it. Status `missing` means a cited id that resolves nowhere.
   Older callers may pass the tab-separated form (`id`, `status`, `path`, `reasons`); read it the
   same way.
-- **Base snapshots** (`check` only) — a directory holding the base copy of changed files at their
-  repo-relative paths, plus `MANIFEST.tsv` with one line per changed file: `<path>\t<state>`,
-  where state is `present` (copy saved), `absent` (the file did not exist on the base), `skipped`
-  (over the cap) or `unavailable` (git failed). Only `present` and `absent` are evidence. For
-  `skipped` and `unavailable`, and for any file missing from the manifest, you cannot know: the
-  finding is `introduced: true`. The header line `# base <sha> head <sha|worktree>` names the two
-  revisions. When head is `worktree`, the full head copy of each changed file is in the working
-  tree: read it, not only the hunks.
 - The mode and its context (below).
 
 ## Load the catalogue
@@ -193,15 +185,10 @@ requirement somebody once had.
 3. Read every accepted candidate in full and compare the diff with each rule, each fact relied
    on, and each trigger. Read ruled-out candidates too: a diff that brings back a rejected option
    contradicts the rejection's reasoning.
-4. **Introduced or inherited.** For each finding, look up the cited file in the snapshot
-   manifest. Mark the finding `"introduced": false` only when the state is `present` and the base
-   copy already shows the same contradiction, fired trigger or uncovered choice. Every other
-   case is `"introduced": true`: `absent`, `skipped`, `unavailable`, no manifest at all. Never
-   guess from the hunk alone, and never treat an unreadable base as a new file.
-5. **Records the change adds.** A record the diff itself adds (in any home, proposed or
+4. **Records the change adds.** A record the diff itself adds (in any home, proposed or
    accepted) covers the choice it records: do not report that choice as uncovered. Whether it is
    accepted before merge is the validator's job, not yours.
-6. Report findings in five classes (the four below plus dangling citations). Cite code by
+5. Report findings in five classes (the four below plus dangling citations). Cite code by
    `path:line-range` from the diff, rules by id, facts by `F#`, and records by id and section.
 
 ```markdown
@@ -251,8 +238,7 @@ block holding your own findings (when you read the whole patch).
 ```adr-findings
 {"findings": [
   {"class": "contradiction", "ids": ["<record-id>", "<record-id>.R<n>"],
-   "where": "<path>:<line-range>", "summary": "<one line>",
-   "introduced": true}
+   "where": "<path>:<line-range>", "summary": "<one line>"}
 ]}
 ```
 ````
@@ -260,8 +246,7 @@ block holding your own findings (when you read the whole patch).
 - `class`: `contradiction` · `trigger` · `stale-fact` · `uncovered` · `dangling`.
 - `ids`: the record id first, then the rule (`.R<n>`) or fact (`.F<n>`) the finding rests on;
   `[]` for an uncovered choice; a fired trigger: the record id alone; the cited id for a dangling
-  citation. **One finding per rule broken**: code that breaks R1 and R2 is two findings, so each
-  can be exempted on its own.
+  citation. A finding may name several rules of the same record.
 - `summary`: one line. `where`: `path:line-range` when there is one.
 - No findings: `{"findings": []}`. Never omit the block when you read the whole patch; omit it
   only when the patch was missing, unreadable, or you could not read all of it.

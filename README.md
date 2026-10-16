@@ -309,8 +309,7 @@ repair, a schema backfill). It has no dependencies:
 node scripts/adr-lint.js check --ci --home local --base origin/main docs/adr  # CI: fetch-depth: 0
 node scripts/adr-lint.js select --repo api --diff change.patch                # records a diff touches
 node scripts/adr-lint.js backfill --dry-run <adr-dir>                         # add id + classification keys
-node scripts/adr-lint.js verdict --findings adr-findings.json --pr-body pr-body.md  # CI gate: exit 1 = blocking
-node scripts/adr-lint.js snapshot --diff change.patch --base origin/main --out base/  # base copies for the `introduced` check
+node scripts/adr-lint.js verdict --findings adr-findings.json                 # CI gate: exit 1 = blocking
 ```
 
 A plain `check` reports a proposal that is not yet accepted (in the shared home, or riding along
@@ -348,23 +347,20 @@ the code against them, and asks `adr-lint verdict` whether anything blocks:
 | makes a *Facts relied on* entry false | Minor (draft an observation) |
 | cites an id that resolves nowhere | Important |
 
-A finding the base branch already had is reported as Important, not blocking. To merge past a
-blocking finding, add `ADR-Exempt: <id> — <reason>` (or `ADR-Exempt: <reason>` for the whole PR)
-to the PR description; see `references/pr-decisions.md`. Exemptions are always listed in the
-review.
+When a Critical finding blocks: conform, replace the record (`/lore:adr replace …`), or record
+the uncovered choice in the PR. To merge anyway, a member of the repository's bypass group
+overrides the required check. See `references/pr-decisions.md`.
 
-`adr-lint verdict --findings <file> --pr-body <file>` prints a JSON verdict (`blocking` and
-`exempted` counts, per-finding severity, exemption bookkeeping) and exits `0` when nothing
-blocks, `1` when a finding still blocks, and `2` when it could not judge — findings missing or
-invalid, more than one `adr-findings` block, an unknown finding class, a `--base` ref that
-cannot be found, or unreadable commit trailers. A CI job gates on the exit code, not on review
+`adr-lint verdict --findings <file>` prints a JSON verdict (the `blocking` count, per-severity
+`counts`, and each finding with its severity) and exits `0` when nothing blocks, `1` when a
+finding blocks, and `2` when it could not judge — findings missing or invalid, more than one
+`adr-findings` block, or an unknown finding class. A CI job gates on the exit code, not on review
 prose. A sketch:
 
 ```yaml
 on:
   pull_request:
-    # `edited`: adding or removing an ADR-Exempt line must re-run the gate.
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    types: [opened, synchronize, reopened, ready_for_review]
 concurrency:
   group: adr-check-${{ github.event.number }}
   cancel-in-progress: true          # a superseded run never leaves the final result
@@ -401,12 +397,12 @@ jobs:
         env: { GH_TOKEN: "${{ github.token }}" }
       - name: Review
         run: |
-          claude -p "/lore:review patch $OUT/pr.patch body $OUT/pr-body.md repo ${{ github.event.repository.name }} base origin/${{ github.base_ref }} findings-out $OUT/adr-findings.json" \
+          claude -p "/lore:review patch $OUT/pr.patch body $OUT/pr-body.md repo ${{ github.event.repository.name }} findings-out $OUT/adr-findings.json" \
             --plugin-dir "$LORE" \
             --add-dir "$LORE" --add-dir "$KNOWLEDGE_BASE_PATH" \
-            --allowedTools Read Glob Grep Task Agent Skill Write "Bash(node *)" "Bash(git merge-base *)"
+            --allowedTools Read Glob Grep Task Agent Skill Write "Bash(node *)"
         env: { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" }  # or a Claude Code OAuth token, per your setup
-      - run: node "$LORE/scripts/adr-lint.js" verdict --findings "$OUT/adr-findings.json" --pr-body "$OUT/pr-body.md"
+      - run: node "$LORE/scripts/adr-lint.js" verdict --findings "$OUT/adr-findings.json"
 ```
 
 - **`--allowedTools`:** without it, a non-interactive run refuses the review's `node` calls and
@@ -421,21 +417,15 @@ jobs:
 - **`gh` only outside `claude`:** the diff and the PR body are fetched with plain `gh` calls
   before the review runs; `gh` is not in `--allowedTools`, so the review works only from the
   diff and body it was handed.
-- **`base origin/${{ github.base_ref }}` is mandatory:** `actions/checkout` sets no
-  `origin/HEAD`, and CI has no `gh pr view` fallback inside the review either, so without this
-  argument the review cannot find a base at all.
-- **`fetch-depth: 0`:** the merge-base and base-snapshot commands need history, not just the PR's
-  tip commit.
+- **`fetch-depth: 0`:** `adr-lint check --ci --base` compares records with the merge base, which
+  needs history, not just the PR's tip commit.
 - **`OUT` inside the workspace:** the findings file lives in a directory the job clears with
   `rm -rf` before the run, so a file the PR itself committed at that path can never stand in for
   the review's output; outside the workspace, Claude's Write tool may refuse the path outright.
 - **Fails closed:** a missing or invalid findings file exits 2. The review writes none when
   any step before the verdict failed.
-- **Cost of `edited`:** every description edit re-runs the whole review. A team that wants
-  cheaper re-runs can cache the findings file per head commit and re-run only `verdict` on
-  `edited`.
-- **Required check:** make the job a required status check. A repository's admin bypass
-  stays the emergency override.
+- **Required check:** make the job a required status check. The repository's admin bypass, used
+  by its bypass group, is the only override.
 
 The canonical record template is `references/adr-template.md`.
 

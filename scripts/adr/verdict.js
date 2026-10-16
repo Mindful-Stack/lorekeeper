@@ -20,10 +20,19 @@ function fail(message) {
 }
 
 // Accepts the JSON document, or a markdown report holding it in an ```adr-findings block.
+//
+// Cardinality is checked on opener *lines*, not on closed blocks: a block regex that only
+// matches a terminated fence would silently ignore an opener with no closing ``` and judge
+// whatever closed block it did find (or none), hiding a second, unterminated block's contents
+// from the verdict entirely.
 function parseFindings(text) {
-    const blocks = text.match(/```adr-findings\s*\n([\s\S]*?)\n```/g);
-    if (blocks && blocks.length > 1) throw fail('more than one adr-findings block');
-    const block = /```adr-findings\s*\n([\s\S]*?)\n```/.exec(text);
+    const openers = text.match(/^```adr-findings\s*$/gm) || [];
+    if (openers.length > 1) throw fail('more than one adr-findings block');
+    let block = null;
+    if (openers.length === 1) {
+        block = /```adr-findings\s*\n([\s\S]*?)\n```/.exec(text);
+        if (!block) throw fail('adr-findings block is not terminated by a closing ```');
+    }
     let doc;
     try {
         doc = JSON.parse(block ? block[1] : text);

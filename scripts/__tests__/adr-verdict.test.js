@@ -41,6 +41,26 @@ test('parseFindings rejects markdown with more than one adr-findings block', () 
     assert.throws(() => parseFindings(md), /more than one adr-findings block/);
 });
 
+// Regression: a complete, empty block followed by a second opener that is never closed. The old
+// block-matching regex (which only counts *closed* blocks) saw one closed block (the empty one)
+// and silently ignored the unterminated second block, so a contradiction hiding there never
+// surfaced and the verdict exited 0. Counting openers, not closed blocks, catches this.
+test('parseFindings rejects a complete block followed by a second, unterminated opener hiding a contradiction', () => {
+    const md = [
+        '```adr-findings',
+        '{"findings":[]}',
+        '```',
+        '```adr-findings',
+        '{"findings":[{"class":"contradiction","ids":["kb/ADR-0001"],"summary":"hidden"}]}',
+    ].join('\n');
+    assert.throws(() => parseFindings(md), /more than one adr-findings block/);
+});
+
+test('parseFindings rejects a single opener with no closing fence', () => {
+    const md = '```adr-findings\n{"findings":[{"class":"contradiction","ids":["kb/ADR-0001"],"summary":"x"}]}';
+    assert.throws(() => parseFindings(md), /not terminated/);
+});
+
 test('verdict throws on unknown finding class, protecting against prototype pollution', () => {
     assert.throws(
         () => verdict({ findings: [{ class: '__proto__', ids: [], summary: 'x' }] }),

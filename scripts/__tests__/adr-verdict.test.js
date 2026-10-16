@@ -61,6 +61,27 @@ test('parseFindings rejects a single opener with no closing fence', () => {
     assert.throws(() => parseFindings(md), /not terminated/);
 });
 
+// The review now writes the architect's whole report (every section, not just the fenced block)
+// to the findings file; parseFindings must find the one block inside it unaided.
+test('parseFindings reads the block out of a full architect report, headed sections and all', () => {
+    const report = [
+        '## Contradictions with accepted records',
+        'none',
+        '',
+        '## Triggers fired',
+        'none',
+        '',
+        '## Uncovered hard-to-reverse choices',
+        '- `infra/docker-compose.yml:10-31` introduces a message broker; no record covers messaging.',
+        '',
+        '```adr-findings',
+        '{"findings":[{"class":"uncovered","ids":[],"summary":"message broker has no record"}]}',
+        '```',
+    ].join('\n');
+    const [x] = parseFindings(report);
+    assert.equal(x.class, 'uncovered');
+});
+
 test('verdict throws on unknown finding class, protecting against prototype pollution', () => {
     assert.throws(
         () => verdict({ findings: [{ class: '__proto__', ids: [], summary: 'x' }] }),

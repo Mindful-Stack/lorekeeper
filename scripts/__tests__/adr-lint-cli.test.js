@@ -633,6 +633,24 @@ test('C3: verdict exits 1 and reports one blocking finding', (t) => {
     assert.deepEqual(Object.keys(v), ['blocking', 'counts', 'findings']);
 });
 
+test('C3: verdict reads the block out of a full report file, not just bare JSON (the review writes the whole report)', (t) => {
+    const w = workspace(t);
+    const file = path.join(w.root, 'findings.md');
+    write(file, [
+        '## Contradictions with accepted records',
+        `- caches sessions in memory, contradicting kb/ADR-0001.R1.`,
+        '',
+        '```adr-findings',
+        findingsDoc([contradiction]),
+        '```',
+        '',
+    ].join('\n'));
+    const r = runCli(w.api, w.env, 'verdict', '--findings', file);
+    assert.equal(r.code, 1, r.stderr);
+    const v = JSON.parse(r.stdout);
+    assert.equal(v.blocking, 1);
+});
+
 test('C3: a findings file that does not exist exits 2 (CI fails closed when the review wrote none)', (t) => {
     const w = workspace(t);
     const r = runCli(w.api, w.env, 'verdict', '--findings', path.join(w.root, 'never-written.json'));

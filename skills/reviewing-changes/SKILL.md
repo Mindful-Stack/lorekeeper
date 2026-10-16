@@ -21,8 +21,8 @@ You MUST complete each of these items, in order (as tasks, if you track tasks):
 2. **Select** — run `node <plugin-root>/scripts/adr-lint.js select --json …` (Step 4).
 3. **Architect check** — dispatch the **architect** agent in `check` mode with the select JSON;
    it ends with an `adr-findings` block (Step 4).
-4. **Verdict** — feed that block, verbatim, to `node <plugin-root>/scripts/adr-lint.js verdict`
-   (Step 5).
+4. **Verdict** — feed the architect's whole report, verbatim, to
+   `node <plugin-root>/scripts/adr-lint.js verdict` (Step 5).
 5. **ADR check line** — the review's output opens with
    `**ADR check:** <blocking> blocking (verdict exit <code>)`, the count copied from the
    verdict's JSON (Step 7).
@@ -168,19 +168,22 @@ Also check for repo-specific knowledge:
 
 ### Step 5: ADR Verdict
 
-If the architect returned no `adr-findings` block (it had no patch to read), skip the verdict:
-write no findings file, and report `**ADR check:** could not run (architect had no patch to
-check)`.
+If the architect had no patch to check (it ends its report with no `adr-findings` block for that
+reason), skip the verdict: write no findings file, and report `**ADR check:** could not run
+(architect had no patch to check)`.
 
-Otherwise, take the architect's `adr-findings` block **verbatim** — fences included;
-`adr-lint verdict` reads the fenced block itself, not bare JSON — and write it, with the Write
-tool, into one file: `findings-out <file>` when the target gave one, else `<dir>/findings.md`
-(the run directory from Step 3, never read before this run, so the Write tool has nothing stale
-to refuse). Do not edit, re-classify or drop entries. **Write it only
-when every step succeeded:** select exited 0 and the architect returned a valid block — the same
-condition that already gates this step. Writing the one file CI also consumes is the point:
-`findings-out` needs no separate gate beyond this one, and CI fails closed on the missing file,
-never on an empty findings list that hides a failed step.
+Otherwise, write the architect's **entire report, verbatim** — every section, not just the
+`adr-findings` block — with the Write tool, into one file: `findings-out <file>` when the target
+gave one, else `<dir>/findings.md` (the run directory from Step 3, never read before this run, so
+the Write tool has nothing stale to refuse). Do not edit, re-classify, drop entries, or extract
+"the" `adr-findings` block yourself — `adr-lint verdict`'s `parseFindings` finds the fenced block
+inside the report on its own, and rejects a report with zero, more than one, or an unterminated
+block, so a report that smuggles in a second block can no longer be defeated by having you pick
+one of them to write. **Write it only when every step succeeded:** select exited 0 and the
+architect returned a report — the same condition that already gates this step. Writing the one
+file CI also consumes is the point: `findings-out` holds the architect's full report, needs no
+separate gate beyond this one, and CI fails closed on the missing file, never on an empty
+findings list that hides a failed step.
 
 Run the verdict on that file:
 
@@ -188,12 +191,12 @@ Run the verdict on that file:
 node <plugin-root>/scripts/adr-lint.js verdict --findings <findings file>
 ```
 
-If the Write is refused (some sandboxes disallow it), fall back to piping the block inline for
-this run only (`verdict --findings - <<'ADR_FINDINGS' ... ADR_FINDINGS`), and say in the summary
-that `findings-out` could not be written — CI will fail closed on the missing file.
+If the Write is refused (some sandboxes disallow it), fall back to piping the **whole report**
+inline for this run only (`verdict --findings - <<'ADR_FINDINGS' ... ADR_FINDINGS`), and say in
+the summary that `findings-out` could not be written — CI will fail closed on the missing file.
 
 Exit 0: nothing blocks. Exit 1: blocking findings remain. Exit 2: the verdict could not run —
-causes include a missing or invalid `adr-findings` block, more than one block, or an unknown
+causes include a missing, invalid, duplicate, or unterminated `adr-findings` block, or an unknown
 finding class. Report its stderr, print `**ADR check:** could not run (verdict exit 2:
 <stderr>)`, and count it as one blocking finding: the check failed closed.
 

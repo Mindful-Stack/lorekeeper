@@ -145,10 +145,7 @@ function parseCitedIds(prBody) {
     if (start === -1) return [];
     const rest = lines.slice(start + 1);
     const stop = rest.findIndex((l) => /^#{1,6}\s/.test(l));
-    const text = (stop === -1 ? rest : rest.slice(0, stop))
-        // An exemption names a record it is NOT following; it is not a citation.
-        .filter((l) => !/^\s*(?:[-*>]\s*)?ADR-Exempt:/i.test(l))
-        .join('\n');
+    const text = (stop === -1 ? rest : rest.slice(0, stop)).join('\n');
     return [...new Set(text.match(/[A-Za-z0-9._-]+\/ADR-\d{4}/g) || [])];
 }
 

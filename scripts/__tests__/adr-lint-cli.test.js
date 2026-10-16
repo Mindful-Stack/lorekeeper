@@ -630,35 +630,7 @@ test('C3: verdict exits 1 and reports one blocking finding', (t) => {
     const v = JSON.parse(r.stdout);
     assert.equal(v.blocking, 1);
     assert.equal(v.findings[0].severity, 'critical');
-    assert.equal(v.decisionsSection, null);
-});
-
-test('C3: a per-id ADR-Exempt in the PR body clears it, exit 0, exemption echoed', (t) => {
-    const w = workspace(t);
-    const file = path.join(w.root, 'findings.json');
-    write(file, findingsDoc([contradiction]));
-    const body = path.join(w.root, 'body.md');
-    write(body, '## Decisions\n- Follows kb/ADR-0001.\n\nADR-Exempt: kb/ADR-0001.R1 — spike behind a flag\n');
-    const r = runCli(w.api, w.env, 'verdict', '--findings', file, '--pr-body', body);
-    assert.equal(r.code, 0, r.stdout + r.stderr);
-    const v = JSON.parse(r.stdout);
-    assert.equal(v.blocking, 0);
-    assert.deepEqual(v.exemptions.map((e) => [e.source, e.target, e.used]), [['pr-body', 'kb/ADR-0001.R1', true]]);
-    assert.equal(v.decisionsSection, true);
-});
-
-test('C3: with --base, ADR-Exempt commit trailers on this branch count; trailers before the fork do not', (t) => {
-    const w = workspace(t);
-    git(w.api, w.env, 'commit', '-q', '--allow-empty', '-m', 'old\n\nADR-Exempt: an exemption already on main');
-    git(w.api, w.env, 'checkout', '-q', '-b', 'feature');
-    const file = path.join(w.root, 'findings.json');
-    write(file, findingsDoc([contradiction]));
-    let r = runCli(w.api, w.env, 'verdict', '--findings', file, '--base', 'main');
-    assert.equal(r.code, 1, 'a trailer from before the merge base must not count');
-    git(w.api, w.env, 'commit', '-q', '--allow-empty', '-m', 'spike\n\nADR-Exempt: kb/ADR-0001 — local spike');
-    r = runCli(w.api, w.env, 'verdict', '--findings', file, '--base', 'main');
-    assert.equal(r.code, 0, r.stdout);
-    assert.deepEqual(JSON.parse(r.stdout).exemptions.map((e) => [e.source, e.target]), [['trailer', 'kb/ADR-0001']]);
+    assert.deepEqual(Object.keys(v), ['blocking', 'counts', 'findings']);
 });
 
 test('C3: a findings file that does not exist exits 2 (CI fails closed when the review wrote none)', (t) => {
@@ -679,4 +651,5 @@ test('C3: findings from stdin; invalid findings and missing --findings exit 2', 
     assert.equal(r.code, 2);
     assert.match(r.stderr, /unknown class nope/);
     assert.equal(runCli(w.api, w.env, 'verdict').code, 2);
+    assert.equal(runCli(w.api, w.env, 'verdict', '--findings', bad, '--pr-body', bad).code, 2);
 });

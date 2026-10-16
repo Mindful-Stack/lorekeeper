@@ -1,8 +1,7 @@
 'use strict';
 
-// The merge gate for the ADR review: classified findings (from the architect) plus exemptions
-// (from the PR body and commit trailers) in, a verdict with a blocking count out. Pure: the
-// CLI does the reading.
+// The merge gate for the ADR review: classified findings (from the architect) in, a verdict
+// with a blocking count out. Pure: the CLI does the reading.
 
 // One row per finding class. Behaviour-doc findings (a later plan) add `behaviour-rule`.
 const SEVERITY = {
@@ -14,56 +13,10 @@ const SEVERITY = {
 };
 const BLOCKING = new Set(['critical']);
 
-// An exemption target: a qualified record id, optionally one of its rules or facts.
-// Behaviour rule ids (`<home>/<prefix>.R<n>`) are added here by the behaviour-doc plan.
-const TARGET_RE = /^[A-Za-z0-9._-]+\/ADR-\d{4}(?:\.[RF]\d+)?$/;
-// Anything that starts like a record id — qualified (`<home>/ADR-nnnn`) or not, in any case —
-// is meant as a targeted exemption: it is either a well-formed `<id> — <reason>` (TARGET_RE,
-// which still requires the qualified, exact-case form) or invalid, never a whole-PR exemption.
-const LOOKS_TARGETED_RE = /^(?:[A-Za-z0-9._-]+\/)?ADR-\d/i;
-// A list bullet or quote marker before the key is allowed (Decisions-style lists invite it), and
-// the key is case-insensitive, as git's trailer `key=` match is.
-const LINE_RE = /^\s*(?:[-*>]\s*)?ADR-Exempt:(.*)$/i;
-const TARGETED_RE = /^(\S+)\s+(?:—|–|--|-|:)\s+(.+)$|^(\S+?):\s+(.+)$/;
-
 function fail(message) {
     const e = new Error(message);
     e.invalidFindings = true;
     return e;
-}
-
-// Strip HTML comments (<!-- … -->, non-greedy, multi-line, unterminated strips to end) and
-// fenced code blocks (``` or ~~~ delimiters, 0-3 spaces indent, unterminated strips to end).
-// A closing fence must be the same delimiter with only whitespace after it.
-function visibleText(text) {
-    // Strip HTML comments: <!-- to --> (non-greedy), unterminated strips to end
-    let result = text.replace(/<!--[\s\S]*?-->|<!--[\s\S]*/g, '');
-    // Strip fenced code blocks: 0-3 spaces + ``` or ~~~, up to matching close (unterminated strips to end)
-    const lines = result.split('\n');
-    const visible = [];
-    let inFence = false;
-    let fenceChar = null;
-    for (const line of lines) {
-        const openMatch = /^ {0,3}(```|~~~)/.exec(line);
-        if (openMatch) {
-            if (!inFence) {
-                inFence = true;
-                fenceChar = openMatch[1];
-            } else {
-                // Check if this closes the fence: same delimiter + only whitespace after
-                const closeMatch = new RegExp(`^ {0,3}${fenceChar.replace(/`/g, '\\`')}\\s*$`).exec(line);
-                if (closeMatch) {
-                    inFence = false;
-                    fenceChar = null;
-                } else {
-                    visible.push(line);
-                }
-            }
-        } else if (!inFence) {
-            visible.push(line);
-        }
-    }
-    return visible.join('\n');
 }
 
 // Accepts the JSON document, or a markdown report holding it in an ```adr-findings block.
@@ -84,89 +37,20 @@ function parseFindings(text) {
         if (!Object.prototype.hasOwnProperty.call(SEVERITY, x.class)) throw fail(`${at}: unknown class ${x.class}`);
         if (!Array.isArray(x.ids) || !x.ids.every((id) => typeof id === 'string')) throw fail(`${at}: ids must be an array of strings`);
         if (typeof x.summary !== 'string' || !x.summary.trim()) throw fail(`${at}: summary is required`);
-        if (x.introduced !== undefined && typeof x.introduced !== 'boolean') throw fail(`${at}: introduced must be true or false`);
-        return { class: x.class, ids: x.ids, summary: x.summary, where: x.where || null, introduced: x.introduced !== false };
+        // Only the known keys are kept; an extra one (older output's `introduced`) is ignored.
+        return { class: x.class, ids: x.ids, summary: x.summary, where: x.where || null };
     });
 }
 
-// sources: [{ source: 'pr-body' | 'trailer', text }]
-function parseExemptions(sources) {
-    const exemptions = [];
-    const invalid = [];
-    for (const { source, text } of sources) {
-        const visible = visibleText(text);
-        for (const line of visible.replace(/\r\n/g, '\n').split('\n')) {
-            const m = LINE_RE.exec(line);
-            if (!m) continue;
-            const value = m[1].trim();
-            if (!value) {
-                invalid.push({ source, line: line.trim(), problem: 'no reason given' });
-                continue;
-            }
-            const t = TARGETED_RE.exec(value);
-            const target = t && (t[1] || t[3]);
-            if (target && TARGET_RE.test(target)) {
-                exemptions.push({ source, target, reason: (t[2] || t[4]).trim() });
-                continue;
-            }
-            // A malformed targeted line (no reason, no spaced separator, a list of ids, a bad id)
-            // must never widen into a whole-PR exemption.
-            if (LOOKS_TARGETED_RE.test(value)) {
-                invalid.push({ source, line: line.trim(), problem: 'names a record but is not "<id> — <reason>" (one id per line)' });
-            } else {
-                exemptions.push({ source, target: null, reason: value });
-            }
-        }
-    }
-    return { exemptions, invalid };
-}
-
-const covers = (target, id) => id === target || id.startsWith(`${target}.`);
-
-// The most specific ids of a finding: a record id is dropped when one of its rules or facts is
-// also listed. Exempting one rule must not clear a finding that also breaks another.
-const leaves = (ids) => ids.filter((id) => !ids.some((o) => o !== id && o.startsWith(`${id}.`)));
-
-// Index of the exemption(s) that clear this finding, or -1. A bare exemption clears anything;
-// otherwise every leaf id needs a covering exemption, and a finding with no ids needs a bare one.
-function exemptionFor(finding, exemptions) {
-    const bare = exemptions.findIndex((e) => e.target === null);
-    if (bare !== -1) return [bare];
-    const ls = leaves(finding.ids);
-    if (!ls.length) return -1;
-    const hits = ls.map((id) => exemptions.findIndex((e) => covers(e.target, id)));
-    return hits.includes(-1) ? -1 : [...new Set(hits)];
-}
-
-function verdict({ findings, exemptions, invalidExemptions = [], prBody = null }) {
-    const used = exemptions.map(() => false);
+function verdict({ findings }) {
     const out = findings.map((x) => {
         if (!Object.prototype.hasOwnProperty.call(SEVERITY, x.class)) throw fail(`unknown class ${x.class}`);
-        let severity = SEVERITY[x.class];
-        // Only an explicit false: a finding built without the key was introduced by this change.
-        if (x.introduced === false && severity === 'critical') severity = 'important';
-        let exemptedBy = null;
-        if (BLOCKING.has(severity)) {
-            const hit = exemptionFor(x, exemptions);
-            if (hit !== -1) {
-                exemptedBy = hit;
-                for (const i of hit) used[i] = true;
-                severity = 'important';
-            }
-        }
-        return { ...x, severity, blocking: BLOCKING.has(severity), exemptedBy };
+        const severity = SEVERITY[x.class];
+        return { ...x, severity, blocking: BLOCKING.has(severity) };
     });
     const counts = { critical: 0, important: 0, minor: 0 };
     for (const x of out) counts[x.severity]++;
-    return {
-        blocking: out.filter((x) => x.blocking).length,
-        exempted: out.filter((x) => x.exemptedBy !== null).length,
-        counts,
-        findings: out,
-        exemptions: exemptions.map((e, i) => ({ ...e, used: used[i] })),
-        invalidExemptions,
-        decisionsSection: prBody === null ? null : /^#{1,6}\s+Decisions\s*$/m.test(visibleText(prBody)),
-    };
+    return { blocking: out.filter((x) => x.blocking).length, counts, findings: out };
 }
 
-module.exports = { SEVERITY, TARGET_RE, visibleText, parseFindings, parseExemptions, verdict };
+module.exports = { SEVERITY, parseFindings, verdict };

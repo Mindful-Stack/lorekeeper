@@ -126,8 +126,3 @@ test('C1: select returns each pick\'s home, and null for a cited id that resolve
         ['kb/ADR-0009', null],
     ]);
 });
-
-test('C1: parseCitedIds skips ADR-Exempt lines, even inside Decisions', () => {
-    const body = '## Decisions\n- Follows kb/ADR-0001.\nADR-Exempt: kb/ADR-0002 — load test only\n';
-    assert.deepEqual(parseCitedIds(body), ['kb/ADR-0001']);
-});

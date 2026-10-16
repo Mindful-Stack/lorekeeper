@@ -16,7 +16,6 @@ const { backfill } = require('./adr/backfill');
 const { parsePatchPaths, parseCitedIds, select } = require('./adr/select');
 const C = require('./adr/catalogue');
 const V = require('./adr/verdict');
-const S = require('./adr/snapshot');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
@@ -27,8 +26,7 @@ const USAGE = `usage:
   adr-lint homes [--cwd <dir>]                      (JSON)
   adr-lint index [--cwd <dir>] [--status <status>] [--json]
   adr-lint next [--base <ref>] <dir>
-  adr-lint verdict --findings <file|-> [--pr-body <file>] [--base <ref>] [--cwd <dir>]   (JSON)
-  adr-lint snapshot --diff <patch-file|-> --base <rev> --out <dir> [--cwd <dir>] [--max <n>]   (JSON)
+  adr-lint verdict --findings <file|->               (JSON)
 
 exit codes: 0 ok (warnings allowed), 1 violations or blocking findings, 2 usage or environment error`;
 
@@ -42,8 +40,7 @@ const FLAGS = {
     homes: ['cwd'],
     index: ['cwd', 'status', 'json'],
     next: ['base'],
-    verdict: ['findings', 'pr-body', 'base', 'cwd'],
-    snapshot: ['diff', 'base', 'out', 'cwd', 'max'],
+    verdict: ['findings'],
 };
 
 // `known` lists the flags the subcommand takes; any other flag is a usage error, so a typo
@@ -346,69 +343,15 @@ function cmdNext(flags, positional) {
 
 function cmdVerdict(flags) {
     if (!flags.findings) throw new UsageError('verdict needs --findings <file|->');
-    let findings;
-    try {
-        findings = V.parseFindings(readInput(flags.findings, 'findings'));
-    } catch (e) {
-        if (!e.invalidFindings) throw e;
-        throw new UsageError(e.message);
-    }
-    const sources = [];
-    const prBody = flags['pr-body'] ? readInput(flags['pr-body'], 'pr-body') : null;
-    if (prBody !== null) sources.push({ source: 'pr-body', text: prBody });
-    if (flags.base) {
-        const cwd = path.resolve(flags.cwd || process.cwd());
-        const root = G.gitRoot(cwd);
-        if (!root) throw new UsageError('--base needs a git repository');
-        if (!G.revExists(root, flags.base)) throw new UsageError(`base ref ${flags.base} not found; fetch it first`);
-        const values = G.exemptTrailers(root, flags.base);
-        if (values === null) throw new UsageError(`cannot read ADR-Exempt trailers between ${flags.base} and HEAD; fetch the full history`);
-        // Each trailer value is the text after `ADR-Exempt:`, so give it its key back.
-        sources.push({ source: 'trailer', text: values.map((v) => `ADR-Exempt: ${v}`).join('\n') });
-    }
-    const { exemptions, invalid } = V.parseExemptions(sources);
     let v;
     try {
-        v = V.verdict({ findings, exemptions, invalidExemptions: invalid, prBody });
+        v = V.verdict({ findings: V.parseFindings(readInput(flags.findings, 'findings')) });
     } catch (e) {
         if (!e.invalidFindings) throw e;
         throw new UsageError(e.message);
     }
     console.log(JSON.stringify(v, null, 2));
     return v.blocking > 0 ? 1 : 0;
-}
-
-function cmdSnapshot(flags) {
-    const cwd = path.resolve(flags.cwd || process.cwd());
-    const root = G.gitRoot(cwd);
-    if (!root) throw new UsageError(`snapshot needs ${display(cwd)} to be inside a git repository`);
-    if (!flags.diff) throw new UsageError('snapshot needs --diff <patch-file|->');
-    if (!flags.out) throw new UsageError('snapshot needs --out <dir>');
-    if (!flags.base) throw new UsageError('snapshot needs --base <rev>');
-    if (!G.revExists(root, flags.base)) {
-        throw new UsageError(`base ref ${flags.base} not found; fetch it first (CI: fetch-depth: 0 or an explicit git fetch)`);
-    }
-    let max = 200;
-    if (flags.max !== undefined) {
-        if (!/^[1-9]\d*$/.test(flags.max)) throw new UsageError('--max must be a positive integer');
-        max = Number(flags.max);
-    }
-    const base = G.fullSha(root, flags.base);
-    const patch = readInput(flags.diff, 'diff');
-    const paths = [...new Set(parsePatchPaths(patch))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    const out = path.resolve(flags.out);
-    // A stale or attacker-primed --out (a leftover file, a planted symlink) is refused outright
-    // rather than written into; never deleted, so the caller can look at it and decide. A plain
-    // file at --out is its own usage error, not an uncaught ENOTDIR from readdirSync/mkdirSync.
-    if (fs.existsSync(out)) {
-        if (!fs.statSync(out).isDirectory()) throw new UsageError(`--out ${display(out)} is not a directory`);
-        if (fs.readdirSync(out).length > 0) throw new UsageError(`--out ${display(out)} is not empty; pass a fresh directory`);
-    }
-    const counts = S.snapshot({
-        root, base, paths, out, max,
-    });
-    console.log(JSON.stringify({ base, out: display(out), counts }, null, 2));
-    return 0;
 }
 
 function main(argv) {
@@ -419,7 +362,6 @@ function main(argv) {
         if (cmd === 'check') return cmdCheck(flags, positional);
         if (cmd === 'select') return cmdSelect(flags);
         if (cmd === 'verdict') return cmdVerdict(flags);
-        if (cmd === 'snapshot') return cmdSnapshot(flags);
         if (cmd === 'homes') return cmdHomes(flags);
         if (cmd === 'index') return cmdIndex(flags);
         if (cmd === 'next') return cmdNext(flags, positional);

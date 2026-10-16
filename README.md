@@ -234,6 +234,7 @@ Review code changes using team standards:
 /lore:review pr 123         # Review specific PR
 /lore:review changes        # Review local changes vs main
 /lore:review staged         # Review staged changes
+/lore:review patch <file> body <file> repo <name> findings-out <file>   # CI: a saved patch, its PR body, and where to write findings
 ```
 
 ### Explore
@@ -347,9 +348,10 @@ the code against them, and asks `adr-lint verdict` whether anything blocks:
 | makes a *Facts relied on* entry false | Minor (draft an observation) |
 | cites an id that resolves nowhere | Important |
 
-When a Critical finding blocks: conform, replace the record (`/lore:adr replace …`), or record
-the uncovered choice in the PR. To merge anyway, a member of the repository's bypass group
-overrides the required check. See `references/pr-decisions.md`.
+When a Critical finding blocks: conform, or replace the record (`/lore:adr replace …`). For an
+uncovered choice: low tier, add the record and have it accepted in this PR before merge; high
+tier, open its own ADR PR and wait until it is accepted. To merge anyway, a member of the
+repository's bypass group overrides the required check. See `references/pr-decisions.md`.
 
 `adr-lint verdict --findings <file>` prints a JSON verdict (the `blocking` count, per-severity
 `counts`, and each finding with its severity) and exits `0` when nothing blocks, `1` when a
@@ -370,12 +372,13 @@ jobs:
     env:
       LORE: ${{ github.workspace }}/../lorekeeper          # this plugin, checked out here
       KNOWLEDGE_BASE_PATH: ${{ github.workspace }}/../kb   # the team KB (shared ADR home)
+      ADR_DIR: docs/adr                                    # this repo's local ADR home
       OUT: ${{ github.workspace }}/.adr-review             # inside the workspace: Write may refuse elsewhere
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       # check out the plugin to $LORE and the knowledge base to $KNOWLEDGE_BASE_PATH here
-      - name: Shared ADR home is the trusted knowledge base
+      - name: ADR homes are the trusted ones, local and shared
         run: |
           node "$LORE/scripts/adr-lint.js" homes | node -e '
             const fs = require("fs"), path = require("path");
@@ -386,8 +389,14 @@ jobs:
             if (h.sharedHomeExists !== true || !trusted || home !== trusted) {
               console.error(`shared ADR home ${h.sharedHome} is not the trusted KNOWLEDGE_BASE_PATH/knowledge/adrs (${trusted})`);
               process.exit(1);
+            }
+            const localTrusted = real(path.join(process.env.GITHUB_WORKSPACE, process.env.ADR_DIR));
+            const local = h.localHomes[0] && real(h.localHomes[0].dir);
+            if (!localTrusted || local !== localTrusted) {
+              console.error(`local ADR home ${h.localHomes[0] && h.localHomes[0].dir} is not the trusted GITHUB_WORKSPACE/ADR_DIR (${localTrusted})`);
+              process.exit(1);
             }'
-      - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} docs/adr
+      - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} "$ADR_DIR"
       - name: Fetch the diff and body
         run: |
           rm -rf "$OUT" && mkdir -p "$OUT"
@@ -413,6 +422,14 @@ jobs:
   the KB" check. The step fails unless the shared home exists and its realpath is **exactly**
   `$KNOWLEDGE_BASE_PATH/knowledge/adrs` — the one location this job trusts, not merely somewhere
   under it.
+- **Local-home preflight:** the same `.lorekeeper/config.json` also sets `adr.localDir`, so a PR
+  could point it at an empty directory: `select` and the architect would then see no local
+  records to check a change against, while a `check --ci` step hard-coded to the real `docs/adr`
+  still passed. `ADR_DIR` is defined once and used by both the preflight and the `check` step; the
+  preflight fails unless the resolved local home's realpath is **exactly**
+  `$GITHUB_WORKSPACE/$ADR_DIR`, the same exact-match the shared-home check makes. The architect is
+  pinned the same way: it resolves homes through this same `adr-lint.js`, so fixing `ADR_DIR` here
+  fixes what it can see too.
 - **`--add-dir`:** the plugin and the KB live outside the checkout (`$LORE`,
   `$KNOWLEDGE_BASE_PATH`), so Read/Glob/Grep need both added explicitly for a non-interactive
   run to reach them.
@@ -478,7 +495,7 @@ These skills trigger automatically when relevant:
 | Skill | Triggers On |
 |-------|-------------|
 | `pattern-identifier` | Questions about standards ("How do we...", "Should I...", "What's our pattern for...") |
-| `review` | "Review my PR", "Check this code" |
+| `reviewing-changes` | "Review my PR", "Check this code" |
 | `knowledge-update` | "Document this", finding knowledge gaps |
 | `standards-curate` | "Document our conventions", "import the standards from <project>", "check the standards against the code" |
 | `brainstorming` | Creative work — features, components, new functionality |

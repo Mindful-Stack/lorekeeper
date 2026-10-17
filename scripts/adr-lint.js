@@ -15,29 +15,32 @@ const { checkHome } = require('./adr/rules');
 const { backfill } = require('./adr/backfill');
 const { parsePatchPaths, parseCitedIds, select } = require('./adr/select');
 const C = require('./adr/catalogue');
+const V = require('./adr/verdict');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
                  [--strict] [--ci] <dir>
   adr-lint select (--diff <patch-file|-> | --paths <path,...>) [--repo <name>] [--pr-body <file>]
-                  [--cwd <dir>]
+                  [--cwd <dir>] [--json]
   adr-lint backfill [--home local|shared] [--repo <name>] [--dry-run] <dir>
   adr-lint homes [--cwd <dir>]                      (JSON)
   adr-lint index [--cwd <dir>] [--status <status>] [--json]
   adr-lint next [--base <ref>] <dir>
+  adr-lint verdict --findings <file|->               (JSON)
 
-exit codes: 0 ok (warnings allowed), 1 violations, 2 usage or environment error`;
+exit codes: 0 ok (warnings allowed), 1 violations or blocking findings, 2 usage or environment error`;
 
 class UsageError extends Error {}
 
 const BOOLEAN_FLAGS = new Set(['strict', 'single-home', 'dry-run', 'json', 'ci']);
 const FLAGS = {
     check: ['home', 'repo', 'single-home', 'base', 'strict', 'ci'],
-    select: ['diff', 'paths', 'repo', 'pr-body', 'cwd'],
+    select: ['diff', 'paths', 'repo', 'pr-body', 'cwd', 'json'],
     backfill: ['home', 'repo', 'dry-run'],
     homes: ['cwd'],
     index: ['cwd', 'status', 'json'],
     next: ['base'],
+    verdict: ['findings'],
 };
 
 // `known` lists the flags the subcommand takes; any other flag is a usage error, so a typo
@@ -215,6 +218,16 @@ function cmdSelect(flags) {
         : parsePatchPaths(readInput(flags.diff, 'diff'));
     const prBody = flags['pr-body'] ? readInput(flags['pr-body'], 'pr-body') : '';
     const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody) });
+    if (flags.json) {
+        // `kind` is the document kind; behaviour docs (a later plan) add `behaviour` rows.
+        console.log(JSON.stringify({
+            repo,
+            candidates: picked.map((p) => ({
+                id: p.id, kind: 'adr', home: p.home, status: p.status, file: p.file ? display(p.file) : null, reasons: p.reasons,
+            })),
+        }, null, 2));
+        return 0;
+    }
     for (const p of picked) {
         console.log([p.id, p.status, p.file ? display(p.file) : '-', p.reasons.join(',')].join('\t'));
     }
@@ -328,6 +341,19 @@ function cmdNext(flags, positional) {
     return 0;
 }
 
+function cmdVerdict(flags) {
+    if (!flags.findings) throw new UsageError('verdict needs --findings <file|->');
+    let v;
+    try {
+        v = V.verdict({ findings: V.parseFindings(readInput(flags.findings, 'findings')) });
+    } catch (e) {
+        if (!e.invalidFindings) throw e;
+        throw new UsageError(e.message);
+    }
+    console.log(JSON.stringify(v, null, 2));
+    return v.blocking > 0 ? 1 : 0;
+}
+
 function main(argv) {
     const [cmd, ...rest] = argv.slice(2);
     try {
@@ -335,6 +361,7 @@ function main(argv) {
         const { flags, positional } = parseArgs(rest, FLAGS[cmd]);
         if (cmd === 'check') return cmdCheck(flags, positional);
         if (cmd === 'select') return cmdSelect(flags);
+        if (cmd === 'verdict') return cmdVerdict(flags);
         if (cmd === 'homes') return cmdHomes(flags);
         if (cmd === 'index') return cmdIndex(flags);
         if (cmd === 'next') return cmdNext(flags, positional);

@@ -30,14 +30,31 @@ You MUST create a task for each of these items and complete them in order:
    the design must supersede that record (recording-decisions skill) rather than quietly violate it.
 2. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 3. **Propose 2-3 approaches** — with trade-offs and your recommendation
-   If the chosen approach commits to a framework, datastore, auth scheme, API contract, integration
-   pattern, or data model, invoke the **recording-decisions** skill to draft a `proposed` ADR before
-   going on; link it from the spec. The spec describes the design, the record defends the decision.
+   If the chosen approach commits to a hard-to-reverse choice, it will be listed and recorded in
+   step 5.
 4. **Present design** — in sections scaled to their complexity, get user approval after each section
-5. **Write design doc** — save to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md` and commit
-6. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
-7. **User reviews written spec** — ask user to review the spec file before proceeding
-8. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+5. **List the decisions** — before writing the spec, list every decision the design makes, one line
+   each, and classify it: *hard to reverse?* (will code depend on it, and does changing it later cost
+   more than a day?) For each hard-to-reverse one, invoke **recording-decisions** to **draft and
+   show** a `proposed` record — tell it not to apply yet ("draft only; do not apply") — unless a
+   binding record from step 1 already covers it. Note each record's tier (high = one-way, shared, or
+   any sensitivity). Reversible ones go in the spec as plain design.
+6. **Write design doc** — save to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md` with a
+   `## Decisions` section: the binding records it follows (by id); for each proposed record, its
+   id-to-be/title, a `Tier: high` or `Tier: low` line, and the full drafted record text in a fenced
+   ```markdown block, so a later session can apply it without this chat and never has to infer the
+   tier; "No new decisions" when there are none; commit
+7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
+8. **User reviews written spec** — ask user to review the spec file before proceeding
+9. **Transition** — if any proposed record is **high tier**: apply it from the spec's stored draft
+   text through recording-decisions (show the record, the user confirms, the knowledge-updater
+   applies it as `own-pr`). Then stop with "ADR PR opened: <link>. Resume with writing-plans once
+   <id> is accepted." If the user declines, or the session cannot ask (non-interactive), do not
+   open anything: stop, name each pending high-tier record by id/title, and say that it must be
+   proposed and accepted before planning can resume. **Low-tier** drafts are not applied now.
+   writing-plans/implementation applies each stored draft as a ride-along in the implementing PR
+   through recording-decisions, listed under *Adds* in the PR's *Decisions* section. With no
+   high-tier proposal, invoke writing-plans.
 
 ## Process Flow
 
@@ -48,25 +65,31 @@ digraph brainstorming {
     "Propose 2-3 approaches" [shape=box];
     "Present design sections" [shape=box];
     "User approves design?" [shape=diamond];
+    "List decisions; draft proposed records" [shape=box];
     "Write design doc" [shape=box];
     "Spec self-review\n(fix inline)" [shape=box];
     "User reviews spec?" [shape=diamond];
+    "Any high-tier proposal?" [shape=diamond];
     "Invoke writing-plans skill" [shape=doublecircle];
+    "Stop: ADR PR opened, resume after acceptance" [shape=doublecircle];
 
     "Explore project context" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
     "Propose 2-3 approaches" -> "Present design sections";
     "Present design sections" -> "User approves design?";
     "User approves design?" -> "Present design sections" [label="no, revise"];
-    "User approves design?" -> "Write design doc" [label="yes"];
+    "User approves design?" -> "List decisions; draft proposed records" [label="yes"];
+    "List decisions; draft proposed records" -> "Write design doc";
     "Write design doc" -> "Spec self-review\n(fix inline)";
     "Spec self-review\n(fix inline)" -> "User reviews spec?";
     "User reviews spec?" -> "Write design doc" [label="changes requested"];
-    "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
+    "User reviews spec?" -> "Any high-tier proposal?" [label="approved"];
+    "Any high-tier proposal?" -> "Stop: ADR PR opened, resume after acceptance" [label="yes"];
+    "Any high-tier proposal?" -> "Invoke writing-plans skill" [label="no"];
 }
 ```
 
-**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+**The terminal state is invoking writing-plans, or, when the design proposes a high-tier record, stopping until that record is accepted.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill.
 
 ## The Process
 
@@ -111,7 +134,9 @@ digraph brainstorming {
 
 **Documentation:**
 
-- Write the validated design (spec) to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md`
+- Write the validated design (spec) to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md`, including
+  the `## Decisions` section (binding records followed; each proposed record's id-to-be/title, a
+  `Tier: high` or `Tier: low` line, and full drafted text; or "No new decisions")
   - (User preferences for spec location override this default)
 - Use elements-of-style:writing-clearly-and-concisely skill if available
 - Commit the design document to git
@@ -135,8 +160,7 @@ Wait for the user's response. If they request changes, make them and re-run the 
 
 **Implementation:**
 
-- Invoke the writing-plans skill to create a detailed implementation plan
-- Do NOT invoke any other skill. writing-plans is the next step.
+- Invoke writing-plans, unless a high-tier proposal is pending (then stop as in checklist item 9).
 
 ## Key Principles
 

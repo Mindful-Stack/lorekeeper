@@ -4,7 +4,7 @@
 **Status:** approved design, ready for implementation plans (two, see *Delivery*)
 **Builds on:** `2026-10-07-adr-centred-workflow-design.md` (homes, `select`, the review check)
 **Touches:** `scripts/adr-lint.js` + `scripts/adr/` (`homes`, `check`, `select`, `index`),
-`agents/architect`, `agents/knowledge-updater`, `skills/review`, `skills/brainstorming`,
+`agents/architect`, `agents/knowledge-updater`, `skills/reviewing-changes`, `skills/brainstorming`,
 `skills/cultivate`, new `skills/documenting-behaviour` + `commands/behaviour.md` +
 `skills/lore-behaviour`, `README.md`
 
@@ -181,9 +181,9 @@ returns matching rules beside binding ADRs.
    deviations* is not reported while the code still shows the deviation; a PR that touches the
    deviation without fixing it gets at most a note. Rule-tagged tests the diff edits or deletes
    are a strong signal.
-3. **Escape hatch:** the ADR `ADR-Exempt:` line covers behaviour findings too, per finding where
-   possible: `ADR-Exempt: <id> — <reason>` exempts that rule or record only; the bare form still
-   covers the PR. Every exemption is echoed into the review summary.
+3. **Override:** every Critical finding blocks, as for ADRs: conform, edit the rule in the same
+   PR, or merge through the repository's admin bypass of the required check, used by the team's
+   bypass group.
 
 ### Until the review check ships
 
@@ -237,13 +237,11 @@ local home; a new doc, and any shared-home edit, is `own-pr`.
 Two implementation plans:
 
 - **D. Format, homes and review**: document format, configuration, `homes`/`check`/`select`/
-  `index`, the architect's catalogue and finding, the review mapping and exemption, the
-  `cultivate` domain template's *Behaviour docs* link list, tests. It lands with or after ADR
-  Plan C, which has not shipped (`skills/review` has no `select` step and no `ADR-Exempt`;
-  `writing-plans` has no *Governing decisions* header). Plan C must leave hooks for: parsing
-  `select` output with a `kind` column; a severity table keyed by finding class, so this finding
-  is one row; `ADR-Exempt` taking an optional id; `check` reading selected candidates' files at
-  base and head.
+  `index`, the architect's catalogue and finding, the review mapping, the `cultivate` domain
+  template's *Behaviour docs* link list, tests. It lands after ADR Plan C, which left two hooks:
+  `select --json`'s `kind` field, so consumers parse `select` output with a `kind` column; and
+  the `SEVERITY` table in `scripts/adr/verdict.js`, keyed by finding class, so this finding is
+  one row. Reading changed files at base and head is Plan D's to add if `check` needs it.
 - **E. The skill**: `documenting-behaviour` with `derive` (draft only), `edit` and `list`, the
   aliases, the knowledge-updater Type and the brainstorming question.
 
@@ -254,7 +252,7 @@ Two implementation plans:
   scope glob, a superseded source, a KB-home doc without `tags`.
 - Babashka scenarios: `select` by scope with `kind`; `check` reporting Important on an untouched
   doc, an ADR-sourced rule through the ADR contradiction, a known deviation not reported, an
-  in-flight KB PR, a per-id `ADR-Exempt`.
+  in-flight KB PR.
 
 ## Open items
 

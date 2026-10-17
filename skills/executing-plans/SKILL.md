@@ -28,7 +28,7 @@ For each task:
 1. Mark as in_progress
 2. Follow each step exactly (plan has bite-sized steps)
    - If the task involves a different domain/tech than previously loaded, dispatch **knowledge-reader** with implementation hints
-   - After completing the task, dispatch **plan-compliance-reviewer** to verify implementation matches the plan
+   - After completing the task, dispatch **plan-compliance-reviewer** with the task text and the plan path, to verify the implementation matches the plan and its *Governing decisions*
 3. Run verifications as specified
 4. Mark as completed
 
@@ -38,6 +38,7 @@ After all tasks complete and verified:
 1. Run the full test suite to ensure nothing is broken
 2. Summarise what was implemented
 3. Present the result to the developer
+4. If the work is delivered as a pull request, its description carries a `## Decisions` section in the format of `<plugin-root>/references/pr-decisions.md` (records followed or added, rule edits, or "No new decisions"), copied from the plan's *Governing decisions* when there is one.
 
 ## When to Stop and Ask for Help
 

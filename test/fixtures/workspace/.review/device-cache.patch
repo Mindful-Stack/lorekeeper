@@ -1,0 +1,28 @@
+diff --git a/src/Application/Devices/Queries/GetDeviceStatus/GetDeviceStatusQueryHandler.cs b/src/Application/Devices/Queries/GetDeviceStatus/GetDeviceStatusQueryHandler.cs
+--- a/src/Application/Devices/Queries/GetDeviceStatus/GetDeviceStatusQueryHandler.cs
++++ b/src/Application/Devices/Queries/GetDeviceStatus/GetDeviceStatusQueryHandler.cs
+@@ -1,11 +1,22 @@
++using Microsoft.Extensions.Caching.Memory;
++
+ namespace MyApp.Application.Devices.Queries.GetDeviceStatus;
+ 
+ public class GetDeviceStatusQueryHandler
+ {
+     private readonly IBaseDeviceRepository _devices;
++    private readonly IMemoryCache _cache;
+ 
+-    public GetDeviceStatusQueryHandler(IBaseDeviceRepository devices) => _devices = devices;
++    public GetDeviceStatusQueryHandler(IBaseDeviceRepository devices, IMemoryCache cache)
++    {
++        _devices = devices;
++        _cache = cache;
++    }
+ 
+     public async Task<List<DeviceStatusDto>> Handle(Guid projectId)
+-        => await _devices.GetStatusForProject(projectId);
++        => await _cache.GetOrCreateAsync($"device-status:{projectId}", entry =>
++        {
++            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30);
++            return _devices.GetStatusForProject(projectId);
++        });
+ }

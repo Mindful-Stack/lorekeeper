@@ -1,0 +1,27 @@
+diff --git a/infra/docker-compose.search.yml b/infra/docker-compose.search.yml
+new file mode 100644
+--- /dev/null
++++ b/infra/docker-compose.search.yml
+@@ -0,0 +1,8 @@
++services:
++  search:
++    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
++    environment:
++      - discovery.type=single-node
++    ports:
++      - "9200:9200"
++    volumes: ["search-data:/usr/share/elasticsearch/data"]
+diff --git a/src/Infrastructure/Search/DeviceSearchIndex.cs b/src/Infrastructure/Search/DeviceSearchIndex.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Infrastructure/Search/DeviceSearchIndex.cs
+@@ -0,0 +1,9 @@
++using Elastic.Clients.Elasticsearch;
++
++namespace MyApp.Infrastructure.Search;
++
++// Devices are now indexed in Elasticsearch, the store of record for device search.
++public class DeviceSearchIndex(ElasticsearchClient client)
++{
++    public Task Index(Device device) => client.IndexAsync(device, i => i.Index("devices"));
++}

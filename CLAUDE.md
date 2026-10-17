@@ -70,14 +70,14 @@ There is deliberately **no build step and no generated catalogue**. Frontmatter 
 
 The one deliberate exception is `scripts/adr-lint.js`: ADR validation has to run in CI and as a
 pre-commit hook, where Claude is not present, and it has to give the same answer every time. It
-validates and selects, and its read-only helpers (`homes`, `index`, `next`) give the ADR command
+validates, selects, and computes the review verdict (the CI merge gate), and its read-only helpers (`homes`, `index`, `next`) give the ADR command
 and agents the same answer the validator would: where the homes are, what the catalogue holds
 with its reverse links, which number is next. It never writes a catalogue, and nothing reads its
 output back into the knowledge base.
 
 ### Layer priority for knowledge
 
-Whenever multiple knowledge sources address the same topic, the agreed priority (encoded in `agents/knowledge-reader/AGENT.md`, `agents/knowledge-question-answerer/AGENT.md`, and `skills/review/SKILL.md`) is:
+Whenever multiple knowledge sources address the same topic, the agreed priority (encoded in `agents/knowledge-reader/AGENT.md`, `agents/knowledge-question-answerer/AGENT.md`, and `skills/reviewing-changes/SKILL.md`) is:
 
 1. Repo-specific `docs/standards/` (highest)
 2. Verified learnings (`learnings/` with `confidence: verified`)
@@ -88,11 +88,11 @@ Whenever multiple knowledge sources address the same topic, the agreed priority 
 
 Hypothesis-confidence learnings never override; they're supplementary.
 
-Accepted ADRs (in each code repo's `docs/adr/` local home and the KB's `adrs/` shared home, `status: accepted`) sit outside the ladder: they are constraints, not standards, and no standard overrides one. Retrieval is the read-only `architect` agent (`bind` / `survey` / `check`), which pattern-identifier, brainstorming, and review dispatch in parallel with their usual agent; the reader and answerer stay ADR-agnostic. Authoring is `/lore:adr`; accepted records are immutable and the knowledge-updater agent refuses body edits to them. Unlike other workflows, whose procedure lives in `commands/`, the ADR procedure lives in the `recording-decisions` skill (`SKILL.md`, one `actions/<action>.md` per action, and `reference/` for the record format and lifecycle); `commands/adr.md` is only an alias that reads it.
+Accepted ADRs (in each code repo's `docs/adr/` local home and the KB's `adrs/` shared home, `status: accepted`) sit outside the ladder: they are constraints, not standards, and no standard overrides one. Retrieval is the read-only `architect` agent (`bind` / `survey` / `check`), which pattern-identifier, brainstorming, and review dispatch in parallel with their usual agent; the reader and answerer stay ADR-agnostic. Authoring is `/lore:adr`; accepted records are immutable and the knowledge-updater agent refuses body edits to them. Unlike other workflows, whose procedure lives in `commands/`, the ADR procedure lives in the `recording-decisions` skill (`SKILL.md`, one `actions/<action>.md` per action, and `reference/` for the record format and lifecycle); `commands/adr.md` is only an alias that reads it. Review severities for ADR findings come from `adr-lint verdict`, not from prose.
 
 ### Skill router vs. user-installed superpowers
 
-The SessionStart hook's systemMessage names skills like `pattern-identifier`, `brainstorming`, `test-driven-development`, `systematic-debugging`, `verification-before-completion`, `executing-plans`, `writing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `knowledge-update`, and `review`. The plugin's own skills are `pattern-identifier`, `knowledge-update`, `review`, `standards-curate`, `cultivate`, `cultivate-discovery`, and `recording-decisions` (the ADR gate, which also holds the ADR procedure); the rest are bundled copies of the **superpowers** workflow skills under `skills/`. They have separate identities from the user-level superpowers skills with the same names — treat them as the plugin's own copies and edit them here. (If the user-level superpowers skills evolve, those changes are not automatically reflected here.)
+The SessionStart hook's systemMessage names skills like `pattern-identifier`, `brainstorming`, `test-driven-development`, `systematic-debugging`, `verification-before-completion`, `executing-plans`, `writing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `knowledge-update`, and `reviewing-changes`. The plugin's own skills are `pattern-identifier`, `knowledge-update`, `reviewing-changes`, `standards-curate`, `cultivate`, `cultivate-discovery`, and `recording-decisions` (the ADR gate, which also holds the ADR procedure); the rest are bundled copies of the **superpowers** workflow skills under `skills/`. They have separate identities from the user-level superpowers skills with the same names — treat them as the plugin's own copies and edit them here. (If the user-level superpowers skills evolve, those changes are not automatically reflected here.)
 
 ### Slash-command namespace
 

@@ -123,7 +123,7 @@ Always display available commands:
 | `dispatching-parallel-agents` | Multiple independent problems (e.g., unrelated test failures) |
 | `knowledge-update` | Outdated or missing knowledge detected |
 | `standards-curate` | Authoring, importing, auditing or reconciling language/framework standards against the code |
-| `review` | User asks to review PR, code, or changes |
+| `reviewing-changes` | User asks to review PR, code, or changes |
 
 ## Quick Start
 

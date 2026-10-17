@@ -234,6 +234,7 @@ Review code changes using team standards:
 /lore:review pr 123         # Review specific PR
 /lore:review changes        # Review local changes vs main
 /lore:review staged         # Review staged changes
+/lore:review patch <file> body <file> repo <name> findings-out <file>   # CI: a saved patch, its PR body, and where to write findings
 ```
 
 ### Explore
@@ -309,6 +310,7 @@ repair, a schema backfill). It has no dependencies:
 node scripts/adr-lint.js check --ci --home local --base origin/main docs/adr  # CI: fetch-depth: 0
 node scripts/adr-lint.js select --repo api --diff change.patch                # records a diff touches
 node scripts/adr-lint.js backfill --dry-run <adr-dir>                         # add id + classification keys
+node scripts/adr-lint.js verdict --findings adr-findings.json                 # CI gate: exit 1 = blocking
 ```
 
 A plain `check` reports a proposal that is not yet accepted (in the shared home, or riding along
@@ -332,6 +334,117 @@ To run it before every commit in a repo with a local ADR home, add `.git/hooks/p
 plugin="${LOREKEEPER_PLUGIN_DIR:?set LOREKEEPER_PLUGIN_DIR to the lorekeeper checkout}"
 exec node "$plugin/scripts/adr-lint.js" check --home local --base origin/main docs/adr
 ```
+
+### Enforcing decisions in review and CI
+
+`/lore:review` selects the records a change touches (`adr-lint select`), has the architect check
+the code against them, and asks `adr-lint verdict` whether anything blocks:
+
+| Finding | Severity |
+|---|---|
+| contradicts an accepted record | Critical (blocks) |
+| hard-to-reverse choice no record covers | Critical (blocks) |
+| fires a record's invalidation trigger | Critical (blocks) |
+| makes a *Facts relied on* entry false | Minor (draft an observation) |
+| cites an id that resolves nowhere | Important |
+
+When a Critical finding blocks: conform, or replace the record (`/lore:adr replace …`). For an
+uncovered choice: low tier, add the record and have it accepted in this PR before merge; high
+tier, open its own ADR PR and wait until it is accepted. To merge anyway, a member of the
+repository's bypass group overrides the required check. See `references/pr-decisions.md`.
+
+`adr-lint verdict --findings <file>` prints a JSON verdict (the `blocking` count, per-severity
+`counts`, and each finding with its severity) and exits `0` when nothing blocks, `1` when a
+finding blocks, and `2` when it could not judge — findings missing or invalid, more than one
+`adr-findings` block, or an unknown finding class. A CI job gates on the exit code, not on review
+prose. A sketch:
+
+```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+concurrency:
+  group: adr-check-${{ github.event.number }}
+  cancel-in-progress: true          # a superseded run never leaves the final result
+jobs:
+  adr-check:
+    runs-on: ubuntu-latest
+    env:
+      LORE: ${{ github.workspace }}/../lorekeeper          # this plugin, checked out here
+      KNOWLEDGE_BASE_PATH: ${{ github.workspace }}/../kb   # the team KB (shared ADR home)
+      ADR_DIR: docs/adr                                    # this repo's local ADR home
+      OUT: ${{ github.workspace }}/.adr-review             # inside the workspace: Write may refuse elsewhere
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      # check out the plugin to $LORE and the knowledge base to $KNOWLEDGE_BASE_PATH here
+      - name: ADR homes are the trusted ones, local and shared
+        run: |
+          node "$LORE/scripts/adr-lint.js" homes | node -e '
+            const fs = require("fs"), path = require("path");
+            const h = JSON.parse(fs.readFileSync(0, "utf8"));
+            const real = (p) => { try { return fs.realpathSync(p); } catch (e) { return null; } };
+            const trusted = real(path.join(process.env.KNOWLEDGE_BASE_PATH, "knowledge", "adrs"));
+            const home = real(h.sharedHome);
+            if (h.sharedHomeExists !== true || !trusted || home !== trusted) {
+              console.error(`shared ADR home ${h.sharedHome} is not the trusted KNOWLEDGE_BASE_PATH/knowledge/adrs (${trusted})`);
+              process.exit(1);
+            }
+            const localTrusted = real(path.join(process.env.GITHUB_WORKSPACE, process.env.ADR_DIR));
+            const local = h.localHomes[0] && real(h.localHomes[0].dir);
+            if (!localTrusted || local !== localTrusted) {
+              console.error(`local ADR home ${h.localHomes[0] && h.localHomes[0].dir} is not the trusted GITHUB_WORKSPACE/ADR_DIR (${localTrusted})`);
+              process.exit(1);
+            }'
+      - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} "$ADR_DIR"
+      - name: Fetch the diff and body
+        run: |
+          rm -rf "$OUT" && mkdir -p "$OUT"
+          gh pr diff ${{ github.event.number }} > "$OUT/pr.patch"
+          gh pr view ${{ github.event.number }} --json body -q .body > "$OUT/pr-body.md"
+        env: { GH_TOKEN: "${{ github.token }}" }
+      - name: Review
+        run: |
+          claude -p "/lore:review patch $OUT/pr.patch body $OUT/pr-body.md repo ${{ github.event.repository.name }} findings-out $OUT/adr-findings.json" \
+            --plugin-dir "$LORE" \
+            --add-dir "$LORE" --add-dir "$KNOWLEDGE_BASE_PATH" \
+            --allowedTools Read Glob Grep Task Agent Skill Write "Bash(node *)"
+        env: { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" }  # or a Claude Code OAuth token, per your setup
+      - run: node "$LORE/scripts/adr-lint.js" verdict --findings "$OUT/adr-findings.json"
+```
+
+- **`--allowedTools`:** without it, a non-interactive run refuses the review's `node` calls and
+  the findings write, and the verdict exits 2 on every PR.
+- **Shared-home preflight:** `adr-lint homes` resolves the KB from the PR's own
+  `.lorekeeper/config.json` before `$KNOWLEDGE_BASE_PATH`, so a PR could point the shared home at
+  records it wrote itself — including by setting `adr.sharedDir` to something like `..` to walk
+  the resolved home out of `knowledge/adrs` entirely while it still passes a looser "lies inside
+  the KB" check. The step fails unless the shared home exists and its realpath is **exactly**
+  `$KNOWLEDGE_BASE_PATH/knowledge/adrs` — the one location this job trusts, not merely somewhere
+  under it.
+- **Local-home preflight:** the same `.lorekeeper/config.json` also sets `adr.localDir`, so a PR
+  could point it at an empty directory: `select` and the architect would then see no local
+  records to check a change against, while a `check --ci` step hard-coded to the real `docs/adr`
+  still passed. `ADR_DIR` is defined once and used by both the preflight and the `check` step; the
+  preflight fails unless the resolved local home's realpath is **exactly**
+  `$GITHUB_WORKSPACE/$ADR_DIR`, the same exact-match the shared-home check makes. The architect is
+  pinned the same way: it resolves homes through this same `adr-lint.js`, so fixing `ADR_DIR` here
+  fixes what it can see too.
+- **`--add-dir`:** the plugin and the KB live outside the checkout (`$LORE`,
+  `$KNOWLEDGE_BASE_PATH`), so Read/Glob/Grep need both added explicitly for a non-interactive
+  run to reach them.
+- **`gh` only outside `claude`:** the diff and the PR body are fetched with plain `gh` calls
+  before the review runs; `gh` is not in `--allowedTools`, so the review works only from the
+  diff and body it was handed.
+- **`fetch-depth: 0`:** `adr-lint check --ci --base` compares records with the merge base, which
+  needs history, not just the PR's tip commit.
+- **`OUT` inside the workspace:** the findings file lives in a directory the job clears with
+  `rm -rf` before the run, so a file the PR itself committed at that path can never stand in for
+  the review's output; outside the workspace, Claude's Write tool may refuse the path outright.
+- **Fails closed:** a missing or invalid findings file exits 2. The review writes none when
+  any step before the verdict failed.
+- **Required check:** make the job a required status check. The repository's admin bypass, used
+  by its bypass group, is the only override.
 
 The canonical record template is `references/adr-template.md`.
 
@@ -382,7 +495,7 @@ These skills trigger automatically when relevant:
 | Skill | Triggers On |
 |-------|-------------|
 | `pattern-identifier` | Questions about standards ("How do we...", "Should I...", "What's our pattern for...") |
-| `review` | "Review my PR", "Check this code" |
+| `reviewing-changes` | "Review my PR", "Check this code" |
 | `knowledge-update` | "Document this", finding knowledge gaps |
 | `standards-curate` | "Document our conventions", "import the standards from <project>", "check the standards against the code" |
 | `brainstorming` | Creative work — features, components, new functionality |

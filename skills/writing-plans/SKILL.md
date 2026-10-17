@@ -40,6 +40,59 @@ Before defining tasks, map out which files will be created or modified and what 
 
 This structure informs the task decomposition. Each task should produce self-contained changes that make sense independently.
 
+## Governing Decisions
+
+Once *File Structure* has named the paths the plan will touch, select and bind:
+
+```bash
+node <plugin-root>/scripts/adr-lint.js select --json --paths <path,path,...> [--repo <name>]
+```
+
+`<plugin-root>` is the plugin's root directory: two levels above this skill's own base directory,
+the path shown when the skill loads (`skills/reviewing-changes/SKILL.md` names the same
+convention). `$CLAUDE_PLUGIN_ROOT` is not set in Bash, so write that absolute path out literally.
+Pass `--repo` whenever the spec names the repo. Run the command on its own, with no `&&`/`;` chain
+and no redirect: from a household root that is not a git repo, `select` cannot infer the repo and
+exits 2 — then ask which repo. Pass the printed JSON inline (never a file redirect) to the
+**architect** agent, dispatched in `bind` mode with the spec and the planned paths.
+
+The architect's *Binding decisions* fill the plan's *Governing decisions* header (see *Plan
+Document Header*), rules quoted verbatim. **Write that header as soon as `bind` returns**, even
+when a rule plainly contradicts what the spec asks for — the header records what binds; it is not
+a verdict on whether the plan may proceed. Print it before saying anything else about a conflict.
+
+**Stop condition.** Stop before writing any task when the architect's report contains either:
+- a line carrying both literal tokens `[high tier]` and `[depends: yes]` (under *Not binding*); or
+- a *Triggers fired* section that lists any entry.
+
+Say which record and why, and that it must be accepted (or replaced, or its trigger resolved)
+first.
+
+**A binding rule the spec's goal contradicts is a second stop condition.** Write the *Governing
+decisions* header first, unconditionally — it always lands, even when what follows is a stop.
+Then check: does the spec's stated goal itself require what a quoted rule forbids (not a task's
+incidental approach, which check 6 still covers)? If so, stop before drafting that task: quote the
+rule and the conflict, and say the spec needs a superseding record (or the rule replaced) before
+this plan can proceed. Check 6 is the last look for a contradiction introduced while drafting, not
+the enforcement point for one already visible in the spec.
+
+**Drafts from brainstorming.** If the spec's `## Decisions` section holds a drafted `proposed`
+record in a fenced ```markdown block, read its `Tier: high` or `Tier: low` line — brainstorming
+writes one per draft, both tiers stored the same way. Handle each by its tier:
+
+- **High tier is a third stop condition, unless the draft is already an accepted record in the
+  catalogue.** Check the architect's *Binding decisions* (from *Governing Decisions* above) — or,
+  once the draft has a real id, `adr-lint index --status accepted --json` — for a record matching
+  it. If none is accepted yet, stop before writing any task: name the draft (id-to-be/title) and
+  say it must have its own ADR PR opened (recording-decisions skill) and accepted before this plan
+  can proceed.
+- **Low tier** drafts alone become the ride-along apply task: copy each one into the plan,
+  - list it in the *Governing decisions* header as "Proposed (low tier, applied in Task N)" — never
+    as binding;
+  - schedule an early task, before any task that builds on it, that applies it via the
+    **recording-decisions** skill as a ride-along on the implementing branch, and lists the applied
+    record under *Adds* in the PR's `## Decisions` section (`references/pr-decisions.md`).
+
 ## Bite-Sized Task Granularity
 
 **Each step is one action (2-5 minutes):**
@@ -64,8 +117,20 @@ This structure informs the task decomposition. Each task should produce self-con
 
 **Tech Stack:** [Key technologies/libraries]
 
+## Governing decisions
+
+- **<id> — <title>** (accepted <date>): <description>
+  - <id>.R1 — "<rule, verbatim>"
+[one entry per binding record, rules quoted exactly as the architect returned them]
+[or: "None. No accepted record binds this work." — say so explicitly]
+- Proposed (low tier, applied in Task N): <id-to-be> — <title>
+[one entry per low-tier draft copied from the spec's `## Decisions` section; omit if none]
+
 ---
 ```
+
+Every task must comply with these rules; a task that cannot is a sign the plan needs a superseding
+record first.
 
 ## Task Structure
 
@@ -231,6 +296,10 @@ defects in "Code In A Plan Is A Draft" shipped past checks 1-3.
 contradiction, does the spec still say the old thing? If so, fix the **spec**,
 not just the plan — otherwise the next reader reconciles a conflict that no
 longer exists, and the two documents drift. One source of truth per fact.
+
+**6. Governing decisions:** Does any task's code or approach contradict a rule quoted in the
+header? Is every record the architect returned quoted, with rules verbatim? Fix the task, or stop
+and raise a superseding record.
 
 If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
 

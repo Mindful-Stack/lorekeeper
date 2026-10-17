@@ -3,7 +3,7 @@
 **Date:** 2026-10-07
 **Status:** approved design, ready for implementation plans (three, see *Delivery*)
 **Touches:** `commands/adr.md`, `skills/lore-adr`, `skills/recording-decisions` (with its `actions/` and `reference/`), `agents/architect`,
-`agents/knowledge-updater`, `skills/brainstorming`, `skills/writing-plans`, `skills/review`,
+`agents/knowledge-updater`, `skills/brainstorming`, `skills/writing-plans`, `skills/reviewing-changes`,
 `commands/doctor.md`, `scripts/` (new validator), `references/adr-template.md`, `README.md`
 
 ## Goal
@@ -341,31 +341,37 @@ agent).
 
 `/lore:review` and CI review (any workflow that mounts the KB and runs the review prompt) run:
 
-1. **Candidate selection (deterministic):** `node scripts/adr-lint.js select --repo <name>
-   --diff <patch>` prints the records whose `scope` matches the diff's paths, plus records cited in
-   the PR's Decisions section, from the repo's local home and the team KB's shared home. `--repo`
-   comes from a CI input, or from matching `git remote get-url origin` against the manifest. The
-   review skill names this step explicitly.
-2. **Judgment:** the architect (`check` mode) reads the candidates and reports, citing rule ids and
-   line ranges. New severity mapping in `/lore:review`:
-   - **contradiction** with an accepted record — **Critical** (blocking);
-   - **uncovered hard-to-reverse choice** no record covers — **Critical** until the PR adds a record
-     or carries an exemption;
-   - **fired invalidation trigger** — **Critical**; goes back to the record's deciders;
-   - **stale fact** (a `Facts relied on` entry the diff shows to be false) — **Minor**; the
-     reviewer drafts the observation.
-3. **Escape hatch:** `ADR-Exempt: <reason>` in the PR description, or as a commit trailer when
-   reviewing local changes with no PR, downgrades the blocking findings to Important and is echoed
-   into the review summary so exemptions stay visible.
+1. **Candidate selection (deterministic):** `node scripts/adr-lint.js select --json --diff <patch>
+   [--repo <name>] [--pr-body <file>]` prints the records whose `scope` matches the diff's paths,
+   plus records cited in the PR's Decisions section, from the repo's local home and the team KB's
+   shared home. `--repo` comes from a CI input, or from matching `git remote get-url origin`
+   against the manifest. The review skill names this step explicitly.
+2. **Judgment:** the architect (`check` mode) reads the candidates, cites rule ids and line ranges,
+   and classifies each finding — **contradiction** with an accepted record, an **uncovered**
+   hard-to-reverse choice no record covers, a fired invalidation **trigger**, a **stale fact** (a
+   `Facts relied on` entry the diff shows false), or a **dangling** citation (an id resolving
+   nowhere). A finding may name several rules. The report ends with
+   an `adr-findings` block holding classes only, no severities; if the architect could not read the
+   whole patch it emits none, so the gate fails closed instead of passing on an empty list.
+3. **Verdict (deterministic):** `adr-lint verdict` turns that block into a severity per finding
+   from one table keyed by class — contradiction, uncovered and trigger are Critical and block; a
+   dangling citation is Important; a stale fact is Minor — and exits 1 while anything blocks. CI
+   gates on that exit code, not on the model's prose. The review reads the PR description itself
+   and reports a missing *Decisions* section as one Minor finding.
+4. **Override:** every Critical finding blocks. The remedies are to conform, replace the record,
+   or record the uncovered choice in the PR. The only override is the repository's admin bypass
+   of the required check, used by the team's bypass group.
 
 The check is blocking from the start. Its prompt is expected to need tuning; false positives are
-collected from exemptions and fed back.
+collected from bypassed merges and fed back.
 
 ## The validator
 
 `scripts/adr-lint.js` (Node, no dependencies, cross-platform), with subcommands `check`,
-`select` (from a patch with `--diff`, or from planned paths with `--paths`), `backfill`, and three
-read-only helpers the commands use instead of re-deriving the rules in prose: `homes` (the
+`select` (from a patch with `--diff`, or from planned paths with `--paths`), `backfill`,
+`verdict` (turns an `adr-findings` block into a severity verdict; exits 0 when nothing blocks,
+1 when a finding blocks, 2 on a usage error or an invalid findings document — more than one
+`adr-findings` block, invalid JSON, or an unknown class), and three read-only helpers the commands use instead of re-deriving the rules in prose: `homes` (the
 resolved homes, the governed repo, and per home its `repoRoot` (the git toplevel holding it,
 `null` when not checked out), `relDir` (its path inside that repo) and the default branch read
 from that repo (`origin/HEAD` when set, else asked of origin with `git ls-remote --symref`, else
@@ -495,8 +501,9 @@ home first, then the shared home; when both have it the command asks.
 **`architect` agent**
 - Catalogue load greps every resolved local home, the team KB and shared KBs.
 - `bind` and `check` take the `select` output first, then synonym expansion.
-- `check` returns the four finding classes (contradiction, fired trigger, stale fact, uncovered
-  choice); the review that dispatches it assigns their severities (Plan C). It reports `rejected`
+- `check` returns five finding classes (contradiction, fired trigger, stale fact, uncovered
+  choice, dangling citation) in one `adr-findings` block; `adr-lint verdict` assigns their
+  severities (Plan C). It reports `rejected`
   and `superseded` records in the area as "already ruled out" and in-flight cross-home pairs.
 - With no tools beyond Glob, Grep and Read, the architect takes the catalogue (`adr-lint index
   --json`) and `select` output from its caller, and falls back to resolving the homes itself.
@@ -530,19 +537,20 @@ Three implementation plans, in order:
 - **B. Writing records** — `/lore:adr` actions, `knowledge-updater`, `architect` catalogue and
   `select` integration, `doctor`, and the `adr-lint` helpers they call (`homes`, `index`, `next`,
   `select --paths`).
-- **C. Workflow enforcement** — `review` severity mapping (for the architect's four classes) and
-  escape hatch, `recording-decisions`, `brainstorming` terminal state, `writing-plans` header,
+- **C. Workflow enforcement** — `review` severity mapping (for the architect's five classes) and
+  the verdict gate, `recording-decisions`, `brainstorming` terminal state, `writing-plans` header,
   plan-compliance review.
 
 ## Testing
 
 - `adr-lint` unit tests: one fixture per rule, valid and invalid, including coinciding homes,
   cross-home warnings, the ride-along rule, each of the five locked-record edits (and a
-  spelling change rejected), a migration backfill passing against `--base`, and a `related` link
-  to an accepted record passing without a reverse edit.
+  spelling change rejected), a migration backfill passing against `--base`, a `related` link
+  to an accepted record passing without a reverse edit, and `verdict`'s severity table and
+  fail-closed validation.
 - Babashka scenarios: `/lore:adr` new (local vs shared home by blast radius), `accept` refusing
   without a named decider, `amend` of a proposal in place, `observe` on an accepted record, `check` reporting Critical on a
-  contradiction and on an uncovered choice, `ADR-Exempt` downgrade. The fixture workspace gains a
+  contradiction and on an uncovered choice. The fixture workspace gains a
   second repo with a `docs/adr/` home.
 
 ## Open items for later designs

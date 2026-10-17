@@ -177,4 +177,19 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "cultivate-bootstrap-prompts-for-purpose"
   :prompt "/lore:cultivate fresh-domain"
   :workdir "."
-  :expects ["Purpose|Key Entities|Ubiquitous Language|household.json"]}]
+  :expects ["Purpose|Key Entities|Ubiquitous Language|household.json"]}
+
+ {:name "review-blocks-on-adr-contradiction"
+  :prompt "/lore:review patch .review/device-cache.patch body .review/device-cache.body.md repo backend"
+  :workdir "."
+  :expects ["\\*\\*ADR check:\\*\\* [1-9]\\d* blocking \\(verdict exit 1\\)" "backend/ADR-0001\\.R1"]}
+
+ {:name "review-blocks-on-uncovered-choice"
+  :prompt "/lore:review patch .review/search-store.patch body .review/search-store.body.md repo backend"
+  :workdir "."
+  :expects ["\\*\\*ADR check:\\*\\* [1-9]\\d* blocking \\(verdict exit 1\\)" "(?i)elasticsearch"]}
+
+ {:name "writing-plans-governing-decisions-header"
+  :prompt "Use the writing-plans skill for this spec, but only produce the plan header; do not write files. Spec: in the backend repo, cache device status for 30 seconds in src/Application/Devices/Queries/GetDeviceStatus/ to cut repository load."
+  :workdir "."
+  :expects ["(?i)governing decisions" "backend/ADR-0001\\.R1" "MUST NOT read from an in-process or distributed cache"]}]

@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const { makeRecord, tmpDir, write, gitEnv, git, initRepo, commitAll, runCli } = require('./helpers/adr-fixtures');
 
 // A household with a team KB (`lore`, its own git repo) and one code repo (`api`).
@@ -589,4 +590,100 @@ test('B9a-3: --ci without --base is a usage error, so a CI job cannot drop the l
     const r = runCli(w.root, w.env, 'check', '--ci', w.shared);
     assert.equal(r.code, 2, r.stdout + r.stderr);
     assert.match(r.stderr, /--ci needs --base <ref>/);
+});
+
+test('C1: select --json prints repo and candidates with kind adr and home', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.local, '0001-cache.md'), makeRecord({ prefix: 'api', fm: { scope: ['src/Sessions/**'] } }));
+    const patch = path.join(w.root, 'change.patch');
+    write(patch, 'diff --git a/src/Sessions/Store.cs b/src/Sessions/Store.cs\n--- a/src/Sessions/Store.cs\n+++ b/src/Sessions/Store.cs\n');
+    const r = runCli(w.api, w.env, 'select', '--repo', 'api', '--diff', patch, '--json');
+    assert.equal(r.code, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.repo, 'api');
+    assert.deepEqual(out.candidates.map((c) => [c.id, c.kind, c.home, c.status, c.reasons]), [
+        ['api/ADR-0001', 'adr', 'local', 'accepted', ['scope']],
+        ['kb/ADR-0001', 'adr', 'shared', 'accepted', ['scope']],
+    ]);
+    assert.match(out.candidates[0].file, /0001-cache\.md$/);
+});
+
+test('C1: select without --json still prints TSV', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const patch = path.join(w.root, 'change.patch');
+    write(patch, '+++ b/src/Sessions/Store.cs\n');
+    const r = runCli(w.api, w.env, 'select', '--repo', 'api', '--diff', patch);
+    assert.match(r.stdout, /^kb\/ADR-0001\taccepted\t[^\t]+\tscope$/m);
+});
+
+const findingsDoc = (findings) => JSON.stringify({ findings });
+const contradiction = { class: 'contradiction', ids: ['kb/ADR-0001', 'kb/ADR-0001.R1'], summary: 'caches sessions in memory' };
+
+test('C3: verdict exits 1 and reports one blocking finding', (t) => {
+    const w = workspace(t);
+    const file = path.join(w.root, 'findings.json');
+    write(file, findingsDoc([contradiction]));
+    const r = runCli(w.api, w.env, 'verdict', '--findings', file);
+    assert.equal(r.code, 1, r.stderr);
+    const v = JSON.parse(r.stdout);
+    assert.equal(v.blocking, 1);
+    assert.equal(v.findings[0].severity, 'critical');
+    assert.deepEqual(Object.keys(v), ['blocking', 'counts', 'findings']);
+});
+
+test('C3: verdict reads the block out of a full report file, not just bare JSON (the review writes the whole report)', (t) => {
+    const w = workspace(t);
+    const file = path.join(w.root, 'findings.md');
+    write(file, [
+        '## Contradictions with accepted records',
+        `- caches sessions in memory, contradicting kb/ADR-0001.R1.`,
+        '',
+        '```adr-findings',
+        findingsDoc([contradiction]),
+        '```',
+        '',
+    ].join('\n'));
+    const r = runCli(w.api, w.env, 'verdict', '--findings', file);
+    assert.equal(r.code, 1, r.stderr);
+    const v = JSON.parse(r.stdout);
+    assert.equal(v.blocking, 1);
+});
+
+test('C3: a report with no adr-findings block at all exits 2', (t) => {
+    const w = workspace(t);
+    const file = path.join(w.root, 'findings.md');
+    write(file, [
+        '## Contradictions with accepted records',
+        'none',
+        '',
+        '## Triggers fired',
+        'none',
+        '',
+    ].join('\n'));
+    const r = runCli(w.api, w.env, 'verdict', '--findings', file);
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /not valid JSON/);
+});
+
+test('C3: a findings file that does not exist exits 2 (CI fails closed when the review wrote none)', (t) => {
+    const w = workspace(t);
+    const r = runCli(w.api, w.env, 'verdict', '--findings', path.join(w.root, 'never-written.json'));
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /cannot read --findings/);
+});
+
+test('C3: findings from stdin; invalid findings and missing --findings exit 2', (t) => {
+    const w = workspace(t);
+    const CLI = path.join(__dirname, '..', 'adr-lint.js');
+    const ok = spawnSync(process.execPath, [CLI, 'verdict', '--findings', '-'], { cwd: w.api, env: w.env, input: findingsDoc([]), encoding: 'utf8' });
+    assert.equal(ok.status, 0, ok.stderr);
+    const bad = path.join(w.root, 'bad.json');
+    write(bad, '{"findings":[{"class":"nope","ids":[],"summary":"x"}]}');
+    const r = runCli(w.api, w.env, 'verdict', '--findings', bad);
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /unknown class nope/);
+    assert.equal(runCli(w.api, w.env, 'verdict').code, 2);
+    assert.equal(runCli(w.api, w.env, 'verdict', '--findings', bad, '--pr-body', bad).code, 2);
 });

@@ -102,7 +102,7 @@ After all tasks pass review, completion is handled inline:
 1. Run final verification (full test suite)
 2. Summarise what was implemented
 3. Present the result to the developer
-Does not invoke `finishing-a-development-branch`.
+Does not invoke `finishing-a-development-branch`. Tell the developer the PR description should carry a `## Decisions` section in the format of `<plugin-root>/references/pr-decisions.md` (records followed or added, rule edits, or "No new decisions"), copied from the plan's *Governing decisions* when there is one.
 
 ## Model Selection
 

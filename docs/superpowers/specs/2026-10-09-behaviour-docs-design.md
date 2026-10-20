@@ -5,7 +5,7 @@
 **Builds on:** `2026-10-07-adr-centred-workflow-design.md` (homes, `select`, the review check)
 **Touches:** `scripts/adr-lint.js` + `scripts/adr/` (`homes`, `check`, `select`, `index`),
 `agents/architect`, `agents/knowledge-updater`, `skills/reviewing-changes`, `skills/brainstorming`,
-`skills/cultivate`, new `skills/documenting-behaviour` + `commands/behaviour.md` +
+`skills/cultivating-domains`, new `skills/documenting-behaviour` + `commands/behaviour.md` +
 `skills/lore-behaviour`, `README.md`
 
 ## Goal

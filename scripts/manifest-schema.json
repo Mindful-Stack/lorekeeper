@@ -1,3 +1,34 @@
 {
-  "current": 2
+  "current": 2,
+  "properties": {
+    "adr": {
+      "type": "object",
+      "description": "Optional. Overrides the directory names scripts/adr/homes.js resolves ADR homes from. Every key is optional and adding this block does not bump `current` — it only renames directories an unset manifest already defaults.",
+      "properties": {
+        "localDir": {
+          "type": "string",
+          "description": "Local ADR directory, relative to each repo's root.",
+          "default": "docs/adr"
+        },
+        "sharedDir": {
+          "type": "string",
+          "description": "Shared ADR directory, relative to the team knowledge base's knowledge/ directory.",
+          "default": "adrs"
+        }
+      }
+    },
+    "repos": {
+      "type": "array",
+      "description": "Per-repo manifest entries.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "adrDir": {
+            "type": "string",
+            "description": "Optional per-repo override of adr.localDir — this repo's local ADR directory, relative to its own root."
+          }
+        }
+      }
+    }
+  }
 }

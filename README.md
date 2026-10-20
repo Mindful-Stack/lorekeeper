@@ -86,6 +86,18 @@ A household can layer a shared (e.g. org-wide) KB underneath the team KB. Declar
 
 Each entry is a directory name inside the household that must contain a `knowledge/` folder. KBs are read in priority order — `shared_knowledge_bases` first (lowest), `knowledge_base` last (highest). When the same relative file exists in more than one KB, the higher-priority file wins outright (whole-file replacement, never section merging). The team KB (`knowledge_base`) is the default write target for `/lore:learn` and `/lore:update`; edits to files owned by a shared KB are routed there as PRs instead.
 
+#### ADR homes
+
+An optional `adr` key overrides where ADR records live — every field optional, shown at its default:
+
+```json
+{ "adr": { "localDir": "docs/adr", "sharedDir": "adrs" } }
+```
+
+`localDir` is each repo's local ADR directory; a `repos[]` entry can override it per-repo with
+`"adrDir"`. `sharedDir` is the shared KB's ADR directory, under its `knowledge/`.
+`.lorekeeper/config.json` takes the same keys under `adr` for single-repo setups.
+
 Setting the env var globally:
 
 **Windows (System Environment Variables) — recommended:**
@@ -370,14 +382,22 @@ jobs:
   adr-check:
     runs-on: ubuntu-latest
     env:
-      LORE: ${{ github.workspace }}/../lorekeeper          # this plugin, checked out here
       KNOWLEDGE_BASE_PATH: ${{ github.workspace }}/../kb   # the team KB (shared ADR home)
       ADR_DIR: docs/adr                                    # this repo's local ADR home
       OUT: ${{ github.workspace }}/.adr-review             # inside the workspace: Write may refuse elsewhere
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      # check out the plugin to $LORE and the knowledge base to $KNOWLEDGE_BASE_PATH here
+      # check out the plugin to a sibling of the workspace and the knowledge base to
+      # $KNOWLEDGE_BASE_PATH here
+      - name: Resolve $LORE once, absolute and free of `..`
+        run: |
+          # --plugin-dir, --add-dir and the Bash allow rule below all read this same $LORE.
+          # The review skill reports the plugin root as the normalized path it was loaded
+          # from (no `..`), so leaving $LORE un-resolved here would make the allow rule's
+          # text never match the Bash calls Claude actually runs — the verdict would exit
+          # 2 on every PR.
+          echo "LORE=$(realpath "$GITHUB_WORKSPACE/../lorekeeper")" >> "$GITHUB_ENV"
       - name: ADR homes are the trusted ones, local and shared
         run: |
           node "$LORE/scripts/adr-lint.js" homes | node -e '
@@ -408,13 +428,21 @@ jobs:
           claude -p "/lore:review patch $OUT/pr.patch body $OUT/pr-body.md repo ${{ github.event.repository.name }} findings-out $OUT/adr-findings.json" \
             --plugin-dir "$LORE" \
             --add-dir "$LORE" --add-dir "$KNOWLEDGE_BASE_PATH" \
-            --allowedTools Read Glob Grep Task Agent Skill Write "Bash(node *)"
+            --allowedTools Read Glob Grep Task Agent Skill Write "Bash(node $LORE/scripts/adr-lint.js *)"
         env: { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" }  # or a Claude Code OAuth token, per your setup
       - run: node "$LORE/scripts/adr-lint.js" verdict --findings "$OUT/adr-findings.json"
 ```
 
 - **`--allowedTools`:** without it, a non-interactive run refuses the review's `node` calls and
   the findings write, and the verdict exits 2 on every PR.
+- **The Bash rule is narrow on purpose:** on the `patch` target the review's only Bash calls are
+  `adr-lint.js select` and `adr-lint.js verdict` (`skills/reviewing-changes/SKILL.md`); the
+  findings file itself is written through the Write tool, never a Bash redirect. Scoping the
+  allow rule to `node $LORE/scripts/adr-lint.js *` — instead of `node *` — means a PR body or
+  diff that tries to prompt-inject an arbitrary `node -e …` call cannot run it while this job's
+  credentials (`ANTHROPIC_API_KEY`, `GH_TOKEN`) are in the environment. `$LORE` must be the exact
+  value resolved in the step above everywhere it appears — `--plugin-dir`, `--add-dir`, and this
+  rule — or the rule's text silently stops matching.
 - **Shared-home preflight:** `adr-lint homes` resolves the KB from the PR's own
   `.lorekeeper/config.json` before `$KNOWLEDGE_BASE_PATH`, so a PR could point the shared home at
   records it wrote itself — including by setting `adr.sharedDir` to something like `..` to walk

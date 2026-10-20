@@ -22,7 +22,9 @@ No new decisions.
 Use qualified ids (`<repo>/ADR-NNNN`, `kb/ADR-NNNN`). Cited ids are selected for review even
 when their scope does not match the diff. *Accepts* is a ratification — a previously proposed
 record this PR moves to accepted, with no new text; *Adds* is a new record. *Rules* lists
-behaviour-doc rule edits, when the project keeps behaviour docs.
+behaviour-doc rule edits, when the project keeps behaviour docs. An id inside an HTML comment
+(`<!-- ... -->`) is not a citation, so a template can show real-looking example ids there without
+every PR appearing to cite them.
 
 When the ADR check blocks: conform, or replace the record (`/lore:adr replace …`). For an
 uncovered choice: low tier, add the record and have it accepted in this PR before merge; high

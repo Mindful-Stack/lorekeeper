@@ -139,8 +139,17 @@ function parsePatchPaths(patch) {
     return [...paths];
 }
 
+// Strips HTML comments from the whole body first, so a template's example ids inside
+// `<!-- ... -->` are never read as citations and a commented-out `## Decisions` heading
+// does not count as the section either. Closed comments (possibly multi-line) go first;
+// an unterminated `<!--` is then stripped to the end of the string.
+function stripHtmlComments(s) {
+    return s.replace(/<!--[\s\S]*?-->/g, '').replace(/<!--[\s\S]*$/, '');
+}
+
 function parseCitedIds(prBody) {
-    const lines = prBody.replace(/\r\n/g, '\n').split('\n');
+    const body = stripHtmlComments(prBody.replace(/\r\n/g, '\n'));
+    const lines = body.split('\n');
     const start = lines.findIndex((l) => /^#{1,6}\s+Decisions\s*$/.test(l));
     if (start === -1) return [];
     const rest = lines.slice(start + 1);

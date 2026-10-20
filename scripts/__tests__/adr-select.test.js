@@ -13,6 +13,31 @@ test('parseCitedIds reads only the Decisions section', () => {
     assert.deepEqual(parseCitedIds(body), ['kb/ADR-0001', 'api/ADR-0002']);
 });
 
+test('parseCitedIds ignores ids inside an HTML comment (template example repro)', () => {
+    const body = '## Decisions\n<!-- e.g. Follows: kb/ADR-0003, api/ADR-0002 -->\nNo new decisions.\n';
+    assert.deepEqual(parseCitedIds(body), []);
+});
+
+test('parseCitedIds still reads a real citation outside a comment', () => {
+    const body = '## Decisions\n<!-- e.g. Follows: kb/ADR-0003 -->\n- Follows: kb/ADR-0001\n';
+    assert.deepEqual(parseCitedIds(body), ['kb/ADR-0001']);
+});
+
+test('parseCitedIds strips a multi-line HTML comment', () => {
+    const body = '## Decisions\n<!-- example:\nFollows: kb/ADR-0003\napi/ADR-0002\n-->\n- Follows: kb/ADR-0001\n';
+    assert.deepEqual(parseCitedIds(body), ['kb/ADR-0001']);
+});
+
+test('parseCitedIds ignores a commented-out Decisions heading', () => {
+    const body = '<!--\n## Decisions\n- Follows: kb/ADR-0001\n-->\n## Summary\napi/ADR-0002\n';
+    assert.deepEqual(parseCitedIds(body), []);
+});
+
+test('parseCitedIds strips an unterminated HTML comment to the end of the body', () => {
+    const body = '## Decisions\n- Follows: kb/ADR-0001\n<!-- never closed kb/ADR-0002';
+    assert.deepEqual(parseCitedIds(body), ['kb/ADR-0001']);
+});
+
 test('select matches local globs, repo-prefixed shared globs, and citations', () => {
     const candidates = [
         { id: 'api/ADR-0001', kind: 'local', status: 'accepted', file: 'a', scope: ['src/Sessions/**'] },

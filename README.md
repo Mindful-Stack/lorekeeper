@@ -86,6 +86,18 @@ A household can layer a shared (e.g. org-wide) KB underneath the team KB. Declar
 
 Each entry is a directory name inside the household that must contain a `knowledge/` folder. KBs are read in priority order — `shared_knowledge_bases` first (lowest), `knowledge_base` last (highest). When the same relative file exists in more than one KB, the higher-priority file wins outright (whole-file replacement, never section merging). The team KB (`knowledge_base`) is the default write target for `/lore:learn` and `/lore:update`; edits to files owned by a shared KB are routed there as PRs instead.
 
+#### ADR homes
+
+An optional `adr` key overrides where ADR records live — every field optional, shown at its default:
+
+```json
+{ "adr": { "localDir": "docs/adr", "sharedDir": "adrs" } }
+```
+
+`localDir` is each repo's local ADR directory; a `repos[]` entry can override it per-repo with
+`"adrDir"`. `sharedDir` is the shared KB's ADR directory, under its `knowledge/`.
+`.lorekeeper/config.json` takes the same keys under `adr` for single-repo setups.
+
 Setting the env var globally:
 
 **Windows (System Environment Variables) — recommended:**

@@ -1,11 +1,11 @@
 ---
 name: cultivate-discovery
-description: EXPLORE / DISCOVER bounded contexts when none has been named. Surveys a witan-household's codebase for candidate domains AND audits existing domain nodes for gaps/drift. Use when the user invokes /lore:cultivate with no argument, asks "what domains does this project have?", "help me find bounded contexts", "where should I start with DDD?", or similar exploratory questions about the project's domain landscape. ONCE a specific domain is named, hand off to the cultivate skill instead.
+description: EXPLORE / DISCOVER bounded contexts when none has been named. Surveys a witan-household's codebase for candidate domains AND audits existing domain nodes for gaps/drift. Use when the user invokes /lore:cultivate with no argument, asks "what domains does this project have?", "help me find bounded contexts", "where should I start with DDD?", or similar exploratory questions about the project's domain landscape. ONCE a specific domain is named, hand off to the cultivating-domains skill instead.
 ---
 
 # Cultivate — Discovery
 
-Survey a witan-household: discover candidate bounded contexts from the codebase, audit existing domain nodes, let the user prioritize 0-3 items, then chain the `cultivate` skill once per pick.
+Survey a witan-household: discover candidate bounded contexts from the codebase, audit existing domain nodes, let the user prioritize 0-3 items, then chain the `cultivating-domains` skill once per pick.
 
 ## Implementation
 
@@ -121,11 +121,11 @@ Options:
 - `[Pick different items]` → re-prompt from the top of Step 6 (free-text again).
 - `[Cancel]` → print `Survey complete; nothing actioned.` and exit zero.
 
-### Step 7: Chain into cultivate skill (sequential, with inter-pick pause)
+### Step 7: Chain into cultivating-domains skill (sequential, with inter-pick pause)
 
 For each confirmed pick, in the order the user listed them:
 
-1. Use the Skill tool: `skill: cultivate`, `args: <picked slug>`. The cultivate skill will run its full per-domain flow (bootstrap / refine / audit per its own detect-script dispatch) and return a PR URL or a cancellation/failure message.
+1. Use the Skill tool: `skill: lore:cultivating-domains`, `args: <picked slug>`. The cultivating-domains skill will run its full per-domain flow (bootstrap / refine / audit per its own detect-script dispatch) and return a PR URL or a cancellation/failure message.
 2. Record the result (`{ name, status: "pr-opened" | "cancelled" | "failed", detail: <url or message> }`).
 3. **If more picks remain after this one**, run AskUserQuestion to give the user an off-ramp between picks:
 
@@ -164,11 +164,11 @@ Omit any section that has no entries.
 - **One existing-node file is unreadable** (permissions, etc.) → surfaced via `read_errors`; print `Skipped <file>: <message>` inline, continue with the other files.
 - **Zero candidates AND zero existing-node findings** → friendly "your KB looks healthy" message; exit.
 - **Codebase scan yields no parseable source** in any repo → flag in the report ("no candidates surfaced from code; you may need to declare domains manually") and continue with the audit-only survey.
-- **A chained cultivate skill invocation fails** → record in final summary; continue (or pause if the user chooses) on the inter-pick AskUserQuestion.
+- **A chained cultivating-domains skill invocation fails** → record in final summary; continue (or pause if the user chooses) on the inter-pick AskUserQuestion.
 
 ## Notes
 
-- Discovery never modifies files directly. All writes happen via the chained cultivate skill's own knowledge-updater dispatch.
+- Discovery never modifies files directly. All writes happen via the chained cultivating-domains skill's own knowledge-updater dispatch.
 - One discovery session can open up to 3 PRs (one per chained per-domain run).
 - The 3-pick cap is intentional. Users wanting to act on more items re-run discovery after the first batch lands.
 - The slash command `/lore:cultivate` (no arg) is the canonical entry point, but Claude can also auto-invoke this skill when the user asks "what domains does this project have?" or similar exploratory questions in a witan-household.

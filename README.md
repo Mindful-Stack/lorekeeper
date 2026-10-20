@@ -508,7 +508,7 @@ These skills trigger automatically when relevant:
 | `stack` | Opening 2+ dependent PRs, stacked PRs, merge order, coordinated changes across repos |
 | `subagent-driven-development` | Independent tasks from a plan (same session) |
 | `dispatching-parallel-agents` | Multiple independent problems |
-| `cultivate` / `cultivate-discovery` | Domain cultivation via `/lore:cultivate` |
+| `cultivating-domains` / `cultivate-discovery` | Domain cultivation via `/lore:cultivate` |
 
 ### Pattern Identifier Flow
 

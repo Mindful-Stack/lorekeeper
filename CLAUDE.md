@@ -108,9 +108,10 @@ Follow [semantic versioning](https://semver.org/):
 - **MINOR** (`1.X.0`) — new commands, new skills, new agents, additive options. Backwards-compatible new functionality.
 - **MAJOR** (`X.0.0`) — breaking changes: renamed/removed commands, changed config or manifest schema, anything users will need to adjust for.
 
-The version field appears in three manifests — keep them in sync, in the same PR as the change:
+The version field appears in four manifests — keep them in sync, in the same PR as the change:
 
 - `.claude-plugin/plugin.json` → `version`
+- `.codex-plugin/plugin.json` → `version`
 - `package.json` → `version`
 - `Mindful-Stack/witan` marketplace listing → the lorekeeper entry's `version` *(lives in the witan repo — this is the one the updater actually compares against, so a bump here needs a companion PR there)*
 

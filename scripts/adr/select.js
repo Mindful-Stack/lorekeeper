@@ -141,10 +141,10 @@ function parsePatchPaths(patch) {
 
 // Strips HTML comments from the whole body first, so a template's example ids inside
 // `<!-- ... -->` are never read as citations and a commented-out `## Decisions` heading
-// does not count as the section either. Closed comments (possibly multi-line) go first;
-// an unterminated `<!--` is then stripped to the end of the string.
+// does not count as the section either. Only closed comments: an unclosed `<!--` is usually
+// literal text (`` `<!--` `` in prose), and stripping to the end would drop real citations.
 function stripHtmlComments(s) {
-    return s.replace(/<!--[\s\S]*?-->/g, '').replace(/<!--[\s\S]*$/, '');
+    return s.replace(/<!--[\s\S]*?-->/g, '');
 }
 
 function parseCitedIds(prBody) {

@@ -33,8 +33,8 @@ test('parseCitedIds ignores a commented-out Decisions heading', () => {
     assert.deepEqual(parseCitedIds(body), []);
 });
 
-test('parseCitedIds strips an unterminated HTML comment to the end of the body', () => {
-    const body = '## Decisions\n- Follows: kb/ADR-0001\n<!-- never closed kb/ADR-0002';
+test('parseCitedIds keeps citations after a literal, unclosed <!-- (e.g. in a code span)', () => {
+    const body = '## Summary\nUse `<!--` for comments.\n\n## Decisions\nFollows: kb/ADR-0001\n';
     assert.deepEqual(parseCitedIds(body), ['kb/ADR-0001']);
 });
 

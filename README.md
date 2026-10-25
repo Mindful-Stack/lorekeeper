@@ -385,7 +385,7 @@ concurrency:
   group: adr-check-${{ github.event.number }}
   cancel-in-progress: true          # a superseded run never leaves the final result
 env:
-  KNOWLEDGE_BASE_PATH: ${{ github.workspace }}/../kb   # the team KB (shared ADR home)
+  KNOWLEDGE_BASE_PATH: ${{ github.workspace }}/_ci/kb # the team KB (shared ADR home)
   ADR_DIR: docs/adr                                    # this repo's local ADR home
   OUT: ${{ github.workspace }}/.adr-review             # inside the workspace, wiped first
 jobs:
@@ -395,22 +395,22 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/checkout@v4
-        with: { repository: your-org/lorekeeper, ref: v3.2.0, path: ../lorekeeper }   # pin a tag, never main
+        with: { repository: your-org/lorekeeper, ref: v3.2.0, path: _ci/lorekeeper }   # pin a tag, never main
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: echo "LORE=$(realpath "$GITHUB_WORKSPACE/../lorekeeper")" >> "$GITHUB_ENV"
+      - run: echo "LORE=$(realpath "$GITHUB_WORKSPACE/_ci/lorekeeper")" >> "$GITHUB_ENV"
       - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} "$ADR_DIR"
   adr-judgment:                     # required check 2: the reviewer, then the verdict
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      # check out the plugin (ref: v3.2.0, to a sibling of the workspace) and the knowledge
-      # base (to $KNOWLEDGE_BASE_PATH) here, as above
+      # check out the plugin (ref: v3.2.0, path: _ci/lorekeeper) as above, and the knowledge
+      # base (path: _ci/kb, i.e. $KNOWLEDGE_BASE_PATH) here
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Resolve $LORE once, absolute and free of `..`
-        run: echo "LORE=$(realpath "$GITHUB_WORKSPACE/../lorekeeper")" >> "$GITHUB_ENV"
+        run: echo "LORE=$(realpath "$GITHUB_WORKSPACE/_ci/lorekeeper")" >> "$GITHUB_ENV"
       - name: ADR homes are the trusted ones, local and shared
         run: |
           node "$LORE/scripts/adr-lint.js" homes | node -e '
@@ -459,6 +459,8 @@ jobs:
   `$KNOWLEDGE_BASE_PATH/knowledge/adrs` and the local home's is exactly
   `$GITHUB_WORKSPACE/$ADR_DIR`. `ADR_DIR` is defined once and used by both the preflight and the
   `check` step.
+- **Checkouts under the workspace:** `actions/checkout` only accepts a `path` inside
+  `$GITHUB_WORKSPACE`, so the plugin and the KB go under `_ci/`. Nothing there is part of the diff.
 - **`$LORE` is resolved once:** absolute and free of `..`, so every later step reads the same path.
 - **`OUT` inside the workspace, wiped first:** a findings file the PR itself committed at that
   path can never stand in for the reviewer's output.

@@ -50,6 +50,7 @@ function findOpeners(lines) {
 // spaces of indentation; a tilde fence or a longer run of backticks is still an opener; the
 // closer must use the same fence character, a run at least as long, and hold nothing else).
 function parseFindings(text) {
+    text = text.replace(/\r\n/g, '\n');
     const lines = text.split('\n');
     const openers = findOpeners(lines);
     if (openers.length > 1) throw fail('more than one adr-findings block');
@@ -74,16 +75,18 @@ function parseFindings(text) {
         throw fail(`findings are not valid JSON: ${e.message}`);
     }
     if (!doc || !Array.isArray(doc.findings)) throw fail('findings document needs a "findings" array');
-    return doc.findings.map((x, i) => {
+    const findings = doc.findings.map((x, i) => {
         const at = `finding ${i + 1}`;
         if (!x || typeof x !== 'object') throw fail(`${at}: not an object`);
         if (!Object.prototype.hasOwnProperty.call(SEVERITY, x.class)) throw fail(`${at}: unknown class ${x.class}`);
         if (!Array.isArray(x.ids) || !x.ids.every((id) => typeof id === 'string')) throw fail(`${at}: ids must be an array of strings`);
         if (typeof x.summary !== 'string' || !x.summary.trim()) throw fail(`${at}: summary is required`);
         if (x.where !== undefined && x.where !== null && typeof x.where !== 'string') throw fail(`${at}: where must be a string`);
+        if (x.class !== 'dangling' && (typeof x.where !== 'string' || !x.where.trim())) throw fail(`${at}: ${x.class} needs "where"`);
         // Only the known keys are kept; an extra one (older output's `introduced`) is ignored.
         return { class: x.class, ids: x.ids, summary: x.summary, where: x.where || null };
     });
+    return { coverage: doc.coverage, findings };
 }
 
 function verdict({ findings }) {

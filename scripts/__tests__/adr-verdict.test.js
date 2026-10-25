@@ -24,20 +24,20 @@ test('a contradiction blocks; a stale fact does not', () => {
 });
 
 test('parseFindings rejects an unknown class, a missing summary and a non-array ids', () => {
-    assert.throws(() => parseFindings('{"findings":[{"class":"behaviour-rule","ids":[],"summary":"x"}]}'), /unknown class behaviour-rule/);
-    assert.throws(() => parseFindings('{"findings":[{"class":"trigger","ids":[]}]}'), /summary/);
-    assert.throws(() => parseFindings('{"findings":[{"class":"trigger","ids":"kb/ADR-0001","summary":"x"}]}'), /ids/);
+    assert.throws(() => parseFindings('{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"behaviour-rule","ids":[],"summary":"x","where":"a:1"}]}'), /unknown class behaviour-rule/);
+    assert.throws(() => parseFindings('{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"trigger","ids":[],"where":"a:1"}]}'), /summary/);
+    assert.throws(() => parseFindings('{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"trigger","ids":"kb/ADR-0001","summary":"x","where":"a:1"}]}'), /ids/);
     assert.throws(() => parseFindings('not json'), /JSON/);
     assert.throws(() => parseFindings('{}'), /findings/);
 });
 
 test('parseFindings accepts a markdown report and reads its adr-findings block', () => {
-    const md = 'Report\n\n```adr-findings\n{"findings":[{"class":"stale-fact","ids":["kb/ADR-0001.F1"],"summary":"x"}]}\n```\n';
-    assert.equal(parseFindings(md).length, 1);
+    const md = 'Report\n\n```adr-findings\n{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"stale-fact","ids":["kb/ADR-0001.F1"],"summary":"x","where":"a:1"}]}\n```\n';
+    assert.equal(parseFindings(md).findings.length, 1);
 });
 
 test('parseFindings rejects markdown with more than one adr-findings block', () => {
-    const md = '```adr-findings\n{"findings":[]}\n```\ntext\n```adr-findings\n{"findings":[]}\n```';
+    const md = '```adr-findings\n{"coverage":{"checked":[],"notReviewed":[]},"findings":[]}\n```\ntext\n```adr-findings\n{"coverage":{"checked":[],"notReviewed":[]},"findings":[]}\n```';
     assert.throws(() => parseFindings(md), /more than one adr-findings block/);
 });
 
@@ -48,16 +48,16 @@ test('parseFindings rejects markdown with more than one adr-findings block', () 
 test('parseFindings rejects a complete block followed by a second, unterminated opener hiding a contradiction', () => {
     const md = [
         '```adr-findings',
-        '{"findings":[]}',
+        '{"coverage":{"checked":[],"notReviewed":[]},"findings":[]}',
         '```',
         '```adr-findings',
-        '{"findings":[{"class":"contradiction","ids":["kb/ADR-0001"],"summary":"hidden"}]}',
+        '{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"contradiction","ids":["kb/ADR-0001"],"summary":"hidden","where":"a:1"}]}',
     ].join('\n');
     assert.throws(() => parseFindings(md), /more than one adr-findings block/);
 });
 
 test('parseFindings rejects a single opener with no closing fence', () => {
-    const md = '```adr-findings\n{"findings":[{"class":"contradiction","ids":["kb/ADR-0001"],"summary":"x"}]}';
+    const md = '```adr-findings\n{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"contradiction","ids":["kb/ADR-0001"],"summary":"x","where":"a:1"}]}';
     assert.throws(() => parseFindings(md), /not terminated/);
 });
 
@@ -68,39 +68,39 @@ test('parseFindings rejects a single opener with no closing fence', () => {
 test('parseFindings counts a second opener indented up to 3 spaces (CommonMark fence indentation)', () => {
     const md = [
         '```adr-findings',
-        '{"findings":[]}',
+        '{"coverage":{"checked":[],"notReviewed":[]},"findings":[]}',
         '```',
         '  ```adr-findings',
-        '{"findings":[{"class":"contradiction","ids":["kb/ADR-0001"],"summary":"hidden"}]}',
+        '{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"contradiction","ids":["kb/ADR-0001"],"summary":"hidden","where":"a:1"}]}',
         '```',
     ].join('\n');
     assert.throws(() => parseFindings(md), /more than one adr-findings block/);
 });
 
 test('parseFindings accepts a four-backtick opener (CommonMark: a run of 3 or more)', () => {
-    const md = ['````adr-findings', '{"findings":[{"class":"stale-fact","ids":["kb/ADR-0001.F1"],"summary":"x"}]}', '````'].join('\n');
-    const [x] = parseFindings(md);
+    const md = ['````adr-findings', '{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"stale-fact","ids":["kb/ADR-0001.F1"],"summary":"x","where":"a:1"}]}', '````'].join('\n');
+    const [x] = parseFindings(md).findings;
     assert.equal(x.class, 'stale-fact');
 });
 
 test('parseFindings accepts a tilde fence', () => {
-    const md = ['~~~adr-findings', '{"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '~~~'].join('\n');
-    const [x] = parseFindings(md);
+    const md = ['~~~adr-findings', '{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '~~~'].join('\n');
+    const [x] = parseFindings(md).findings;
     assert.equal(x.class, 'dangling');
 });
 
 test('parseFindings rejects a closer with trailing text after the fence (not a valid CommonMark closer)', () => {
-    const md = ['```adr-findings', '{"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '``` oops'].join('\n');
+    const md = ['```adr-findings', '{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '``` oops'].join('\n');
     assert.throws(() => parseFindings(md), /not terminated/);
 });
 
 test('parseFindings requires the closer to use the same fence character as the opener', () => {
-    const md = ['```adr-findings', '{"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '~~~'].join('\n');
+    const md = ['```adr-findings', '{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '~~~'].join('\n');
     assert.throws(() => parseFindings(md), /not terminated/);
 });
 
 test('parseFindings requires the closer run to be at least as long as the opener\'s', () => {
-    const md = ['````adr-findings', '{"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '```'].join('\n');
+    const md = ['````adr-findings', '{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"dangling","ids":[],"summary":"x"}]}', '```'].join('\n');
     assert.throws(() => parseFindings(md), /not terminated/);
 });
 
@@ -118,10 +118,10 @@ test('parseFindings reads the block out of a full architect report, headed secti
         '- `infra/docker-compose.yml:10-31` introduces a message broker; no record covers messaging.',
         '',
         '```adr-findings',
-        '{"findings":[{"class":"uncovered","ids":[],"summary":"message broker has no record"}]}',
+        '{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"uncovered","ids":[],"summary":"message broker has no record","where":"a:1"}]}',
         '```',
     ].join('\n');
-    const [x] = parseFindings(report);
+    const [x] = parseFindings(report).findings;
     assert.equal(x.class, 'uncovered');
 });
 
@@ -134,19 +134,36 @@ test('verdict throws on unknown finding class, protecting against prototype poll
 
 test('parseFindings rejects a non-string "where"', () => {
     assert.throws(
-        () => parseFindings('{"findings":[{"class":"trigger","ids":[],"summary":"x","where":42}]}'),
+        () => parseFindings('{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"trigger","ids":[],"summary":"x","where":42}]}'),
         /where must be a string/
     );
 });
 
 test('parseFindings accepts a string "where" and keeps it', () => {
-    const [x] = parseFindings('{"findings":[{"class":"trigger","ids":[],"summary":"x","where":"kb/ADR-0001"}]}');
+    const [x] = parseFindings('{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"trigger","ids":[],"summary":"x","where":"kb/ADR-0001"}]}').findings;
     assert.equal(x.where, 'kb/ADR-0001');
 });
 
 test('parseFindings ignores an extra key, so older architect output still parses', () => {
-    const doc = '{"findings":[{"class":"contradiction","ids":["kb/ADR-0001"],"summary":"x","introduced":false}]}';
-    const [x] = parseFindings(doc);
-    assert.deepEqual(x, { class: 'contradiction', ids: ['kb/ADR-0001'], summary: 'x', where: null });
+    const doc = '{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"contradiction","ids":["kb/ADR-0001"],"summary":"x","introduced":false,"where":"a:1"}]}';
+    const [x] = parseFindings(doc).findings;
+    assert.deepEqual(x, { class: 'contradiction', ids: ['kb/ADR-0001'], summary: 'x', where: 'a:1' });
     assert.equal(verdict({ findings: [x] }).blocking, 1);
+});
+
+const cov = { checked: [], notReviewed: [] };
+const one = (f) => JSON.stringify({ coverage: cov, findings: [f] });
+
+test('parseFindings returns {coverage, findings}; located classes need where; null is absent', () => {
+    const r = parseFindings(one({ class: 'stale-fact', ids: ['kb/ADR-0001.F1'], where: 'a:1', summary: 's' }));
+    assert.deepEqual(r.coverage, cov);
+    for (const cls of ['contradiction', 'trigger', 'uncovered', 'stale-fact']) {
+        assert.throws(() => parseFindings(one({ class: cls, ids: [], where: null, summary: 's' })), /where/, cls);
+    }
+    assert.doesNotThrow(() => parseFindings(one({ class: 'dangling', ids: ['kb/ADR-0042'], where: null, summary: 's' })));
+});
+
+test('parseFindings reads a CRLF markdown report', () => {
+    const md = ['Report', '', '```adr-findings', JSON.stringify({ coverage: cov, findings: [] }), '```', ''].join('\r\n');
+    assert.deepEqual(parseFindings(md).findings, []);
 });

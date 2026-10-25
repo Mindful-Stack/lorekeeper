@@ -618,23 +618,65 @@ test('C1: select without --json still prints TSV', (t) => {
     assert.match(r.stdout, /^kb\/ADR-0001\taccepted\t[^\t]+\tscope$/m);
 });
 
-const findingsDoc = (findings) => JSON.stringify({ findings });
-const contradiction = { class: 'contradiction', ids: ['kb/ADR-0001', 'kb/ADR-0001.R1'], summary: 'caches sessions in memory' };
+const COV = { checked: ['kb/ADR-0001'], notReviewed: [] };
+const findingsDoc = (findings, coverage = COV) => JSON.stringify({ coverage, findings });
+const contradiction = { class: 'contradiction', ids: ['kb/ADR-0001', 'kb/ADR-0001.R1'], where: 'src/Sessions/Store.cs:10', summary: 'caches sessions in memory' };
 
-test('C3: verdict exits 1 and reports one blocking finding', (t) => {
+// A household with one accepted KB record whose scope matches the patch, and the patch file.
+function verdictWorkspace(t) {
     const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    w.patch = path.join(w.root, 'change.patch');
+    write(w.patch, 'diff --git a/src/Sessions/Store.cs b/src/Sessions/Store.cs\n--- a/src/Sessions/Store.cs\n+++ b/src/Sessions/Store.cs\n');
+    return w;
+}
+const verdict = (w, file, ...extra) => runCli(w.api, w.env, 'verdict', '--findings', file, '--diff', w.patch, '--repo', 'api', ...extra);
+
+test('C3: verdict without --diff exits 2', (t) => {
+    const w = verdictWorkspace(t);
+    const file = path.join(w.root, 'findings.json');
+    write(file, findingsDoc([]));
+    const r = runCli(w.api, w.env, 'verdict', '--findings', file, '--repo', 'api');
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /needs --diff/);
+});
+
+test('C3: verdict exits 1 and reports one blocking finding, with coverage', (t) => {
+    const w = verdictWorkspace(t);
     const file = path.join(w.root, 'findings.json');
     write(file, findingsDoc([contradiction]));
-    const r = runCli(w.api, w.env, 'verdict', '--findings', file);
+    const r = verdict(w, file);
     assert.equal(r.code, 1, r.stderr);
     const v = JSON.parse(r.stdout);
     assert.equal(v.blocking, 1);
     assert.equal(v.findings[0].severity, 'critical');
-    assert.deepEqual(Object.keys(v), ['blocking', 'counts', 'findings']);
+    assert.deepEqual(Object.keys(v), ['blocking', 'counts', 'findings', 'coverage']);
+    assert.deepEqual(v.coverage.extra, []);
+});
+
+test('C3: a selected record that is not attested exits 2', (t) => {
+    const w = verdictWorkspace(t);
+    const file = path.join(w.root, 'findings.json');
+    write(file, findingsDoc([], { checked: [], notReviewed: [] }));
+    const r = verdict(w, file);
+    assert.equal(r.code, 2, r.stdout);
+    assert.match(r.stderr, /not checked/);
+});
+
+test('C3: a PR-body citation that resolves nowhere is added as a dangling finding that does not block', (t) => {
+    const w = verdictWorkspace(t);
+    const file = path.join(w.root, 'findings.json');
+    const body = path.join(w.root, 'body.md');
+    write(file, findingsDoc([]));
+    write(body, '## Decisions\n\nFollows kb/ADR-0042.\n');
+    const r = verdict(w, file, '--pr-body', body);
+    assert.equal(r.code, 0, r.stderr);
+    const v = JSON.parse(r.stdout);
+    assert.deepEqual(v.findings.map((x) => [x.class, x.ids, x.severity, x.blocking]), [['dangling', ['kb/ADR-0042'], 'important', false]]);
 });
 
 test('C3: verdict reads the block out of a full report file, not just bare JSON (the review writes the whole report)', (t) => {
-    const w = workspace(t);
+    const w = verdictWorkspace(t);
     const file = path.join(w.root, 'findings.md');
     write(file, [
         '## Contradictions with accepted records',
@@ -645,14 +687,14 @@ test('C3: verdict reads the block out of a full report file, not just bare JSON 
         '```',
         '',
     ].join('\n'));
-    const r = runCli(w.api, w.env, 'verdict', '--findings', file);
+    const r = verdict(w, file);
     assert.equal(r.code, 1, r.stderr);
     const v = JSON.parse(r.stdout);
     assert.equal(v.blocking, 1);
 });
 
 test('C3: a report with no adr-findings block at all exits 2', (t) => {
-    const w = workspace(t);
+    const w = verdictWorkspace(t);
     const file = path.join(w.root, 'findings.md');
     write(file, [
         '## Contradictions with accepted records',
@@ -662,28 +704,27 @@ test('C3: a report with no adr-findings block at all exits 2', (t) => {
         'none',
         '',
     ].join('\n'));
-    const r = runCli(w.api, w.env, 'verdict', '--findings', file);
+    const r = verdict(w, file);
     assert.equal(r.code, 2);
     assert.match(r.stderr, /not valid JSON/);
 });
 
 test('C3: a findings file that does not exist exits 2 (CI fails closed when the review wrote none)', (t) => {
-    const w = workspace(t);
-    const r = runCli(w.api, w.env, 'verdict', '--findings', path.join(w.root, 'never-written.json'));
+    const w = verdictWorkspace(t);
+    const r = verdict(w, path.join(w.root, 'never-written.json'));
     assert.equal(r.code, 2);
     assert.match(r.stderr, /cannot read --findings/);
 });
 
 test('C3: findings from stdin; invalid findings and missing --findings exit 2', (t) => {
-    const w = workspace(t);
+    const w = verdictWorkspace(t);
     const CLI = path.join(__dirname, '..', 'adr-lint.js');
-    const ok = spawnSync(process.execPath, [CLI, 'verdict', '--findings', '-'], { cwd: w.api, env: w.env, input: findingsDoc([]), encoding: 'utf8' });
+    const ok = spawnSync(process.execPath, [CLI, 'verdict', '--findings', '-', '--diff', w.patch, '--repo', 'api'], { cwd: w.api, env: w.env, input: findingsDoc([]), encoding: 'utf8' });
     assert.equal(ok.status, 0, ok.stderr);
     const bad = path.join(w.root, 'bad.json');
-    write(bad, '{"findings":[{"class":"nope","ids":[],"summary":"x"}]}');
-    const r = runCli(w.api, w.env, 'verdict', '--findings', bad);
+    write(bad, '{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"nope","ids":[],"summary":"x"}]}');
+    const r = verdict(w, bad);
     assert.equal(r.code, 2);
     assert.match(r.stderr, /unknown class nope/);
     assert.equal(runCli(w.api, w.env, 'verdict').code, 2);
-    assert.equal(runCli(w.api, w.env, 'verdict', '--findings', bad, '--pr-body', bad).code, 2);
 });

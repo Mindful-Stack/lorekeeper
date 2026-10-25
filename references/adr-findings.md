@@ -24,6 +24,14 @@ both until v1 is retired. Pin the schema through the plugin tag you check out.
                "where": "src/x.cs:10-20", "summary": "…"}]}
 ```
 
+## Running it
+
+- Run from inside the household (`household.json` is found by walking up from the cwd) or from a
+  repo with `.lorekeeper/config.json`. The knowledge base and the sibling repos must be checked
+  out.
+- Diff paths are repo-relative. Pass `--repo <name>` when the cwd is not inside the repo.
+- `$LORE` is the plugin checkout, as an absolute path, pinned to a tag.
+
 ## What the reviewer reads: `select --json`
 
 ```
@@ -39,11 +47,14 @@ prints `{ repo, candidates: [...] }`. Each candidate:
 | `home` | `local` (the repo's own records) or `shared` (the team knowledge base); `null` when `missing` |
 | `status` | the record's status (`proposed`, `accepted`, `rejected`, `superseded`), or `missing` for an id the PR cites that resolves nowhere |
 | `file` | the record's path relative to the cwd; `null` when `missing` |
-| `reasons` | `scope` (the diff touches the record's scope), `cited` (the PR description cites it), or both |
+| `reasons` | `scope` (the diff touches the record's scope), `cited` (the PR description cites it), or both. A PR cites a record only when its id appears under a `## Decisions` heading in the PR body; anywhere else it is not a citation, and ids inside HTML comments never are |
 | `title`, `description`, `scope` | from the record's front matter |
 | `record` | the full markdown of the record, so the reviewer needs no file access |
 
 A `missing` candidate has empty `title`, `description`, `scope` and `record`.
+
+Give the select JSON to the model however the job likes, inline or as a file; the schema
+constrains only the output.
 
 ## Findings
 
@@ -51,7 +62,7 @@ A `missing` candidate has empty `title`, `description`, `scope` and `record`.
 |---|---|
 | `class` | `contradiction`, `trigger`, `stale-fact`, `uncovered` or `dangling` |
 | `ids` | names one record: the record itself, its rules (`<id>.R<n>`) or its facts (`<id>.F<n>`). `[]` for `uncovered`; the cited id for `dangling` |
-| `where` | `path:line-range` of the change. Required for every class except `dangling`, where it is `null`. Always write the key |
+| `where` | `path:line-range` of the change; line ranges refer to the patched (new) file. Required for every class except `dangling`, where it is `null`. Always write the key |
 | `summary` | one line. A `trigger` names the trigger and what in the change fires it. An `uncovered` choice says what reversing it later would take |
 
 A `contradiction` on a record that has numbered rules cites one of them. Rules and facts are read
@@ -99,14 +110,21 @@ Exit 2 means the check failed closed. Causes:
   `where`, or no `where` when its class needs one.
 - `coverage` is missing or malformed (`checked` and `notReviewed` must be arrays of strings).
 - A `checked` id resolves to no record (other than a selected `missing` id).
-- A selected record that is not `missing` is neither in `checked` nor named by a finding. A
-  finding on a record counts as having checked it.
+- A selected record that is not `missing` is neither in `checked` nor named by a finding. Only
+  a `contradiction`, `trigger` or `stale-fact` finding counts as having checked its record;
+  `uncovered` and `dangling` findings do not.
 - A `contradiction`, `trigger` or `stale-fact` has ids spanning zero or several records, names a
   record that resolves nowhere, names a rule or fact the record does not have, or (for a
   contradiction on a record with numbered rules) cites no rule.
 - Anything else unexpected, such as an unreadable record file.
 
 Ids are resolved through the selected candidates' files first, then the catalogue of every home.
+
+### Output
+
+`verdict` prints JSON to stdout: `blocking` (count), `counts` (`critical`, `important`, `minor`),
+`findings` (each finding plus `severity` and `blocking`, including the dangling ones it added),
+and `coverage` with `checked`, `extra` (checked ids that were not selected) and `notReviewed`.
 
 ### `coverage.checked` is an attestation
 

@@ -23,7 +23,8 @@ another team's KB — and numbered rules in its Decision (`R1`, `R2`, …), cite
   given.
 - **Homes** — the `adr-lint homes` JSON (which homes exist, which repos are not checked out).
 - **Candidates** — `adr-lint select --json` output: `{ repo, candidates: [{ id, kind, home,
-  status, file, reasons }] }`. `kind` is `adr` (other document kinds may appear later; ignore any
+  status, file, reasons, title, description, scope, record }] }`. `record` is the record's full
+  text, so no separate Read is needed. `kind` is `adr` (other document kinds may appear later; ignore any
   you do not know). `reasons` holds `scope` when the record's scope matches a changed or planned
   path and `cited` when the PR cites it. Status `missing` means a cited id that resolves nowhere.
   Older callers may pass the tab-separated form (`id`, `status`, `path`, `reasons`); read it the
@@ -182,8 +183,8 @@ requirement somebody once had.
    diff touches (paths, technologies, boundaries crossed), expand them into search terms as in
    `bind`, and add the records that match. A `missing` candidate is a cited id that resolves
    nowhere: report it under *Dangling citations*.
-3. Read every accepted candidate in full and compare the diff with each rule, each fact relied
-   on, and each trigger. Read ruled-out candidates too: a diff that brings back a rejected option
+3. Read every candidate in full (proposed included) and compare the diff with each rule, each fact relied
+   on, and each trigger. Ruled-out candidates are read too: a diff that brings back a rejected option
    contradicts the rejection's reasoning.
 4. **Records the change adds.** A record the diff itself adds (in any home, proposed or
    accepted) covers the choice it records: do not report that choice as uncovered. Whether it is
@@ -214,8 +215,7 @@ requirement somebody once had.
 [or: none]
 
 ## Dangling citations
-- `src/Billing/Invoice.cs:7` cites kb/ADR-0009, which resolves nowhere (renumbered, deleted, or
-  a typo).
+- The PR description cites kb/ADR-0009, which resolves nowhere (renumbered, deleted, or a typo).
 [or: none]
 
 ## Context

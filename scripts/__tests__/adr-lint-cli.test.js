@@ -811,6 +811,24 @@ test('select --json gives each candidate its title, description, scope and full 
     assert.equal(r.code, 0, r.stderr);
     const [c] = JSON.parse(r.stdout).candidates;
     assert.equal(c.title, 'ADR-0001: Store sessions server-side');
+    assert.equal(c.description, 'The API stores sessions server-side because payloads outgrow cookies.');
     assert.deepEqual(c.scope, ['api:src/Sessions/**']);
     assert.equal(c.record, text);
+});
+
+test('select --json gives a missing candidate empty reviewer context', (t) => {
+    const w = workspace(t);
+    const patch = path.join(w.root, 'change.patch');
+    write(patch, '+++ b/src/Other.cs\n');
+    const body = path.join(w.root, 'body.md');
+    write(body, '## Decisions\n- Follows: kb/ADR-0042\n');
+    const r = runCli(w.api, w.env, 'select', '--repo', 'api', '--diff', patch, '--pr-body', body, '--json');
+    assert.equal(r.code, 0, r.stderr);
+    const c = JSON.parse(r.stdout).candidates.find((x) => x.id === 'kb/ADR-0042');
+    assert.equal(c.status, 'missing');
+    assert.equal(c.home, null);
+    assert.equal(c.title, '');
+    assert.equal(c.description, '');
+    assert.deepEqual(c.scope, []);
+    assert.equal(c.record, '');
 });

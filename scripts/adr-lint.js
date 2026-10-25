@@ -2,7 +2,7 @@
 'use strict';
 
 // adr-lint: validates architecture decision records and selects the ones a diff touches.
-// No dependencies; runs on Node 16+ on any platform with git on PATH.
+// No dependencies; runs on Node 22+ on any platform with git on PATH.
 
 const fs = require('fs');
 const path = require('path');

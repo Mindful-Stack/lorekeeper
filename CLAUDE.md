@@ -28,7 +28,7 @@ The runner executes `claude --print` from a workspace root, passing `--plugin-di
 node --test scripts/__tests__/*.test.js
 ```
 
-These cover `scripts/init-detect.js` — CWD-state classification for `/lore:init` dispatch (8 test cases).
+These cover the Node scripts (`init-detect.js`, `adr-lint.js` and its helpers) and need Node 22 or later. Use the glob: Node 22+ no longer expands a bare directory argument. CI runs them on Node 22 and 24 (`.github/workflows/test.yml`).
 
 ### Debug mode for the SessionStart hook
 
@@ -116,6 +116,14 @@ The version field appears in four manifests — keep them in sync, in the same P
 - `Mindful-Stack/witan` marketplace listing → the lorekeeper entry's `version` *(lives in the witan repo — this is the one the updater actually compares against, so a bump here needs a companion PR there)*
 
 Don't defer the bump to a "release PR" later — by the time later comes, multiple changes are unreleased and cached installs are increasingly drifted. Bump in the same PR as the change, every time.
+
+## Releases
+
+- After a version bump merges, tag the merge commit `vX.Y.Z` and publish a GitHub release.
+- The release notes open with **Gate-relevant changes**: any change to `verdict`, `select --json`, `schemas/`, `scripts/adr/selection.js`, `scripts/adr/coverage.js` or `adr-lint check`, or "none".
+- Consumers pin a tag, never `main`.
+- A breaking change to the findings document adds a `schemas/adr-findings.v<N>.schema.json` file instead of editing v1.
+- The witan listing bump follows the rule above.
 
 ## Things to avoid
 

@@ -69,3 +69,19 @@ test('selected missing ids the reviewer did not report come back as dangling, no
     const reported = { class: 'dangling', ids: ['kb/ADR-0042'], where: null, summary: 's' };
     assert.deepEqual(v(doc(['kb/ADR-0001'], [reported]), over).dangling, ['kb/ADR-0043']);
 });
+
+test('rule ids follow CommonMark fences: a longer fence containing a shorter fence line hides nothing after it', () => {
+    const text = [
+        '## Decision', '````markdown', '```', '- **R8** example', '```', '````', '- **R1** real rule.', '',
+        '## Facts relied on', '- F1 one', '',
+    ].join('\n');
+    assert.deepEqual(C.ruleIds(text), ['R1']);
+    assert.deepEqual(C.factIds(text), ['F1']);
+    const tilde = ['## Decision', '~~~', '- **R8** example', '~~~', '- **R2** real.'].join('\n');
+    assert.deepEqual(C.ruleIds(tilde), ['R2']);
+});
+
+test('a selected missing id in checked is not an unresolvable error', () => {
+    const over = { picked: [...base.picked, { id: 'kb/ADR-0042', status: 'missing' }] };
+    assert.deepEqual(v(doc(['kb/ADR-0001', 'kb/ADR-0042']), over).dangling, ['kb/ADR-0042']);
+});

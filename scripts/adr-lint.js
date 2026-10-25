@@ -326,14 +326,24 @@ function cmdNext(flags, positional) {
 function cmdVerdict(flags) {
     if (!flags.findings) throw new UsageError('verdict needs --findings <file|->');
     if (!flags.diff) throw new UsageError('verdict needs --diff <patch-file> (selection is re-run from it)');
+    if (['findings', 'diff', 'pr-body'].filter((k) => flags[k] === '-').length > 1) {
+        throw new UsageError('only one input may be stdin (-)');
+    }
     const diffText = readInput(flags.diff, 'diff');
     const prBody = flags['pr-body'] ? readInput(flags['pr-body'], 'pr-body') : '';
     const cwd = path.resolve(flags.cwd || process.cwd());
     try {
         const doc = V.parseFindings(readInput(flags.findings, 'findings'));
         const { homes, picked } = S.selectFor({ cwd, repo: flags.repo, diffText, prBody });
+        // Selected candidates first: their ids come from --repo, which the catalogue may not share.
         const files = new Map(C.buildCatalogue(homes).records.map((r) => [r.id, r.file]));
-        const recordText = (id) => (files.has(id) ? fs.readFileSync(files.get(id), 'utf8') : null);
+        for (const p of picked) if (p.file) files.set(p.id, p.file);
+        const texts = new Map();
+        const recordText = (id) => {
+            if (!files.has(id)) return null;
+            if (!texts.has(id)) texts.set(id, fs.readFileSync(files.get(id), 'utf8'));
+            return texts.get(id);
+        };
         const cov = Cov.validate({ doc, picked, recordText });
         const added = cov.dangling.map((id) => ({
             class: 'dangling', ids: [id], where: null, summary: `${id} is cited in the PR description but resolves nowhere`,
@@ -342,8 +352,9 @@ function cmdVerdict(flags) {
         console.log(JSON.stringify({ ...v, coverage: { checked: doc.coverage.checked, extra: cov.extra, notReviewed: cov.notReviewed } }, null, 2));
         return v.blocking > 0 ? 1 : 0;
     } catch (e) {
-        if (e instanceof S.SelectionError || e.invalidFindings) throw new UsageError(e.message);
-        throw e;
+        // Anything else (an unreadable record) is "could not judge", not a crash.
+        if (e instanceof UsageError) throw e;
+        throw new UsageError(e.message);
     }
 }
 

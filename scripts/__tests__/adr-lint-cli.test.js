@@ -728,3 +728,75 @@ test('C3: findings from stdin; invalid findings and missing --findings exit 2', 
     assert.match(r.stderr, /unknown class nope/);
     assert.equal(runCli(w.api, w.env, 'verdict').code, 2);
 });
+
+test('C3: --repo reaches verdict exactly as it reaches select (repo resolvable only through the flag)', (t) => {
+    const w = verdictWorkspace(t);
+    // From the household root there is no git repo to infer the repo from.
+    const sel = runCli(w.root, w.env, 'select', '--repo', 'api', '--diff', w.patch, '--json');
+    assert.equal(sel.code, 0, sel.stderr);
+    const ids = JSON.parse(sel.stdout).candidates.map((c) => c.id);
+    assert.deepEqual(ids, ['kb/ADR-0001']);
+    const file = path.join(w.root, 'findings.json');
+    write(file, findingsDoc([], { checked: ids, notReviewed: [] }));
+    const run = () => runCli(w.root, w.env, 'verdict', '--findings', file, '--diff', w.patch, '--repo', 'api');
+    assert.equal(run().code, 0);
+    write(file, findingsDoc([], { checked: ids.slice(1), notReviewed: [] }));
+    const r = run();
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /not checked: kb\/ADR-0001/);
+    assert.equal(runCli(w.root, w.env, 'verdict', '--findings', file, '--diff', w.patch).code, 2);
+});
+
+test('C3: single repo without a KB, record without id:, --repo differing from the directory name', (t) => {
+    const base = tmpDir(t);
+    const root = path.join(base, 'checkout');
+    const env = gitEnv(base);
+    initRepo(root, env);
+    write(path.join(root, 'docs', 'adr', '0001-cache.md'), makeRecord({ prefix: 'svc', fm: { id: undefined } }));
+    const patch = path.join(base, 'change.patch');
+    write(patch, '+++ b/src/Sessions/Store.cs\n');
+    const sel = runCli(root, env, 'select', '--repo', 'svc', '--diff', patch, '--json');
+    assert.equal(sel.code, 0, sel.stderr);
+    assert.deepEqual(JSON.parse(sel.stdout).candidates.map((c) => c.id), ['svc/ADR-0001']);
+    const file = path.join(base, 'findings.json');
+    write(file, JSON.stringify({ coverage: { checked: ['svc/ADR-0001'], notReviewed: [] }, findings: [] }));
+    const r = runCli(root, env, 'verdict', '--findings', file, '--diff', patch, '--repo', 'svc');
+    assert.equal(r.code, 0, r.stderr);
+    write(file, JSON.stringify({
+        coverage: { checked: [], notReviewed: [] },
+        findings: [{ class: 'contradiction', ids: ['svc/ADR-0001.R1'], where: 'a:1', summary: 's' }],
+    }));
+    assert.equal(runCli(root, env, 'verdict', '--findings', file, '--diff', patch, '--repo', 'svc').code, 1);
+});
+
+test('C3: a selected missing id listed in coverage.checked does not exit 2', (t) => {
+    const w = verdictWorkspace(t);
+    const file = path.join(w.root, 'findings.json');
+    const body = path.join(w.root, 'body.md');
+    write(body, '## Decisions\n\nFollows kb/ADR-0042.\n');
+    write(file, findingsDoc([], { checked: ['kb/ADR-0001', 'kb/ADR-0042'], notReviewed: [] }));
+    const r = verdict(w, file, '--pr-body', body);
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(JSON.parse(r.stdout).findings.map((x) => x.class), ['dangling']);
+});
+
+test('C3: an unreadable record file exits 2 with the message, not a stack', (t) => {
+    if (process.getuid && process.getuid() === 0) return t.skip('root ignores file modes');
+    const w = verdictWorkspace(t);
+    const rec = path.join(w.shared, '0001-session-storage.md');
+    fs.chmodSync(rec, 0o000);
+    t.after(() => { try { fs.chmodSync(rec, 0o644); } catch { /* already removed */ } });
+    const file = path.join(w.root, 'findings.json');
+    write(file, findingsDoc([]));
+    const r = verdict(w, file);
+    assert.equal(r.code, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /EACCES/);
+    assert.doesNotMatch(r.stderr, /\n\s+at /);
+});
+
+test('C3: --findings - together with --diff - is a usage error', (t) => {
+    const w = verdictWorkspace(t);
+    const r = runCli(w.api, w.env, 'verdict', '--findings', '-', '--diff', '-', '--repo', 'api');
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /only one input may be stdin/);
+});

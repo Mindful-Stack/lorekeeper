@@ -5,23 +5,37 @@
 // cannot prove the records were read, only that every selected record was attested and that no
 // finding cites a record, rule or fact that does not exist. Errors here mean exit 2.
 
-const { sections } = require('./frontmatter');
-
 function fail(message) {
     const e = new Error(message);
     e.invalidFindings = true;
     return e;
 }
 
-// Ids opening a list item in one section, skipping fenced examples. `sections` already ignores
-// headings inside fences; this also ignores list items inside them.
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+
+// Ids opening a list item in one `## heading` section, skipping fenced examples. Fences follow
+// CommonMark: a closer uses the opener's character, a run at least as long, and nothing else.
 function idsIn(text, heading, re) {
-    const s = sections(text.replace(/\r\n/g, '\n')).find((x) => x.heading === heading);
     const out = [];
-    let fenced = false;
-    for (const line of (s ? s.content : '').split('\n')) {
-        if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
-        const m = !fenced && re.exec(line);
+    let fence = null;
+    let inSection = false;
+    for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
+        if (fence) {
+            const close = new RegExp(`^ {0,3}${fence.ch}{${fence.len},}[ \\t]*$`);
+            if (close.test(line)) fence = null;
+            continue;
+        }
+        const open = FENCE_OPEN.exec(line);
+        if (open && !(open[1][0] === '`' && open[2].includes('`'))) {
+            fence = { ch: open[1][0], len: open[1].length };
+            continue;
+        }
+        const h = /^## (.+?)\s*$/.exec(line);
+        if (h) {
+            inSection = h[1] === heading;
+            continue;
+        }
+        const m = inSection && re.exec(line);
         if (m && !out.includes(m[1])) out.push(m[1]);
     }
     return out;
@@ -39,8 +53,10 @@ function validate({ doc, picked, recordText }) {
     if (!cov || typeof cov !== 'object' || !strings(cov.checked) || !strings(cov.notReviewed)) {
         throw fail('findings document needs "coverage": {"checked": [ids], "notReviewed": [strings]}');
     }
+    // A selected id that resolves nowhere is reported as dangling below, so attesting it is fine.
+    const missing = new Set(picked.filter((p) => p.status === 'missing').map((p) => p.id));
     for (const id of cov.checked) {
-        if (!recordText(id)) throw fail(`coverage: checked ${id} does not resolve to a record`);
+        if (!missing.has(id) && !recordText(id)) throw fail(`coverage: checked ${id} does not resolve to a record`);
     }
     const attested = new Set(cov.checked);
     for (const f of doc.findings) {

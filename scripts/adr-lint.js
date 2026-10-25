@@ -6,16 +6,15 @@
 
 const fs = require('fs');
 const path = require('path');
-const { asList, isEmpty } = require('./adr/frontmatter');
 const { toPosix } = require('./adr/glob');
 const R = require('./adr/records');
 const H = require('./adr/homes');
 const G = require('./adr/git');
 const { checkHome } = require('./adr/rules');
 const { backfill } = require('./adr/backfill');
-const { parsePatchPaths, parseCitedIds, select } = require('./adr/select');
 const C = require('./adr/catalogue');
 const V = require('./adr/verdict');
+const S = require('./adr/selection');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
@@ -188,36 +187,17 @@ function cmdCheck(flags, positional) {
 function cmdSelect(flags) {
     if (!flags.diff === !flags.paths) throw new UsageError('select needs exactly one of --diff <patch-file|-> or --paths <path,...>');
     const cwd = path.resolve(flags.cwd || process.cwd());
-    const homes = H.resolveHomes(cwd);
-    const root = G.gitRoot(cwd);
-    const repo = flags.repo
-        || H.repoFromRemote(homes, root && G.originUrl(root))
-        || (homes.mode === 'single' ? homes.localHomes[0].repo : null)
-        || (root ? [G.repoName(root), path.basename(root)].find((n) => homes.localHomes.some((h) => h.repo === n)) : null);
-    if (!repo) throw new UsageError('cannot tell which repo this is; pass --repo <name>');
-    const local = homes.mode === 'single' ? homes.localHomes[0] : homes.localHomes.find((h) => h.repo === repo);
-    if (!local) throw new UsageError(`repo ${repo} is not in household.json`);
-
-    const candidates = [];
-    const add = (dir, kind, prefix) => {
-        for (const r of R.loadHome(dir).records) {
-            candidates.push({
-                id: isEmpty(r.fm.id) ? R.impliedId(prefix, r.number) : r.fm.id,
-                kind,
-                status: r.fm.status || '',
-                file: r.file,
-                scope: asList(r.fm.scope),
-            });
-        }
-    };
-    add(local.dir, 'local', repo);
-    if (homes.sharedHome && !local.coinciding) add(homes.sharedHome, 'shared', 'kb');
-
-    const paths = flags.paths
-        ? flags.paths.split(',').map((p) => toPosix(p.trim())).filter(Boolean)
-        : parsePatchPaths(readInput(flags.diff, 'diff'));
+    const paths = flags.paths ? flags.paths.split(',').map((p) => toPosix(p.trim())).filter(Boolean) : null;
+    const diffText = paths ? '' : readInput(flags.diff, 'diff');
     const prBody = flags['pr-body'] ? readInput(flags['pr-body'], 'pr-body') : '';
-    const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody) });
+    let sel;
+    try {
+        sel = S.selectFor({ cwd, repo: flags.repo, diffText, paths, prBody });
+    } catch (e) {
+        if (e instanceof S.SelectionError) throw new UsageError(e.message);
+        throw e;
+    }
+    const { repo, picked } = sel;
     if (flags.json) {
         // `kind` is the document kind; behaviour docs (a later plan) add `behaviour` rows.
         console.log(JSON.stringify({

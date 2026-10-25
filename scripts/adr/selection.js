@@ -27,7 +27,7 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
         for (const r of R.loadHome(dir).records) {
             candidates.push({
                 id: isEmpty(r.fm.id) ? R.impliedId(prefix, r.number) : r.fm.id,
-                kind, status: r.fm.status || '', file: r.file, scope: asList(r.fm.scope),
+                kind, status: r.fm.status || '', file: r.file, scope: asList(r.fm.scope), fm: r.fm, text: r.text,
             });
         }
     };
@@ -35,7 +35,7 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
     if (homes.sharedHome && !local.coinciding) add(homes.sharedHome, 'shared', 'kb');
     const paths = given || parsePatchPaths(diffText);
     const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody || '') });
-    return { repo, homes, picked };
+    return { repo, homes, picked, candidates };
 }
 
 module.exports = { selectFor, SelectionError };

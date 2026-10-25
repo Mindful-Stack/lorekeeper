@@ -800,3 +800,17 @@ test('C3: --findings - together with --diff - is a usage error', (t) => {
     assert.equal(r.code, 2);
     assert.match(r.stderr, /only one input may be stdin/);
 });
+
+test('select --json gives each candidate its title, description, scope and full record', (t) => {
+    const w = workspace(t);
+    const text = makeRecord();
+    write(path.join(w.shared, '0001-session-storage.md'), text);
+    const patch = path.join(w.root, 'change.patch');
+    write(patch, '+++ b/src/Sessions/Store.cs\n');
+    const r = runCli(w.api, w.env, 'select', '--repo', 'api', '--diff', patch, '--json');
+    assert.equal(r.code, 0, r.stderr);
+    const [c] = JSON.parse(r.stdout).candidates;
+    assert.equal(c.title, 'ADR-0001: Store sessions server-side');
+    assert.deepEqual(c.scope, ['api:src/Sessions/**']);
+    assert.equal(c.record, text);
+});

@@ -199,14 +199,20 @@ function cmdSelect(flags) {
         if (e instanceof S.SelectionError) throw new UsageError(e.message);
         throw e;
     }
-    const { repo, picked } = sel;
+    const { repo, picked, candidates } = sel;
     if (flags.json) {
+        const byId = new Map(candidates.map((c) => [c.id, c]));
         // `kind` is the document kind; behaviour docs (a later plan) add `behaviour` rows.
         console.log(JSON.stringify({
             repo,
-            candidates: picked.map((p) => ({
-                id: p.id, kind: 'adr', home: p.home, status: p.status, file: p.file ? display(p.file) : null, reasons: p.reasons,
-            })),
+            candidates: picked.map((p) => {
+                const c = byId.get(p.id);
+                return {
+                    id: p.id, kind: 'adr', home: p.home, status: p.status, file: p.file ? display(p.file) : null, reasons: p.reasons,
+                    title: c ? c.fm.title || '' : '', description: c ? c.fm.description || '' : '',
+                    scope: c ? c.scope : [], record: c ? c.text : '',
+                };
+            }),
         }, null, 2));
         return 0;
     }

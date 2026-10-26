@@ -847,11 +847,11 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
                 "^initiative create (?=.*--horizon Later\\b)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "^epic create (?=.*--initiative GRA-1\\d\\d\\b).*--json$"
                 "^story edit GRA-44 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
-                "(?s)^story ls --epic GRA-20 --json$.*^story ls --epic GRA-20 --json$"]
+                "(?s)story create.*story ls --epic"]
   :log-rejects ["--brief-file" "^story edit GRA-42 .*--kind" "^epic discovery " "^decision require "]}
 ```
 
-What each expectation distinguishes: the three `story create` lines a story without criteria, outside the epic or with a title-derived key; the five placement lines one branch of the placement tree each — GRA-40 (broken behaviour → bug under the covering epic), GRA-41 (internal work → chore), GRA-42 (product change covered by this epic; a `--kind` on it is rejected), GRA-43 (covered by initiative GRA-13 but no epic → new epic there), GRA-44 (covered by nothing → new initiative in `Later`, the last bucket before "Won't do", plus an epic under it); a skill that only offers "this epic or leave it" fails four of them; `story ls --epic` twice and the transcript's "no acceptance criteria" (GRA-32) and "decision: no record" (GRA-31) a readiness summary that is not read back from the planner after the writes, or that is invented rather than worded from the fake's reasons; `epic edit … --version 2` a guessed version; `decision require` and `epic discovery` rejected, a skill that creates decisions or marks discovery the user did not ask for.
+What each expectation distinguishes: the three `story create` lines a story without criteria, outside the epic or with a title-derived key; the five placement lines one branch of the placement tree each — GRA-40 (broken behaviour → bug under the covering epic), GRA-41 (internal work → chore), GRA-42 (product change covered by this epic; a `--kind` on it is rejected), GRA-43 (covered by initiative GRA-13 but no epic → new epic there), GRA-44 (covered by nothing → new initiative in `Later`, the last bucket before "Won't do", plus an epic under it); a skill that only offers "this epic or leave it" fails four of them; the single regex `(?s)story create.*story ls --epic` a readiness listing that does not come after the creates (two listings before any write, the step 1 read among them, no longer satisfy it), and the transcript's "no acceptance criteria" (GRA-32) and "decision: no record" (GRA-31) a readiness summary that is invented rather than quoted from the fake's reasons; `epic edit … --version 2` a guessed version; `decision require` and `epic discovery` rejected, a skill that creates decisions or marks discovery the user did not ask for.
 
 - [ ] **Step 2: Run it, see it fail**
 
@@ -934,12 +934,15 @@ call: commands, flags, exit statuses, idempotency keys and wording come from the
    - The user may say "leave it untriaged"; then write nothing for it.
    `--kind` on `story edit` comes with Reeve plan C (Task 5); before that the CLI rejects it as a
    usage error (exit 1): say so and leave the story's kind as it is.
-7. **Readiness and discovery.** Run `reeve story ls --epic <EPIC> --json` again and list each
-   story as "ready", or "blocked:" with its reasons, worded by the reference's table. Ask whether
-   discovery is complete, or take the answer the request gave; only on yes run
-   `reeve epic discovery <EPIC> --complete --version <latest version> --json`.
+7. **Discovery mark, then readiness.** Ask whether discovery is complete, or take the answer the
+   request gave; only on yes run
+   `reeve epic discovery <EPIC> --complete --version <latest version> --json`. Then, after that
+   mark (after the last write when the user declined it), run
+   `reeve story ls --epic <EPIC> --json` and list each story as "ready", or "blocked:" with the
+   planner's reasons, worded by the reference's table. Completing discovery can change those
+   reasons, so this listing is the last read of the run and the only one the report quotes.
 8. **Report.** `Run id: <run_id>`; the `Researched:` line; every key written; each placement
-   with its branch; open required decisions; the readiness list from step 7.
+   with its branch; open required decisions; the readiness list from step 7, quoting the planner's reasons.
 
 `<n>` counts every create of this run from 1: decisions, comments, stories, epics and initiatives
 together.
@@ -951,7 +954,7 @@ Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-refining-epic` — 
 
 - [ ] **Step 5: Mutation check**
 
-Empty the body of `skills/refining-epic/SKILL.md` below the frontmatter, run Step 4's command. Expected: `[FAIL]` (the placement lines and the second `story ls --epic` missing). Restore.
+Empty the body of `skills/refining-epic/SKILL.md` below the frontmatter, run Step 4's command. Expected: `[FAIL]` (the placement lines and the `story ls --epic` after the creates missing). Restore.
 
 - [ ] **Step 6: Commit**
 
@@ -970,21 +973,21 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `skills/brainstorming/SKILL.md`, `skills/writing-plans/SKILL.md`
 - Test: `test/scenarios.edn` (scenarios `reeve-brainstorming-without-planner`, `reeve-brainstorming-no-story-key`, `reeve-brainstorming-story-context`)
 
-- [ ] **Step 1: The baseline, before any edit**
+- [ ] **Step 1: The baseline, before the planner edits**
 
-`origin/main` has no brainstorming scenario, so the planner-absent baseline is added first and must pass against the unmodified skill. It deliberately carries no `:requires`: it runs in the plain suite and in the `--filter reeve-` run alike, always without the fake (with the runner's empty `REEVE_CONFIG_DIR`, a real `reeve` on the PATH is signed out).
+`origin/main` has no brainstorming scenario, so the planner-absent baseline is added first; it passes once the announce line (the first edit of Step 3) is in, and fails on the skill with its body emptied. It deliberately carries no `:requires`: it runs in the plain suite and in the `--filter reeve-` run alike, always without the fake (with the runner's empty `REEVE_CONFIG_DIR`, a real `reeve` on the PATH is signed out).
 
 ```clojure
  {:name "reeve-brainstorming-without-planner"
   :prompt "/lore:brainstorming add a retry policy for failed payment webhooks"
   :workdir "."
-  :expects ["\\?" "(?i)payment"]
+  :expects ["Using the brainstorming skill: no code until the design is approved\\." "\\?" "(?i)payment"]
   :rejects ["(?i)reeve|planner|story context" "docs/agent/specs/"]}
 ```
 
-What it distinguishes: a step 0 that leaks into sessions with no story (planner talk in the transcript), and a broken hard gate (a spec path before any clarifying question).
+What it distinguishes: a step 0 that leaks into sessions with no story (planner talk in the transcript), and a broken hard gate (a spec path before any clarifying question). The announce sentence is the line the skill itself prints at its start (added in Step 3); it is absent from the unmodified skill, so a generic reply with no skill behind it cannot satisfy this scenario.
 
-Run: `bb test/run-tests.clj --filter reeve-brainstorming-without-planner` — Expected: `[PASS]` on the unmodified skill.
+Order of work for this step: add the announce line to `skills/brainstorming/SKILL.md` first (Step 3's first edit, nothing else yet), run: `bb test/run-tests.clj --filter reeve-brainstorming-without-planner` — Expected: `[PASS]`. Then the mutation check, written down here because it is what makes the scenario worth keeping: empty the body of `skills/brainstorming/SKILL.md` below the frontmatter, run the same command — Expected: `[FAIL]` (the announce sentence missing); restore.
 
 - [ ] **Step 2: The planner scenarios**
 
@@ -994,27 +997,27 @@ Run: `bb test/run-tests.clj --filter reeve-brainstorming-without-planner` — Ex
   :allowed-tools ["Bash(reeve *)"]
   :prompt "/lore:brainstorming add a retry policy for failed payment webhooks"
   :workdir "."
-  :expects ["\\?"]
+  :expects ["Using the brainstorming skill: no code until the design is approved\\." "\\?"]
   :rejects ["(?i)reeve|story context"]
   :log-rejects ["."]}
 
  {:name "reeve-brainstorming-story-context"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
-  :prompt "/lore:brainstorming add a retry policy for story GRA-31. Do not ask questions; the answers are given: retries cover failed matches only, at most three attempts. Stop after presenting the project context, including the open required decisions."
+  :prompt "/lore:brainstorming add a retry policy for story GRA-31. Do not ask questions; the answers are given: retries cover failed matches only, at most three attempts. Stop after presenting the project context, including the open required decisions, and your first clarifying question."
   :workdir "."
-  :expects ["Queue or cron" "#7" "(?i)no record"]
+  :expects ["Using the brainstorming skill: no code until the design is approved\\." "(?s)Queue or cron.*\\n[^\\n]*\\?\\s*\\z" "#7" "(?i)no record"]
   :rejects ["docs/agent/specs/"]
   :log-expects ["^--version$" "^auth status --json$" "^story context GRA-31 --json$"]}
 ```
 
-What they distinguish: `no-story-key` (the log must stay empty) a step 0 that runs the detector on every brainstorming session; `story-context` a skill that does not read the bundle (log), reads it but does not surface the open decision ("Queue or cron", "#7"), or misreads `check.kind: unchecked` as satisfied instead of deriving "no record" from `record: null`.
+What they distinguish: `story-context` also fixes the order, with the decision's title (the fixture's "Queue or cron") in the transcript before the last line, which is the first clarifying question; the announce sentence is required in all three, so an empty skill body fails each of them. `no-story-key` (the log must stay empty) a step 0 that runs the detector on every brainstorming session; `story-context` a skill that does not read the bundle (log), reads it but does not surface the open decision ("Queue or cron", "#7"), or misreads `check.kind: unchecked` as satisfied instead of deriving "no record" from `record: null`.
 
 Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-brainstorming` — Expected: `no-story-key` and `without-planner` pass, `story-context` fails (`log: ^story context GRA-31 --json$` missing).
 
 - [ ] **Step 3: The edit**
 
-In `skills/brainstorming/SKILL.md`, *Checklist*, insert before item 1:
+In `skills/brainstorming/SKILL.md`, first add one line at the very start of the body, before *Checklist* (and before the HARD-GATE block), exactly: `Announce at the start: "Using the brainstorming skill: no code until the design is approved."` Run Step 1's mutation check now, then continue. Then, in *Checklist*, insert before item 1:
 
 ```markdown
 0. **Planner context (only when the request names a story)** — when the request names a story
@@ -1060,7 +1063,7 @@ Append to item 9:
 
 In the *Process Flow* graph, add the node `"Read planner context (story named, planner present)" [shape=box];` first and the edge `"Read planner context (story named, planner present)" -> "Explore project context";`.
 
-Every other line of the skill is unchanged: the HARD-GATE, the anti-pattern section, items 2–4, 7–8, *The Process*, *After the Design* and *Key Principles* (kb/ADR-0005 R4).
+Every other line of the skill is unchanged apart from the announce line: the HARD-GATE, the anti-pattern section, items 2–4, 7–8, *The Process*, *After the Design* and *Key Principles* (kb/ADR-0005 R4).
 
 In `skills/writing-plans/SKILL.md`, the low-tier bullet "**Low tier** drafts alone become the ride-along apply task: copy each one into the plan," becomes "**Low tier** drafts alone become the ride-along apply task: copy each one into the plan, with its `Required decision: #<id>` line when the spec has one,". Without it, a low-tier draft that answers a required decision loses its id between the spec and the apply.
 
@@ -1070,7 +1073,7 @@ Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-brainstorming` — 
 
 - [ ] **Step 5: Mutation check**
 
-Delete the inserted step 0 and the item-1 addition, run Step 4's command. Expected: `reeve-brainstorming-story-context` fails; the other two still pass. Restore.
+Delete the inserted step 0 and the item-1 addition, run Step 4's command. Expected: `reeve-brainstorming-story-context` fails; the other two still pass. Restore. Then empty the whole body below the frontmatter, run Step 4's command. Expected: all three fail (no announce sentence). Restore.
 
 - [ ] **Step 6: Commit**
 
@@ -1088,7 +1091,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Files:**
 - Create: `skills/recording-decisions/actions/link.md`
 - Modify: `skills/recording-decisions/SKILL.md`, `skills/recording-decisions/actions/record.md`
-- Test: `test/scenarios.edn` (new `command-adr-triages-process-decision`, `reeve-adr-link-proposed`, `reeve-adr-link-check-unreadable`; the existing `command-adr-new-triages-and-interviews` gains a reject)
+- Test: `test/scenarios.edn` (new `command-adr-triages-process-decision`, `reeve-adr-link-proposed`, `reeve-adr-link-check-unreadable`, `reeve-adr-link-ride-along`; the existing `command-adr-new-triages-and-interviews` gains a reject)
 
 - [ ] **Step 1: The scenarios**
 
@@ -1129,11 +1132,25 @@ In the existing `command-adr-new-triages-and-interviews`, add `"(?i)meeting note
 
 The record is the fixture's existing `lore/knowledge/adrs/0002-inventory-reservation.md` (`id: kb/ADR-0002`): the inline knowledge base `lore` is a directory of the household, so the path inside the repository is `knowledge/adrs/0002-inventory-reservation.md`. No fixture file is added (a new `kb/ADR-0003` would change the next number other scenarios expect). No git, gh or apply is needed.
 
+```clojure
+ {:name "reeve-adr-link-ride-along"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)" "Bash(git *)" "Bash(node *)"]
+  :prompt "/lore:adr record: backend retries failed payment webhooks at most three times, because the queue cannot absorb more. It answers required decision 7 in Reeve. Do not ask questions; the answers are given: decided by Dan Doe; low tier, local home backend; apply it as a ride-along on the current branch (first create and switch to a branch feat/retry); the planner calls this repository backend."
+  :workdir "backend"
+  :expects ["(?i)rides along on branch feat/retry" "/lore:adr link backend/ADR-\\d{4} to decision 7"]
+  :rejects ["(?i)linked:"]
+  :log-expects ["^comment add (?=.*--decision 7\\b)(?=.*rides along on branch feat/retry)(?=.*--idempotency-key \\S+:7:[0-9a-f]{8}:\\d+\\b).*--json$"]
+  :log-rejects ["^decision link "]}
+```
+
+It runs in the `backend` fixture, the same repository `command-adr-triages-process-decision` names. What it distinguishes: a ride-along apply that links straight away with the updater's (absent) PR url, from one that leaves the planner pointer and tells the user the sentence; the log has the comment and no `decision link`.
+
 What they distinguish: `link-proposed` a link that needs an apply first (impossible here), a wrong path (absolute, or relative to the household instead of the repository), a missing `--pr`, and an answer not read from `check.kind`; `link-check-unreadable` a skill that applies "exit 1 → failure" to a link that in fact succeeded.
 
 - [ ] **Step 2: Run them, see them fail**
 
-Run: `bb test/run-tests.clj --filter command-adr-triages` — Expected: `[FAIL]`, "meeting notes" or "RFC" present (old step 3). Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-adr-link` — Expected: 2 `[FAIL]` (no link action; the log has no `decision link`).
+Run: `bb test/run-tests.clj --filter command-adr-triages` — Expected: `[FAIL]`, "meeting notes" or "RFC" present (old step 3). Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-adr-link` — Expected: 2 `[FAIL]` (no link action; the log has no `decision link`) and the ride-along scenario `[FAIL]` (no planner pointer comment).
 
 - [ ] **Step 3: `actions/link.md`**
 
@@ -1150,15 +1167,20 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
 2. **Inputs.** Take each from the request or the caller (record step 6); ask, one at a time, only
    for what is missing:
    - the decision id, an integer ("decision 7", "#7");
-   - the record's qualified id, and its file from `node <plugin-root>/scripts/adr-lint.js index --json`
-     (`records[].id` → `records[].file`); an id the index lacks: say so and stop;
+   - the record's qualified id, repository and repository-relative path. From record step 6 these
+     are the knowledge-updater's report (below) and need no index lookup: the updater's worktree
+     is gone by then and the user's checkout does not contain the record. For a record that
+     already exists in a checkout (the standalone `link` action), take its file from
+     `node <plugin-root>/scripts/adr-lint.js index --json` (`records[].id` → `records[].file`);
+     an id the index lacks: say so and stop, unless the user gave the repository, `--path` and PR
+     explicitly, which are then used as given;
    - the household directory: the current directory unless the user names another;
    - the repository name as configured in the planner: no `reeve` command lists the planner's
      repositories, so ask, offering the `household.json` repository whose directory holds the
      file;
    - the record's path inside that repository: the file's path relative to `<household>/<repo>`,
      or to the household itself when its directory name is the repository name;
-   - the PR proposing the record: the url in the request, else `gh pr view --json url --jq .url`
+   - the PR proposing the record: the url in the request or the report, else `gh pr view --json url --jq .url`
      run in the repository on the record's branch when `gh` is available, else ask; a record
      already merged to the default branch has none (omit `--pr`).
 3. **Show and run.** The request (or the apply the user confirmed) naming the record and the
@@ -1181,15 +1203,17 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
 
 `skills/recording-decisions/actions/record.md`:
 - Step 3, replace "a decision with no code behind it (a tool, a process) belongs in an RFC or meeting notes." with: "A decision with no code behind it (a tool, a process, a product choice) is a record like any other when it is hard to reverse or the user wants one: same format, its `scope` names the documents or repositories it governs; never send it to an RFC or meeting notes (kb/ADR-0004 R5)." This change is unconditional (Design choices).
-- Step 6, append: "Then, only when a decision id is known — the user named one, the spec entry the draft came from carries `Required decision: #<id>` (outside the record text), or a planning skill passed one — follow `actions/link.md` with that id, the record's qualified id and the PR url the knowledge-updater reported; link.md's step 1 skips it when the planner is absent. A link that is refused or cannot check never undoes the apply."
+- Step 6, append: "Then, only when a decision id is known — the user named one, the spec entry the draft came from carries `Required decision: #<id>` (outside the record text), or a planning skill passed one — act on the knowledge-updater's report, never on the current checkout's index (the updater's own-pr worktree is removed before it returns, so the record is not in the index). The report supplies: the record's qualified id (the id the draft was numbered with), the repository (the home's `repo` from the homes JSON the updater was given; the planner's name for it is asked as link.md says), the repository-relative path (the report's *Files changed* entry for that record), the PR url and the branch. Where the report says the change landed:
+  - *opened PR <url>*, *committed to PR <url>*: follow `actions/link.md` with those inputs; its step 1 skips it when the planner is absent. A link that is refused or cannot check never undoes the apply.
+  - *staged on your branch `<branch>`, not committed* (a ride-along; there may be no upstream and no PR yet): do not link. When the planner is present (link.md step 1), run `reeve comment add --decision <id> --body 'Record <qualified id> at <repo>:<path> rides along on branch <branch>; link it with /lore:adr link <qualified id> to decision <id> once the implementing PR is open' --idempotency-key <skill>:<id>:<run_id>:<n> --json` (the key's skill and run id from the calling skill, else `recording-decisions` and the detector's `run_id`), and tell the user that same sentence. The link is made later by the standalone `link` action, once the PR exists (`--pr` from the request, else `gh pr view`)."
 
 - [ ] **Step 5: Run them, see them pass**
 
-Run: `bb test/run-tests.clj --filter command-adr` — Expected: every `command-adr-…` scenario passes, including the new triage one. Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-adr-link` — Expected: 2 `[PASS]`.
+Run: `bb test/run-tests.clj --filter command-adr` — Expected: every `command-adr-…` scenario passes, including the new triage one. Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-adr-link` — Expected: 3 `[PASS]`.
 
 - [ ] **Step 6: Mutation checks**
 
-Empty `actions/link.md`: both `reeve-adr-link-…` scenarios fail. Restore the old step 3 sentence: `command-adr-triages-process-decision` fails. Restore both.
+Empty `actions/link.md`: both `reeve-adr-link-proposed` and `-check-unreadable` fail. Remove the ride-along bullet from record step 6: `reeve-adr-link-ride-along` fails. Restore the old step 3 sentence: `command-adr-triages-process-decision` fails. Restore both.
 
 - [ ] **Step 7: Commit**
 
@@ -1269,7 +1293,7 @@ bb test/run-tests.clj --with reeve-fake --filter reeve-
 bb test/run-tests.clj
 ```
 
-Expected: every Node test passes; the second command runs the eight `reeve-…` scenarios (`reeve-runner-selftest`, `reeve-planning-initiative`, `reeve-refining-epic`, the three `reeve-brainstorming-…`, the two `reeve-adr-link-…`) and all pass; the third prints `[SKIP]` for the seven that require `reeve-fake` and passes every other scenario, including `reeve-brainstorming-without-planner`, `command-adr-triages-process-decision` and the updated `command-adr-new-triages-and-interviews`. Use `--runs 3 --min 2` on a scenario that fails once to see whether it is flaky before changing a skill.
+Expected: every Node test passes; the second command runs the nine `reeve-…` scenarios (`reeve-runner-selftest`, `reeve-planning-initiative`, `reeve-refining-epic`, the three `reeve-brainstorming-…`, the three `reeve-adr-link-…`) and all pass; the third prints `[SKIP]` for the eight that require `reeve-fake` and passes every other scenario, including `reeve-brainstorming-without-planner`, `command-adr-triages-process-decision` and the updated `command-adr-new-triages-and-interviews`. Use `--runs 3 --min 2` on a scenario that fails once to see whether it is flaky before changing a skill.
 
 - [ ] **Step 6: Commit, PR and the marketplace companion**
 

@@ -33,11 +33,11 @@ task for this and say nothing about it. Run `node <plugin-root>/scripts/reeve-de
 never mentions the planner, the detector, a sign-in or a story lookup (not even that the story
 could not be loaded), and reads exactly as it would if the planner did not exist. Otherwise
 read `<plugin-root>/references/reeve-cli.md` and run `reeve story context <KEY> --json` (the
-detector's `bin` as the first word). If it does not exit 0, say so in one line (the planner has no
-story <KEY>, and an epic or initiative key is not a story; for a sign-in error, run
-`reeve auth login`) and go on with checklist item 1 without planner context. On exit 0, the
-story's title, description and criteria, the initiative and epic briefs, the required decisions,
-the blockers and the comments are project context for item 1.
+detector's `bin` as the first word). If it does not answer `ok`, say so in one line (the planner
+has no story <KEY>, and an epic or initiative key is not a story; for an `unauthenticated` or
+`forbidden` error, run `reeve auth login`) and go on with checklist item 1 without planner
+context. On `ok`, the story's title, description and criteria, the initiative and epic briefs,
+the required decisions, the blockers and the comments are project context for item 1.
 
 ## Checklist
 
@@ -50,9 +50,10 @@ You MUST create a task for each of these items and complete them in order:
    architect's binding decisions constrain every approach you propose, and a fired trigger means
    the design must supersede that record (recording-decisions skill) rather than quietly violate it.
    With a planner bundle (*Planner Context*), list each open required decision among the binding
-   decisions as "open required decision #<id> — <title> (<status>)". Open means `record: null`
-   (status "no record") or a `check.kind` other than `accepted`; word the status as the CLI
-   reference says. The design either waits for it or decides it now; then step 5 drafts its record.
+   decisions as "open required decision #<id> — <title> (<status>)". Open is as the CLI
+   reference's *Wording the planner's answers* defines it (not closed, not accepted); word the
+   status as that section says. The design either waits for it or decides it now; then step 5
+   drafts its record.
 2. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 3. **Propose 2-3 approaches** — with trade-offs and your recommendation
    If the chosen approach commits to a hard-to-reverse choice, it will be listed and recorded in

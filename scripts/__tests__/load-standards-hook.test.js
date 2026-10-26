@@ -310,3 +310,30 @@ test('schema gate: degrades silently when node is non-functional (valid JSON, no
         assert.doesNotMatch(json.systemMessage, /older than this plugin/);
         assert.doesNotMatch(json.systemMessage, /newer than this plugin/);
     }));
+
+// --- Reeve planner router rows: only when a reeve-planner CLI answers (kb/ADR-0005 R1) ----
+const REEVE_FAKE = path.resolve(__dirname, '../../test/fixtures/reeve-bin/reeve');
+const PLANNER_ROWS = /PLANNING AN INITIATIVE[\s\S]*REFINING AN EPIC/;
+
+test('reeve router rows: present when the reeve CLI reports reeve-planner', () =>
+    withTmp((tmp) => {
+        const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: mkKb(path.join(tmp, 'kb')), REEVE_BIN: REEVE_FAKE });
+        assert.match(ctx(json), PLANNER_ROWS);
+        assert.match(ctx(json), /CREATIVE WORK[\s\S]*PLANNING AN INITIATIVE[\s\S]*HARD-TO-REVERSE DECISION/);
+    }));
+
+test('reeve router rows: absent without a reeve CLI, with a lookalike, or with a hanging one', () =>
+    withTmp((tmp) => {
+        const kb = mkKb(path.join(tmp, 'kb'));
+        const lookalike = path.join(tmp, 'reeve-runner');
+        fs.writeFileSync(lookalike, '#!/bin/sh\necho "reeve-runner 2.0.0"\n');
+        fs.chmodSync(lookalike, 0o755);
+        const hang = path.join(tmp, 'reeve-hang');
+        fs.writeFileSync(hang, '#!/bin/sh\nsleep 5\necho reeve-planner 0.1.0\n');
+        fs.chmodSync(hang, 0o755);
+        for (const bin of [path.join(tmp, 'missing'), lookalike, hang]) {
+            const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb, REEVE_BIN: bin });
+            assert.doesNotMatch(ctx(json), /Reeve planner/, bin);
+            assert.match(ctx(json), /CREATIVE WORK[\s\S]*HARD-TO-REVERSE DECISION/, bin);
+        }
+    }));

@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-// A fake Reeve planner CLI for the scenario tests (test/README.md). Every call is appended to
-// $REEVE_FAKE_LOG as one line (argv joined by spaces, newlines flattened). Flags the real CLI
-// lacks are usage errors (exit 1). Answers use the planner's wire shapes (StoryContextDto,
-// RequiredDecisionDto, CheckResult, Reason in the Reeve repository's
-// crates/reeve-server/tests/snapshots/openapi.json). REEVE_FAKE_LINK_CHECK=unreadable makes
-// `decision link` behave like a link whose immediate check could not run. REEVE_FAKE_REFUSE=<text>
-// makes every command whose name contains <text> (e.g. `story create`) answer with a `refused`
-// envelope and exit 2. Creates replay by --idempotency-key from the state file $REEVE_FAKE_LOG.state;
-// creates and edits persist there, so later shows and lists see them like the real planner.
+// A fake Reeve planner CLI for the scenario tests (test/README.md). Every valid call except
+// `--version` (the SessionStart hook probes it too) is appended to $REEVE_FAKE_LOG as one line (argv
+// joined by spaces, newlines flattened). What the real CLI's parser rejects (an unknown command or
+// flag, a value starting with `-` except `comment add --body`) is a usage error: text on stderr, no
+// stdout, exit 1. Answers use the planner's wire shapes (StoryContextDto, RequiredDecisionDto,
+// CheckResult, Reason in the Reeve repository's crates/reeve-server/tests/snapshots/openapi.json).
+// REEVE_FAKE_LINK_CHECK=unreadable makes `decision link` behave like a link whose immediate check
+// could not run. REEVE_FAKE_REFUSE=<text> makes every command whose name contains <text> (e.g.
+// `story create`) answer with a `refused` envelope and exit 2. REEVE_FAKE_SIGNIN=expired makes every
+// call but `auth status` answer an `unauthenticated` error, exit 2. Creates replay by
+// --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates and edits persist there, so
+// later shows and lists see them like the real planner.
 'use strict';
 const fs = require('node:fs');
 
@@ -41,9 +44,11 @@ const KEY_SHAPE = /^[a-z][a-z0-9-]*:(?:[A-Z][A-Z0-9]*-[0-9]+|[0-9]+):[0-9a-f]{8}
 
 const emit = (envelope, code) => { process.stdout.write(JSON.stringify(envelope) + '\n'); process.exit(code); };
 const ok = (value) => emit({ outcome: 'ok', value }, 0);
-const error = (code, message) => emit({ outcome: 'error', code, message }, 1);
+const error = (code, message) => emit({ outcome: 'error', code, message }, code === 'unauthenticated' || code === 'forbidden' ? 2 : 1);
+// What clap rejects: no envelope, the usage text on stderr, exit 1.
+const usage = (message) => { process.stderr.write(`error: ${message}\n\nFor more information, try '--help'.\n`); process.exit(1); };
 
-if (argv[0] === '--version') { logCall(); process.stdout.write('reeve-planner 0.1.0-fake\n'); process.exit(0); }
+if (argv[0] === '--version') { process.stdout.write('reeve-planner 0.1.0-fake\n'); process.exit(0); }
 if (!argv.includes('--json')) error('validation', 'the fake planner answers --json calls only');
 const words = argv.filter((a) => a !== '--json');
 
@@ -54,7 +59,7 @@ const SPEC = {
   'story ls': { pos: 0, val: ['epic'], bool: ['untriaged'] },
   'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
   'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
-  'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank'], bool: ['no-epic'], rep: ['criterion'], req: ['version'] }, // --kind: Reeve plan C Task 5
+  'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank'], bool: ['no-epic'], rep: ['criterion'], req: ['version'] },
   'initiative show': { pos: 1 },
   'initiative ls': { pos: 0 },
   'initiative create': { pos: 0, val: ['idempotency-key', 'title', 'horizon', 'brief', 'target-month', 'owner'], req: ['idempotency-key', 'title', 'horizon'] },
@@ -66,12 +71,13 @@ const SPEC = {
   'epic edit': { pos: 1, val: ['version', 'title', 'brief', 'initiative'], bool: ['no-initiative'], req: ['version'] },
   'epic discovery': DISCOVERY,
   'decision ls': { pos: 0, val: ['on'], bool: ['mine'] },
+  'decision show': { pos: 1 },
   'decision require': { pos: 0, val: ['idempotency-key', 'on', 'title', 'decider', 'due'], req: ['idempotency-key', 'on', 'title', 'decider'] },
   'decision link': { pos: 1, val: ['record', 'repo', 'path', 'pr', 'household'], req: ['record', 'repo', 'path'] },
   'comment add': { pos: 0, val: ['idempotency-key', 'story', 'decision', 'body'], req: ['idempotency-key', 'body'] },
 };
 const cmd = words.slice(0, 2).join(' ');
-const spec = SPEC[cmd] || error('validation', `unknown command: reeve ${cmd}`);
+const spec = SPEC[cmd] || usage(`unrecognized subcommand: reeve ${cmd}`);
 const pos = [];
 const f = {};
 for (let i = 2; i < words.length; i++) {
@@ -80,18 +86,20 @@ for (let i = 2; i < words.length; i++) {
   const name = w.slice(2);
   if ((spec.bool || []).includes(name)) f[name] = true;
   else if ((spec.val || []).includes(name) || (spec.rep || []).includes(name)) {
-    if (i + 1 >= words.length) error('validation', `--${name} needs a value`);
+    if (i + 1 >= words.length) usage(`a value is required for '--${name}'`);
     const v = words[++i];
+    if (v.length > 1 && v.startsWith('-') && !(cmd === 'comment add' && name === 'body')) usage(`unexpected argument '${v.split(/\s/)[0]} ' found`);
     if ((spec.rep || []).includes(name)) (f[name] ||= []).push(v); else f[name] = v;
-  } else error('validation', `unknown flag --${name} for reeve ${cmd}`);
+  } else usage(`unexpected argument '--${name}' found`);
 }
-if (pos.length !== spec.pos) error('validation', `reeve ${cmd} takes ${spec.pos} positional argument(s), got ${pos.length}`);
-for (const r of spec.req || []) if (!(r in f)) error('validation', `reeve ${cmd} needs --${r}`);
-if (spec === DISCOVERY && !f.complete && !f.reopen) error('validation', 'pass --complete or --reopen');
-if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) error('validation', `--kind must be story, bug or chore`);
-if (f.version && !/^\d+$/.test(f.version)) error('validation', '--version must be an integer');
+if (pos.length !== spec.pos) usage(`reeve ${cmd} takes ${spec.pos} positional argument(s), got ${pos.length}`);
+for (const r of spec.req || []) if (!(r in f)) usage(`the following required arguments were not provided: --${r}`);
+if (spec === DISCOVERY && !f.complete && !f.reopen) usage('pass --complete or --reopen');
+if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) usage(`invalid value '${f.kind}' for '--kind'`);
+if (f.version && !/^\d+$/.test(f.version)) usage(`invalid value '${f.version}' for '--version'`);
+if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}' for '--due'`);
+if (cmd === 'comment add' && !f.story === !f.decision) usage('pass exactly one of --story and --decision');
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
-if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) error('validation', '--due must be YYYY-MM-DD');
 
 const NOW = '2026-10-20T09:00:00Z';
 const initiative = (key, title, o = {}) => ({ key, title, brief: '', horizon: 'Later', owner: null, target_month: null, discovery_complete: null, external_ref: null, progress: null, version: 1, ...o });
@@ -106,6 +114,9 @@ const epics = {
   'GRA-21': epic('GRA-21', 'Mentor profiles', { brief: 'Mentors describe their skills and availability.', initiative: 'GRA-13' }),
 };
 const decision7 = { id: 7, on: 'GRA-20', title: 'Queue or cron', decider: 'dan@example.com', due: null, record: null, pr_url: null, check: { kind: 'unchecked' }, checked_at: null, closed: null, created_at: NOW, version: 1 };
+// Closed without a record: listed by `decision ls`, never open, never a readiness reason (kb/ADR-0003 R3).
+const decision8 = { ...decision7, id: 8, title: 'Match by postcode', closed: { at: NOW, by: 'dan@example.com', reason: 'matching no longer uses the postcode' }, version: 2 };
+const HORIZONS = ['Now', 'Next', 'Later', "Won't do"];
 const stories = {
   'GRA-31': story('GRA-31', 'Retry failed matches', { epic: 'GRA-20', criteria: [{ text: 'A failed match is retried up to three times', done: false }, { text: 'The third failure is reported to the coordinator', done: false }] }),
   'GRA-32': story('GRA-32', 'Show match history', { epic: 'GRA-20' }),
@@ -116,6 +127,7 @@ const stories = {
   'GRA-44': story('GRA-44', 'Invoice employers for programme fees'),
   'GRA-45': story('GRA-45', 'Coordinators match a mentee by hand in one click'),
   'GRA-46': story('GRA-46', 'Fax match summaries to coordinators'),
+  'GRA-47': story('GRA-47', 'Translate the mentee app into Spanish'),
 };
 // The run's state, read once: items created or edited in this run, by key (a show or a list sees
 // the last write), and the creates by idempotency key.
@@ -138,14 +150,21 @@ const mint = (build) => withState((state) => {
   }
   return state.creates[key];
 });
-// Readiness derived like the planner does, for every story.
+const allDecisions = () => [decision7, decision8, ...createdDecisions()];
+// Readiness derived like the planner does (domain/readiness.rs), in its order: untriaged; the epic's
+// discovery and open decisions, then the initiative's; the story's own decisions; no criteria.
 const readinessOf = (s) => {
   const reasons = [];
-  if (!s.epic) reasons.push({ reason: 'untriaged' });
-  if (!s.criteria.length) reasons.push({ reason: 'no_criteria' });
+  const open = (key) => allDecisions().filter((d) => d.on === key && !d.closed && !d.record).map((d) => ({ reason: 'decision_no_record', decision_id: d.id, title: d.title }));
+  if (s.kind === 'story' && !s.epic) reasons.push({ reason: 'untriaged' });
   const e = s.epic && (itemsOf()[s.epic] || epics[s.epic]);
-  if (e && !e.discovery_complete) reasons.push({ reason: 'ancestor_discovery_incomplete', item: e.key });
-  if (e) for (const d of [decision7, ...createdDecisions()]) if (d.on === e.key && !d.record) reasons.push({ reason: 'decision_no_record', decision_id: d.id, title: d.title });
+  const i = e && e.initiative && (itemsOf()[e.initiative] || initiatives[e.initiative]);
+  for (const a of [e, i].filter(Boolean)) {
+    if (!a.discovery_complete) reasons.push({ reason: 'ancestor_discovery_incomplete', item: a.key });
+    reasons.push(...open(a.key));
+  }
+  reasons.push(...open(s.key));
+  if (!s.criteria.length) reasons.push({ reason: 'no_criteria' });
   return { ready: !reasons.length, reasons };
 };
 
@@ -155,7 +174,9 @@ if (['story create', 'story edit', 'epic create', 'epic edit'].includes(cmd)) {
   for (const [flag, table] of [['epic', epics], ['initiative', initiatives]]) if (f[flag] !== undefined && !itemsOf()[f[flag]] && !table[f[flag]]) error('not_found', `no ${flag} ${f[flag]}`);
 }
 logCall(); // valid: the call reached the planner (a refusal below is the planner's answer)
+if (process.env.REEVE_FAKE_SIGNIN === 'expired' && cmd !== 'auth status') error('unauthenticated', 'the session has expired; run `reeve auth login`');
 if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)) emit({ outcome: 'refused', reasons: [{ reason: 'no_criteria' }] }, 2);
+if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validation', `horizon ${f.horizon} is not one of the configured buckets`);
 
 ({
   'auth status': () => ok({ url: 'http://127.0.0.1:7474', token_from_env: false, email: 'dan@example.com', role: 'member', token_kind: 'interactive' }),
@@ -164,7 +185,7 @@ if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)
     const e = s.epic ? itemsOf()[s.epic] || epics[s.epic] : null;
     ok({ story: s, epic: e, initiative: e && e.initiative ? initiatives[e.initiative] : null, required_decisions: s.epic === 'GRA-20' ? [decision7] : [], blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
   },
-  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readinessOf(s) }))),
+  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readinessOf(s) }))),
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })) }))),
   'story mv': () => { const s = find(stories, p0); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1] })); }, // exists so a delivery change is logged; no skill may call it
   'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic })); },
@@ -178,7 +199,8 @@ if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)
   'epic create': () => ok(mint((id) => epic(`GRA-${id}`, f.title, { brief: f.brief || '', initiative: f.initiative || null }))),
   'epic edit': () => { const e = find(epics, p0); ok(save({ ...bump(e), brief: f.brief ?? e.brief, title: f.title ?? e.title })); },
   'epic discovery': () => ok(save({ ...bump(find(epics, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
-  'decision ls': () => ok([decision7, ...createdDecisions()].filter((d) => !f.on || d.on === f.on)),
+  'decision ls': () => ok(allDecisions().filter((d) => !f.on || d.on === f.on)),
+  'decision show': () => ok(allDecisions().find((d) => String(d.id) === p0) || error('not_found', `no decision ${p0}`)),
   'decision require': () => ok(mint((id) => ({ ...decision7, id, on: f.on, title: f.title, decider: f.decider, due: f.due || null }))),
   'decision link': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
@@ -190,7 +212,6 @@ if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)
     ok({ ...linked, check: { kind: f.pr ? 'proposed_pr_open' : 'not_found' }, checked_at: NOW });
   },
   'comment add': () => {
-    if (!f.story === !f.decision) error('validation', 'pass exactly one of --story and --decision');
     ok(mint((id) => [{ id, author: 'dan@example.com', body: f.body, at: NOW, on_story: f.story || null, on_decision: f.decision ? Number(f.decision) : null, external_ref: null }]));
   },
 })[cmd]();

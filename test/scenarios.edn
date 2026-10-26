@@ -211,7 +211,7 @@ git commit -m \"feat: add DeviceStatusDto\"
   :allowed-tools ["Bash(reeve *)"]
   :prompt "/lore:brainstorming add a retry policy for failed payment webhooks, signed with SHA-256"
   :workdir "."
-  :expects ["Using the brainstorming skill: no code until the design is approved\\." "\\?"]
+  :expects ["\\?"]
   :rejects ["(?i)reeve|story context"]
   :log-rejects ["."]}
 
@@ -222,25 +222,25 @@ git commit -m \"feat: add DeviceStatusDto\"
   :workdir "."
   :expects ["Using the brainstorming skill: no code until the design is approved\\." "(?s)\\A[^?]*Queue or cron.*\\?" "(?i)open required decision #7\\W+Queue or cron\\W+\\(no record\\)"]
   :rejects ["docs/agent/specs/"]
-  :log-expects ["^--version$" "^auth status --json$" "^story context GRA-31 --json$"]}
+  :log-expects ["^auth status --json$" "^story context GRA-31 --json$"]}
 
  {:name "reeve-runner-selftest"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
-  :prompt "Run `reeve --version` and report what it printed. Do not ask questions; the answers are given."
+  :prompt "Run `reeve auth status --json` and report the email it printed. Do not ask questions; the answers are given."
   :workdir "."
-  :expects ["0\\.1\\.0-fake"]
-  :log-expects ["^--version$"]}
+  :expects ["dan@example\\.com"]
+  :log-expects ["^auth status --json$"]}
 
  {:name "reeve-planning-initiative"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
-  :prompt "Plan initiative GRA-12 in Reeve. Do not ask questions; the answers are given. Vision: every mentee has a mentor within one working day. It is for programme coordinators and mentees. Known: coordinators match by hand once a week today. Open question: whether matching runs from a queue or on a cron schedule; it is a consequential choice that blocks the work, decided by dan@example.com, due 2026-11-15. Draft its record but do not apply it now. Epics: 'Matching queue' (brief: match mentors through a queue), 'Match notifications' (brief: tell mentor and mentee when a match is made) and 'Match reminders' (brief: remind a mentor who has not answered a match within a day). I confirm every write to the planner. Discovery is not complete yet."
+  :prompt "Plan initiative GRA-12 in Reeve. Do not ask questions; the answers are given. Vision: every mentee has a mentor within one working day. It is for programme coordinators and mentees. Known: coordinators match by hand once a week today. Write the brief from these answers. Open question: whether matching runs from a queue or on a cron schedule; it is a consequential choice that blocks the work, decided by dan@example.com, due 2026-11-15. Draft its record but do not apply it now. Epics: 'Matching queue' (brief: match mentors through a queue), 'Match notifications' (brief: tell mentor and mentee when a match is made) and 'Match reminders' (brief: remind a mentor who has not answered a match within a day). I confirm every write to the planner. Discovery is not complete yet."
   :workdir "."
   :expects ["(?i)using the planning-initiative skill" "(?i)researched:" "(?i)run id:? *`?[0-9a-f]{8}" "dan@example\\.com"
             "(?i)no record" "GRA-20" "GRA-1\\d\\d"]
   :rejects ["docs/agent/specs"]
-  :log-expects ["^--version$"
+  :log-expects ["^auth status --json$"
                 "^initiative show GRA-12 --json$"
                 "^decision ls --on GRA-12 --json$"
                 "^epic ls --initiative GRA-12 --json$"
@@ -257,16 +257,17 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "reeve-refining-epic"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
-  :prompt "Refine epic GRA-20 in Reeve. Do not ask questions; the answers are given. Done looks like: every match request is processed from the queue within an hour. Boundary: no change to mentor profiles. No new required decisions. Stories: 'Enqueue match requests' with criteria 'a new request is on the queue within a minute' and 'a repeated request is enqueued once'; 'Process the match queue' with criteria 'each queued request gets a match or a reason within an hour' and 'requests are processed oldest first'; 'Alert on a stuck queue' with criteria 'an alert fires when the oldest request is over two hours old' and 'the alert names the stuck request'. Place every untriaged story with the placement tree, except GRA-46, which we won't do; the horizon buckets are Now, Next, Later, Won't do. I confirm every write to the planner. Discovery is not complete yet."
+  :prompt "Refine epic GRA-20 in Reeve. Do not ask questions; the answers are given. Done looks like: every match request is processed from the queue within an hour. Boundary: no change to mentor profiles. Update the epic's brief with these answers. No new required decisions. Stories: 'Enqueue match requests' with criteria 'a new request is on the queue within a minute' and 'a repeated request is enqueued once'; 'Process the match queue' with criteria 'each queued request gets a match or a reason within an hour' and 'requests are processed oldest first'; 'Alert on a stuck queue' with criteria 'an alert fires when the oldest request is over two hours old' and 'the alert names the stuck request'. Place every untriaged story with the placement tree, except GRA-46, which we won't do; you may create the new epics and the new initiative the tree proposes for GRA-43, GRA-44 and GRA-45; the horizon buckets are Now, Next, Later, Won't do. I confirm every write to the planner. Discovery is not complete yet."
   :workdir "."
   :expects ["(?i)using the refining-epic skill" "(?i)researched:" "(?i)run id:? *`?[0-9a-f]{8}"
             "#7\\W+Queue or cron" "discovery not complete on GRA-20"
             "GRA-42\\b(?:(?!GRA-(?!20\\b)\\d)[\\s\\S]){0,400}discovery not complete on GRA-20"
             "(?i)GRA-40[^\\n]{0,200}\\bbug\\b" "(?i)GRA-41[^\\n]{0,200}\\bchore\\b" "(?i)GRA-42[^\\n]{0,200}this epic"
             "(?i)GRA-43[^\\n]{0,200}new epic under GRA-13" "(?i)GRA-45[^\\n]{0,200}new epic under GRA-12"
-            "(?i)GRA-44[^\\n]{0,200}new initiative" "(?i)GRA-46[^\\n]{0,200}won.?t do"]
-  :rejects ["docs/agent/specs"]
-  :log-expects ["^--version$"
+            "(?i)GRA-44[^\\n]{0,200}new initiative" "(?i)GRA-46[^\\n]{0,200}won.?t do"
+            "(?i)GRA-47[^\\n]{0,200}left untriaged"]
+  :rejects ["docs/agent/specs" "(?i)#8\\W+Match by postcode\\W+\\(?no record"]
+  :log-expects ["^auth status --json$"
                 "^epic show GRA-20 --json$"
                 "^initiative show GRA-12 --json$"
                 "^decision ls --on GRA-20 --json$"
@@ -287,9 +288,11 @@ git commit -m \"feat: add DeviceStatusDto\"
                 "^initiative create (?=.*--horizon Later\\b)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "^epic create (?=.*--initiative GRA-1\\d\\d\\b).*--json$"
                 "^story edit GRA-44 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
+                "^comment add (?=.*--story GRA-47\\b)(?=.*Proposed home)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "(?s)^story create .*^story ls --epic GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add) )"
                 "(?s)^story edit .*^decision ls --on GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add) )"]
   :log-rejects ["--brief-file" "^story edit GRA-42 .*--kind" "^story edit GRA-45 .*--epic GRA-20\\b" "^story (?:edit|mv) GRA-46 "
+                "^story (?:edit|mv) GRA-47 " "(?s)^initiative create .*^initiative create "
                 "^story mv " "^epic discovery " "^decision require " "^decision link "
                 "^story create .*--title (?:Retry failed matches|Show match history) "
                 "(?s)^(\\w+ create)\\b[^\\n]*--idempotency-key (\\S+) .*^(?!\\1\\b)\\w+ create\\b[^\\n]*--idempotency-key \\2 "]}
@@ -307,7 +310,8 @@ git commit -m \"feat: add DeviceStatusDto\"
   :workdir "."
   :expects ["proposed, PR open"]
   :rejects ["(?i)could not run"]
-  :log-expects ["^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b).*--json$"]}
+  :log-expects ["^decision show 7 --json$"
+                "^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b).*--json$"]}
 
  {:name "reeve-adr-link-check-unreadable"
   :requires ["reeve-fake"]
@@ -336,4 +340,39 @@ git commit -m \"feat: add DeviceStatusDto\"
   :workdir "."
   :expects ["(?i)nothing was linked" "(?i)repositor"]
   :rejects ["(?m)^\\W*Linked[:;]"]
-  :log-rejects ["^decision link "]}]
+  :log-rejects ["^decision link "]}
+
+ {:name "reeve-adr-link-closed-decision"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:adr link kb/ADR-0002 to decision 8 in Reeve. Do not ask questions; the answers are given: the planner calls this repository lore, the PR proposing the record is https://github.com/example/test-workspace/pull/9, and the household is the current directory."
+  :workdir "."
+  :expects ["(?i)decision #8 is closed" "(?i)nothing was linked"]
+  :rejects ["(?m)^\\W*Linked[:;]"]
+  :log-expects ["^decision show 8 --json$"]
+  :log-rejects ["^decision link "]}
+
+ {:name "reeve-planning-initiative-headless-missing-decider"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "Plan initiative GRA-12 in Reeve. Do not ask questions; nobody can answer them in this session. Vision: every mentee has a mentor within one working day. It is for programme coordinators and mentees. Known: coordinators match by hand once a week today. Write the brief from these answers. Open question: whether matching runs from a queue or on a cron schedule; it is a consequential choice that blocks the work, due 2026-11-15. Epics: 'Match notifications' (brief: tell mentor and mentee when a match is made). I confirm every write to the planner. Discovery is not complete yet."
+  :workdir "."
+  :expects ["(?i)using the planning-initiative skill" "(?im)^\\W*Stopped: missing[^\\n]*(?:decid|decision[- ]maker)"]
+  :log-expects ["^auth status --json$" "^initiative show GRA-12 --json$"]
+  :log-rejects ["^decision require " "^epic create " "^comment add "]}
+
+ {:name "reeve-refining-epic-headless-missing-decider"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "Refine epic GRA-20 in Reeve. Do not ask questions; nobody can answer them in this session. Done looks like: every match request is processed from the queue within an hour. Boundary: no change to mentor profiles. Update the epic's brief with these answers. New required decision: whether a failed match request is retried from the queue or dropped; it is a consequential choice that blocks the work, due 2026-11-15. Stories: 'Enqueue match requests' with criteria 'a new request is on the queue within a minute' and 'a repeated request is enqueued once'. Leave the untriaged stories untriaged. I confirm every write to the planner. Discovery is not complete yet."
+  :workdir "."
+  :expects ["(?i)using the refining-epic skill" "(?im)^\\W*Stopped: missing[^\\n]*(?:decid|decision[- ]maker)"]
+  :log-expects ["^auth status --json$" "^epic show GRA-20 --json$"]
+  :log-rejects ["^decision require " "^story create " "^story edit " "^epic create " "^initiative create "]}
+
+ {:name "reeve-break-down-without-planner"
+  :env {"REEVE_BIN" "/nonexistent/reeve"}
+  :prompt "Break this feature down into stories: mentors can pause matching for a month."
+  :workdir "."
+  :expects ["(?i)paus"]
+  :rejects ["(?i)reeve|planner|not available"]}]

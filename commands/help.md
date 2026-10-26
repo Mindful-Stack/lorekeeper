@@ -114,6 +114,8 @@ Always display available commands:
 | `pattern-identifier` | Questions about standards, patterns, conventions ("how do we...", "should I...") |
 | `brainstorming` | Creative work — features, components, new functionality |
 | `recording-decisions` | A hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) |
+| `planning-initiative` | Planning a Reeve initiative named by Reeve or its key (only with the Reeve planner CLI) |
+| `refining-epic` | Refining a Reeve epic or placing its untriaged stories, named by Reeve or its key (only with the Reeve planner CLI) |
 | `writing-plans` | Multi-step tasks with spec/requirements |
 | `executing-plans` | Executing a written implementation plan |
 | `test-driven-development` | Implementing any feature or bugfix (default for all work) |

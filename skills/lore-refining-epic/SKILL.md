@@ -1,6 +1,6 @@
 ---
 name: lore-refining-epic
-description: Use when the user names a Reeve epic to refine, asks to break an epic into stories with acceptance criteria, or asks to place untriaged stories, and the Reeve planner CLI is installed.
+description: Use when the user asks to refine an epic in the Reeve planner or to place its untriaged stories, naming Reeve or an epic key such as GRA-20. Not for breaking work down when the request names neither.
 ---
 
 # Lore refining epic

@@ -4,17 +4,19 @@ Link a record to a required decision in the Reeve planner, so the planner checks
 instead of reporting "no record". Read `<plugin-root>/references/reeve-cli.md` first. This writes
 nothing into the record or any repository (kb/ADR-0004 R3): it stores one reference in the planner.
 
-1. **Detect.** Run `node <plugin-root>/scripts/reeve-detect.js` (record step 6 has already run it:
-   reuse its output). Keep `bin` and `run_id`. Unless it prints `"present":true` and
-   `"signed_in":true`, say "The Reeve planner is not available in this session: <reason>; nothing
+1. **Detect.** Run `node <plugin-root>/scripts/reeve-detect.js` (record step 6 has already run it,
+   or the calling skill passed its `bin` and `run_id`: reuse them). Keep `bin` and `run_id`.
+   Unless it prints `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this session: <reason>; nothing
    was linked." and stop.
 2. **Inputs.** Take each from the request or the caller (record step 6); ask, one at a time, only
    for what is missing. In a session that cannot ask (rule 3), a missing input stops the action
    with the line "Nothing was linked: missing <the inputs>." verbatim, on its own line; never
    guess the planner's repository name, and never leave out `--pr` to fill a gap. The inputs:
-   - the decision id, an integer ("decision 7", "#7"). The link needs no decision title; to name
-     the decision, take its title from the request or the caller, else ask (no `reeve` command
-     reads a decision by its id alone; `decision ls --on <KEY>` does when the item is known);
+   - the decision id, an integer ("decision 7", "#7"). Read it first with
+     `reeve decision show <id> --json` and take the decision's title from `value.title`. A
+     `not_found` answer stops with "There is no decision #<id> in the planner; nothing was
+     linked."; a decision whose `closed` is set stops with "Decision #<id> is closed:
+     <closed.reason>; nothing was linked." (a closed decision gates nothing, kb/ADR-0003 R3);
    - the record's qualified id, repository and repository-relative path. From record step 6 these
      come with the call (built from the draft and the homes JSON) and need no index lookup: the
      updater's worktree is gone by then and the user's checkout does not contain the record. For a record that
@@ -48,15 +50,19 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
    `not_accepted`, `not_found`; `not_found` carries its remedy, check the repository name and
    path). Exit 1 with an `ok` envelope is "Linked; the check could not run here: <stderr line>;
    it runs on the next scheduled check." (the link succeeded: do not call it a failure and do
-   not run it again). Exit 2 or an `error` envelope shows the reasons or the message and says
-   nothing was linked. A `not_accepted` check whose status the planner could not read (for
-   example "unparsable front matter") is reported as the planner states it, with the record's
-   path; fixing the record is a separate change, never a blind retry of the link. End with
+   not run it again). A `refused` envelope, or an `error` other than `internal`, shows the reasons
+   or the message and says nothing was linked (`unauthenticated` or `forbidden`: also tell the
+   user to run `reeve auth login`). An `internal` error may come after the link was stored: run
+   `reeve decision show <id> --json` first, and when its `record` names this record, report it as
+   linked with the check not run here; otherwise nothing was linked. A `not_accepted` check whose
+   status the planner could not read (for example "unparsable front matter") is reported as the
+   planner states it, with the record's path; fixing the record is a separate change, never a blind retry of the link. End with
    `Run id: <run_id>` on its own line, unformatted.
 5. **Ride-along, no PR yet.** Never link (without `--pr` the planner would take the record as
    merged). Leave the pointer on the decision instead, then tell the user that same sentence:
-   `reeve comment add --decision <id> --body 'Record <qualified id> at <repo>:<path> rides along on branch <branch>; link it with /lore:adr link <qualified id> to decision <id> once the implementing PR is open' --idempotency-key <skill>:<id>:<run_id>:<n> --json`
-   (the key's skill and run id from the calling skill, else `recording-decisions` and the
-   detector's `run_id`; `<n>` counts this run's creates from 1), and print `Run id: <run_id>`.
+   `reeve comment add --decision <id> --body 'Record <qualified id> at <repo>:<path> rides along on branch <branch>; link it with /lore:adr link <qualified id> to decision <id> once the implementing PR is open' --idempotency-key <prefix>:<run_id>:<n> --json`
+   (`<prefix>`, `<run_id>` and the next `<n>` as the calling skill passed them, else
+   `recording-decisions:<id>`, the detector's `run_id` and 1; the reference's *Idempotency
+   keys*), and print `Run id: <run_id>`.
    The link is made later by this action, once the PR exists (`--pr` from the request, else
    `gh pr view <branch>`).

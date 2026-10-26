@@ -19,15 +19,26 @@ test('every call is one log line, newlines flattened', () => {
   assert.equal(r.status, 0);
   assert.equal(r.log, `epic create --initiative GRA-12 --title A --brief one two --idempotency-key ${KEY} --json\n`);
 });
-test('--version names the fake planner', () => {
+test('--version names the fake planner and is not logged (the SessionStart hook probes it too)', () => {
   const r = run(['--version']);
   assert.equal(r.stdout, 'reeve-planner 0.1.0-fake\n');
-  assert.equal(r.log, '--version\n');
+  assert.equal(r.log, '');
 });
-test('a flag the real CLI lacks is a usage error', () => {
+test('a flag the real CLI lacks is a usage error: no envelope, text on stderr, exit 1', () => {
   const r = run(['epic', 'edit', 'GRA-20', '--brief-file', 'brief.md', '--version', '2', '--json']);
-  assert.equal(r.status, 1);
-  assert.deepEqual([r.envelope.outcome, r.envelope.code], ['error', 'validation']);
+  assert.deepEqual([r.status, r.stdout], [1, '']);
+  assert.match(r.stderr, /unexpected argument '--brief-file'/);
+});
+test('a value starting with - is a usage error, except comment add --body', () => {
+  for (const args of [
+    ['epic', 'create', '--title', 'A', '--brief', '- a bullet', '--idempotency-key', KEY, '--json'],
+    ['story', 'create', '--title', '-x', '--idempotency-key', KEY, '--json'],
+    ['story', 'create', '--title', 'A', '--criterion', '- done', '--idempotency-key', KEY, '--json'],
+  ]) {
+    const r = run(args);
+    assert.deepEqual([r.status, r.stdout, r.log], [1, '', ''], args.join(' '));
+  }
+  assert.equal(run(['comment', 'add', '--story', 'GRA-31', '--body', '- a bullet', '--idempotency-key', KEY, '--json']).status, 0);
 });
 test('a call without --json is refused; --json may stand anywhere (the real global flag)', () => {
   assert.equal(run(['epic', 'show', 'GRA-20']).status, 1);
@@ -94,7 +105,7 @@ test('decision ls and epic ls show what this run created', () => {
   const e = call(['epic', 'create', '--initiative', 'GRA-12', '--title', 'Match reminders', '--idempotency-key', 'planning-initiative:GRA-12:0a1b2c3d:3', '--json']).value;
   assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-12', '--json']).value.map((x) => [x.id, x.record]), [[d.id, null]]);
   assert.deepEqual(call(['epic', 'ls', '--initiative', 'GRA-12', '--json']).value.map((x) => x.key), ['GRA-20', e.key]);
-  assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-20', '--json']).value.map((x) => x.id), [7]);
+  assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-20', '--json']).value.map((x) => [x.id, x.closed === null]), [[7, true], [8, false]]);
 });
 test('creates and edits persist: story ls, show and the readiness reasons see them', () => {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
@@ -104,8 +115,8 @@ test('creates and edits persist: story ls, show and the readiness reasons see th
   assert.equal(call(['story', 'edit', 'GRA-42', '--epic', 'GRA-20', '--version', '1', '--json']).code, 'conflict');
   const listed = call(['story', 'ls', '--epic', 'GRA-20', '--json']).value;
   assert.deepEqual(listed.map((x) => x.story.key), ['GRA-31', 'GRA-32', 'GRA-42', s.key]);
-  assert.deepEqual(listed[2].readiness.reasons.map((r) => r.reason), ['no_criteria', 'ancestor_discovery_incomplete', 'decision_no_record']);
-  assert.deepEqual(listed[3].readiness.reasons.map((r) => r.reason), ['ancestor_discovery_incomplete', 'decision_no_record']);
+  assert.deepEqual(listed[2].readiness.reasons.map((r) => r.reason), ['ancestor_discovery_incomplete', 'decision_no_record', 'ancestor_discovery_incomplete', 'no_criteria']);
+  assert.deepEqual(listed[3].readiness.reasons.map((r) => r.reason), ['ancestor_discovery_incomplete', 'decision_no_record', 'ancestor_discovery_incomplete']);
   assert.ok(!call(['story', 'ls', '--untriaged', '--json']).value.some((x) => x.story.key === 'GRA-42'));
   assert.equal(call(['epic', 'edit', 'GRA-20', '--brief', 'b', '--version', '2', '--json']).value.version, 3);
   assert.equal(call(['epic', 'show', 'GRA-20', '--json']).value.brief, 'b');
@@ -120,12 +131,38 @@ test('a write naming an epic or initiative nobody created is not_found and not l
   assert.deepEqual([e.status, e.envelope.code, e.log], [1, 'not_found', '']);
   assert.equal(run(['epic', 'show', 'GRA-150', '--json']).envelope.code, 'not_found');
 });
-test('readiness is derived for every story; story mv exists so a delivery change is logged', () => {
+test('readiness is derived for every story in the planner\'s order; story mv exists so a delivery change is logged', () => {
   const listed = run(['story', 'ls', '--epic', 'GRA-20', '--json']).envelope.value;
-  assert.deepEqual(listed.map((x) => x.readiness.reasons.map((r) => r.reason)), [
-    ['ancestor_discovery_incomplete', 'decision_no_record'],
-    ['no_criteria', 'ancestor_discovery_incomplete', 'decision_no_record'],
+  // the epic's discovery and open decisions (closed #8 never counts), the initiative's discovery, no criteria
+  assert.deepEqual(listed.map((x) => x.readiness.reasons.map((r) => r.item || r.decision_id || r.reason)), [
+    ['GRA-20', 7, 'GRA-12'],
+    ['GRA-20', 7, 'GRA-12', 'no_criteria'],
   ]);
   const mv = run(['story', 'mv', 'GRA-31', 'in-progress', '--json']);
   assert.deepEqual([mv.status, mv.envelope.value.delivery, mv.log], [0, 'in-progress', 'story mv GRA-31 in-progress --json\n']);
+});
+test('story ls --untriaged lists stories of kind story with no epic, as the real planner does', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => JSON.parse(spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } }).stdout);
+  assert.ok(call(['story', 'ls', '--untriaged', '--json']).value.some((x) => x.story.key === 'GRA-41'));
+  call(['story', 'edit', 'GRA-41', '--version', '1', '--kind', 'chore', '--json']);
+  assert.ok(!call(['story', 'ls', '--untriaged', '--json']).value.some((x) => x.story.key === 'GRA-41'));
+});
+test('decision show reads one decision; a closed one carries its reason', () => {
+  assert.equal(run(['decision', 'show', '7', '--json']).envelope.value.title, 'Queue or cron');
+  const closed = run(['decision', 'show', '8', '--json']).envelope.value;
+  assert.deepEqual([closed.title, closed.record, typeof closed.closed.reason], ['Match by postcode', null, 'string']);
+  assert.deepEqual([run(['decision', 'show', '99', '--json']).envelope.code], ['not_found']);
+  assert.ok(!run(['story', 'context', 'GRA-31', '--json']).envelope.value.required_decisions.some((d) => d.id === 8));
+});
+test('REEVE_FAKE_SIGNIN=expired: every call but auth status answers unauthenticated, exit 2', () => {
+  const env = { REEVE_FAKE_SIGNIN: 'expired' };
+  const r = run(['epic', 'show', 'GRA-20', '--json'], env);
+  assert.deepEqual([r.status, r.envelope.outcome, r.envelope.code], [2, 'error', 'unauthenticated']);
+  assert.equal(run(['auth', 'status', '--json'], env).status, 0);
+});
+test('a horizon the planner does not have is a validation error', () => {
+  const r = run(['initiative', 'create', '--title', 'Billing', '--horizon', 'Someday', '--idempotency-key', KEY, '--json']);
+  assert.deepEqual([r.status, r.envelope.code], [1, 'validation']);
+  assert.equal(run(['initiative', 'create', '--title', 'Billing', '--horizon', "Won't do", '--idempotency-key', KEY, '--json']).status, 0);
 });

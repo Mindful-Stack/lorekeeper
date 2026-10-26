@@ -23,8 +23,8 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` first
    like any other when it is hard to reverse or the user wants one: same format, its `scope` names
    the documents or repositories it governs; never send it to an RFC or meeting notes
    (kb/ADR-0004 R5). A decision that answers a required decision in the planner is always drafted
-   as a record, titled after that decision when its title is known (from the caller's context or
-   the request; no `reeve` command reads a decision by its id alone), worded as a decision rather
+   as a record, titled after that decision (from the caller's context, or
+   `reeve decision show <id> --json` when the planner is present), worded as a decision rather
    than a question. Anything else: **record it**, its tier from the format.
 4. **Draft** each decision (one interview may give several records): home from `blast_radius`,
    number from `adr-lint next` (consecutive within a home), `status: proposed`, `decided_by`
@@ -59,8 +59,10 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` first
    from carries `Required decision: #<id>` (outside the record text), or a planning skill passed
    one — act on the knowledge-updater's report, never on the current checkout's index (the
    updater's own-pr worktree is removed before it returns, so the record is not in the index).
-   Run `node <plugin-root>/scripts/reeve-detect.js` once and keep `bin` and `run_id`; unless it
-   prints `"present":true` and `"signed_in":true`, skip the rest of this step. The inputs:
+   Reuse the calling skill's `bin`, `run_id`, key prefix and next `<n>` when it passed them;
+   otherwise run `node <plugin-root>/scripts/reeve-detect.js` once and keep `bin` and `run_id`;
+   unless it prints `"present":true` and `"signed_in":true`, skip the rest of this step. The
+   inputs:
    - the qualified id and the file name: the ones the draft was numbered and saved with;
    - the repository-relative path, from the homes JSON the updater was given, never from the
      report's file list (its paths may point into the removed worktree): `<relDir>/<file name>`

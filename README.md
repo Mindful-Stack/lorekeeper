@@ -525,8 +525,8 @@ These skills trigger automatically when relevant:
 | `standards-curate` | "Document our conventions", "import the standards from <project>", "check the standards against the code" |
 | `brainstorming` | Creative work — features, components, new functionality |
 | `recording-decisions` | A hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) |
-| `planning-initiative` | Planning a Reeve initiative: discovery, brief, required decisions, epics (only with the Reeve planner) |
-| `refining-epic` | Refining a Reeve epic: stories with acceptance criteria, placing untriaged stories (only with the Reeve planner) |
+| `planning-initiative` | Planning a Reeve initiative, named by Reeve or its key: discovery, brief, required decisions, epics (only with the Reeve planner) |
+| `refining-epic` | Refining a Reeve epic, named by Reeve or its key: stories with acceptance criteria, placing untriaged stories (only with the Reeve planner) |
 | `writing-plans` | Multi-step tasks with spec/requirements |
 | `executing-plans` | Executing a written implementation plan |
 | `test-driven-development` | Implementing any feature or bugfix |
@@ -537,7 +537,18 @@ These skills trigger automatically when relevant:
 | `dispatching-parallel-agents` | Multiple independent problems |
 | `cultivate` / `cultivate-discovery` | Domain cultivation via `/lore:cultivate` |
 
-**Reeve planner.** Optional. When a `reeve` CLI on the path reports `reeve-planner` and you are signed in (`reeve auth login`), the two skills above write into the planner, brainstorming reads a named story's context first, and `/lore:adr link` links a record to a required decision. Nothing to configure; without it every skill behaves as before.
+**Reeve planner.** Optional. When a `reeve` CLI on the path reports `reeve-planner` and you are signed in (`reeve auth login`), the two skills above write into the planner, brainstorming reads a named story's context first, and `/lore:adr link` links a record to a required decision. Without it every skill behaves as before, and the session's skill router does not list the two planner skills.
+
+The skills run `node <plugin-root>/scripts/reeve-detect.js` and the `reeve` CLI through Bash, so without allow rules every call asks for permission (20 to 25 prompts in one epic refinement), and a non-interactive run (`claude -p`, CI) is refused outright. Add to `.claude/settings.json` (`<plugin-root>` is the absolute path the plugin is installed at):
+
+```json
+{ "permissions": { "allow": [
+  "Bash(node <plugin-root>/scripts/reeve-detect.js)",
+  "Bash(reeve *)"
+] } }
+```
+
+`Bash(reeve *)` also allows commands no skill runs (`reeve story mv`, `reeve decision close`, `reeve import --apply`, `reeve auth set-token`). To allow only what the skills call, list `Bash(reeve initiative *)`, `Bash(reeve epic *)`, `Bash(reeve story ls *)`, `Bash(reeve story create *)`, `Bash(reeve story edit *)`, `Bash(reeve story context *)`, `Bash(reeve decision ls *)`, `Bash(reeve decision show *)`, `Bash(reeve decision require *)`, `Bash(reeve decision link *)` and `Bash(reeve comment add *)` instead.
 
 ### Pattern Identifier Flow
 

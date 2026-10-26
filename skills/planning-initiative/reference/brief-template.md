@@ -19,5 +19,5 @@ What the team already knows: facts, constraints, earlier attempts, each with whe
 
 Open questions
 --------------
-What is still open. A consequential choice that blocks work becomes a required decision (step 5);
+What is still open. A consequential choice that blocks work becomes a required decision (step 6);
 a clarification stays here.

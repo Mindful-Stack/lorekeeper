@@ -23,7 +23,9 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` first
    like any other when it is hard to reverse or the user wants one: same format, its `scope` names
    the documents or repositories it governs; never send it to an RFC or meeting notes
    (kb/ADR-0004 R5). A decision that answers a required decision in the planner is always drafted
-   as a record, titled after that decision. Anything else: **record it**, its tier from the format.
+   as a record, titled after that decision when its title is known (from the caller's context or
+   the request; no `reeve` command reads a decision by its id alone), worded as a decision rather
+   than a question. Anything else: **record it**, its tier from the format.
 4. **Draft** each decision (one interview may give several records): home from `blast_radius`,
    number from `adr-lint next` (consecutive within a home), `status: proposed`, `decided_by`
    naming who is taking it (`[]` only while unknown: ratification fills it), Status line
@@ -58,11 +60,17 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` first
    one — act on the knowledge-updater's report, never on the current checkout's index (the
    updater's own-pr worktree is removed before it returns, so the record is not in the index).
    Run `node <plugin-root>/scripts/reeve-detect.js` once and keep `bin` and `run_id`; unless it
-   prints `"present":true` and `"signed_in":true`, skip the rest of this step. The report
-   supplies: the record's qualified id (the id the draft was numbered with), the repository (the
-   home's `repo` from the homes JSON the updater was given; the planner's name for it is asked as
-   link.md says), the repository-relative path (the report's *Files changed* entry for that
-   record), the PR url and the branch. Where the report says the change landed:
+   prints `"present":true` and `"signed_in":true`, skip the rest of this step. The inputs:
+   - the qualified id and the file name: the ones the draft was numbered and saved with;
+   - the repository-relative path, from the homes JSON the updater was given, never from the
+     report's file list (its paths may point into the removed worktree): `<relDir>/<file name>`
+     of the local home (`sharedRelDir` for the shared home); when that is `null` (not a git
+     checkout), the home's directory relative to its repository directory, then the file name;
+   - the repository offered for the planner's name (asked as link.md says): the local home's
+     `repo`, or for the shared home the directory name of `sharedRoot`;
+   - the PR url and the branch: from the report.
+
+   Where the report says the change landed:
    - *opened PR <url>*, *committed to PR <url>*: follow `actions/link.md` with those inputs. A
      link that is refused or cannot check never undoes the apply.
    - *staged on your branch `<branch>`, not committed* (a ride-along; there may be no upstream

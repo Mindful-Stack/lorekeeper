@@ -318,7 +318,16 @@ git commit -m \"feat: add DeviceStatusDto\"
   :allowed-tools ["Bash(reeve *)"]
   :prompt "/lore:adr link backend/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the record rides along on branch feat/retry in the backend repository, staged and not committed, at docs/adr/0002-payment-webhook-retries.md; there is no PR yet; the planner calls this repository backend; the household is the current directory."
   :workdir "."
-  :expects ["(?i)rides along on branch feat/retry" "/lore:adr link backend/ADR-0002 to decision 7"]
+  :expects ["(?i)rides along on branch feat/retry" "/lore:adr link backend/ADR-0002 to decision 7" "once the implementing PR is open"]
   :rejects ["(?i)linked:"]
   :log-expects ["^comment add (?=.*--decision 7\\b)(?=.*rides along on branch feat/retry)(?=.*/lore:adr link backend/ADR-0002 to decision 7\\b)(?=.*--idempotency-key \\S+:7:[0-9a-f]{8}:\\d+\\b).*--json$"]
+  :log-rejects ["^decision link "]}
+
+ {:name "reeve-adr-link-headless-missing-input"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; nobody can answer them in this session."
+  :workdir "."
+  :expects ["(?i)nothing was linked" "(?i)repositor"]
+  :rejects ["(?m)^\\W*Linked[:;]"]
   :log-rejects ["^decision link "]}]

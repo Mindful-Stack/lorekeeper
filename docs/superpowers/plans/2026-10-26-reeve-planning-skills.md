@@ -627,6 +627,7 @@ Replace `run-test`:
     (try
       (let [_ (println (colorize :yellow "  Running:") prompt "(context:" workdir ")")
             tools (distinct (concat allowed-tools (:allowed-tools scenario)))
+            ;; empty stdin: claude --print otherwise waits 3 s and warns on stderr, after the transcript
             {:keys [out err]} (apply shell {:dir workspace-root :out :string :err :string
                                             :in "" :continue true :env env}
                                      (concat ["claude" "--print" "--permission-mode" "default"
@@ -1246,7 +1247,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `skills/brainstorming/SKILL.md`, `skills/writing-plans/SKILL.md`
-- Test: `test/scenarios.edn` (scenarios `reeve-brainstorming-without-planner`, `reeve-brainstorming-no-story-key`, `reeve-brainstorming-story-context`)
+- Modify: `test/run-tests.clj` (empty stdin, Task 1's `run-test`)
+- Test: `test/scenarios.edn` (scenarios `reeve-brainstorming-without-planner`, `reeve-brainstorming-no-story-key`, `reeve-brainstorming-story-context`, `reeve-brainstorming-story-key-without-planner`; the last is appended at the end of the file)
 
 - [ ] **Step 1: The baseline, before the planner edits**
 
@@ -1270,7 +1272,7 @@ Order of work for this step: add the announce line to `skills/brainstorming/SKIL
  {:name "reeve-brainstorming-no-story-key"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
-  :prompt "/lore:brainstorming add a retry policy for failed payment webhooks"
+  :prompt "/lore:brainstorming add a retry policy for failed payment webhooks, signed with SHA-256"
   :workdir "."
   :expects ["Using the brainstorming skill: no code until the design is approved\\." "\\?"]
   :rejects ["(?i)reeve|story context"]
@@ -1279,16 +1281,22 @@ Order of work for this step: add the announce line to `skills/brainstorming/SKIL
  {:name "reeve-brainstorming-story-context"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
-  :prompt "/lore:brainstorming add a retry policy for story GRA-31. Do not ask questions; the answers are given: retries cover failed matches only, at most three attempts. Stop after presenting the project context, including the open required decisions, and your first clarifying question."
+  :prompt "/lore:brainstorming add a retry policy for story GRA-31. The answers are given: retries cover failed matches only, at most three attempts. Stop after presenting the project context, including the open required decisions, and your first clarifying question."
   :workdir "."
-  :expects ["Using the brainstorming skill: no code until the design is approved\\." "(?s)Queue or cron.*\\n[^\\n]*\\?\\s*\\z" "#7" "(?i)no record"]
+  :expects ["Using the brainstorming skill: no code until the design is approved\\." "(?s)\\A[^?]*Queue or cron.*\\?" "(?i)open required decision #7\\W+Queue or cron\\W+\\(no record\\)"]
   :rejects ["docs/agent/specs/"]
   :log-expects ["^--version$" "^auth status --json$" "^story context GRA-31 --json$"]}
+
+ {:name "reeve-brainstorming-story-key-without-planner"
+  :prompt "/lore:brainstorming add a retry policy for story GRA-31"
+  :workdir "."
+  :expects ["Using the brainstorming skill: no code until the design is approved\\." "\\?"]
+  :rejects ["(?i)reeve|planner|story context|not available|signed out" "docs/agent/specs/"]}
 ```
 
-What they distinguish: `story-context` also fixes the order, with the decision's title (the fixture's "Queue or cron") in the transcript before the last line, which is the first clarifying question; the announce sentence is required in all three, so an empty skill body fails each of them. `no-story-key` (the log must stay empty) a step 0 that runs the detector on every brainstorming session; `story-context` a skill that does not read the bundle (log), reads it but does not surface the open decision ("Queue or cron", "#7"), or misreads `check.kind: unchecked` as satisfied instead of deriving "no record" from `record: null`.
+What they distinguish: `story-context` also fixes the order, with the decision's title (the fixture's "Queue or cron") in the transcript before the first question mark and a question after it; the announce sentence is required in all four, so an empty skill body fails each of them. `no-story-key` (the log must stay empty; the prompt carries `SHA-256`, a `<PREFIX>-<n>` token that is not a story) a planner read that runs on every brainstorming session or on any key-shaped token; `story-context` a skill that does not read the bundle (log), reads it but does not list the open decision in the skill's own line ("open required decision #7 — Queue or cron (no record)"), or misreads `check.kind: unchecked` as satisfied instead of deriving "no record" from `record: null`; `story-key-without-planner` (no `:requires`, so no fake and no planner) a planner read that, with the planner absent, talks about it ("not available", "signed out") instead of skipping silently. `story-key-without-planner` is appended at the end of `test/scenarios.edn`.
 
-Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-brainstorming` — Expected: `no-story-key` and `without-planner` pass, `story-context` fails (`log: ^story context GRA-31 --json$` missing).
+Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-brainstorming` — Expected: `no-story-key`, `without-planner` and `story-key-without-planner` pass, `story-context` fails (`log: ^story context GRA-31 --json$` missing).
 
 - [ ] **Step 3: The edit**
 
@@ -1297,31 +1305,38 @@ In `skills/brainstorming/SKILL.md`, first add these lines at the very start of t
 ```markdown
 Announce at the start: "Using the brainstorming skill: no code until the design is approved."
 The message that ends your first turn opens with the same sentence, since a non-interactive
-session shows only that message. Its last line is your first question: list any options before
-that line, and write nothing after it.
+session shows only that message.
 ```
 
-`claude --print` shows only the final message, so the announce alone never reaches the transcript (the baseline failed with it alone); and with options after the question, or a closing remark, `story-context`'s last-line assertion failed 3 runs in 3. The runner feeds `claude` an empty stdin (`:in ""` in Task 1's `run-test`): otherwise, with a non-terminal stdin, `claude` appends "Warning: no stdin data received in 3s" to stderr, which lands after the question and breaks the `\z` anchor. Run Step 1's mutation check now, then continue. Then, in *Checklist*, insert before item 1:
+`claude --print` shows only the final message, so the announce alone never reaches the transcript (the baseline failed with it alone). No layout rule follows it: the message's shape stays as on `origin/main` (kb/ADR-0005 R1). The runner feeds `claude` an empty stdin (`:in ""` in Task 1's `run-test`): otherwise, with a non-terminal stdin, `claude` waits 3 s and appends "Warning: no stdin data received in 3s" to stderr, after the transcript. Run Step 1's mutation check now, then continue. Then insert, directly above `## Checklist`, a section that is not a checklist item (so no session without a story gets a task for it):
 
 ```markdown
-0. **Planner context (only when the request names a story)** — when the request names a story
-   key (`<PREFIX>-<n>`, such as `GRA-31`) or the user says which story this is for, run
-   `node <plugin-root>/scripts/reeve-detect.js` (`<plugin-root>` is `${CLAUDE_PLUGIN_ROOT}`,
-   written out as an absolute path). Only when it prints `"present":true` and `"signed_in":true`,
-   read `<plugin-root>/references/reeve-cli.md` and run `reeve story context <KEY> --json` (the
-   detector's `bin` as the first word): the initiative and epic briefs, the required decisions,
-   the criteria, the blockers and the comments are project context for step 1. With no story
-   named, or the planner absent or signed out, skip this step without mentioning it.
+## Planner Context
+
+When the request presents a story key as the story it is for ("story GRA-31", "for GRA-31",
+"GRA-31: …", or a key that opens the request), read the planner before the checklist. Never for
+any other `<PREFIX>-<n>` token, such as UTF-8, SHA-256 or ISO-8601; with no story key, create no
+task for this and say nothing about it. Run `node <plugin-root>/scripts/reeve-detect.js`
+(`<plugin-root>` is `${CLAUDE_PLUGIN_ROOT}`, written out as an absolute path). Unless it prints
+`"present":true` and `"signed_in":true`, skip the rest without mentioning the planner. Otherwise
+read `<plugin-root>/references/reeve-cli.md` and run `reeve story context <KEY> --json` (the
+detector's `bin` as the first word). If it does not exit 0, say so in one line (the planner has no
+story <KEY>, and an epic or initiative key is not a story; for a sign-in error, run
+`reeve auth login`) and go on with checklist item 1 without planner context. On exit 0, the
+story's title, description and criteria, the initiative and epic briefs, the required decisions,
+the blockers and the comments are project context for item 1.
 ```
 
 Append to item 1 (after "…rather than quietly violate it."):
 
 ```markdown
-   With a planner bundle from step 0, list each required decision that is not satisfied among the
-   binding decisions as "open required decision #<id> — <title> (<status>)", the status worded as
-   the CLI reference says (`record: null` is "no record"). The design either waits for it or
-   decides it now; then step 5 drafts its record.
+   With a planner bundle (*Planner Context*), list each open required decision among the binding
+   decisions as "open required decision #<id> — <title> (<status>)". Open means `record: null`
+   (status "no record") or a `check.kind` other than `accepted`; word the status as the CLI
+   reference says. The design either waits for it or decides it now; then step 5 drafts its record.
 ```
+
+Open is defined as in refining-epic (`record: null`), widened to any status other than accepted, worded by the reference's table.
 
 Append to item 5:
 
@@ -1347,22 +1362,22 @@ Append to item 9:
 
 In the *Process Flow* graph, add the node `"Read planner context (story named, planner present)" [shape=box];` first and the edge `"Read planner context (story named, planner present)" -> "Explore project context";`.
 
-Every other line of the skill is unchanged apart from the announce line: the HARD-GATE, the anti-pattern section, items 2–4, 7–8, *The Process*, *After the Design* and *Key Principles* (kb/ADR-0005 R4).
+Every other line of the skill is unchanged apart from the announce lines: the HARD-GATE, the anti-pattern section, items 2–4, 7–8, *The Process*, *After the Design* and *Key Principles* (kb/ADR-0005 R4).
 
-In `skills/writing-plans/SKILL.md`, the low-tier bullet "**Low tier** drafts alone become the ride-along apply task: copy each one into the plan," becomes "**Low tier** drafts alone become the ride-along apply task: copy each one into the plan, with its `Required decision: #<id>` line when the spec has one,". Without it, a low-tier draft that answers a required decision loses its id between the spec and the apply.
+In `skills/writing-plans/SKILL.md`, the low-tier bullet "**Low tier** drafts alone become the ride-along apply task: copy each one into the plan," becomes "**Low tier** drafts alone become the ride-along apply task: copy each one into the plan, with its `Required decision: #<id>` line when the spec has one,". Without it, a low-tier draft that answers a required decision loses its id between the spec and the apply. In the same bullet, the scheduled apply task "applies it via the **recording-decisions** skill as a ride-along" becomes "applies it via the **recording-decisions** skill (passing its `Required decision: #<id>` line, when it has one) as a ride-along", so the executor, who never reads brainstorming item 9, hands the id on.
 
-- [ ] **Step 4: Run, see all three pass**
+- [ ] **Step 4: Run, see all four pass**
 
-Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-brainstorming` — Expected: 3 `[PASS]`.
+Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-brainstorming` — Expected: 4 `[PASS]`. Then without `--with` (`without-planner` and `story-key-without-planner` run, the other two are skipped): 2 `[PASS]`.
 
 - [ ] **Step 5: Mutation check**
 
-Delete the inserted step 0 and the item-1 addition, run Step 4's command. Expected: `reeve-brainstorming-story-context` fails; the other two still pass. Restore. Then empty the whole body below the frontmatter, run Step 4's command. Expected: all three fail (no announce sentence). Restore.
+Delete the *Planner Context* section and the item-1 addition, run Step 4's command. Expected: `reeve-brainstorming-story-context` fails (the open-decision line missing) and `reeve-brainstorming-story-key-without-planner` fails (the planner is talked about); the other two still pass. Restore. Delete only the item-1 addition and run `story-context`: it fails on the open-decision line. Restore. Then empty the whole body below the frontmatter, run Step 4's command. Expected: all four fail (no announce sentence). Restore.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add skills/brainstorming skills/writing-plans test/scenarios.edn
+git add skills/brainstorming skills/writing-plans test/scenarios.edn test/run-tests.clj
 git commit -m "feat(skills): brainstorming reads the reeve story context when a story is named and the planner is present" -m "Task 4 of docs/superpowers/plans/2026-10-26-reeve-planning-skills.md. The hard gate and every existing step are unchanged.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"

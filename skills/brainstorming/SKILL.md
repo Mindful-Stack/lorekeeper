@@ -6,6 +6,10 @@ description: "You MUST use this before any creative work - creating features, bu
 
 # Brainstorming Ideas Into Designs
 
+Announce at the start: "Using the brainstorming skill: no code until the design is approved."
+The message that ends your first turn opens with the same sentence, since a non-interactive
+session shows only that message.
+
 Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
 
 Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
@@ -18,6 +22,23 @@ Do NOT invoke any implementation skill, write any code, scaffold any project, or
 
 Every project goes through this process. A todo list, a single-function utility, a config change — all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences for truly simple projects), but you MUST present it and get approval.
 
+## Planner Context
+
+When the request presents a story key as the story it is for ("story GRA-31", "for GRA-31",
+"GRA-31: …", or a key that opens the request), read the planner before the checklist. Never for
+any other `<PREFIX>-<n>` token, such as UTF-8, SHA-256 or ISO-8601; with no story key, create no
+task for this and say nothing about it. Run `node <plugin-root>/scripts/reeve-detect.js`
+(`<plugin-root>` is `${CLAUDE_PLUGIN_ROOT}`, written out as an absolute path). Unless it prints
+`"present":true` and `"signed_in":true`, this section ends here and leaves no trace: your reply
+never mentions the planner, the detector, a sign-in or a story lookup (not even that the story
+could not be loaded), and reads exactly as it would if the planner did not exist. Otherwise
+read `<plugin-root>/references/reeve-cli.md` and run `reeve story context <KEY> --json` (the
+detector's `bin` as the first word). If it does not answer `ok`, say so in one line (the planner
+has no story <KEY>, and an epic or initiative key is not a story; for an `unauthenticated` or
+`forbidden` error, run `reeve auth login`) and go on with checklist item 1 without planner
+context. On `ok`, the story's title, description and criteria, the initiative and epic briefs,
+the required decisions, the blockers and the comments are project context for item 1.
+
 ## Checklist
 
 You MUST create a task for each of these items and complete them in order:
@@ -28,6 +49,11 @@ You MUST create a task for each of these items and complete them in order:
    agent in `bind` mode with the topic. Include both outputs in your project context: the
    architect's binding decisions constrain every approach you propose, and a fired trigger means
    the design must supersede that record (recording-decisions skill) rather than quietly violate it.
+   With a planner bundle (*Planner Context*), list each open required decision among the binding
+   decisions as "open required decision #<id> — <title> (<status>)". Open is as the CLI
+   reference's *Wording the planner's answers* defines it (not closed, not accepted); word the
+   status as that section says. The design either waits for it or decides it now; then step 5
+   drafts its record.
 2. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 3. **Propose 2-3 approaches** — with trade-offs and your recommendation
    If the chosen approach commits to a hard-to-reverse choice, it will be listed and recorded in
@@ -39,11 +65,16 @@ You MUST create a task for each of these items and complete them in order:
    show** a `proposed` record — tell it not to apply yet ("draft only; do not apply") — unless a
    binding record from step 1 already covers it. Note each record's tier (high = one-way, shared, or
    any sensitivity). Reversible ones go in the spec as plain design.
+   For a record that answers an open required decision, tell recording-decisions which one
+   ("it answers required decision #<id>").
 6. **Write design doc** — save to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md` with a
    `## Decisions` section: the binding records it follows (by id); for each proposed record, its
    id-to-be/title, a `Tier: high` or `Tier: low` line, and the full drafted record text in a fenced
    ```markdown block, so a later session can apply it without this chat and never has to infer the
    tier; "No new decisions" when there are none; commit
+   Under each proposed record that answers a required decision, add a line
+   `Required decision: #<id>` outside the fenced record text (no item key is ever written into a
+   record, kb/ADR-0004 R3), so whoever applies it later links it.
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written spec** — ask user to review the spec file before proceeding
 9. **Transition** — if any proposed record is **high tier**: apply it from the spec's stored draft
@@ -55,11 +86,14 @@ You MUST create a task for each of these items and complete them in order:
    writing-plans/implementation applies each stored draft as a ride-along in the implementing PR
    through recording-decisions, listed under *Adds* in the PR's *Decisions* section. With no
    high-tier proposal, invoke writing-plans.
+   When applying a stored draft, pass its `Required decision: #<id>` line to recording-decisions;
+   its record step 6 links the applied record in the planner.
 
 ## Process Flow
 
 ```dot
 digraph brainstorming {
+    "Read planner context (story named, planner present)" [shape=box];
     "Explore project context" [shape=box];
     "Ask clarifying questions" [shape=box];
     "Propose 2-3 approaches" [shape=box];
@@ -73,6 +107,7 @@ digraph brainstorming {
     "Invoke writing-plans skill" [shape=doublecircle];
     "Stop: ADR PR opened, resume after acceptance" [shape=doublecircle];
 
+    "Read planner context (story named, planner present)" -> "Explore project context";
     "Explore project context" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
     "Propose 2-3 approaches" -> "Present design sections";

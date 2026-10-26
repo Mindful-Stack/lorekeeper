@@ -310,3 +310,86 @@ test('schema gate: degrades silently when node is non-functional (valid JSON, no
         assert.doesNotMatch(json.systemMessage, /older than this plugin/);
         assert.doesNotMatch(json.systemMessage, /newer than this plugin/);
     }));
+
+// --- Reeve planner router rows: only when a reeve-planner CLI answers (kb/ADR-0005 R1) ----
+const REEVE_FAKE = path.resolve(__dirname, '../../test/fixtures/reeve-bin/reeve');
+const PLANNER_ROWS = /PLANNING AN INITIATIVE[\s\S]*REFINING AN EPIC/;
+
+test('reeve router rows: present when the reeve CLI reports reeve-planner', () =>
+    withTmp((tmp) => {
+        const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: mkKb(path.join(tmp, 'kb')), REEVE_BIN: REEVE_FAKE });
+        assert.match(ctx(json), PLANNER_ROWS);
+        assert.match(ctx(json), /CREATIVE WORK[\s\S]*PLANNING AN INITIATIVE[\s\S]*HARD-TO-REVERSE DECISION/);
+    }));
+
+test('reeve router rows: absent without a reeve CLI, with a lookalike, or with a hanging one', () =>
+    withTmp((tmp) => {
+        const kb = mkKb(path.join(tmp, 'kb'));
+        const lookalike = path.join(tmp, 'reeve-runner');
+        fs.writeFileSync(lookalike, '#!/bin/sh\necho "reeve-runner 2.0.0"\n');
+        fs.chmodSync(lookalike, 0o755);
+        const hang = path.join(tmp, 'reeve-hang');
+        fs.writeFileSync(hang, '#!/bin/sh\nsleep 5\necho reeve-planner 0.1.0\n');
+        fs.chmodSync(hang, 0o755);
+        for (const bin of [path.join(tmp, 'missing'), lookalike, hang]) {
+            const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb, REEVE_BIN: bin });
+            assert.doesNotMatch(ctx(json), /Reeve planner/, bin);
+            assert.match(ctx(json), /CREATIVE WORK[\s\S]*HARD-TO-REVERSE DECISION/, bin);
+        }
+    }));
+
+test('reeve router rows: a probe that ignores TERM is killed, the hook returns within ~3 s', () =>
+    withTmp((tmp) => {
+        const kb = mkKb(path.join(tmp, 'kb'));
+        const stubborn = path.join(tmp, 'reeve-stubborn');
+        fs.writeFileSync(stubborn, "#!/bin/sh\ntrap '' TERM\nsleep 10\necho reeve-planner 0.1.0\n");
+        fs.chmodSync(stubborn, 0o755);
+        const started = Date.now();
+        const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb, REEVE_BIN: stubborn });
+        const elapsed = Date.now() - started;
+        assert.ok(elapsed < 4000, `hook took ${elapsed} ms`);
+        assert.match(ctx(json), /Knowledge path: .*\/kb\/knowledge\//);
+        assert.doesNotMatch(ctx(json), /Reeve planner/);
+    }));
+
+test('reeve router rows: a wrapper that exits leaving a child on stdout cannot hold the hook', () =>
+    withTmp((tmp) => {
+        const kb = mkKb(path.join(tmp, 'kb'));
+        // Prints nothing; its background child inherits stdout and holds it for 7 s.
+        const wrapper = path.join(tmp, 'reeve-wrapper');
+        fs.writeFileSync(wrapper, '#!/bin/sh\nsleep 7 &\nexit 0\n');
+        fs.chmodSync(wrapper, 0o755);
+        const started = Date.now();
+        const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb, REEVE_BIN: wrapper });
+        const elapsed = Date.now() - started;
+        assert.ok(elapsed < 3500, `hook took ${elapsed} ms`);
+        assert.match(ctx(json), /Knowledge path: .*\/kb\/knowledge\//);
+        assert.doesNotMatch(ctx(json), PLANNER_ROWS);
+    }));
+
+test('reeve router rows: without GNU timeout the probe is skipped, the hook returns within ~3 s', () =>
+    withTmp((tmp) => {
+        const kb = mkKb(path.join(tmp, 'kb'));
+        // A PATH that mirrors the real one minus `timeout` (stock macOS).
+        const binDir = path.join(tmp, 'bin');
+        fs.mkdirSync(binDir);
+        for (const dir of process.env.PATH.split(path.delimiter)) {
+            let entries = [];
+            try { entries = fs.readdirSync(dir); } catch { continue; }
+            for (const name of entries) {
+                const target = path.join(binDir, name);
+                if (name === 'timeout' || fs.existsSync(target)) continue;
+                try { fs.symlinkSync(path.join(dir, name), target); } catch { /* skip */ }
+            }
+        }
+        // A probe whose child holds stdout open for 7 s.
+        const holder = path.join(tmp, 'reeve-holder');
+        fs.writeFileSync(holder, '#!/bin/sh\necho reeve-planner 0.1.0\nsleep 7 &\n');
+        fs.chmodSync(holder, 0o755);
+        const started = Date.now();
+        const { json } = runHook(tmp, { PATH: binDir, KNOWLEDGE_BASE_PATH: kb, REEVE_BIN: holder });
+        const elapsed = Date.now() - started;
+        assert.ok(elapsed < 3500, `hook took ${elapsed} ms`);
+        assert.match(ctx(json), /Knowledge path: .*\/kb\/knowledge\//);
+        assert.doesNotMatch(ctx(json), PLANNER_ROWS);
+    }));

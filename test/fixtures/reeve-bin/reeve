@@ -1,0 +1,227 @@
+#!/usr/bin/env node
+// A fake Reeve planner CLI for the scenario tests (test/README.md). Every valid call except
+// `--version` (the SessionStart hook probes it too) is appended to $REEVE_FAKE_LOG as one line (argv
+// joined by spaces, newlines flattened). What the real CLI's parser rejects (an unknown command or
+// flag, a value starting with `-` except `comment add --body`) is a usage error: text on stderr, no
+// stdout, exit 1. Answers use the planner's wire shapes (StoryContextDto, RequiredDecisionDto,
+// CheckResult, Reason in the Reeve repository's crates/reeve-server/tests/snapshots/openapi.json).
+// REEVE_FAKE_LINK_CHECK=unreadable makes `decision link` behave like a link whose immediate check
+// could not run. REEVE_FAKE_REFUSE=<text> makes every command whose name contains <text> (e.g.
+// `story create`) answer with a `refused` envelope and exit 2. REEVE_FAKE_SIGNIN=expired makes every
+// call but `auth status` answer an `unauthenticated` error, exit 2. Creates replay by
+// --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates, edits and decision links
+// persist there, so later shows, lists and readiness see them like the real planner.
+'use strict';
+const fs = require('node:fs');
+
+const argv = process.argv.slice(2);
+const log = process.env.REEVE_FAKE_LOG;
+// Logged only once the call passed validation, so a malformed call never satisfies a log expectation.
+const logCall = () => { if (log) fs.appendFileSync(log, argv.join(' ').replace(/[\r\n\u2028\u2029\u0085]+/g, ' ') + '\n'); };
+
+// Per-run state next to the log: { next, creates: { <idempotency key>: <response value> },
+// items: { <KEY>: <the item as last written> }, decisions: { <id>: <the decision as last linked> } }. Updates
+// run under an exclusive lock file, so parallel calls neither share an id nor lose a replay entry.
+function withState(fn) {
+  if (!log) return fn({ next: 100, creates: {} }); // no log, no run: nothing to replay
+  const file = `${log}.state`;
+  const lock = `${file}.lock`;
+  for (let tries = 0; ; tries++) {
+    try { fs.closeSync(fs.openSync(lock, 'wx')); break; } catch (e) {
+      if (e.code !== 'EEXIST' || tries > 2000) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+    }
+  }
+  try {
+    let state;
+    try { state = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { state = { next: 100, creates: {} }; }
+    const result = fn(state);
+    fs.writeFileSync(file, JSON.stringify(state));
+    return result;
+  } finally { fs.unlinkSync(lock); }
+}
+const KEY_SHAPE = /^[a-z][a-z0-9-]*:(?:[A-Z][A-Z0-9]*-[0-9]+|[0-9]+):[0-9a-f]{8}:[0-9]+$/; // <skill>:<KEY>:<run-id>:<n>; KEY an item key or a decision id
+
+const emit = (envelope, code) => { process.stdout.write(JSON.stringify(envelope) + '\n'); process.exit(code); };
+const ok = (value) => emit({ outcome: 'ok', value }, 0);
+const error = (code, message) => emit({ outcome: 'error', code, message }, code === 'unauthenticated' || code === 'forbidden' ? 2 : 1);
+// What clap rejects: no envelope, the usage text on stderr, exit 1.
+const usage = (message) => { process.stderr.write(`error: ${message}\n\nFor more information, try '--help'.\n`); process.exit(1); };
+
+if (argv[0] === '--version') { process.stdout.write('reeve-planner 0.1.0-fake\n'); process.exit(0); }
+if (!argv.includes('--json')) error('validation', 'the fake planner answers --json calls only');
+const words = argv.filter((a) => a !== '--json');
+
+const DISCOVERY = { pos: 1, val: ['version'], bool: ['complete', 'reopen'], req: ['version'] };
+const SPEC = {
+  'auth status': { pos: 0 },
+  'story context': { pos: 1 },
+  'story ls': { pos: 0, val: ['epic'], bool: ['untriaged'] },
+  'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
+  'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
+  'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank'], bool: ['no-epic'], rep: ['criterion'], req: ['version'] },
+  'initiative show': { pos: 1 },
+  'initiative ls': { pos: 0 },
+  'initiative create': { pos: 0, val: ['idempotency-key', 'title', 'horizon', 'brief', 'target-month', 'owner'], req: ['idempotency-key', 'title', 'horizon'] },
+  'initiative edit': { pos: 1, val: ['version', 'title', 'brief', 'horizon', 'target-month', 'owner'], req: ['version'] },
+  'initiative discovery': DISCOVERY,
+  'epic show': { pos: 1 },
+  'epic ls': { pos: 0, val: ['initiative'] },
+  'epic create': { pos: 0, val: ['idempotency-key', 'title', 'initiative', 'brief'], req: ['idempotency-key', 'title'] },
+  'epic edit': { pos: 1, val: ['version', 'title', 'brief', 'initiative'], bool: ['no-initiative'], req: ['version'] },
+  'epic discovery': DISCOVERY,
+  'decision ls': { pos: 0, val: ['on'], bool: ['mine'] },
+  'decision show': { pos: 1 },
+  'decision require': { pos: 0, val: ['idempotency-key', 'on', 'title', 'decider', 'due'], req: ['idempotency-key', 'on', 'title', 'decider'] },
+  'decision link': { pos: 1, val: ['record', 'repo', 'path', 'pr', 'household'], req: ['record', 'repo', 'path'] },
+  'comment add': { pos: 0, val: ['idempotency-key', 'story', 'decision', 'body'], req: ['idempotency-key', 'body'] },
+};
+const cmd = words.slice(0, 2).join(' ');
+const spec = SPEC[cmd] || usage(`unrecognized subcommand: reeve ${cmd}`);
+const pos = [];
+const f = {};
+for (let i = 2; i < words.length; i++) {
+  const w = words[i];
+  if (!w.startsWith('--')) { pos.push(w); continue; }
+  const name = w.slice(2);
+  if ((spec.bool || []).includes(name)) f[name] = true;
+  else if ((spec.val || []).includes(name) || (spec.rep || []).includes(name)) {
+    if (i + 1 >= words.length) usage(`a value is required for '--${name}'`);
+    const v = words[++i];
+    if (v.length > 1 && v.startsWith('-') && !(cmd === 'comment add' && name === 'body')) usage(`unexpected argument '${v.split(/\s/)[0]} ' found`);
+    if ((spec.rep || []).includes(name)) (f[name] ||= []).push(v); else f[name] = v;
+  } else usage(`unexpected argument '--${name}' found`);
+}
+if (pos.length !== spec.pos) usage(`reeve ${cmd} takes ${spec.pos} positional argument(s), got ${pos.length}`);
+for (const r of spec.req || []) if (!(r in f)) usage(`the following required arguments were not provided: --${r}`);
+if (spec === DISCOVERY && !f.complete && !f.reopen) usage('pass --complete or --reopen');
+if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) usage(`invalid value '${f.kind}' for '--kind'`);
+if (f.version && !/^\d+$/.test(f.version)) usage(`invalid value '${f.version}' for '--version'`);
+if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}' for '--due'`);
+if (cmd === 'comment add' && !f.story === !f.decision) usage('pass exactly one of --story and --decision');
+if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
+
+const NOW = '2026-10-20T09:00:00Z';
+const initiative = (key, title, o = {}) => ({ key, title, brief: '', horizon: 'Later', owner: null, target_month: null, discovery_complete: null, external_ref: null, progress: null, version: 1, ...o });
+const epic = (key, title, o = {}) => ({ key, title, brief: '', initiative: null, discovery_complete: null, external_ref: null, version: 1, ...o });
+const story = (key, title, o = {}) => ({ key, title, kind: 'story', epic: null, description: '', criteria: [], labels: [], rank: 0, blocked_by: [], delivery: 'todo', resolution: null, owner: null, external_ref: null, prs: [], version: 1, ...o });
+const initiatives = {
+  'GRA-12': initiative('GRA-12', 'Faster mentor matching', { brief: 'Mentees wait too long for a mentor.', horizon: 'Next', owner: 'dan@example.com', version: 3 }),
+  'GRA-13': initiative('GRA-13', 'Mentor onboarding', { brief: 'New mentors get started without help.', horizon: 'Now', owner: 'sam@example.com' }),
+};
+const epics = {
+  'GRA-20': epic('GRA-20', 'Matching queue', { brief: 'Match mentors through a queue.', initiative: 'GRA-12', version: 2 }),
+  'GRA-21': epic('GRA-21', 'Mentor profiles', { brief: 'Mentors describe their skills and availability.', initiative: 'GRA-13' }),
+  'GRA-22': epic('GRA-22', 'Session feedback', { brief: 'Mentees rate each mentoring session after it ends.' }), // standalone: no initiative
+};
+const decision7 = { id: 7, on: 'GRA-20', title: 'Queue or cron', decider: 'dan@example.com', due: null, record: null, pr_url: null, check: { kind: 'unchecked' }, checked_at: null, closed: null, created_at: NOW, version: 1 };
+// Closed without a record: listed by `decision ls`, never open, never a readiness reason (kb/ADR-0003 R3).
+const decision8 = { ...decision7, id: 8, title: 'Match by postcode', closed: { at: NOW, by: 'dan@example.com', reason: 'matching no longer uses the postcode' }, version: 2 };
+const HORIZONS = ['Now', 'Next', 'Later', "Won't do"];
+const stories = {
+  'GRA-31': story('GRA-31', 'Retry failed matches', { epic: 'GRA-20', criteria: [{ text: 'A failed match is retried up to three times', done: false }, { text: 'The third failure is reported to the coordinator', done: false }] }),
+  'GRA-32': story('GRA-32', 'Show match history', { epic: 'GRA-20' }),
+  'GRA-40': story('GRA-40', 'Matching crashes when a mentor has no timezone'),
+  'GRA-41': story('GRA-41', 'Upgrade the queue client library'),
+  'GRA-42': story('GRA-42', 'Drop a match request the mentee withdrew from the queue'),
+  'GRA-43': story('GRA-43', 'Welcome email with an onboarding checklist for new mentors'),
+  'GRA-44': story('GRA-44', 'Invoice employers for programme fees'),
+  'GRA-45': story('GRA-45', 'Coordinators match a mentee by hand in one click'),
+  'GRA-46': story('GRA-46', 'Fax match summaries to coordinators'),
+  'GRA-47': story('GRA-47', 'Translate the mentee app into Spanish'),
+};
+// The run's state, read once: items created or edited in this run, by key (a show or a list sees
+// the last write), and the creates by idempotency key.
+const state = withState((st) => st);
+const itemsOf = () => state.items || {};
+const find = (table, key) => itemsOf()[key] || table[key] || error('not_found', `no item ${key}`);
+const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`));
+const [p0] = pos;
+// Items created in this run, by kind, in creation order (lists show them like the real planner).
+const createdDecisions = () => Object.values(state.creates).filter((v) => !Array.isArray(v) && 'decider' in v);
+const kindOf = (v) => ('criteria' in v ? 'story' : 'horizon' in v ? 'initiative' : 'epic');
+const all = (table, kind) => Object.values({ ...table, ...Object.fromEntries(Object.entries(itemsOf()).filter(([, v]) => kindOf(v) === kind)) });
+const save = (item) => withState((state) => { (state.items ||= {})[item.key] = item; return item; });
+// A create answers with the item built for a fresh id; the same key again replays the first answer.
+const mint = (build) => withState((state) => {
+  const key = f['idempotency-key'];
+  if (!(key in state.creates)) {
+    state.creates[key] = build(state.next++);
+    if (state.creates[key].key) (state.items ||= {})[state.creates[key].key] = state.creates[key];
+  }
+  return state.creates[key];
+});
+// A decision as last linked in this run, else as seeded or created.
+const allDecisions = () => [decision7, decision8, ...createdDecisions()].map((d) => (state.decisions || {})[d.id] || d);
+// Readiness derived like the planner does (domain/readiness.rs), in its order: untriaged; the epic's
+// discovery and open decisions, then the initiative's; the story's own decisions; no criteria.
+const readinessOf = (s) => {
+  const reasons = [];
+  // Each open decision's reason from its check, as decision_reason does; an accepted record gates nothing.
+  const REASON = { proposed_pr_open: 'decision_proposed_pr_open', not_found: 'decision_record_not_found', not_accepted: 'decision_not_accepted' };
+  const reasonOf = (d) => (d.check.kind === 'unchecked' ? (d.record ? 'decision_unchecked' : 'decision_no_record') : REASON[d.check.kind]);
+  const open = (key) => allDecisions().filter((d) => d.on === key && !d.closed && d.check.kind !== 'accepted').map((d) => ({ reason: reasonOf(d), decision_id: d.id, title: d.title, ...(d.check.kind === 'not_accepted' ? { status: d.check.status, superseded_by: d.check.superseded_by ?? null } : {}) }));
+  if (s.kind === 'story' && !s.epic) reasons.push({ reason: 'untriaged' });
+  const e = s.epic && (itemsOf()[s.epic] || epics[s.epic]);
+  const i = e && e.initiative && (itemsOf()[e.initiative] || initiatives[e.initiative]);
+  for (const a of [e, i].filter(Boolean)) {
+    if (!a.discovery_complete) reasons.push({ reason: 'ancestor_discovery_incomplete', item: a.key });
+    reasons.push(...open(a.key));
+  }
+  reasons.push(...open(s.key));
+  if (!s.criteria.length) reasons.push({ reason: 'no_criteria' });
+  return { ready: !reasons.length, reasons };
+};
+
+// A write that names an epic or initiative nobody created is not_found, and not logged: a guessed
+// key never satisfies a log expectation.
+if (['story create', 'story edit', 'epic create', 'epic edit'].includes(cmd)) {
+  for (const [flag, table] of [['epic', epics], ['initiative', initiatives]]) if (f[flag] !== undefined && !itemsOf()[f[flag]] && !table[f[flag]]) error('not_found', `no ${flag} ${f[flag]}`);
+}
+logCall(); // valid: the call reached the planner (a refusal below is the planner's answer)
+if (process.env.REEVE_FAKE_SIGNIN === 'expired' && cmd !== 'auth status') error('unauthenticated', 'the session has expired; run `reeve auth login`');
+if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)) emit({ outcome: 'refused', reasons: [{ reason: 'no_criteria' }] }, 2);
+if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validation', `horizon ${f.horizon} is not one of the configured buckets`);
+
+({
+  'auth status': () => ok({ url: 'http://127.0.0.1:7474', token_from_env: false, email: 'dan@example.com', role: 'member', token_kind: 'interactive' }),
+  'story context': () => {
+    const s = itemsOf()[p0] || stories[p0] || error('not_found', `no story ${p0}`);
+    const e = s.epic ? itemsOf()[s.epic] || epics[s.epic] : null;
+    ok({ story: s, epic: e, initiative: e && e.initiative ? initiatives[e.initiative] : null, required_decisions: s.epic === 'GRA-20' ? allDecisions().filter((d) => d.id === 7) : [], blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
+  },
+  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readinessOf(s) }))),
+  'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })) }))),
+  'story mv': () => { const s = find(stories, p0); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1] })); }, // exists so a delivery change is logged; no skill may call it
+  'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic })); },
+  'initiative show': () => ok(find(initiatives, p0)),
+  'initiative ls': () => ok(all(initiatives, 'initiative')),
+  'initiative create': () => ok(mint((id) => initiative(`GRA-${id}`, f.title, { brief: f.brief || '', horizon: f.horizon, owner: f.owner || null }))),
+  'initiative edit': () => { const i = find(initiatives, p0); ok(save({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon })); },
+  'initiative discovery': () => ok(save({ ...bump(find(initiatives, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
+  'epic show': () => ok(find(epics, p0)),
+  'epic ls': () => ok(all(epics, 'epic').filter((e) => !f.initiative || e.initiative === f.initiative)),
+  'epic create': () => ok(mint((id) => epic(`GRA-${id}`, f.title, { brief: f.brief || '', initiative: f.initiative || null }))),
+  'epic edit': () => { const e = find(epics, p0); ok(save({ ...bump(e), brief: f.brief ?? e.brief, title: f.title ?? e.title })); },
+  'epic discovery': () => ok(save({ ...bump(find(epics, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
+  'decision ls': () => ok(allDecisions().filter((d) => !f.on || d.on === f.on)),
+  'decision show': () => ok(allDecisions().find((d) => String(d.id) === p0) || error('not_found', `no decision ${p0}`)),
+  'decision require': () => ok(mint((id) => ({ ...decision7, id, on: f.on, title: f.title, decider: f.decider, due: f.due || null }))),
+  'decision link': () => {
+    if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
+    const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);
+    const linked = { ...d, record: { repo: f.repo, path: f.path, record_id: f.record }, pr_url: f.pr || null, version: d.version + 1 };
+    // The link is stored even when its immediate check cannot run; the check stays unchecked.
+    const unreadable = process.env.REEVE_FAKE_LINK_CHECK === 'unreadable';
+    const value = unreadable ? { ...linked, check: { kind: 'unchecked' }, checked_at: null } : { ...linked, check: { kind: f.pr ? 'proposed_pr_open' : 'not_found' }, checked_at: NOW };
+    withState((st) => { (st.decisions ||= {})[d.id] = value; });
+    if (unreadable) {
+      process.stderr.write(`decision ${p0}: cannot read ${f.path}: ${f.household || '.'}/${f.repo} is not a git checkout\n`);
+      emit({ outcome: 'ok', value }, 1);
+    }
+    ok(value);
+  },
+  'comment add': () => {
+    ok(mint((id) => [{ id, author: 'dan@example.com', body: f.body, at: NOW, on_story: f.story || null, on_decision: f.decision ? Number(f.decision) : null, external_ref: null }]));
+  },
+})[cmd]();

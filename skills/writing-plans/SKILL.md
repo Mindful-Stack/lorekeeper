@@ -86,11 +86,13 @@ writes one per draft, both tiers stored the same way. Handle each by its tier:
   it. If none is accepted yet, stop before writing any task: name the draft (id-to-be/title) and
   say it must have its own ADR PR opened (recording-decisions skill) and accepted before this plan
   can proceed.
-- **Low tier** drafts alone become the ride-along apply task: copy each one into the plan,
+- **Low tier** drafts alone become the ride-along apply task: copy each one into the plan, with
+  its `Required decision: #<id>` line when the spec has one,
   - list it in the *Governing decisions* header as "Proposed (low tier, applied in Task N)" — never
     as binding;
   - schedule an early task, before any task that builds on it, that applies it via the
-    **recording-decisions** skill as a ride-along on the implementing branch, and lists the applied
+    **recording-decisions** skill (passing its `Required decision: #<id>` line, when it has one)
+    as a ride-along on the implementing branch, and lists the applied
     record under *Adds* in the PR's `## Decisions` section (`references/pr-decisions.md`).
 
 ## Bite-Sized Task Granularity

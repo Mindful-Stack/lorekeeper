@@ -200,4 +200,22 @@ git commit -m \"feat: add DeviceStatusDto\"
   :prompt "Run `reeve --version` and report what it printed. Do not ask questions; the answers are given."
   :workdir "."
   :expects ["0\\.1\\.0-fake"]
-  :log-expects ["^--version$"]}]
+  :log-expects ["^--version$"]}
+
+ {:name "reeve-planning-initiative"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)" "Bash(node *)"]
+  :prompt "Plan initiative GRA-12 in Reeve. Do not ask questions; the answers are given. Vision: every mentee has a mentor within one working day. It is for programme coordinators and mentees. Known: coordinators match by hand once a week today. Open question: whether matching runs from a queue or on a cron schedule; it is a consequential choice that blocks the work, decided by dan@example.com, due 2026-11-15. Draft its record but do not apply it now. Epics: 'Matching queue' (brief: match mentors through a queue) and 'Match notifications' (brief: tell mentor and mentee when a match is made). I confirm every write to the planner. Discovery is not complete yet."
+  :workdir "."
+  :expects ["(?i)researched:" "(?i)run id:? *`?[0-9a-f]{8}" "dan@example\\.com"]
+  :rejects ["docs/agent/specs"]
+  :log-expects ["^--version$"
+                "^initiative show GRA-12 --json$"
+                "^decision ls --on GRA-12 --json$"
+                "^initiative edit GRA-12 (?=.*--brief )(?=.*--version 3\\b).*--json$"
+                "^decision require (?=.*--on GRA-12\\b)(?=.*--decider dan@example\\.com\\b)(?=.*--due 2026-11-15\\b)(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^comment add (?=.*--decision 1\\d\\d\\b)(?=.*/lore:adr link )(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^epic create (?=.*--initiative GRA-12\\b)(?=.*--title Matching queue )(?=.*--brief )(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^epic create (?=.*--initiative GRA-12\\b)(?=.*--title Match notifications )(?=.*--brief ).*--json$"
+                "(?s)planning-initiative:GRA-12:([0-9a-f]{8}):1\\b.*planning-initiative:GRA-12:\\1:2\\b"]
+  :log-rejects ["--brief-file" "^epic edit " "^initiative discovery "]}]

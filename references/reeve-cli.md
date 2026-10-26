@@ -16,9 +16,24 @@ stands for it.
 
 ## Arguments
 
-Put `--json` on every command (the real CLI takes it anywhere; these examples end with it). Pass Markdown (a brief) or any text with spaces as one
-ANSI-C-quoted argument on one line: `--brief $'## Vision\nEvery mentee …\n\n## Capabilities\n- …'`
-(`\n` for a newline, `\'` for an apostrophe), so the whole command stays one line.
+Put `--json` on every command, as the last argument (the real CLI takes it anywhere; these
+examples end with it). Pass Markdown (a brief) or any text with spaces as one single-quoted
+argument with real newlines, `'\''` for an apostrophe, and no line starting with `#`: write a
+heading in setext form, its title underlined with `---`:
+
+```
+reeve epic create --initiative GRA-12 --title 'Matching queue' --brief 'Vision
+------
+Every mentee …
+
+Capabilities
+------------
+- …' --idempotency-key planning-initiative:GRA-12:0a1b2c3d:1 --json
+```
+
+Claude Code's permission check cannot inspect ANSI-C quoting (`$'…'`) and refuses a quoted
+newline followed by `#`; either one turns an allowed `Bash(reeve *)` call into a permission
+prompt, and into a refusal when nobody can answer it (`claude --print`, CI).
 
 ## Envelope and exit status
 

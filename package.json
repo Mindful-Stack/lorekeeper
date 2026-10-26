@@ -6,6 +6,6 @@
   "type": "commonjs",
   "dependencies": {},
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=22"
   }
 }

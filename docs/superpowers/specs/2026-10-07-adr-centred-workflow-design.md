@@ -339,28 +339,32 @@ agent).
 
 ## Enforcement in review
 
-`/lore:review` and CI review (any workflow that mounts the KB and runs the review prompt) run:
+The judgment is reviewer-agnostic: `/lore:review` runs it locally with the architect, and CI runs it
+with any model as an independent second opinion. Two things are published and versioned: the
+`select --json` output, which inlines each candidate record, and the findings document,
+`schemas/adr-findings.v1.schema.json` (v1). The fields, checks and exit codes are in
+`references/adr-findings.md`.
 
 1. **Candidate selection (deterministic):** `node scripts/adr-lint.js select --json --diff <patch>
    [--repo <name>] [--pr-body <file>]` prints the records whose `scope` matches the diff's paths,
    plus records cited in the PR's Decisions section, from the repo's local home and the team KB's
    shared home. `--repo` comes from a CI input, or from matching `git remote get-url origin`
-   against the manifest. The review skill names this step explicitly.
-2. **Judgment:** the architect (`check` mode) reads the candidates, cites rule ids and line ranges,
-   and classifies each finding — **contradiction** with an accepted record, an **uncovered**
-   hard-to-reverse choice no record covers, a fired invalidation **trigger**, a **stale fact** (a
-   `Facts relied on` entry the diff shows false), or a **dangling** citation (an id resolving
-   nowhere). A finding may name several rules. The report ends with
-   an `adr-findings` block holding classes only, no severities; if the architect could not read the
-   whole patch it emits none, so the gate fails closed instead of passing on an empty list.
-3. **Verdict (deterministic):** `adr-lint verdict` turns that block into a severity per finding
-   from one table keyed by class — contradiction, uncovered and trigger are Critical and block; a
-   dangling citation is Important; a stale fact is Minor — and exits 1 while anything blocks. CI
-   gates on that exit code, not on the model's prose. The review reads the PR description itself
-   and reports a missing *Decisions* section as one Minor finding.
-4. **Override:** every Critical finding blocks. The remedies are to conform, replace the record,
-   or record the uncovered choice in the PR. The only override is the repository's admin bypass
-   of the required check, used by the team's bypass group.
+   against the manifest.
+2. **Judgment:** the reviewer reads the candidates and writes a findings document: `coverage`
+   (the records it checked) and `findings`, each with a class (**contradiction**, **uncovered**,
+   **trigger**, **stale-fact** or **dangling**), the ids it cites, a `where` and a one-line summary.
+3. **Verdict (deterministic):** `adr-lint verdict --findings <f> --diff <d> [--repo] [--pr-body]`
+   re-selects from the diff, checks the attestation, the ids and the location, adds the dangling
+   findings itself, and assigns severity from the class: contradiction, uncovered and trigger are
+   Critical and block; dangling is Important; stale-fact is Minor. It exits 0 when nothing blocks,
+   1 when a finding blocks, and 2 on any gap (a selected record neither attested nor named, an id
+   that resolves nowhere, a missing `where`, invalid input). CI gates on that exit code, not on the
+   model's prose.
+4. **Two required checks:** `adr-lint check --ci` (deterministic) and the judgment. Consumers pin a
+   plugin tag.
+5. **Override:** every Critical finding blocks. The remedies are to conform, replace the record, or
+   record the uncovered choice in the PR. The only override is the repository's admin bypass of the
+   required check, used by the team's bypass group.
 
 The check is blocking from the start. Its prompt is expected to need tuning; false positives are
 collected from bypassed merges and fed back.
@@ -369,9 +373,8 @@ collected from bypassed merges and fed back.
 
 `scripts/adr-lint.js` (Node, no dependencies, cross-platform), with subcommands `check`,
 `select` (from a patch with `--diff`, or from planned paths with `--paths`), `backfill`,
-`verdict` (turns an `adr-findings` block into a severity verdict; exits 0 when nothing blocks,
-1 when a finding blocks, 2 on a usage error or an invalid findings document — more than one
-`adr-findings` block, invalid JSON, or an unknown class), and three read-only helpers the commands use instead of re-deriving the rules in prose: `homes` (the
+`verdict` (checks a findings document against a fresh selection and turns it into a severity verdict; exits 0 when nothing blocks,
+1 when a finding blocks, 2 when it could not judge — invalid input, or a coverage, id or location gap), and three read-only helpers the commands use instead of re-deriving the rules in prose: `homes` (the
 resolved homes, the governed repo, and per home its `repoRoot` (the git toplevel holding it,
 `null` when not checked out), `relDir` (its path inside that repo) and the default branch read
 from that repo (`origin/HEAD` when set, else asked of origin with `git ls-remote --symref`, else

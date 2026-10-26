@@ -191,16 +191,23 @@ missing file, never on an empty findings list that hides a failed step.
 Run the verdict on that file:
 
 ```bash
-node <plugin-root>/scripts/adr-lint.js verdict --findings <findings file>
+node <plugin-root>/scripts/adr-lint.js verdict --findings <findings file> --diff <patch path> \
+  [--repo <name>] [--pr-body <pr-description path>]
 ```
+
+Pass the same `--diff`, `--repo` and `--pr-body` as the select call: the verdict re-runs selection
+from them and checks the architect's coverage against it. Only one of `--findings`, `--diff` and
+`--pr-body` may be `-` (stdin).
 
 If the Write is refused (some sandboxes disallow it), fall back to piping the **whole report**
 inline for this run only (`verdict --findings - <<'ADR_FINDINGS' ... ADR_FINDINGS`), and say in
 the summary that `findings-out` could not be written — CI will fail closed on the missing file.
 
 Exit 0: nothing blocks. Exit 1: blocking findings remain. Exit 2: the verdict could not run —
-causes include a missing, invalid, duplicate, or unterminated `adr-findings` block, or an unknown
-finding class. Report its stderr, print `**ADR check:** could not run (verdict exit 2:
+causes include a missing, invalid, duplicate, or unterminated `adr-findings` block, an unknown
+finding class, missing or malformed `coverage`, a selected record not listed as checked, an id
+that resolves to no record, rule or fact, a located finding without `where`, a repo that cannot
+be determined, or an unreadable input or record. Report its stderr, print `**ADR check:** could not run (verdict exit 2:
 <stderr>)`, and count it as one blocking finding: the check failed closed.
 
 The summary line's count comes from the verdict's `blocking` field. Never count it yourself.

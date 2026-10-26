@@ -2,20 +2,20 @@
 'use strict';
 
 // adr-lint: validates architecture decision records and selects the ones a diff touches.
-// No dependencies; runs on Node 16+ on any platform with git on PATH.
+// No dependencies; runs on Node 22+ on any platform with git on PATH.
 
 const fs = require('fs');
 const path = require('path');
-const { asList, isEmpty } = require('./adr/frontmatter');
 const { toPosix } = require('./adr/glob');
 const R = require('./adr/records');
 const H = require('./adr/homes');
 const G = require('./adr/git');
 const { checkHome } = require('./adr/rules');
 const { backfill } = require('./adr/backfill');
-const { parsePatchPaths, parseCitedIds, select } = require('./adr/select');
 const C = require('./adr/catalogue');
 const V = require('./adr/verdict');
+const S = require('./adr/selection');
+const Cov = require('./adr/coverage');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
@@ -26,7 +26,8 @@ const USAGE = `usage:
   adr-lint homes [--cwd <dir>]                      (JSON)
   adr-lint index [--cwd <dir>] [--status <status>] [--json]
   adr-lint next [--base <ref>] <dir>
-  adr-lint verdict --findings <file|->               (JSON)
+  adr-lint verdict --findings <file|-> --diff <patch-file> [--repo <name>] [--pr-body <file>]
+                   [--cwd <dir>]                    (JSON)
 
 exit codes: 0 ok (warnings allowed), 1 violations or blocking findings, 2 usage or environment error`;
 
@@ -40,7 +41,7 @@ const FLAGS = {
     homes: ['cwd'],
     index: ['cwd', 'status', 'json'],
     next: ['base'],
-    verdict: ['findings'],
+    verdict: ['findings', 'diff', 'repo', 'pr-body', 'cwd'],
 };
 
 // `known` lists the flags the subcommand takes; any other flag is a usage error, so a typo
@@ -188,43 +189,30 @@ function cmdCheck(flags, positional) {
 function cmdSelect(flags) {
     if (!flags.diff === !flags.paths) throw new UsageError('select needs exactly one of --diff <patch-file|-> or --paths <path,...>');
     const cwd = path.resolve(flags.cwd || process.cwd());
-    const homes = H.resolveHomes(cwd);
-    const root = G.gitRoot(cwd);
-    const repo = flags.repo
-        || H.repoFromRemote(homes, root && G.originUrl(root))
-        || (homes.mode === 'single' ? homes.localHomes[0].repo : null)
-        || (root ? [G.repoName(root), path.basename(root)].find((n) => homes.localHomes.some((h) => h.repo === n)) : null);
-    if (!repo) throw new UsageError('cannot tell which repo this is; pass --repo <name>');
-    const local = homes.mode === 'single' ? homes.localHomes[0] : homes.localHomes.find((h) => h.repo === repo);
-    if (!local) throw new UsageError(`repo ${repo} is not in household.json`);
-
-    const candidates = [];
-    const add = (dir, kind, prefix) => {
-        for (const r of R.loadHome(dir).records) {
-            candidates.push({
-                id: isEmpty(r.fm.id) ? R.impliedId(prefix, r.number) : r.fm.id,
-                kind,
-                status: r.fm.status || '',
-                file: r.file,
-                scope: asList(r.fm.scope),
-            });
-        }
-    };
-    add(local.dir, 'local', repo);
-    if (homes.sharedHome && !local.coinciding) add(homes.sharedHome, 'shared', 'kb');
-
-    const paths = flags.paths
-        ? flags.paths.split(',').map((p) => toPosix(p.trim())).filter(Boolean)
-        : parsePatchPaths(readInput(flags.diff, 'diff'));
+    const paths = flags.paths ? flags.paths.split(',').map((p) => toPosix(p.trim())).filter(Boolean) : null;
+    const diffText = paths ? '' : readInput(flags.diff, 'diff');
     const prBody = flags['pr-body'] ? readInput(flags['pr-body'], 'pr-body') : '';
-    const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody) });
+    let sel;
+    try {
+        sel = S.selectFor({ cwd, repo: flags.repo, diffText, paths, prBody });
+    } catch (e) {
+        if (e instanceof S.SelectionError) throw new UsageError(e.message);
+        throw e;
+    }
+    const { repo, picked, candidates } = sel;
     if (flags.json) {
+        const byId = new Map(candidates.map((c) => [c.id, c]));
         // `kind` is the document kind; behaviour docs (a later plan) add `behaviour` rows.
         console.log(JSON.stringify({
             repo,
-            candidates: picked.map((p) => ({
-                id: p.id, kind: 'adr', home: p.home, status: p.status, file: p.file ? display(p.file) : null, reasons: p.reasons,
-            })),
+            candidates: picked.map((p) => {
+                const c = byId.get(p.id);
+                return {
+                    id: p.id, kind: 'adr', home: p.home, status: p.status, file: p.file ? display(p.file) : null, reasons: p.reasons,
+                    title: c ? c.fm.title || '' : '', description: c ? c.fm.description || '' : '',
+                    scope: c ? c.scope : [], record: c ? c.text : '',
+                };
+            }),
         }, null, 2));
         return 0;
     }
@@ -343,15 +331,37 @@ function cmdNext(flags, positional) {
 
 function cmdVerdict(flags) {
     if (!flags.findings) throw new UsageError('verdict needs --findings <file|->');
-    let v;
+    if (!flags.diff) throw new UsageError('verdict needs --diff <patch-file> (selection is re-run from it)');
+    if (['findings', 'diff', 'pr-body'].filter((k) => flags[k] === '-').length > 1) {
+        throw new UsageError('only one input may be stdin (-)');
+    }
+    const diffText = readInput(flags.diff, 'diff');
+    const prBody = flags['pr-body'] ? readInput(flags['pr-body'], 'pr-body') : '';
+    const cwd = path.resolve(flags.cwd || process.cwd());
     try {
-        v = V.verdict({ findings: V.parseFindings(readInput(flags.findings, 'findings')) });
+        const doc = V.parseFindings(readInput(flags.findings, 'findings'));
+        const { homes, picked } = S.selectFor({ cwd, repo: flags.repo, diffText, prBody });
+        // Selected candidates first: their ids come from --repo, which the catalogue may not share.
+        const files = new Map(C.buildCatalogue(homes).records.map((r) => [r.id, r.file]));
+        for (const p of picked) if (p.file) files.set(p.id, p.file);
+        const texts = new Map();
+        const recordText = (id) => {
+            if (!files.has(id)) return null;
+            if (!texts.has(id)) texts.set(id, fs.readFileSync(files.get(id), 'utf8'));
+            return texts.get(id);
+        };
+        const cov = Cov.validate({ doc, picked, recordText });
+        const added = cov.dangling.map((id) => ({
+            class: 'dangling', ids: [id], where: null, summary: `${id} is cited in the PR description but resolves nowhere`,
+        }));
+        const v = V.verdict({ findings: [...doc.findings, ...added] });
+        console.log(JSON.stringify({ ...v, coverage: { checked: doc.coverage.checked, extra: cov.extra, notReviewed: cov.notReviewed } }, null, 2));
+        return v.blocking > 0 ? 1 : 0;
     } catch (e) {
-        if (!e.invalidFindings) throw e;
+        // Anything else (an unreadable record) is "could not judge", not a crash.
+        if (e instanceof UsageError) throw e;
         throw new UsageError(e.message);
     }
-    console.log(JSON.stringify(v, null, 2));
-    return v.blocking > 0 ? 1 : 0;
 }
 
 function main(argv) {

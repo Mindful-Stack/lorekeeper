@@ -618,23 +618,65 @@ test('C1: select without --json still prints TSV', (t) => {
     assert.match(r.stdout, /^kb\/ADR-0001\taccepted\t[^\t]+\tscope$/m);
 });
 
-const findingsDoc = (findings) => JSON.stringify({ findings });
-const contradiction = { class: 'contradiction', ids: ['kb/ADR-0001', 'kb/ADR-0001.R1'], summary: 'caches sessions in memory' };
+const COV = { checked: ['kb/ADR-0001'], notReviewed: [] };
+const findingsDoc = (findings, coverage = COV) => JSON.stringify({ coverage, findings });
+const contradiction = { class: 'contradiction', ids: ['kb/ADR-0001', 'kb/ADR-0001.R1'], where: 'src/Sessions/Store.cs:10', summary: 'caches sessions in memory' };
 
-test('C3: verdict exits 1 and reports one blocking finding', (t) => {
+// A household with one accepted KB record whose scope matches the patch, and the patch file.
+function verdictWorkspace(t) {
     const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    w.patch = path.join(w.root, 'change.patch');
+    write(w.patch, 'diff --git a/src/Sessions/Store.cs b/src/Sessions/Store.cs\n--- a/src/Sessions/Store.cs\n+++ b/src/Sessions/Store.cs\n');
+    return w;
+}
+const verdict = (w, file, ...extra) => runCli(w.api, w.env, 'verdict', '--findings', file, '--diff', w.patch, '--repo', 'api', ...extra);
+
+test('C3: verdict without --diff exits 2', (t) => {
+    const w = verdictWorkspace(t);
+    const file = path.join(w.root, 'findings.json');
+    write(file, findingsDoc([]));
+    const r = runCli(w.api, w.env, 'verdict', '--findings', file, '--repo', 'api');
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /needs --diff/);
+});
+
+test('C3: verdict exits 1 and reports one blocking finding, with coverage', (t) => {
+    const w = verdictWorkspace(t);
     const file = path.join(w.root, 'findings.json');
     write(file, findingsDoc([contradiction]));
-    const r = runCli(w.api, w.env, 'verdict', '--findings', file);
+    const r = verdict(w, file);
     assert.equal(r.code, 1, r.stderr);
     const v = JSON.parse(r.stdout);
     assert.equal(v.blocking, 1);
     assert.equal(v.findings[0].severity, 'critical');
-    assert.deepEqual(Object.keys(v), ['blocking', 'counts', 'findings']);
+    assert.deepEqual(Object.keys(v), ['blocking', 'counts', 'findings', 'coverage']);
+    assert.deepEqual(v.coverage.extra, []);
+});
+
+test('C3: a selected record that is not attested exits 2', (t) => {
+    const w = verdictWorkspace(t);
+    const file = path.join(w.root, 'findings.json');
+    write(file, findingsDoc([], { checked: [], notReviewed: [] }));
+    const r = verdict(w, file);
+    assert.equal(r.code, 2, r.stdout);
+    assert.match(r.stderr, /not checked/);
+});
+
+test('C3: a PR-body citation that resolves nowhere is added as a dangling finding that does not block', (t) => {
+    const w = verdictWorkspace(t);
+    const file = path.join(w.root, 'findings.json');
+    const body = path.join(w.root, 'body.md');
+    write(file, findingsDoc([]));
+    write(body, '## Decisions\n\nFollows kb/ADR-0042.\n');
+    const r = verdict(w, file, '--pr-body', body);
+    assert.equal(r.code, 0, r.stderr);
+    const v = JSON.parse(r.stdout);
+    assert.deepEqual(v.findings.map((x) => [x.class, x.ids, x.severity, x.blocking]), [['dangling', ['kb/ADR-0042'], 'important', false]]);
 });
 
 test('C3: verdict reads the block out of a full report file, not just bare JSON (the review writes the whole report)', (t) => {
-    const w = workspace(t);
+    const w = verdictWorkspace(t);
     const file = path.join(w.root, 'findings.md');
     write(file, [
         '## Contradictions with accepted records',
@@ -645,14 +687,14 @@ test('C3: verdict reads the block out of a full report file, not just bare JSON 
         '```',
         '',
     ].join('\n'));
-    const r = runCli(w.api, w.env, 'verdict', '--findings', file);
+    const r = verdict(w, file);
     assert.equal(r.code, 1, r.stderr);
     const v = JSON.parse(r.stdout);
     assert.equal(v.blocking, 1);
 });
 
 test('C3: a report with no adr-findings block at all exits 2', (t) => {
-    const w = workspace(t);
+    const w = verdictWorkspace(t);
     const file = path.join(w.root, 'findings.md');
     write(file, [
         '## Contradictions with accepted records',
@@ -662,28 +704,131 @@ test('C3: a report with no adr-findings block at all exits 2', (t) => {
         'none',
         '',
     ].join('\n'));
-    const r = runCli(w.api, w.env, 'verdict', '--findings', file);
+    const r = verdict(w, file);
     assert.equal(r.code, 2);
     assert.match(r.stderr, /not valid JSON/);
 });
 
 test('C3: a findings file that does not exist exits 2 (CI fails closed when the review wrote none)', (t) => {
-    const w = workspace(t);
-    const r = runCli(w.api, w.env, 'verdict', '--findings', path.join(w.root, 'never-written.json'));
+    const w = verdictWorkspace(t);
+    const r = verdict(w, path.join(w.root, 'never-written.json'));
     assert.equal(r.code, 2);
     assert.match(r.stderr, /cannot read --findings/);
 });
 
 test('C3: findings from stdin; invalid findings and missing --findings exit 2', (t) => {
-    const w = workspace(t);
+    const w = verdictWorkspace(t);
     const CLI = path.join(__dirname, '..', 'adr-lint.js');
-    const ok = spawnSync(process.execPath, [CLI, 'verdict', '--findings', '-'], { cwd: w.api, env: w.env, input: findingsDoc([]), encoding: 'utf8' });
+    const ok = spawnSync(process.execPath, [CLI, 'verdict', '--findings', '-', '--diff', w.patch, '--repo', 'api'], { cwd: w.api, env: w.env, input: findingsDoc([]), encoding: 'utf8' });
     assert.equal(ok.status, 0, ok.stderr);
     const bad = path.join(w.root, 'bad.json');
-    write(bad, '{"findings":[{"class":"nope","ids":[],"summary":"x"}]}');
-    const r = runCli(w.api, w.env, 'verdict', '--findings', bad);
+    write(bad, '{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"nope","ids":[],"summary":"x"}]}');
+    const r = verdict(w, bad);
     assert.equal(r.code, 2);
     assert.match(r.stderr, /unknown class nope/);
     assert.equal(runCli(w.api, w.env, 'verdict').code, 2);
-    assert.equal(runCli(w.api, w.env, 'verdict', '--findings', bad, '--pr-body', bad).code, 2);
+});
+
+test('C3: --repo reaches verdict exactly as it reaches select (repo resolvable only through the flag)', (t) => {
+    const w = verdictWorkspace(t);
+    // From the household root there is no git repo to infer the repo from.
+    const sel = runCli(w.root, w.env, 'select', '--repo', 'api', '--diff', w.patch, '--json');
+    assert.equal(sel.code, 0, sel.stderr);
+    const ids = JSON.parse(sel.stdout).candidates.map((c) => c.id);
+    assert.deepEqual(ids, ['kb/ADR-0001']);
+    const file = path.join(w.root, 'findings.json');
+    write(file, findingsDoc([], { checked: ids, notReviewed: [] }));
+    const run = () => runCli(w.root, w.env, 'verdict', '--findings', file, '--diff', w.patch, '--repo', 'api');
+    assert.equal(run().code, 0);
+    write(file, findingsDoc([], { checked: ids.slice(1), notReviewed: [] }));
+    const r = run();
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /not checked: kb\/ADR-0001/);
+    assert.equal(runCli(w.root, w.env, 'verdict', '--findings', file, '--diff', w.patch).code, 2);
+});
+
+test('C3: single repo without a KB, record without id:, --repo differing from the directory name', (t) => {
+    const base = tmpDir(t);
+    const root = path.join(base, 'checkout');
+    const env = gitEnv(base);
+    initRepo(root, env);
+    write(path.join(root, 'docs', 'adr', '0001-cache.md'), makeRecord({ prefix: 'svc', fm: { id: undefined } }));
+    const patch = path.join(base, 'change.patch');
+    write(patch, '+++ b/src/Sessions/Store.cs\n');
+    const sel = runCli(root, env, 'select', '--repo', 'svc', '--diff', patch, '--json');
+    assert.equal(sel.code, 0, sel.stderr);
+    assert.deepEqual(JSON.parse(sel.stdout).candidates.map((c) => c.id), ['svc/ADR-0001']);
+    const file = path.join(base, 'findings.json');
+    write(file, JSON.stringify({ coverage: { checked: ['svc/ADR-0001'], notReviewed: [] }, findings: [] }));
+    const r = runCli(root, env, 'verdict', '--findings', file, '--diff', patch, '--repo', 'svc');
+    assert.equal(r.code, 0, r.stderr);
+    write(file, JSON.stringify({
+        coverage: { checked: [], notReviewed: [] },
+        findings: [{ class: 'contradiction', ids: ['svc/ADR-0001.R1'], where: 'a:1', summary: 's' }],
+    }));
+    assert.equal(runCli(root, env, 'verdict', '--findings', file, '--diff', patch, '--repo', 'svc').code, 1);
+});
+
+test('C3: a selected missing id listed in coverage.checked does not exit 2', (t) => {
+    const w = verdictWorkspace(t);
+    const file = path.join(w.root, 'findings.json');
+    const body = path.join(w.root, 'body.md');
+    write(body, '## Decisions\n\nFollows kb/ADR-0042.\n');
+    write(file, findingsDoc([], { checked: ['kb/ADR-0001', 'kb/ADR-0042'], notReviewed: [] }));
+    const r = verdict(w, file, '--pr-body', body);
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(JSON.parse(r.stdout).findings.map((x) => x.class), ['dangling']);
+});
+
+test('C3: an unreadable record file exits 2 with the message, not a stack', (t) => {
+    if (process.getuid && process.getuid() === 0) return t.skip('root ignores file modes');
+    const w = verdictWorkspace(t);
+    const rec = path.join(w.shared, '0001-session-storage.md');
+    fs.chmodSync(rec, 0o000);
+    t.after(() => { try { fs.chmodSync(rec, 0o644); } catch { /* already removed */ } });
+    const file = path.join(w.root, 'findings.json');
+    write(file, findingsDoc([]));
+    const r = verdict(w, file);
+    assert.equal(r.code, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /EACCES/);
+    assert.doesNotMatch(r.stderr, /\n\s+at /);
+});
+
+test('C3: --findings - together with --diff - is a usage error', (t) => {
+    const w = verdictWorkspace(t);
+    const r = runCli(w.api, w.env, 'verdict', '--findings', '-', '--diff', '-', '--repo', 'api');
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /only one input may be stdin/);
+});
+
+test('select --json gives each candidate its title, description, scope and full record', (t) => {
+    const w = workspace(t);
+    const text = makeRecord();
+    write(path.join(w.shared, '0001-session-storage.md'), text);
+    const patch = path.join(w.root, 'change.patch');
+    write(patch, '+++ b/src/Sessions/Store.cs\n');
+    const r = runCli(w.api, w.env, 'select', '--repo', 'api', '--diff', patch, '--json');
+    assert.equal(r.code, 0, r.stderr);
+    const [c] = JSON.parse(r.stdout).candidates;
+    assert.equal(c.title, 'ADR-0001: Store sessions server-side');
+    assert.equal(c.description, 'The API stores sessions server-side because payloads outgrow cookies.');
+    assert.deepEqual(c.scope, ['api:src/Sessions/**']);
+    assert.equal(c.record, text);
+});
+
+test('select --json gives a missing candidate empty reviewer context', (t) => {
+    const w = workspace(t);
+    const patch = path.join(w.root, 'change.patch');
+    write(patch, '+++ b/src/Other.cs\n');
+    const body = path.join(w.root, 'body.md');
+    write(body, '## Decisions\n- Follows: kb/ADR-0042\n');
+    const r = runCli(w.api, w.env, 'select', '--repo', 'api', '--diff', patch, '--pr-body', body, '--json');
+    assert.equal(r.code, 0, r.stderr);
+    const c = JSON.parse(r.stdout).candidates.find((x) => x.id === 'kb/ADR-0042');
+    assert.equal(c.status, 'missing');
+    assert.equal(c.home, null);
+    assert.equal(c.title, '');
+    assert.equal(c.description, '');
+    assert.deepEqual(c.scope, []);
+    assert.equal(c.record, '');
 });

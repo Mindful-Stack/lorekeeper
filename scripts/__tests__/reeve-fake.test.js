@@ -41,6 +41,7 @@ test('an idempotency key must be <skill>:<KEY>:<run-id>:<n>', () => {
     assert.deepEqual([r.status, r.envelope.code], [1, 'validation'], bad);
   }
   assert.equal(run(['epic', 'create', '--title', 'A', '--idempotency-key', 'refining-epic:GRA-20:0a1b2c3d:12', '--json']).status, 0);
+  assert.equal(run(['comment', 'add', '--decision', '7', '--body', 'B', '--idempotency-key', 'recording-decisions:7:0a1b2c3d:1', '--json']).status, 0);
 });
 test('a create replays by key; a new key mints a new item', () => {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');

@@ -37,7 +37,7 @@ function withState(fn) {
     return result;
   } finally { fs.unlinkSync(lock); }
 }
-const KEY_SHAPE = /^[a-z][a-z0-9-]*:[A-Z][A-Z0-9]*-[0-9]+:[0-9a-f]{8}:[0-9]+$/; // <skill>:<KEY>:<run-id>:<n>
+const KEY_SHAPE = /^[a-z][a-z0-9-]*:(?:[A-Z][A-Z0-9]*-[0-9]+|[0-9]+):[0-9a-f]{8}:[0-9]+$/; // <skill>:<KEY>:<run-id>:<n>; KEY an item key or a decision id
 
 const emit = (envelope, code) => { process.stdout.write(JSON.stringify(envelope) + '\n'); process.exit(code); };
 const ok = (value) => emit({ outcome: 'ok', value }, 0);

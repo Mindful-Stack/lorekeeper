@@ -116,7 +116,13 @@ git commit -m \"feat: add DeviceStatusDto\"
   :prompt "/lore:adr Use a message queue between the order and inventory services"
   :workdir "."
   :expects ["kb/ADR-000[12]" "(?i)\\b(record it|one line|no record|high[- ]tier|low[- ]tier|amend)\\b"]
-  :rejects ["Accepted \\d{4}-\\d{2}-\\d{2} by"]}
+  :rejects ["Accepted \\d{4}-\\d{2}-\\d{2} by" "(?i)meeting notes|in an RFC"]}
+
+ {:name "command-adr-triages-process-decision"
+  :prompt "/lore:adr We decided to hold retrospectives every two weeks instead of every week. Interview answers: decided by Dan Doe; it affects only the backend repo, where the process doc is backend:docs/process/retrospectives.md; easy to undo (two-way); no security, privacy, billing, legal or contract sensitivity; the alternative was weekly retrospectives, dropped because they took time from delivery; it keeps being re-debated and I want a record. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["backend/ADR-0002" "(?i)low[- ]tier" "docs/process/retrospectives\\.md"]
+  :rejects ["(?i)meeting notes|in an RFC" "Accepted \\d{4}-\\d{2}-\\d{2} by"]}
 
  {:name "command-adr-list-spans-homes"
   :prompt "/lore:adr list"
@@ -286,4 +292,33 @@ git commit -m \"feat: add DeviceStatusDto\"
   :log-rejects ["--brief-file" "^story edit GRA-42 .*--kind" "^story edit GRA-45 .*--epic GRA-20\\b" "^story (?:edit|mv) GRA-46 "
                 "^story mv " "^epic discovery " "^decision require " "^decision link "
                 "^story create .*--title (?:Retry failed matches|Show match history) "
-                "(?s)^(\\w+ create)\\b[^\\n]*--idempotency-key (\\S+) .*^(?!\\1\\b)\\w+ create\\b[^\\n]*--idempotency-key \\2 "]}]
+                "(?s)^(\\w+ create)\\b[^\\n]*--idempotency-key (\\S+) .*^(?!\\1\\b)\\w+ create\\b[^\\n]*--idempotency-key \\2 "]}
+
+ {:name "reeve-adr-link-proposed"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the planner calls this repository lore, the PR proposing the record is https://github.com/example/test-workspace/pull/9, and the household is the current directory."
+  :workdir "."
+  :expects ["proposed, PR open"]
+  :rejects ["(?i)could not run"]
+  :log-expects ["^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b).*--json$"]}
+
+ {:name "reeve-adr-link-check-unreadable"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :env {"REEVE_FAKE_LINK_CHECK" "unreadable"}
+  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the planner calls this repository lore, the PR proposing the record is https://github.com/example/test-workspace/pull/9, and the household is the current directory."
+  :workdir "."
+  :expects ["(?i)linked; the check could not run here" "(?i)next scheduled check"]
+  :rejects ["(?i)nothing was linked|link failed"]
+  :log-expects ["^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b).*--json$"]}
+
+ {:name "reeve-adr-link-ride-along"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:adr link backend/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the record rides along on branch feat/retry in the backend repository, staged and not committed, at docs/adr/0002-payment-webhook-retries.md; there is no PR yet; the planner calls this repository backend; the household is the current directory."
+  :workdir "."
+  :expects ["(?i)rides along on branch feat/retry" "/lore:adr link backend/ADR-0002 to decision 7"]
+  :rejects ["(?i)linked:"]
+  :log-expects ["^comment add (?=.*--decision 7\\b)(?=.*rides along on branch feat/retry)(?=.*/lore:adr link backend/ADR-0002 to decision 7\\b)(?=.*--idempotency-key \\S+:7:[0-9a-f]{8}:\\d+\\b).*--json$"]
+  :log-rejects ["^decision link "]}]

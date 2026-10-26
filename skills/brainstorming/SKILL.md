@@ -7,8 +7,9 @@ description: "You MUST use this before any creative work - creating features, bu
 # Brainstorming Ideas Into Designs
 
 Announce at the start: "Using the brainstorming skill: no code until the design is approved."
-The message that ends your first turn (with your first question) opens with the same sentence,
-since a non-interactive session shows only that message.
+The message that ends your first turn opens with the same sentence, since a non-interactive
+session shows only that message. Its last line is your first question: list any options before
+that line, and write nothing after it.
 
 Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
 
@@ -26,12 +27,24 @@ Every project goes through this process. A todo list, a single-function utility,
 
 You MUST create a task for each of these items and complete them in order:
 
+0. **Planner context (only when the request names a story)** — when the request names a story
+   key (`<PREFIX>-<n>`, such as `GRA-31`) or the user says which story this is for, run
+   `node <plugin-root>/scripts/reeve-detect.js` (`<plugin-root>` is `${CLAUDE_PLUGIN_ROOT}`,
+   written out as an absolute path). Only when it prints `"present":true` and `"signed_in":true`,
+   read `<plugin-root>/references/reeve-cli.md` and run `reeve story context <KEY> --json` (the
+   detector's `bin` as the first word): the initiative and epic briefs, the required decisions,
+   the criteria, the blockers and the comments are project context for step 1. With no story
+   named, or the planner absent or signed out, skip this step without mentioning it.
 1. **Explore project context** — check files, docs, recent commits
    Also dispatch, in parallel (both Task calls in one message), the **knowledge-reader** agent with
    the topic and hint "Prioritise domain context and architecture patterns." and the **architect**
    agent in `bind` mode with the topic. Include both outputs in your project context: the
    architect's binding decisions constrain every approach you propose, and a fired trigger means
    the design must supersede that record (recording-decisions skill) rather than quietly violate it.
+   With a planner bundle from step 0, list each required decision that is not satisfied among the
+   binding decisions as "open required decision #<id> — <title> (<status>)", the status worded as
+   the CLI reference says (`record: null` is "no record"). The design either waits for it or
+   decides it now; then step 5 drafts its record.
 2. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 3. **Propose 2-3 approaches** — with trade-offs and your recommendation
    If the chosen approach commits to a hard-to-reverse choice, it will be listed and recorded in
@@ -43,11 +56,16 @@ You MUST create a task for each of these items and complete them in order:
    show** a `proposed` record — tell it not to apply yet ("draft only; do not apply") — unless a
    binding record from step 1 already covers it. Note each record's tier (high = one-way, shared, or
    any sensitivity). Reversible ones go in the spec as plain design.
+   For a record that answers an open required decision, tell recording-decisions which one
+   ("it answers required decision #<id>").
 6. **Write design doc** — save to `docs/agent/specs/YYYY-MM-DD-<topic>-design.md` with a
    `## Decisions` section: the binding records it follows (by id); for each proposed record, its
    id-to-be/title, a `Tier: high` or `Tier: low` line, and the full drafted record text in a fenced
    ```markdown block, so a later session can apply it without this chat and never has to infer the
    tier; "No new decisions" when there are none; commit
+   Under each proposed record that answers a required decision, add a line
+   `Required decision: #<id>` outside the fenced record text (no item key is ever written into a
+   record, kb/ADR-0004 R3), so whoever applies it later links it.
 7. **Spec self-review** — quick inline check for placeholders, contradictions, ambiguity, scope (see below)
 8. **User reviews written spec** — ask user to review the spec file before proceeding
 9. **Transition** — if any proposed record is **high tier**: apply it from the spec's stored draft
@@ -59,11 +77,14 @@ You MUST create a task for each of these items and complete them in order:
    writing-plans/implementation applies each stored draft as a ride-along in the implementing PR
    through recording-decisions, listed under *Adds* in the PR's *Decisions* section. With no
    high-tier proposal, invoke writing-plans.
+   When applying a stored draft, pass its `Required decision: #<id>` line to recording-decisions;
+   its record step 6 links the applied record in the planner.
 
 ## Process Flow
 
 ```dot
 digraph brainstorming {
+    "Read planner context (story named, planner present)" [shape=box];
     "Explore project context" [shape=box];
     "Ask clarifying questions" [shape=box];
     "Propose 2-3 approaches" [shape=box];
@@ -77,6 +98,7 @@ digraph brainstorming {
     "Invoke writing-plans skill" [shape=doublecircle];
     "Stop: ADR PR opened, resume after acceptance" [shape=doublecircle];
 
+    "Read planner context (story named, planner present)" -> "Explore project context";
     "Explore project context" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
     "Propose 2-3 approaches" -> "Present design sections";

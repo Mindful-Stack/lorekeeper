@@ -200,6 +200,24 @@ git commit -m \"feat: add DeviceStatusDto\"
   :expects ["Using the brainstorming skill: no code until the design is approved\\." "\\?" "(?i)payment"]
   :rejects ["(?i)reeve|planner|story context" "docs/agent/specs/"]}
 
+ {:name "reeve-brainstorming-no-story-key"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:brainstorming add a retry policy for failed payment webhooks"
+  :workdir "."
+  :expects ["Using the brainstorming skill: no code until the design is approved\\." "\\?"]
+  :rejects ["(?i)reeve|story context"]
+  :log-rejects ["."]}
+
+ {:name "reeve-brainstorming-story-context"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:brainstorming add a retry policy for story GRA-31. Do not ask questions; the answers are given: retries cover failed matches only, at most three attempts. Stop after presenting the project context, including the open required decisions, and your first clarifying question."
+  :workdir "."
+  :expects ["Using the brainstorming skill: no code until the design is approved\\." "(?s)Queue or cron.*\\n[^\\n]*\\?\\s*\\z" "#7" "(?i)no record"]
+  :rejects ["docs/agent/specs/"]
+  :log-expects ["^--version$" "^auth status --json$" "^story context GRA-31 --json$"]}
+
  {:name "reeve-runner-selftest"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]

@@ -74,7 +74,7 @@
       (let [_ (println (colorize :yellow "  Running:") prompt "(context:" workdir ")")
             tools (distinct (concat allowed-tools (:allowed-tools scenario)))
             {:keys [out err]} (apply shell {:dir workspace-root :out :string :err :string
-                                            :continue true :env env}
+                                            :in "" :continue true :env env}
                                      (concat ["claude" "--print" "--permission-mode" "default"
                                               "--allowedTools"] tools
                                              ["--disallowedTools"] disallowed-tools

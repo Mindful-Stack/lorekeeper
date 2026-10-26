@@ -352,6 +352,21 @@ test('reeve router rows: a probe that ignores TERM is killed, the hook returns w
         assert.doesNotMatch(ctx(json), /Reeve planner/);
     }));
 
+test('reeve router rows: a wrapper that exits leaving a child on stdout cannot hold the hook', () =>
+    withTmp((tmp) => {
+        const kb = mkKb(path.join(tmp, 'kb'));
+        // Prints nothing; its background child inherits stdout and holds it for 7 s.
+        const wrapper = path.join(tmp, 'reeve-wrapper');
+        fs.writeFileSync(wrapper, '#!/bin/sh\nsleep 7 &\nexit 0\n');
+        fs.chmodSync(wrapper, 0o755);
+        const started = Date.now();
+        const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb, REEVE_BIN: wrapper });
+        const elapsed = Date.now() - started;
+        assert.ok(elapsed < 3500, `hook took ${elapsed} ms`);
+        assert.match(ctx(json), /Knowledge path: .*\/kb\/knowledge\//);
+        assert.doesNotMatch(ctx(json), PLANNER_ROWS);
+    }));
+
 test('reeve router rows: without GNU timeout the probe is skipped, the hook returns within ~3 s', () =>
     withTmp((tmp) => {
         const kb = mkKb(path.join(tmp, 'kb'));

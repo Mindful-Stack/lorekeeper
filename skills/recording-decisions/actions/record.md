@@ -63,15 +63,17 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` first
    otherwise run `node <plugin-root>/scripts/reeve-detect.js` once and keep `bin` and `run_id`;
    unless it prints `"present":true` and `"signed_in":true`, skip the rest of this step. The
    inputs:
-   - the qualified id and the file name: the ones the draft was numbered and saved with;
+   - the qualified id and the file name: the ones the draft was numbered and saved with (the
+     qualified id is the draft's front-matter `id`);
    - the repository-relative path, from the homes JSON the updater was given, never from the
      report's file list (its paths may point into the removed worktree): `<relDir>/<file name>`
      of the local home (`sharedRelDir` for the shared home); when that is `null` (not a git
      checkout), the home's directory relative to its repository directory, then the file name;
-   - the repository offered for the planner's name (asked as link.md says): the directory name
-     of the record's checkout as link.md step 2 derives it (for the shared home `sharedRepoRoot`,
-     else `sharedRoot`; for a local home its `repoRoot`), so it matches the checkout `<relDir>`
-     and `sharedRelDir` are relative to (`api` for `/work/api/docs/lore`, never `lore`);
+   - the planner's repository name as link.md step 2 derives it: the configured name, never the
+     checkout's directory name, nor a linked worktree's: a local home's `repo`; for the
+     shared home the household manifest's `knowledge_base`, or `localHomes[0]`'s `repo` when the
+     knowledge base sits inside that repository (`api` for `/work/api/docs/lore`, never `lore`);
+     with no configured name, asked as link.md says;
    - the PR url and the branch: from the report.
 
    Where the report says the change landed:

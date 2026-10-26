@@ -983,7 +983,7 @@ const PLACEHOLDERS = {
   KEY: 'GRA-12', EPIC: 'GRA-20', INITIATIVE: 'GRA-12', 'COVERING-EPIC': 'GRA-20', 'COVERING-INITIATIVE': 'GRA-12',
   'new epic': 'GRA-20', id: '7', 'id-to-be': 'kb/ADR-0002', n: '1', v: '1', version: '1', 'latest version': '1',
   run_id: '0a1b2c3d', key: 'planning-initiative:GRA-12:0a1b2c3d:1', prefix: 'recording-decisions:7', title: 'Title',
-  md: 'Brief', text: 'Criterion', email: 'dan@example.com', bucket: 'Later', 'qualified id': 'kb/ADR-0002',
+  md: 'Brief', text: 'Criterion', email: 'dan@example.com', bucket: 'Later', 'qualified id': 'kb/ADR-0002', 'front-matter id': 'kb/ADR-0002',
   repo: 'lore', 'path in repo': 'knowledge/adrs/0002-x.md', path: 'knowledge/adrs/0002-x.md', url: 'https://github.com/example/w/pull/9',
   household: '.', dir: '.', branch: 'feat/x', 'the new epic or initiative, its title and where it goes': 'new epic under GRA-13',
 };
@@ -1772,24 +1772,38 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
      already exists in a checkout (the standalone `link` action), take its file from
      `node <plugin-root>/scripts/adr-lint.js index --json` (`records[].id` → `records[].file`);
      an id the index lacks: say so and stop, unless the user gave the repository and path (and the
-     PR, or said there is none yet) explicitly, which are then used as given;
+     PR, or said there is none yet) explicitly, which are then used as given. The planner's
+     `--record` is the `id` in that file's front matter, read from the file: for an additional
+     shared knowledge base the index lists a catalogue alias (`platform-kb/ADR-0001` for a file
+     whose `id` is `kb/ADR-0001`), which only finds the file and is never sent as `--record`;
    - the record's checkout: the directory of the repository that holds the record, from the
      selected home in the homes JSON (`node <plugin-root>/scripts/adr-lint.js homes`): for the
      shared home (`kb/…`), `sharedRepoRoot`, else `sharedRoot` (the knowledge base's checkout);
      for a local home (`<repo>/…`), that `localHomes[]` entry's `repoRoot`, else `<root>/<repo>`
      in a household (`mode` `household`) or `root` in a single repository. Never the current
      directory, and never `root` for the shared home: a repository configured with
-     `knowledgeBasePath: ../lore` has `root` `/work/api` but its records in `/work/lore`;
-   - the household directory: the one the user names, else the checkout's parent directory
-     (`/work` for `/work/lore`). When neither the request nor the homes JSON gives the checkout
-     (the home is missing, or the record's file is outside it), ask for the household; in a
-     session that cannot ask, stop with "Stopped: missing household." on its own line;
+     `knowledgeBasePath: ../lore` has `root` `/work/api` but its records in `/work/lore`. The
+     checkout may be a linked worktree (`/work/worktrees/api-feature`): it locates the file and
+     never names the repository;
    - the repository name as configured in the planner: the one the user names, else the
-     checkout's directory name (`lore` for `/work/lore`; `api`, not `lore`, for a knowledge base
-     inside the repository at `/work/api/docs/lore`): the planner reads the record at
-     `<household>/<repo>/<path>`, so a name other than the directory's is given, never guessed;
-   - the record's path inside that repository: the file's path relative to the checkout
-     (`<household>/<repo>`); never absolute, never relative to the household;
+     configured name, never the checkout's directory name when a configured name exists (a linked
+     worktree `/work/worktrees/api-feature` of repository `api` is still `api`): for a local home,
+     that `localHomes[]` entry's `repo`; for the shared home in a household, the household
+     manifest's `knowledge_base` (`lore`; the last segment of `sharedRoot`); for the shared home
+     inside the repository (`sharedRepoRoot` is `localHomes[0]`'s `repoRoot`, a knowledge base at
+     `/work/api/docs/lore`), that entry's `repo` (`api`, not `lore`). With no configured name (a
+     single repository's knowledge base in a checkout of its own), ask for it; in a session that
+     cannot ask, stop with "Stopped: missing repository." on its own line;
+   - the household directory: the one the user names, else `root` in a household (`mode`
+     `household`), else (a single repository) the checkout's parent directory when the checkout is
+     `<parent>/<repo>` for the configured name (`/work` for `/work/api`): the planner reads the
+     record at `<household>/<repo>/<path>`, a path built from the configured name, never from a
+     worktree's directory. Otherwise (a linked worktree, a missing home, or a record file outside
+     the checkout), ask for the household; in a session that cannot ask, stop with
+     "Stopped: missing household." on its own line;
+   - the record's path inside that repository: the file's path relative to the checkout (the same
+     in a linked worktree and in `<household>/<repo>`); never absolute, never relative to the
+     household;
    - the PR proposing the record: the url in the request or the report is used as given.
      Otherwise first settle whether the record is merged: when the file is on the default branch
      (the homes JSON's `defaultBranch` / `sharedDefaultBranch`;
@@ -1802,7 +1816,7 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
 3. **Show and run.** The request (or the apply the user confirmed) naming the record and the
    decision is the confirmation, also in a session that cannot ask (rule 3: a link is not a
    record write):
-   `reeve decision link <id> --record <qualified id> --repo <repo> --path <path> --pr <url> --household <household> --json`
+   `reeve decision link <id> --record <front-matter id> --repo <repo> --path <path> --pr <url> --household <household> --json`
 4. **Report** the answer with the reference's *decision link* table: give the table's sentence
    for the result verbatim, on its own line, read from `value.check.kind` (never from your own
    reading of the record). Exit 0 has one row per `check.kind` (`proposed_pr_open`, `accepted`,
@@ -1850,15 +1864,17 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
    otherwise run `node <plugin-root>/scripts/reeve-detect.js` once and keep `bin` and `run_id`;
    unless it prints `"present":true` and `"signed_in":true`, skip the rest of this step. The
    inputs:
-   - the qualified id and the file name: the ones the draft was numbered and saved with;
+   - the qualified id and the file name: the ones the draft was numbered and saved with (the
+     qualified id is the draft's front-matter `id`);
    - the repository-relative path, from the homes JSON the updater was given, never from the
      report's file list (its paths may point into the removed worktree): `<relDir>/<file name>`
      of the local home (`sharedRelDir` for the shared home); when that is `null` (not a git
      checkout), the home's directory relative to its repository directory, then the file name;
-   - the repository offered for the planner's name (asked as link.md says): the directory name
-     of the record's checkout as link.md step 2 derives it (for the shared home `sharedRepoRoot`,
-     else `sharedRoot`; for a local home its `repoRoot`), so it matches the checkout `<relDir>`
-     and `sharedRelDir` are relative to (`api` for `/work/api/docs/lore`, never `lore`);
+   - the planner's repository name as link.md step 2 derives it: the configured name, never the
+     checkout's directory name, nor a linked worktree's: a local home's `repo`; for the
+     shared home the household manifest's `knowledge_base`, or `localHomes[0]`'s `repo` when the
+     knowledge base sits inside that repository (`api` for `/work/api/docs/lore`, never `lore`);
+     with no configured name, asked as link.md says;
    - the PR url and the branch: from the report.
 
    Where the report says the change landed:
@@ -1926,8 +1942,10 @@ In `hooks/load-standards-reminder.sh`, split `SKILL_ROUTER` after the `CREATIVE 
 
 ```bash
 # The two Reeve planner rows only when a reeve-planner CLI answers within 2 s (kb/ADR-0005 R1:
-# a session without the planner routes exactly as before). One exec, silent on any failure;
-# `-k 1` kills one that ignores TERM, so the probe never holds the hook past 3 s. Without GNU
+# a session without the planner routes exactly as before). One exec, silent on any failure.
+# The deadline covers the whole probe pipeline (the CLI and `head`), and `timeout` signals its
+# whole process group: a wrapper that exits leaving a child holding stdout is killed with it,
+# and `-k 1` kills one that ignores TERM, so the probe never holds the hook past 3 s. Without GNU
 # `timeout` (stock macOS) the probe is skipped and the rows are not emitted: nothing else bounds
 # a child that keeps stdout open, and an unbounded probe could run the hook past its deadline.
 REEVE_ROUTER_ROWS=''
@@ -1935,15 +1953,15 @@ reeve_version() {
     local bin="${REEVE_BIN:-reeve}"
     command -v "$bin" >/dev/null 2>&1 || return 0
     command -v timeout >/dev/null 2>&1 || return 0
-    timeout -k 1 2 "$bin" --version </dev/null 2>/dev/null
+    timeout -k 1 2 sh -c '"$0" --version </dev/null 2>/dev/null | head -n 1' "$bin" 2>/dev/null
 }
-case "$(reeve_version | head -n 1)" in
+case "$(reeve_version)" in
     'reeve-planner' | 'reeve-planner '*) REEVE_ROUTER_ROWS='\n\n- PLANNING AN INITIATIVE in the Reeve planner, when the request names Reeve or an initiative key (\"plan initiative GRA-12\", discovery for it)\n  -> Use the planning-initiative skill\n\n- REFINING AN EPIC in the Reeve planner, when the request names Reeve or an epic key (stories with acceptance criteria for GRA-20, placing untriaged stories)\n  -> Use the refining-epic skill' ;;
 esac
 SKILL_ROUTER="${SKILL_ROUTER_HEAD}${REEVE_ROUTER_ROWS}${SKILL_ROUTER_TAIL}"
 ```
 
-Run: `node --test scripts/__tests__/load-standards-hook.test.js` — Expected: pass (the hook still emits valid JSON; the two `reeve router rows` tests: present with the fake as `REEVE_BIN`, absent with a missing binary, a `reeve-runner` lookalike and one that hangs past 2 s; codex fix round, a third: a probe that ignores TERM is killed by `timeout -k 1`, so the hook returns within ~3 s and still emits the knowledge paths).
+Run: `node --test scripts/__tests__/load-standards-hook.test.js` — Expected: pass (the hook still emits valid JSON; the two `reeve router rows` tests: present with the fake as `REEVE_BIN`, absent with a missing binary, a `reeve-runner` lookalike and one that hangs past 2 s; codex fix round, a third: a probe that ignores TERM is killed by `timeout -k 1`, so the hook returns within ~3 s and still emits the knowledge paths; codex fix round, a fourth: a wrapper that prints nothing and exits leaving `sleep 7 &` on stdout is bounded too, because the deadline covers the whole probe pipeline, so the hook returns within 3.5 s with the knowledge paths).
 
 - [ ] **Step 3: README and CLAUDE.md**
 

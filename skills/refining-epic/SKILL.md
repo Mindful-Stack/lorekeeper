@@ -24,7 +24,10 @@ section says.
    gave in the request counts as the confirmation for that write; do not ask it again.
 2. **One question at a time**, skipping every question the request already answers.
 3. **Branch on the exit status** as the reference says. A failed read in step 1 stops the run:
-   every later step depends on it. A refused or failed write stops that step; say so.
+   every later step depends on it. An error about sign-in or authorization on any call stops the
+   run: say it and tell the user to run `reeve auth login`. Any other refused or failed write
+   skips that one item (that story, placement, decision or comment): show the reasons or the
+   message, go on with the next item, and list what was skipped in the report.
 4. **The user decides.** Deciders, due dates, applying a record, a story's home and the discovery
    mark come from the user, never from you; you propose.
 5. **Build on what is there.** The planner may already hold a brief, decisions and stories for
@@ -40,6 +43,11 @@ section says.
    the Reeve planner." Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints
    `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this
    session: <reason>." and stop; this skill has no fallback. Keep `bin` and `run_id`.
+   **No epic named** (for example "triage the untriaged stories"): run
+   `reeve story ls --untriaged --json`, show the stories, say that this skill works on one epic,
+   ask which epic to refine (or which epic a story should go to), and stop until the user
+   answers. When nobody can answer (a non-interactive session), say that an epic key is required
+   and stop. Never pick an epic yourself.
 1. **Read.** `reeve epic show <EPIC> --json` (keep `value.brief`, `value.version` and
    `value.initiative`), then `reeve initiative show <INITIATIVE> --json` for that initiative,
    `reeve decision ls --on <EPIC> --json`, `reeve story ls --epic <EPIC> --json`,
@@ -47,18 +55,19 @@ section says.
    If any of them does not exit 0, stop the run: for `not_found` say "The planner has no epic
    <EPIC>." (or the item it names); for an error about sign-in or authorization say it and tell
    the user to run `reeve auth login`; otherwise show the code and message. In parallel, dispatch
-   the **architect** in `survey` mode on the repositories the epic touches and the
-   **knowledge-reader** with the epic's title and "Prioritise domain context and architecture
-   patterns."
-2. **Research.** For each open question that research can answer, look it up: web search or
-   documentation when the session has them, otherwise the knowledge base and the code. Say what
-   you looked up and what it answered in one line, `Researched: <topics and findings>`, or
-   `Researched: nothing — no open question is answerable by research`.
-3. **Discovery and brief.** One question at a time: what done looks like, the boundaries, what is
-   unknown. Start from the existing `value.brief`: keep what still holds, fold in the answers, and
-   show what changes. Then `reeve epic edit <EPIC> --brief <md> --version <version> --json`; keep
-   the new `value.version`.
-4. **Required decisions.** Show the decisions step 1 found; those with `record: null` stay open
+   the **knowledge-reader** with the epic's title and "Prioritise domain context and architecture
+   patterns.", and the **architect** in `survey` mode on the repositories the brief or the user
+   names.
+2. **Discovery conversation.** One question at a time: what done looks like, the boundaries, what
+   is unknown.
+3. **Research.** For each open question from step 2 that research can answer, look it up: web
+   search or documentation when the session has them, otherwise the knowledge base and the code.
+   Say what you looked up and what it answered in one line, `Researched: <topics and findings>`,
+   or `Researched: nothing — no open question is answerable by research`.
+4. **Brief.** Start from the existing `value.brief`: keep what still holds, fold in the answers,
+   and show what changes. Then `reeve epic edit <EPIC> --brief <md> --version <version> --json`;
+   keep the new `value.version`.
+5. **Required decisions.** Show the decisions step 1 found; those with `record: null` stay open
    and go into the report. Only for a consequential choice the user names that blocks work and
    has no decision yet: ask who decides and by when, show and run
    `reeve decision require --on <EPIC> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
@@ -67,12 +76,12 @@ section says.
    with `Required decision: #<id>`); otherwise run
    `reeve comment add --decision <id> --body 'Draft <id-to-be>: <title> — apply and link with /lore:adr link <id-to-be> to decision <id>' --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
    When the user says there are no new required decisions, create none.
-5. **Stories.** Propose stories, each finishable by one person or one agent session, each with
+6. **Stories.** Propose stories, each finishable by one person or one agent session, each with
    2–6 acceptance criteria written as observable outcomes, leaving out what an existing story
    from step 1 already covers (say which key). Show them, then for each new one
    `reeve story create --epic <EPIC> --title <title> --kind story --criterion <text> --criterion <text> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
    one `--criterion` per criterion.
-6. **Placement tree.** For each story from `story ls --untriaged`, classify it, propose its home
+7. **Placement tree.** For each story from `story ls --untriaged`, classify it, propose its home
    with the branch that led there, and on confirmation write it (`<v>` is the story's `version`
    from the listing; covering epics and initiatives come from `epic ls` and `initiative ls`):
    - **Broken behaviour** → a bug under the epic that covers the broken feature:
@@ -81,10 +90,8 @@ section says.
    - **Internal work** (an upgrade, a refactor, tooling; nothing a user sees) → a chore:
      `reeve story edit <KEY> --version <v> --kind chore --json` (add `--epic` when one covers it).
    - **Product change**, the first that applies, with no `--kind` (it stays a story). An epic
-     covers a story when the story changes the feature or flow the epic delivers (whether, when
-     or how its work happens), even if the epic's brief does not name that change yet; a new epic
-     or initiative is only for work that no existing epic's feature touches. Try the epic being
-     refined first, and when in doubt between it and a new home, propose it and say why:
+     covers a story when the story changes the feature that epic delivers, even if its brief does
+     not name the change yet.
      1. an epic covers it (this one, or one from `epic ls`):
         `reeve story edit <KEY> --version <v> --epic <COVERING-EPIC> --json`;
      2. else an initiative covers it, but none of its epics does: a new epic under it,
@@ -95,23 +102,28 @@ section says.
         an epic under it as in 2, then the `story edit`. The CLI does not list the buckets: ask for
         them (offering the horizons seen in `initiative ls`), or take them from the request.
    - **Won't do**, or the user says "leave it untriaged": write nothing for it.
-   `--kind` on `story edit` comes with Reeve plan C (Task 5); before that the CLI rejects it as a
-   usage error (exit 1): say so and leave the story's kind as it is.
-7. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
+   `--kind` on `story edit` comes with Reeve plan C (Task 5); a planner without it answers a
+   usage error (exit 1). Then run the same edit again without `--kind` (the story keeps its kind
+   and still gets its home), and say so in the report.
+8. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
    only on yes run `reeve epic discovery <EPIC> --complete --version <latest version> --json`.
-8. **Re-read.** After the last write (the discovery mark, or the last placement when there is
+9. **Re-read.** After the last write (the discovery mark, or the last placement when there is
    none), run `reeve story ls --epic <EPIC> --json`, `reeve decision ls --on <EPIC> --json` and
    `reeve story ls --untriaged --json`. Completing discovery and placing stories change the
    readiness reasons, so these are the last reads of the run and the only ones the report quotes.
-9. **Report.** Start with the plain lines `Using the refining-epic skill.`, `Run id: <run_id>`
+10. **Report.** Start with the plain lines `Using the refining-epic skill.`, `Run id: <run_id>`
    and the `Researched:` line, all unformatted (no bold, so they can be searched for; a
-   non-interactive session shows only this report, not the announcement). Then every key written
-   and every existing key reused; each placement with its branch (bug, chore, this epic, another
-   epic, new epic under an initiative, new initiative, left untriaged); the open required
-   decisions from the re-read, worded by the reference ("no record", …); and every story of the
-   epic from the re-read as "ready", or "blocked:" with the planner's reasons worded by the
-   reference's table (for example "no acceptance criteria", "decision: no record — #7 …"). End
-   with the next step: "pick a ready story and brainstorm it".
+   non-interactive session shows only this report, not the announcement). Then:
+   - every key written and every existing key reused, and every item skipped with its reason;
+   - each placement on one line: the story's key, its title and its branch, named `bug`,
+     `chore`, `this epic`, `another epic <KEY>`, `new epic under <INITIATIVE>`,
+     `new initiative`, `won't do` or `left untriaged`;
+   - the open required decisions from the re-read, worded by the reference;
+   - each story of the epic from the re-read on one line: its key, its title, and "ready" or
+     "blocked:" followed by every one of the planner's reasons, worded by the reference's table.
+     Write each story's reasons out in full on its own line, even when stories share them; never
+     abbreviate them as "the shared reasons" or "as above".
+   End with the next step: "pick a ready story and brainstorm it".
 
 `<n>` is one counter for the whole run, from 1, shared by decisions, comments, stories, epics and
 initiatives: every create takes the next number, and a retry of the same create reuses its number.

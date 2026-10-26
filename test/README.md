@@ -120,8 +120,14 @@ exit 1). Answers use the planner's wire shapes:
 - epics `GRA-20` "Matching queue" (in GRA-12, version 2) and `GRA-21` "Mentor profiles" (in GRA-13);
 - decision `7` "Queue or cron" on GRA-20, with no record (`record: null`, check `unchecked`);
 - stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
-  in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-44`;
-- `decision ls` and `epic ls` also list the decisions and epics created earlier in the same run;
+  in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-46`;
+- creates and edits persist for the run: every show and list (`decision ls`, `epic ls`,
+  `initiative ls`, `story ls`) sees what the run wrote, and readiness is derived for every story
+  (untriaged, no criteria, its epic's discovery not complete, a required decision on its epic with
+  no record);
+- a write naming an epic or initiative that does not exist is `not_found` and is not logged, so a
+  guessed key never satisfies a log expectation; `story mv` exists only so a delivery change is
+  logged and can be rejected;
 - created items get keys `GRA-100`, `GRA-101`, … (decision and comment ids `100`, …), minted from a counter
   in the per-run state file `$REEVE_FAKE_LOG.state`, distinct within a run;
 - every create needs `--idempotency-key <skill>:<KEY>:<run-id>:<n>` (kb/ADR-0005 R3; anything else is a

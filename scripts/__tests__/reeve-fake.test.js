@@ -112,3 +112,19 @@ test('creates and edits persist: story ls, show and the readiness reasons see th
   const i = call(['initiative', 'create', '--title', 'Billing', '--horizon', 'Later', '--idempotency-key', 'refining-epic:GRA-20:0a1b2c3d:2', '--json']).value;
   assert.ok(call(['initiative', 'ls', '--json']).value.some((x) => x.key === i.key));
 });
+test('a write naming an epic or initiative nobody created is not_found and not logged', () => {
+  const r = run(['story', 'edit', 'GRA-43', '--version', '1', '--epic', 'GRA-199', '--json']);
+  assert.deepEqual([r.status, r.envelope.code, r.log], [1, 'not_found', '']);
+  const e = run(['epic', 'create', '--initiative', 'GRA-150', '--title', 'A', '--idempotency-key', KEY, '--json']);
+  assert.deepEqual([e.status, e.envelope.code, e.log], [1, 'not_found', '']);
+  assert.equal(run(['epic', 'show', 'GRA-150', '--json']).envelope.code, 'not_found');
+});
+test('readiness is derived for every story; story mv exists so a delivery change is logged', () => {
+  const listed = run(['story', 'ls', '--epic', 'GRA-20', '--json']).envelope.value;
+  assert.deepEqual(listed.map((x) => x.readiness.reasons.map((r) => r.reason)), [
+    ['ancestor_discovery_incomplete', 'decision_no_record'],
+    ['no_criteria', 'ancestor_discovery_incomplete', 'decision_no_record'],
+  ]);
+  const mv = run(['story', 'mv', 'GRA-31', 'in-progress', '--json']);
+  assert.deepEqual([mv.status, mv.envelope.value.delivery, mv.log], [0, 'in-progress', 'story mv GRA-31 in-progress --json\n']);
+});

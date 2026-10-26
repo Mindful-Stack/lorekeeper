@@ -22,7 +22,10 @@ argument.
    gave in the request counts as the confirmation for that write; do not ask it again.
 2. **One question at a time**, skipping every question the request already answers.
 3. **Branch on the exit status** as the reference says. A failed read in step 1 stops the run:
-   every later step depends on it. A refused or failed write stops that step; say so.
+   every later step depends on it. An error about sign-in or authorization on any call stops the
+   run: say it and tell the user to run `reeve auth login`. Any other refused or failed write
+   skips that one item (that decision, comment or epic): show the reasons or the message, go on
+   with the next item, and list what was skipped in the report.
 4. **The user decides.** Deciders, due dates, applying a record and the discovery mark come from
    the user, never from you.
 5. **Build on what is there.** The planner may already hold a brief, decisions and epics for this

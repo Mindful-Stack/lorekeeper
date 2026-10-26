@@ -94,7 +94,7 @@
          :output (cond-> output log (str "\n--- reeve fake log ---\n" log-text))})
       (finally
         (fs/delete-tree config-dir)
-        (when log (fs/delete-if-exists log))))))
+        (when log (fs/delete-if-exists log) (fs/delete-if-exists (str log ".state")))))))
 
 (defn print-result [{:keys [name passed missing present tally]}]
   (if passed

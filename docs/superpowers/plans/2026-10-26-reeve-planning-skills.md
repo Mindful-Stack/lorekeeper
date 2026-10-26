@@ -1883,14 +1883,15 @@ In `hooks/load-standards-reminder.sh`, split `SKILL_ROUTER` after the `CREATIVE 
 ```bash
 # The two Reeve planner rows only when a reeve-planner CLI answers within 2 s (kb/ADR-0005 R1:
 # a session without the planner routes exactly as before). One exec, silent on any failure;
-# `-k 1` kills one that ignores TERM, so the probe never holds the hook past 3 s.
+# `-k 1` kills one that ignores TERM, so the probe never holds the hook past 3 s. Without GNU
+# `timeout` (stock macOS) the probe is skipped and the rows are not emitted: nothing else bounds
+# a child that keeps stdout open, and an unbounded probe could run the hook past its deadline.
 REEVE_ROUTER_ROWS=''
 reeve_version() {
     local bin="${REEVE_BIN:-reeve}"
     command -v "$bin" >/dev/null 2>&1 || return 0
-    if command -v timeout >/dev/null 2>&1; then timeout -k 1 2 "$bin" --version </dev/null 2>/dev/null
-    elif command -v perl >/dev/null 2>&1; then perl -e 'alarm 2; exec @ARGV' "$bin" --version </dev/null 2>/dev/null
-    fi
+    command -v timeout >/dev/null 2>&1 || return 0
+    timeout -k 1 2 "$bin" --version </dev/null 2>/dev/null
 }
 case "$(reeve_version | head -n 1)" in
     'reeve-planner' | 'reeve-planner '*) REEVE_ROUTER_ROWS='\n\n- PLANNING AN INITIATIVE in the Reeve planner, when the request names Reeve or an initiative key (\"plan initiative GRA-12\", discovery for it)\n  -> Use the planning-initiative skill\n\n- REFINING AN EPIC in the Reeve planner, when the request names Reeve or an epic key (stories with acceptance criteria for GRA-20, placing untriaged stories)\n  -> Use the refining-epic skill' ;;

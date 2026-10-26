@@ -254,8 +254,8 @@ Run: `node --test scripts/__tests__/reeve-detect.test.js` — Expected: 7 passin
 // could not run. REEVE_FAKE_REFUSE=<text> makes every command whose name contains <text> (e.g.
 // `story create`) answer with a `refused` envelope and exit 2. REEVE_FAKE_SIGNIN=expired makes every
 // call but `auth status` answer an `unauthenticated` error, exit 2. Creates replay by
-// --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates and edits persist there, so
-// later shows and lists see them like the real planner.
+// --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates, edits and decision links
+// persist there, so later shows, lists and readiness see them like the real planner.
 'use strict';
 const fs = require('node:fs');
 
@@ -265,7 +265,7 @@ const log = process.env.REEVE_FAKE_LOG;
 const logCall = () => { if (log) fs.appendFileSync(log, argv.join(' ').replace(/[\r\n\u2028\u2029\u0085]+/g, ' ') + '\n'); };
 
 // Per-run state next to the log: { next, creates: { <idempotency key>: <response value> },
-// items: { <KEY>: <the item as last written> } }. Updates
+// items: { <KEY>: <the item as last written> }, decisions: { <id>: <the decision as last linked> } }. Updates
 // run under an exclusive lock file, so parallel calls neither share an id nor lose a replay entry.
 function withState(fn) {
   if (!log) return fn({ next: 100, creates: {} }); // no log, no run: nothing to replay
@@ -396,12 +396,16 @@ const mint = (build) => withState((state) => {
   }
   return state.creates[key];
 });
-const allDecisions = () => [decision7, decision8, ...createdDecisions()];
+// A decision as last linked in this run, else as seeded or created.
+const allDecisions = () => [decision7, decision8, ...createdDecisions()].map((d) => (state.decisions || {})[d.id] || d);
 // Readiness derived like the planner does (domain/readiness.rs), in its order: untriaged; the epic's
 // discovery and open decisions, then the initiative's; the story's own decisions; no criteria.
 const readinessOf = (s) => {
   const reasons = [];
-  const open = (key) => allDecisions().filter((d) => d.on === key && !d.closed && !d.record).map((d) => ({ reason: 'decision_no_record', decision_id: d.id, title: d.title }));
+  // Each open decision's reason from its check, as decision_reason does; an accepted record gates nothing.
+  const REASON = { proposed_pr_open: 'decision_proposed_pr_open', not_found: 'decision_record_not_found', not_accepted: 'decision_not_accepted' };
+  const reasonOf = (d) => (d.check.kind === 'unchecked' ? (d.record ? 'decision_unchecked' : 'decision_no_record') : REASON[d.check.kind]);
+  const open = (key) => allDecisions().filter((d) => d.on === key && !d.closed && d.check.kind !== 'accepted').map((d) => ({ reason: reasonOf(d), decision_id: d.id, title: d.title, ...(d.check.kind === 'not_accepted' ? { status: d.check.status, superseded_by: d.check.superseded_by ?? null } : {}) }));
   if (s.kind === 'story' && !s.epic) reasons.push({ reason: 'untriaged' });
   const e = s.epic && (itemsOf()[s.epic] || epics[s.epic]);
   const i = e && e.initiative && (itemsOf()[e.initiative] || initiatives[e.initiative]);
@@ -429,7 +433,7 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
   'story context': () => {
     const s = itemsOf()[p0] || stories[p0] || error('not_found', `no story ${p0}`);
     const e = s.epic ? itemsOf()[s.epic] || epics[s.epic] : null;
-    ok({ story: s, epic: e, initiative: e && e.initiative ? initiatives[e.initiative] : null, required_decisions: s.epic === 'GRA-20' ? [decision7] : [], blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
+    ok({ story: s, epic: e, initiative: e && e.initiative ? initiatives[e.initiative] : null, required_decisions: s.epic === 'GRA-20' ? allDecisions().filter((d) => d.id === 7) : [], blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
   },
   'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readinessOf(s) }))),
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })) }))),
@@ -450,12 +454,17 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
   'decision require': () => ok(mint((id) => ({ ...decision7, id, on: f.on, title: f.title, decider: f.decider, due: f.due || null }))),
   'decision link': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
-    const linked = { ...decision7, id: Number(p0), record: { repo: f.repo, path: f.path, record_id: f.record }, pr_url: f.pr || null, version: 2 };
-    if (process.env.REEVE_FAKE_LINK_CHECK === 'unreadable') {
+    const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);
+    const linked = { ...d, record: { repo: f.repo, path: f.path, record_id: f.record }, pr_url: f.pr || null, version: d.version + 1 };
+    // The link is stored even when its immediate check cannot run; the check stays unchecked.
+    const unreadable = process.env.REEVE_FAKE_LINK_CHECK === 'unreadable';
+    const value = unreadable ? { ...linked, check: { kind: 'unchecked' }, checked_at: null } : { ...linked, check: { kind: f.pr ? 'proposed_pr_open' : 'not_found' }, checked_at: NOW };
+    withState((st) => { (st.decisions ||= {})[d.id] = value; });
+    if (unreadable) {
       process.stderr.write(`decision ${p0}: cannot read ${f.path}: ${f.household || '.'}/${f.repo} is not a git checkout\n`);
-      emit({ outcome: 'ok', value: { ...linked, check: { kind: 'unchecked' } } }, 1);
+      emit({ outcome: 'ok', value }, 1);
     }
-    ok({ ...linked, check: { kind: f.pr ? 'proposed_pr_open' : 'not_found' }, checked_at: NOW });
+    ok(value);
   },
   'comment add': () => {
     ok(mint((id) => [{ id, author: 'dan@example.com', body: f.body, at: NOW, on_story: f.story || null, on_decision: f.decision ? Number(f.decision) : null, external_ref: null }]));
@@ -636,6 +645,32 @@ test('a horizon the planner does not have is a validation error', () => {
   assert.deepEqual([r.status, r.envelope.code], [1, 'validation']);
   assert.equal(run(['initiative', 'create', '--title', 'Billing', '--horizon', "Won't do", '--idempotency-key', KEY, '--json']).status, 0);
 });
+test('decision link persists: show, ls --on, story context and readiness see the link, also when the check could not run', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args, env = {}) => {
+    const r = spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log, ...env } });
+    return { status: r.status, ...JSON.parse(r.stdout) };
+  };
+  const link = ['decision', 'link', '7', '--record', 'kb/ADR-0002', '--repo', 'lore', '--path', 'knowledge/adrs/0002-x.md', '--household', '/work', '--json'];
+  const linked = call([...link, '--pr', 'https://github.com/example/lore/pull/9']);
+  assert.deepEqual([linked.status, linked.value.check.kind, linked.value.version], [0, 'proposed_pr_open', 2]);
+  const shown = call(['decision', 'show', '7', '--json']).value;
+  assert.deepEqual([shown.record, shown.pr_url, shown.check.kind], [{ repo: 'lore', path: 'knowledge/adrs/0002-x.md', record_id: 'kb/ADR-0002' }, 'https://github.com/example/lore/pull/9', 'proposed_pr_open']);
+  assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-20', '--json']).value.map((d) => [d.id, d.record && d.record.record_id]), [[7, 'kb/ADR-0002'], [8, null]]);
+  const ctx = call(['story', 'context', 'GRA-31', '--json']).value;
+  assert.equal(ctx.required_decisions[0].check.kind, 'proposed_pr_open');
+  assert.deepEqual(ctx.readiness.reasons.map((r) => r.reason), ['ancestor_discovery_incomplete', 'decision_proposed_pr_open', 'ancestor_discovery_incomplete']);
+  // A link whose immediate check cannot run is stored too (exit 1, ok envelope), unchecked with a record.
+  const unread = call([...link, '--pr', 'https://github.com/example/lore/pull/10'], { REEVE_FAKE_LINK_CHECK: 'unreadable' });
+  assert.deepEqual([unread.status, unread.outcome, unread.value.check.kind, unread.value.version], [1, 'ok', 'unchecked', 3]);
+  const after = call(['decision', 'show', '7', '--json']).value;
+  assert.deepEqual([after.pr_url, after.check.kind], ['https://github.com/example/lore/pull/10', 'unchecked']);
+  assert.ok(call(['story', 'ls', '--epic', 'GRA-20', '--json']).value[0].readiness.reasons.some((r) => r.reason === 'decision_unchecked' && r.decision_id === 7));
+  // A merged record (no --pr) the planner cannot find; an unknown decision is not_found.
+  assert.equal(call(link).value.check.kind, 'not_found');
+  assert.equal(call(['decision', 'show', '7', '--json']).value.pr_url, null);
+  assert.equal(call(['decision', 'link', '99', '--record', 'kb/ADR-0002', '--repo', 'lore', '--path', 'p.md', '--json']).code, 'not_found');
+});
 ```
 
 What these distinguish: a fake that shares or drops log lines, that accepts `--brief-file` (the flag the first draft invented), that answers calls without `--json` (or insists it be last), that accepts a create key that is not `<skill>:<KEY>:<run-id>:<n>` or mints a second item for a replayed key, that cannot refuse (exit 2, `REEVE_FAKE_REFUSE`), that invents a `no_record` check kind, that cannot reproduce the conflict and the half-successful link, that forgets a create or an edit on the next show or list (a re-read after the last write would then contradict the writes), that accepts a write naming an epic or initiative nobody created (a guessed key would satisfy a log line), or that has no `story mv` to log a delivery change.
@@ -755,7 +790,7 @@ Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-runner-selftest` �
 
 - [ ] **Step 7: test/README.md**
 
-Add a section "Scenarios against the Reeve planner" with the key table from Step 5, the environment pin (every scenario: empty `REEVE_CONFIG_DIR`, no `REEVE_URL`/`REEVE_TOKEN`/`REEVE_BIN`; fake scenarios: the fake first on `PATH`, a fresh `REEVE_FAKE_LOG` per run), the log format (one line per call that passed the fake's validation, argv joined by spaces, newlines flattened; a malformed call is not logged, a valid call the planner refuses is), what the fake answers (the item keys in Step 4: initiatives GRA-12/GRA-13, epics GRA-20/GRA-21 and the standalone GRA-22 (`initiative: null`; codex fix round), decision 7 "Queue or cron" with no record and decision 8 "Match by postcode" closed without one, stories GRA-31/GRA-32 in GRA-20, untriaged GRA-40…GRA-47 (kind `story` with no epic, as the real planner lists them); created items get `GRA-100`, `GRA-101`, … from the state file `$REEVE_FAKE_LOG.state`; creates need `--idempotency-key <skill>:<KEY>:<run-id>:<n>` and replay by key; creates and edits persist for the run, so every show and list sees them, and readiness is derived for every story in the planner's order, the epic's initiative included; `initiative create` checks the horizon bucket; what the real CLI's parser rejects is a usage error with no envelope; `--version` is not logged, since the SessionStart hook runs it too; a write naming an epic or initiative that does not exist is `not_found` and not logged; `story mv` exists only so a delivery change is logged), `REEVE_FAKE_REFUSE`, `REEVE_FAKE_SIGNIN=expired`, `REEVE_FAKE_LINK_CHECK=unreadable`, and the two commands:
+Add a section "Scenarios against the Reeve planner" with the key table from Step 5, the environment pin (every scenario: empty `REEVE_CONFIG_DIR`, no `REEVE_URL`/`REEVE_TOKEN`/`REEVE_BIN`; fake scenarios: the fake first on `PATH`, a fresh `REEVE_FAKE_LOG` per run), the log format (one line per call that passed the fake's validation, argv joined by spaces, newlines flattened; a malformed call is not logged, a valid call the planner refuses is), what the fake answers (the item keys in Step 4: initiatives GRA-12/GRA-13, epics GRA-20/GRA-21 and the standalone GRA-22 (`initiative: null`; codex fix round), decision 7 "Queue or cron" with no record and decision 8 "Match by postcode" closed without one, stories GRA-31/GRA-32 in GRA-20, untriaged GRA-40…GRA-47 (kind `story` with no epic, as the real planner lists them); created items get `GRA-100`, `GRA-101`, … from the state file `$REEVE_FAKE_LOG.state`; creates need `--idempotency-key <skill>:<KEY>:<run-id>:<n>` and replay by key; creates, edits and decision links persist for the run, so every show and list sees them, and readiness is derived for every story in the planner's order, the epic's initiative included; `initiative create` checks the horizon bucket; what the real CLI's parser rejects is a usage error with no envelope; `--version` is not logged, since the SessionStart hook runs it too; a write naming an epic or initiative that does not exist is `not_found` and not logged; `story mv` exists only so a delivery change is logged), `REEVE_FAKE_REFUSE`, `REEVE_FAKE_SIGNIN=expired`, `REEVE_FAKE_LINK_CHECK=unreadable`, and the two commands:
 
 ```bash
 bb test/run-tests.clj --with reeve-fake --filter reeve-   # the planner scenarios
@@ -1661,7 +1696,7 @@ In the existing `command-adr-new-triages-and-interviews`, add `"(?i)meeting note
   :expects ["proposed, PR open"]
   :rejects ["(?i)could not run"]
   :log-expects ["^decision show 7 --json$"
-                "^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b)(?=.*--household /\\S)(?!.*--household \\.).*--json$"]}
+                "^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b)(?=.*--household /\\S)(?!.*--household (?:\\.|\\S*/(?:lore|backend)\\b)).*--json$"]}
 
  {:name "reeve-adr-link-check-unreadable"
   :requires ["reeve-fake"]
@@ -1696,12 +1731,12 @@ It starts after the apply: a scenario runs under `claude --print`, where rule 3 
   :allowed-tools ["Bash(reeve *)"]
   :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; nobody can answer them in this session."
   :workdir "."
-  :expects ["(?i)nothing was linked" "(?i)repositor"]
+  :expects ["(?i)nothing was linked: missing" "(?i)\\bPR\\b|pull request"]
   :rejects ["(?m)^\\W*Linked[:;]"]
   :log-rejects ["^decision link "]}
 ```
 
-What it distinguishes: a link run where nobody can answer that guesses the planner's repository name or leaves out `--pr` (telling the planner the record is merged), from one that names the missing inputs and says nothing was linked; the log has no `decision link`.
+What it distinguishes: a link run where nobody can answer that guesses the planner's repository name or leaves out `--pr` (telling the planner the record is merged), from one that names the missing inputs and says nothing was linked; the log has no `decision link`. The household and the repository name come from the shared home's checkout (`<workspace>/lore`), so the input still missing is the PR (`gh` is denied in the runner).
 
 What they distinguish: `link-proposed` a link that needs an apply first (impossible here), a wrong path (absolute, or relative to the household instead of the repository), a missing `--pr`, and an answer not read from `check.kind`; `link-check-unreadable` a skill that applies "exit 1 → failure" to a link that in fact succeeded.
 
@@ -1725,7 +1760,7 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
 2. **Inputs.** Take each from the request or the caller (record step 6); ask, one at a time, only
    for what is missing. In a session that cannot ask (rule 3), a missing input stops the action
    with the line "Nothing was linked: missing <the inputs>." verbatim, on its own line; never
-   guess the planner's repository name, and never leave out `--pr` to fill a gap. The inputs:
+   guess the planner's repository name or the household, and never leave out `--pr` to fill a gap. The inputs:
    - the decision id, an integer ("decision 7", "#7"). Read it first with
      `reeve decision show <id> --json` and take the decision's title from `value.title`. A
      `not_found` answer stops with "There is no decision #<id> in the planner; nothing was
@@ -1738,22 +1773,28 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
      `node <plugin-root>/scripts/adr-lint.js index --json` (`records[].id` → `records[].file`);
      an id the index lacks: say so and stop, unless the user gave the repository and path (and the
      PR, or said there is none yet) explicitly, which are then used as given;
-   - the household directory: the one the user names, else the homes JSON's `root`
-     (`node <plugin-root>/scripts/adr-lint.js homes`, the household root the ADR homes resolve
-     from), never the current directory: invoked from `<household>/backend` to link a shared
-     record in the sibling `lore`, `--household` is `<household>`, not `<household>/backend`;
-   - the repository name as configured in the planner: no `reeve` command lists the planner's
-     repositories, so ask, offering the `household.json` repository whose directory holds the
-     file;
-   - the record's path inside that repository: the file's path relative to `<household>/<repo>`,
-     or to the household itself when its directory name is the repository name; never absolute,
-     never relative to the household when the repository is a directory of it;
+   - the record's checkout: the directory of the repository that holds the record, from the
+     selected home in the homes JSON (`node <plugin-root>/scripts/adr-lint.js homes`): for the
+     shared home (`kb/…`), `sharedRepoRoot`, else `sharedRoot` (the knowledge base's checkout);
+     for a local home (`<repo>/…`), that `localHomes[]` entry's `repoRoot`, else `<root>/<repo>`
+     in a household (`mode` `household`) or `root` in a single repository. Never the current
+     directory, and never `root` for the shared home: a repository configured with
+     `knowledgeBasePath: ../lore` has `root` `/work/api` but its records in `/work/lore`;
+   - the household directory: the one the user names, else the checkout's parent directory
+     (`/work` for `/work/lore`). When neither the request nor the homes JSON gives the checkout
+     (the home is missing, or the record's file is outside it), ask for the household; in a
+     session that cannot ask, stop with "Stopped: missing household." on its own line;
+   - the repository name as configured in the planner: the one the user names, else the
+     checkout's directory name (`lore` for `/work/lore`): the planner reads the record at
+     `<household>/<repo>/<path>`, so a name other than the directory's is given, never guessed;
+   - the record's path inside that repository: the file's path relative to the checkout
+     (`<household>/<repo>`); never absolute, never relative to the household;
    - the PR proposing the record: the url in the request or the report is used as given.
      Otherwise first settle whether the record is merged: when the file is on the default branch
      (the homes JSON's `defaultBranch` / `sharedDefaultBranch`;
-     `git -C <repository directory> cat-file -e origin/<default branch>:<path>`), it has no PR and
+     `git -C <checkout> cat-file -e origin/<default branch>:<path>`), it has no PR and
      `--pr` is left out. Else, knowing the record's branch, run
-     `gh pr view <branch> --json url --jq .url` in the repository directory when `gh` is
+     `gh pr view <branch> --json url --jq .url` in the checkout when `gh` is
      available (never without the branch: that returns the checked-out branch's PR); else ask. A
      record that only rides along on a branch, staged or committed but with no PR yet, is neither
      merged nor proposed: do not link it, go to step 5.

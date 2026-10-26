@@ -9,8 +9,8 @@
 // could not run. REEVE_FAKE_REFUSE=<text> makes every command whose name contains <text> (e.g.
 // `story create`) answer with a `refused` envelope and exit 2. REEVE_FAKE_SIGNIN=expired makes every
 // call but `auth status` answer an `unauthenticated` error, exit 2. Creates replay by
-// --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates and edits persist there, so
-// later shows and lists see them like the real planner.
+// --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates, edits and decision links
+// persist there, so later shows, lists and readiness see them like the real planner.
 'use strict';
 const fs = require('node:fs');
 
@@ -20,7 +20,7 @@ const log = process.env.REEVE_FAKE_LOG;
 const logCall = () => { if (log) fs.appendFileSync(log, argv.join(' ').replace(/[\r\n\u2028\u2029\u0085]+/g, ' ') + '\n'); };
 
 // Per-run state next to the log: { next, creates: { <idempotency key>: <response value> },
-// items: { <KEY>: <the item as last written> } }. Updates
+// items: { <KEY>: <the item as last written> }, decisions: { <id>: <the decision as last linked> } }. Updates
 // run under an exclusive lock file, so parallel calls neither share an id nor lose a replay entry.
 function withState(fn) {
   if (!log) return fn({ next: 100, creates: {} }); // no log, no run: nothing to replay
@@ -151,12 +151,16 @@ const mint = (build) => withState((state) => {
   }
   return state.creates[key];
 });
-const allDecisions = () => [decision7, decision8, ...createdDecisions()];
+// A decision as last linked in this run, else as seeded or created.
+const allDecisions = () => [decision7, decision8, ...createdDecisions()].map((d) => (state.decisions || {})[d.id] || d);
 // Readiness derived like the planner does (domain/readiness.rs), in its order: untriaged; the epic's
 // discovery and open decisions, then the initiative's; the story's own decisions; no criteria.
 const readinessOf = (s) => {
   const reasons = [];
-  const open = (key) => allDecisions().filter((d) => d.on === key && !d.closed && !d.record).map((d) => ({ reason: 'decision_no_record', decision_id: d.id, title: d.title }));
+  // Each open decision's reason from its check, as decision_reason does; an accepted record gates nothing.
+  const REASON = { proposed_pr_open: 'decision_proposed_pr_open', not_found: 'decision_record_not_found', not_accepted: 'decision_not_accepted' };
+  const reasonOf = (d) => (d.check.kind === 'unchecked' ? (d.record ? 'decision_unchecked' : 'decision_no_record') : REASON[d.check.kind]);
+  const open = (key) => allDecisions().filter((d) => d.on === key && !d.closed && d.check.kind !== 'accepted').map((d) => ({ reason: reasonOf(d), decision_id: d.id, title: d.title, ...(d.check.kind === 'not_accepted' ? { status: d.check.status, superseded_by: d.check.superseded_by ?? null } : {}) }));
   if (s.kind === 'story' && !s.epic) reasons.push({ reason: 'untriaged' });
   const e = s.epic && (itemsOf()[s.epic] || epics[s.epic]);
   const i = e && e.initiative && (itemsOf()[e.initiative] || initiatives[e.initiative]);
@@ -184,7 +188,7 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
   'story context': () => {
     const s = itemsOf()[p0] || stories[p0] || error('not_found', `no story ${p0}`);
     const e = s.epic ? itemsOf()[s.epic] || epics[s.epic] : null;
-    ok({ story: s, epic: e, initiative: e && e.initiative ? initiatives[e.initiative] : null, required_decisions: s.epic === 'GRA-20' ? [decision7] : [], blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
+    ok({ story: s, epic: e, initiative: e && e.initiative ? initiatives[e.initiative] : null, required_decisions: s.epic === 'GRA-20' ? allDecisions().filter((d) => d.id === 7) : [], blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
   },
   'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readinessOf(s) }))),
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })) }))),
@@ -205,12 +209,17 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
   'decision require': () => ok(mint((id) => ({ ...decision7, id, on: f.on, title: f.title, decider: f.decider, due: f.due || null }))),
   'decision link': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
-    const linked = { ...decision7, id: Number(p0), record: { repo: f.repo, path: f.path, record_id: f.record }, pr_url: f.pr || null, version: 2 };
-    if (process.env.REEVE_FAKE_LINK_CHECK === 'unreadable') {
+    const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);
+    const linked = { ...d, record: { repo: f.repo, path: f.path, record_id: f.record }, pr_url: f.pr || null, version: d.version + 1 };
+    // The link is stored even when its immediate check cannot run; the check stays unchecked.
+    const unreadable = process.env.REEVE_FAKE_LINK_CHECK === 'unreadable';
+    const value = unreadable ? { ...linked, check: { kind: 'unchecked' }, checked_at: null } : { ...linked, check: { kind: f.pr ? 'proposed_pr_open' : 'not_found' }, checked_at: NOW };
+    withState((st) => { (st.decisions ||= {})[d.id] = value; });
+    if (unreadable) {
       process.stderr.write(`decision ${p0}: cannot read ${f.path}: ${f.household || '.'}/${f.repo} is not a git checkout\n`);
-      emit({ outcome: 'ok', value: { ...linked, check: { kind: 'unchecked' } } }, 1);
+      emit({ outcome: 'ok', value }, 1);
     }
-    ok({ ...linked, check: { kind: f.pr ? 'proposed_pr_open' : 'not_found' }, checked_at: NOW });
+    ok(value);
   },
   'comment add': () => {
     ok(mint((id) => [{ id, author: 'dan@example.com', body: f.body, at: NOW, on_story: f.story || null, on_decision: f.decision ? Number(f.decision) : null, external_ref: null }]));

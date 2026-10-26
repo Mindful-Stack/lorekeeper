@@ -324,7 +324,7 @@ git commit -m \"feat: add DeviceStatusDto\"
   :expects ["proposed, PR open"]
   :rejects ["(?i)could not run"]
   :log-expects ["^decision show 7 --json$"
-                "^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b)(?=.*--household /\\S)(?!.*--household \\.).*--json$"]}
+                "^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b)(?=.*--household /\\S)(?!.*--household (?:\\.|\\S*/(?:lore|backend)\\b)).*--json$"]}
 
  {:name "reeve-adr-link-check-unreadable"
   :requires ["reeve-fake"]
@@ -351,7 +351,7 @@ git commit -m \"feat: add DeviceStatusDto\"
   :allowed-tools ["Bash(reeve *)"]
   :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; nobody can answer them in this session."
   :workdir "."
-  :expects ["(?i)nothing was linked" "(?i)repositor"]
+  :expects ["(?i)nothing was linked: missing" "(?i)\\bPR\\b|pull request"]
   :rejects ["(?m)^\\W*Linked[:;]"]
   :log-rejects ["^decision link "]}
 

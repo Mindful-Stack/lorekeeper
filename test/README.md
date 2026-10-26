@@ -129,10 +129,12 @@ set. Answers use the planner's wire shapes:
 - stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
   in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-47` (`story ls --untriaged` lists
   stories of kind `story` with no epic, as the real planner does);
-- creates and edits persist for the run: every show and list (`decision ls`, `epic ls`,
-  `initiative ls`, `story ls`) sees what the run wrote, and readiness is derived for every story
-  in the planner's order (untriaged; its epic's discovery not complete and the epic's open
-  decisions with no record; the same for the epic's initiative; the story's own; no criteria);
+- creates, edits and decision links persist for the run: every show and list (`decision ls`,
+  `decision show`, `epic ls`, `initiative ls`, `story ls`, `story context`) sees what the run
+  wrote, and readiness is derived for every story in the planner's order (untriaged; its epic's
+  discovery not complete and the epic's open decisions, each by its check: no record, unchecked,
+  proposed with the PR open, record not found, not accepted; the same for the epic's initiative;
+  the story's own; no criteria);
 - `initiative create` checks `--horizon` against the buckets `Now`, `Next`, `Later`, `Won't do`
   (anything else is a `validation` error, exit 1);
 - a write naming an epic or initiative that does not exist is `not_found` and is not logged, so a
@@ -154,7 +156,7 @@ with exit 2, as the real CLI does for an expired or revoked token.
 
 `REEVE_FAKE_LINK_CHECK=unreadable` makes `decision link` behave like a link whose immediate
 check could not run: exit 1 with an `ok` envelope (the decision, check `unchecked`) and a
-`decision <id>: cannot read …` line on stderr.
+`decision <id>: cannot read …` line on stderr; the link is stored all the same.
 
 ```bash
 bb test/run-tests.clj --with reeve-fake --filter reeve-   # the planner scenarios

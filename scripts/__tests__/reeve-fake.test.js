@@ -168,3 +168,29 @@ test('a horizon the planner does not have is a validation error', () => {
   assert.deepEqual([r.status, r.envelope.code], [1, 'validation']);
   assert.equal(run(['initiative', 'create', '--title', 'Billing', '--horizon', "Won't do", '--idempotency-key', KEY, '--json']).status, 0);
 });
+test('decision link persists: show, ls --on, story context and readiness see the link, also when the check could not run', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args, env = {}) => {
+    const r = spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log, ...env } });
+    return { status: r.status, ...JSON.parse(r.stdout) };
+  };
+  const link = ['decision', 'link', '7', '--record', 'kb/ADR-0002', '--repo', 'lore', '--path', 'knowledge/adrs/0002-x.md', '--household', '/work', '--json'];
+  const linked = call([...link, '--pr', 'https://github.com/example/lore/pull/9']);
+  assert.deepEqual([linked.status, linked.value.check.kind, linked.value.version], [0, 'proposed_pr_open', 2]);
+  const shown = call(['decision', 'show', '7', '--json']).value;
+  assert.deepEqual([shown.record, shown.pr_url, shown.check.kind], [{ repo: 'lore', path: 'knowledge/adrs/0002-x.md', record_id: 'kb/ADR-0002' }, 'https://github.com/example/lore/pull/9', 'proposed_pr_open']);
+  assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-20', '--json']).value.map((d) => [d.id, d.record && d.record.record_id]), [[7, 'kb/ADR-0002'], [8, null]]);
+  const ctx = call(['story', 'context', 'GRA-31', '--json']).value;
+  assert.equal(ctx.required_decisions[0].check.kind, 'proposed_pr_open');
+  assert.deepEqual(ctx.readiness.reasons.map((r) => r.reason), ['ancestor_discovery_incomplete', 'decision_proposed_pr_open', 'ancestor_discovery_incomplete']);
+  // A link whose immediate check cannot run is stored too (exit 1, ok envelope), unchecked with a record.
+  const unread = call([...link, '--pr', 'https://github.com/example/lore/pull/10'], { REEVE_FAKE_LINK_CHECK: 'unreadable' });
+  assert.deepEqual([unread.status, unread.outcome, unread.value.check.kind, unread.value.version], [1, 'ok', 'unchecked', 3]);
+  const after = call(['decision', 'show', '7', '--json']).value;
+  assert.deepEqual([after.pr_url, after.check.kind], ['https://github.com/example/lore/pull/10', 'unchecked']);
+  assert.ok(call(['story', 'ls', '--epic', 'GRA-20', '--json']).value[0].readiness.reasons.some((r) => r.reason === 'decision_unchecked' && r.decision_id === 7));
+  // A merged record (no --pr) the planner cannot find; an unknown decision is not_found.
+  assert.equal(call(link).value.check.kind, 'not_found');
+  assert.equal(call(['decision', 'show', '7', '--json']).value.pr_url, null);
+  assert.equal(call(['decision', 'link', '99', '--record', 'kb/ADR-0002', '--repo', 'lore', '--path', 'p.md', '--json']).code, 'not_found');
+});

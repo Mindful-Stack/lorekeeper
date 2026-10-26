@@ -11,7 +11,7 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
 2. **Inputs.** Take each from the request or the caller (record step 6); ask, one at a time, only
    for what is missing. In a session that cannot ask (rule 3), a missing input stops the action
    with the line "Nothing was linked: missing <the inputs>." verbatim, on its own line; never
-   guess the planner's repository name, and never leave out `--pr` to fill a gap. The inputs:
+   guess the planner's repository name or the household, and never leave out `--pr` to fill a gap. The inputs:
    - the decision id, an integer ("decision 7", "#7"). Read it first with
      `reeve decision show <id> --json` and take the decision's title from `value.title`. A
      `not_found` answer stops with "There is no decision #<id> in the planner; nothing was
@@ -24,22 +24,28 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
      `node <plugin-root>/scripts/adr-lint.js index --json` (`records[].id` → `records[].file`);
      an id the index lacks: say so and stop, unless the user gave the repository and path (and the
      PR, or said there is none yet) explicitly, which are then used as given;
-   - the household directory: the one the user names, else the homes JSON's `root`
-     (`node <plugin-root>/scripts/adr-lint.js homes`, the household root the ADR homes resolve
-     from), never the current directory: invoked from `<household>/backend` to link a shared
-     record in the sibling `lore`, `--household` is `<household>`, not `<household>/backend`;
-   - the repository name as configured in the planner: no `reeve` command lists the planner's
-     repositories, so ask, offering the `household.json` repository whose directory holds the
-     file;
-   - the record's path inside that repository: the file's path relative to `<household>/<repo>`,
-     or to the household itself when its directory name is the repository name; never absolute,
-     never relative to the household when the repository is a directory of it;
+   - the record's checkout: the directory of the repository that holds the record, from the
+     selected home in the homes JSON (`node <plugin-root>/scripts/adr-lint.js homes`): for the
+     shared home (`kb/…`), `sharedRepoRoot`, else `sharedRoot` (the knowledge base's checkout);
+     for a local home (`<repo>/…`), that `localHomes[]` entry's `repoRoot`, else `<root>/<repo>`
+     in a household (`mode` `household`) or `root` in a single repository. Never the current
+     directory, and never `root` for the shared home: a repository configured with
+     `knowledgeBasePath: ../lore` has `root` `/work/api` but its records in `/work/lore`;
+   - the household directory: the one the user names, else the checkout's parent directory
+     (`/work` for `/work/lore`). When neither the request nor the homes JSON gives the checkout
+     (the home is missing, or the record's file is outside it), ask for the household; in a
+     session that cannot ask, stop with "Stopped: missing household." on its own line;
+   - the repository name as configured in the planner: the one the user names, else the
+     checkout's directory name (`lore` for `/work/lore`): the planner reads the record at
+     `<household>/<repo>/<path>`, so a name other than the directory's is given, never guessed;
+   - the record's path inside that repository: the file's path relative to the checkout
+     (`<household>/<repo>`); never absolute, never relative to the household;
    - the PR proposing the record: the url in the request or the report is used as given.
      Otherwise first settle whether the record is merged: when the file is on the default branch
      (the homes JSON's `defaultBranch` / `sharedDefaultBranch`;
-     `git -C <repository directory> cat-file -e origin/<default branch>:<path>`), it has no PR and
+     `git -C <checkout> cat-file -e origin/<default branch>:<path>`), it has no PR and
      `--pr` is left out. Else, knowing the record's branch, run
-     `gh pr view <branch> --json url --jq .url` in the repository directory when `gh` is
+     `gh pr view <branch> --json url --jq .url` in the checkout when `gh` is
      available (never without the branch: that returns the checked-out branch's PR); else ask. A
      record that only rides along on a branch, staged or committed but with no PR yet, is neither
      merged nor proposed: do not link it, go to step 5.

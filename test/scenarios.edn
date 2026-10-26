@@ -192,4 +192,12 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "writing-plans-governing-decisions-header"
   :prompt "Use the writing-plans skill for this spec, but only produce the plan header; do not write files. Spec: in the backend repo, cache device status for 30 seconds in src/Application/Devices/Queries/GetDeviceStatus/ to cut repository load."
   :workdir "."
-  :expects ["(?i)governing decisions" "backend/ADR-0001\\.R1" "MUST NOT read from an in-process or distributed cache"]}]
+  :expects ["(?i)governing decisions" "backend/ADR-0001\\.R1" "MUST NOT read from an in-process or distributed cache"]}
+
+ {:name "reeve-runner-selftest"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "Run `reeve --version` and report what it printed. Do not ask questions; the answers are given."
+  :workdir "."
+  :expects ["0\\.1\\.0-fake"]
+  :log-expects ["^--version$"]}]

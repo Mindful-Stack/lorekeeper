@@ -91,6 +91,48 @@ Because the copy is not a git repository and git is denied, scenarios do not exe
 git-based steps (placement, `--base` checks). Prompts for commands that would otherwise write
 end with an instruction to stop after presenting the draft.
 
+## Scenarios against the Reeve planner
+
+Skills that drive the Reeve planner are tested against a fake `reeve` CLI,
+`test/fixtures/reeve-bin/reeve` (a Node script; its own tests are
+`scripts/__tests__/reeve-fake.test.js`). Four scenario keys and one runner option support them:
+
+| Key | Meaning |
+|---|---|
+| `:requires ["reeve-fake"]` | Runs only when the runner is invoked with `--with reeve-fake`; otherwise printed as `[SKIP]` and not counted. Such a scenario gets `<checkout>/test/fixtures/reeve-bin` first on `PATH` and a fresh empty `REEVE_FAKE_LOG` file for each run (also each `--runs` repeat and each mutation run). |
+| `:env {"NAME" "value"}` | Merged last into the child's environment (the link scenario sets `REEVE_FAKE_LINK_CHECK`). |
+| `:allowed-tools [...]` | Added to the base allow-list; reeve scenarios add `"Bash(reeve *)"` (`Bash(node *)` is already in the base list). |
+| `:log-expects [...]` / `:log-rejects [...]` | Regexes matched, multiline (`(?m)` prepended), against the fake log after the run; failures print as `log: <regex>`. Positive evidence that a command was executed, which a transcript match cannot give. |
+
+**Environment.** Every scenario, fake or not, runs with a fresh empty `REEVE_CONFIG_DIR` and
+without `REEVE_URL`, `REEVE_TOKEN` and `REEVE_BIN`, so a real `reeve` on the `PATH` can never
+reach a server. A fake scenario also gets the fake first on `PATH` and a fresh `REEVE_FAKE_LOG`
+per run; the log is appended to the output shown by `--verbose` and deleted afterwards.
+
+**The log.** One line per call: the argv joined by spaces, newlines inside an argument
+flattened to spaces, e.g. `epic create --initiative GRA-12 --title A --brief one two --idempotency-key k --json`.
+
+**What the fake answers.** `--version` prints `reeve-planner 0.1.0-fake`; every other call must
+end in `--json` and uses only flags the real CLI has (anything else is a `validation` error,
+exit 1). Answers use the planner's wire shapes:
+
+- initiatives `GRA-12` "Faster mentor matching" (version 3) and `GRA-13` "Mentor onboarding";
+- epics `GRA-20` "Matching queue" (in GRA-12, version 2) and `GRA-21` "Mentor profiles" (in GRA-13);
+- decision `7` "Queue or cron" on GRA-20, with no record (`record: null`, check `unchecked`);
+- stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
+  in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-44`;
+- created items get keys `GRA-1NN` (decisions and comments ids `1NN`), distinct within a run;
+- an edit or discovery mark with a stale `--version` is a `conflict` (exit 1).
+
+`REEVE_FAKE_LINK_CHECK=unreadable` makes `decision link` behave like a link whose immediate
+check could not run: exit 1 with an `ok` envelope (the decision, check `unchecked`) and a
+`decision <id>: cannot read …` line on stderr.
+
+```bash
+bb test/run-tests.clj --with reeve-fake --filter reeve-   # the planner scenarios
+bb test/run-tests.clj                                     # everything else; reeve-fake scenarios print [SKIP]
+```
+
 ## How It Works
 
 1. Runs Claude CLI with `--print` flag for each prompt

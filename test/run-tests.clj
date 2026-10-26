@@ -36,6 +36,28 @@
 (defn plugin-root []
   (-> *file* io/file .getParentFile (io/file "..") .getCanonicalFile .getCanonicalPath))
 
+;; Every scenario runs with an empty REEVE_CONFIG_DIR and without REEVE_URL, REEVE_TOKEN and
+;; REEVE_BIN, so a real `reeve` on the PATH can never reach a server. A scenario that requires
+;; "reeve-fake" also gets the fake planner first on the PATH and a fresh REEVE_FAKE_LOG, so no two
+;; scenarios, repeats or mutation runs share a log. The scenario's own :env is merged last.
+(defn scenario-env [{:keys [requires env]}]
+  (let [config-dir (str (fs/create-temp-dir {:prefix "reeve-config-"}))
+        fake? (some #{"reeve-fake"} requires)
+        log (when fake? (str (fs/create-temp-file {:prefix "reeve-fake-" :suffix ".log"})))
+        base (-> (into {} (System/getenv))
+                 (dissoc "REEVE_URL" "REEVE_TOKEN" "REEVE_BIN")
+                 (assoc "REEVE_CONFIG_DIR" config-dir))]
+    {:env (merge (cond-> base
+                   fake? (assoc "PATH" (str (plugin-root) "/test/fixtures/reeve-bin"
+                                            java.io.File/pathSeparator (System/getenv "PATH"))
+                                "REEVE_FAKE_LOG" log))
+                 env)
+     :log log
+     :config-dir config-dir}))
+
+(defn log-matches [patterns text]
+  (filter #(re-find (re-pattern (str "(?m)" %)) text) patterns))
+
 ;; Scenarios assert on what a command prints before it writes. Pin the permission mode (the
 ;; user's own default may auto-approve), allow only reading tools and node (every adr-lint and
 ;; doctor call), and deny writes, git and gh outright. Node can still write, which is why the
@@ -43,27 +65,36 @@
 (def allowed-tools ["Read" "Glob" "Grep" "Bash(node *)" "Task" "Agent" "Skill"])
 (def disallowed-tools ["Write" "Edit" "NotebookEdit" "Bash(git *)" "Bash(gh *)"])
 
-(defn run-test [{:keys [name prompt workdir expects rejects]} {:keys [workspace-root plugin-dir]}]
-  (let [;; Always run from workspace root where settings.json has plugins enabled.
-        ;; --plugin-dir loads this checkout's plugin code rather than the installed copy.
-        _ (println (colorize :yellow "  Running:") prompt "(context:" workdir ")")
-        {:keys [out err exit]} (apply shell {:dir workspace-root
-                                              :out :string
-                                              :err :string
-                                              :continue true}
+;; --plugin-dir loads this checkout's plugin code rather than the installed copy; the run starts
+;; from the workspace root, where settings.json has plugins enabled.
+(defn run-test [{:keys [name prompt workdir expects rejects log-expects log-rejects] :as scenario}
+                {:keys [workspace-root plugin-dir]}]
+  (let [{:keys [env log config-dir]} (scenario-env scenario)]
+    (try
+      (let [_ (println (colorize :yellow "  Running:") prompt "(context:" workdir ")")
+            tools (distinct (concat allowed-tools (:allowed-tools scenario)))
+            {:keys [out err]} (apply shell {:dir workspace-root :out :string :err :string
+                                            :continue true :env env}
                                      (concat ["claude" "--print" "--permission-mode" "default"
-                                              "--allowedTools"] allowed-tools
+                                              "--allowedTools"] tools
                                              ["--disallowedTools"] disallowed-tools
                                              (when plugin-dir ["--plugin-dir" plugin-dir])
                                              ["--" prompt]))
-        output (str out err)
-        missing (filter #(not (re-find (re-pattern %) output)) expects)
-        present (filter #(re-find (re-pattern %) output) (or rejects []))]
-    {:name name
-     :passed (and (empty? missing) (empty? present))
-     :missing missing
-     :present present
-     :output output}))
+            output (str out err)
+            log-text (if log (slurp log) "")
+            missing (concat (filter #(not (re-find (re-pattern %) output)) expects)
+                            (map #(str "log: " %)
+                                 (remove (set (log-matches log-expects log-text)) log-expects)))
+            present (concat (filter #(re-find (re-pattern %) output) (or rejects []))
+                            (map #(str "log: " %) (log-matches log-rejects log-text)))]
+        {:name name
+         :passed (and (empty? missing) (empty? present))
+         :missing missing
+         :present present
+         :output (cond-> output log (str "\n--- reeve fake log ---\n" log-text))})
+      (finally
+        (fs/delete-tree config-dir)
+        (when log (fs/delete-if-exists log))))))
 
 (defn print-result [{:keys [name passed missing present tally]}]
   (if passed
@@ -115,8 +146,12 @@
         min-pass (parse-long (str (:min opts runs)))
         filter-name (:filter opts)
         verbose (contains? opts :verbose)
-        scenarios (cond->> (load-scenarios)
-                    filter-name (filter #(str/includes? (:name %) filter-name)))
+        with (set (some-> (:with opts) str (str/split #",")))
+        runnable? (fn [s] (every? with (:requires s)))
+        selected (cond->> (load-scenarios)
+                   filter-name (filter #(str/includes? (:name %) filter-name)))
+        scenarios (filter runnable? selected)
+        skipped (remove runnable? selected)
         fixture (fixture-dir)
         copy (when (and (not (:workspace-root opts)) fixture) (copy-fixture fixture))
         env {:workspace-root (or (:workspace-root opts) (:root copy) (parent-workspace-root))
@@ -126,6 +161,10 @@
                      (println "Workspace root:" (:workspace-root env))
                      (println "Plugin dir:" (:plugin-dir env))
                      (println "")
+                     (doseq [s skipped]
+                       (println (colorize :yellow "[SKIP]") (:name s)
+                                (str "(requires " (str/join ", " (:requires s))
+                                     "; run with --with " (str/join "," (:requires s)) ")")))
                      (let [results (doall (map (fn [s]
                                                  (let [r (run-repeated s env runs min-pass)]
                                                    (print-result r)
@@ -137,7 +176,8 @@
                                                scenarios))
                            passed (count (filter :passed results))
                            total (count results)]
-                       (println (str "\nResults: " passed "/" total " passed"))
+                       (println (str "\nResults: " passed "/" total " passed"
+                                     (when (seq skipped) (str ", " (count skipped) " skipped"))))
                        (= passed total))
                      (finally
                        (when copy (fs/delete-tree (:temp-dir copy)))))]

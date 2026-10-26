@@ -4,9 +4,9 @@
 
 **Goal:** When a `reeve` CLI on the path reports itself as the planner and the user is signed in, Lorekeeper gains two planning skills (`planning-initiative`, `refining-epic`), brainstorming reads the story's context bundle first, and recording-decisions links a drafted record to its required decision; absent the planner, every skill behaves exactly as today.
 
-**Architecture:** Markdown skills only (this plugin's convention), plus one small Node script `scripts/reeve-detect.js` that answers "is the planner present and am I signed in" deterministically (`reeve --version` must print `reeve-planner …`; `reeve auth status --json` must be `ok`), used by every hook so detection is one tested piece of code. Every `reeve` call uses `--json`, branches on the exit status (0 ok, 2 refused, 1 failure) and passes `--idempotency-key` on creates. Skills never write a spec; they write into the planner (briefs, required decisions, epics, stories with criteria) and link records.
+**Architecture:** Markdown skills only (this plugin's convention), plus one small Node script `scripts/reeve-detect.js` that answers "is the planner present and am I signed in" deterministically (`reeve --version` must print `reeve-planner …`; `reeve auth status --json` must be `ok`), called by every skill that touches the planner so detection is one tested piece of code (no hook calls it). Every `reeve` call uses `--json`, branches on the exit status (0 ok, 2 refused, 1 failure) and passes `--idempotency-key` on creates. Skills never write a spec; they write into the planner (briefs, required decisions, epics, stories with criteria) and link records.
 
-**Tech Stack:** Claude Code plugin markdown (`skills/*/SKILL.md`, `actions/`, `reference/`), Node 22 script with `node --test`, Babashka scenario tests (`bb test/run-tests.clj`) with a fake `reeve` under `test/fixtures/reeve-bin/`.
+**Tech Stack:** Claude Code plugin markdown (`skills/*/SKILL.md`, `actions/`, `reference/`), Node 22 scripts with `node --test`, Babashka scenario tests (`bb test/run-tests.clj`, extended in Task 1 with per-scenario environments and fake-log assertions) with a fake `reeve` (a Node script) under `test/fixtures/reeve-bin/`.
 
 ## Governing decisions
 
@@ -31,82 +31,637 @@ How the rules shape this plan: detection is exactly R1's two checks and nothing 
 
 Design choices this plan makes (reversible):
 
-- **One detector script.** `node <plugin-root>/scripts/reeve-detect.js` prints JSON `{ "present": bool, "signed_in": bool, "url": string|null, "email": string|null, "reason": string }` and exits 0 always; it runs `reeve --version` (must start with `reeve-planner`) and `reeve auth status --json` (must be `{"outcome":"ok",...}`), each with a 10 s timeout, honouring `REEVE_BIN` (tests) over `PATH`. Skills call it once and branch on `present && signed_in`.
-- **Required decisions carry the Lorekeeper id-to-be.** When brainstorming or a planning skill drafts a record for a required decision, the decision's title is the record's title and the link is made at apply time, when the file path exists on a branch with a PR: `reeve decision link <id> --record <kb/ADR-NNNN> --repo <name> --path <path> --pr <url> --household <dir>`. Before apply, the planner shows the decision as "no record"; after link, "proposed, PR open"; after acceptance and the next check, satisfied. Nothing is written into records (kb/ADR-0004 R3).
-- **Placement lives in refining-epic.** Untriaged stories (`reeve story ls --untriaged --json`) are offered homes during epic refinement; no separate triage skill.
-- **Codex twins.** `lore-planning-initiative` and `lore-refining-epic` SKILL.md files mirror the Claude skills with the Codex wording, as every other skill pair does.
+- **One detector script.** `node <plugin-root>/scripts/reeve-detect.js` prints one JSON line `{ "present": bool, "signed_in": bool, "url": string|null, "email": string|null, "bin": string, "run_id": string, "reason": string }` and exits 0 always. It runs `${REEVE_BIN:-reeve} --version` (the first line must match `^reeve-planner(\s|$)`) and, only when that passes, `${REEVE_BIN:-reeve} auth status --json` (must exit 0 with `{"outcome":"ok",…}`), each with a 10 s timeout. `bin` is the command word it used (`reeve` unless `REEVE_BIN` is set); `run_id` is 8 random hex characters minted once per call, which the calling skill uses in its idempotency keys. Skills call it once and branch on `present && signed_in`.
+- **Skills call the binary the detector checked.** Every skill invokes `${REEVE_BIN:-reeve}` exactly like the detector, written out as the detector's `bin` value (literally `reeve` in every normal session), never as the `${…}` expression: permission rules such as `Bash(reeve *)` match the literal first word.
+- **Required decisions carry the Lorekeeper id-to-be.** When brainstorming or a planning skill drafts a record for a required decision, the decision's title is the record's title and the link is made at apply time, when the file path exists on a branch with a PR: `reeve decision link <id> --record <kb/ADR-NNNN> --repo <name> --path <path> --pr <url> --household <dir> --json`. A draft that is not applied in the session leaves a pointer: planning skills add a comment on the required decision, brainstorming stores `Required decision: #<id>` beside the draft in the spec. Before link, the planner shows the decision as "no record" (`record: null`); after link, "proposed, PR open"; after acceptance and the next check, satisfied. Nothing is written into records (kb/ADR-0004 R3).
+- **Placement lives in refining-epic.** Untriaged stories (`reeve story ls --untriaged --json`) get the spec's placement tree during epic refinement; no separate triage skill.
+- **Codex twins are thin pointers.** `lore-planning-initiative` and `lore-refining-epic` are three-line SKILL.md files like `skills/lore-adr/SKILL.md`: load `../../references/codex-runtime.md`, then follow the canonical skill. No procedure is duplicated.
+- **Triage is unconditional.** kb/ADR-0004 R5 is an accepted Lorekeeper rule that does not depend on the planner, so record.md's step 3 drafts process, tooling and product records whether or not `reeve` is present. kb/ADR-0005 R1's "every skill MUST behave as before" covers planner-dependent behaviour (detection, reading the planner, writing to it, linking), and every such addition is guarded by the detector.
 
 ## File structure
 
-- `scripts/reeve-detect.js`, `scripts/__tests__/reeve-detect.test.js`
-- `skills/planning-initiative/SKILL.md`, `skills/planning-initiative/reference/brief-template.md`
-- `skills/refining-epic/SKILL.md`
-- `skills/lore-planning-initiative/SKILL.md`, `skills/lore-refining-epic/SKILL.md`
-- `references/reeve-cli.md` (the command contract every skill quotes: commands, flags, exit codes, idempotency keys, JSON shapes)
-- Modify: `skills/brainstorming/SKILL.md` (new first step 0), `skills/recording-decisions/actions/record.md` (step 3 triage, step 6 link), `skills/recording-decisions/SKILL.md` (one line in "Where a change lands"), `hooks/load-standards-reminder.sh` (router rows), `README.md` (skills table), `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `package.json` (version 3.2.0), `test/scenarios.edn`, `test/README.md`, `test/fixtures/reeve-bin/reeve` (a fake planner CLI script), `docs/agent/backlog.md` if it lists this work.
+- Create: `scripts/reeve-detect.js`, `scripts/__tests__/reeve-detect.test.js`, `scripts/__tests__/reeve-fake.test.js`
+- Create: `test/fixtures/reeve-bin/reeve` (the fake planner CLI, a Node script, mode 755)
+- Create: `references/reeve-cli.md` (the command contract every skill quotes: binary, commands, flags, exit statuses, idempotency keys, JSON shapes, how to word answers)
+- Create: `skills/planning-initiative/SKILL.md`, `skills/planning-initiative/reference/brief-template.md`, `skills/refining-epic/SKILL.md`
+- Create: `skills/lore-planning-initiative/SKILL.md`, `skills/lore-refining-epic/SKILL.md`
+- Create: `skills/recording-decisions/actions/link.md`
+- Modify: `test/run-tests.clj` (per-scenario environment, `:requires`/`--with`, `:allowed-tools`, `:log-expects`/`:log-rejects`), `test/README.md`, `test/scenarios.edn`
+- Modify: `skills/brainstorming/SKILL.md` (step 0, additions to steps 1, 5, 6, 9 and one graph node), `skills/writing-plans/SKILL.md` (the low-tier ride-along bullet carries `Required decision: #<id>`)
+- Modify: `skills/recording-decisions/SKILL.md` (description, rule 3, action table row, action list, "Where a change lands"), `skills/recording-decisions/actions/record.md` (step 3 triage, step 6 link)
+- Modify: `hooks/load-standards-reminder.sh` (two router rows), `README.md` (skills table, "Reeve planner" paragraph), `CLAUDE.md` (zero-runtime exception for the detector), `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `package.json` (version 3.2.0)
+- Companion: `Mindful-Stack/witan` `.claude-plugin/marketplace.json` (the `lore` entry's `version` → 3.2.0), a separate PR
 
 ## Task order
 
-1 detector + CLI reference → 2 planning-initiative → 3 refining-epic → 4 brainstorming step 0 → 5 recording-decisions triage + link → 6 router, README, Codex twins, version, scenarios.
+1 runner + detector + fake + CLI reference → 2 planning-initiative → 3 refining-epic → 4 brainstorming step 0 → 5 recording-decisions triage + link → 6 router, README, Codex twins, CLAUDE.md, version, full runs.
 
 ---
 
 ## Global constraints (copy into every implementer brief)
 
 - No skill writes a spec or a plan on the planner's behalf; planning skills write to the planner through `reeve` and print what they wrote.
-- Every `reeve` call in a skill: `--json`; exit 0 → proceed, 2 → show the refusal reasons and stop that step, 1 → show the error and stop; creates pass `--idempotency-key <stable id>` derived from the session and the item (so a retry gets the same item). Never deduplicate on titles.
-- Absent the planner (detector says `present: false` or `signed_in: false`), every skill behaves exactly as on `origin/main` today; the diff of those skills must be additive and guarded.
+- Every `reeve` call in a skill is copied from `references/reeve-cli.md`: `--json` as the last argument; exit 0 → proceed, 2 → show the refusal reasons and stop that step, 1 → show the error and stop that step. Two exceptions, both in the reference: `code: conflict` (a stale `--version`) re-reads, shows what changed and retries once; `decision link` exiting 1 with an `ok` envelope means "linked, check not run here".
+- Creates (`initiative create`, `epic create`, `story create`, `decision require`, `comment add`) pass `--idempotency-key <skill>:<KEY>:<run-id>:<n>`: the skill name, the item the run works on, the detector's `run_id` (minted once per skill invocation and printed in the report), and the ordinal of this create in the run, from 1. A retry within the run reuses its key; a new run never reuses an old key; keys never derive from titles (kb/ADR-0005 R3).
+- An answer the user already gave in the request counts as the confirmation for that write; skills do not ask it again. Scenario prompts give every answer and say "Do not ask questions; the answers are given."
+- Absent the planner (detector says `present: false` or `signed_in: false`), every planner-dependent step is skipped and the skill behaves exactly as on `origin/main`; the only unconditional change is record.md's triage (see Design choices).
 - Paths inside skills are written as `<plugin-root>/…`, absolute in every Bash command.
-- Vocabulary: initiative, epic, story, decision; "discovery complete"; "ready" / "blocked with reasons".
-- Tests: a Node test for the script; a Babashka scenario per skill with the fake `reeve`; the mutation check from docs/writing-skills-guide.md (delete the skill text, the scenario must fail).
-- Commits: `feat(skills): …`, `test: …`, `docs: …`; a heredoc body naming the plan task; trailer `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
+- Vocabulary: initiative, epic, story, decision; "discovery complete"; "ready" / "blocked" with the planner's reasons, worded by the reference's table and never computed by a skill (kb/ADR-0003 R1).
+- Tests: Node tests for the detector and the fake; a Babashka scenario per behaviour, each stating the defect it distinguishes; for each new or changed skill, the mutation check from docs/writing-skills-guide.md (empty the skill's body below the frontmatter, the scenario must fail, restore).
+- Commits: `feat(skills): …`, `test: …`, `docs: …`; a body naming the plan task; trailer `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 
 ---
 
-### Task 1: The detector script and the CLI reference
+### Task 1: Runner, detector, fake planner and the CLI reference
 
 **Files:**
-- Create: `scripts/reeve-detect.js`, `scripts/__tests__/reeve-detect.test.js`, `references/reeve-cli.md`, `test/fixtures/reeve-bin/reeve`
+- Modify: `test/run-tests.clj`, `test/README.md`, `test/scenarios.edn` (scenario `reeve-runner-selftest`)
+- Create: `scripts/reeve-detect.js`, `scripts/__tests__/reeve-detect.test.js`, `test/fixtures/reeve-bin/reeve`, `scripts/__tests__/reeve-fake.test.js`, `references/reeve-cli.md`
 
-- [ ] **Step 1: Failing test**
+- [ ] **Step 1: Failing detector tests**
 
 ```js
 // scripts/__tests__/reeve-detect.test.js — node --test
-const { test } = require('node:test'); const assert = require('node:assert'); const { execFileSync } = require('node:child_process'); const path = require('node:path'); const fs = require('node:fs'); const os = require('node:os');
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
+
 const script = path.join(__dirname, '..', 'reeve-detect.js');
-function fake(dir, version, status) {   // writes an executable `reeve` into dir
-  const p = path.join(dir, 'reeve');
-  fs.writeFileSync(p, `#!/bin/sh\ncase "$1" in --version) echo "${version}";; auth) echo '${status}';; *) exit 1;; esac\n`); fs.chmodSync(p, 0o755); return p;
+const OK = '{"outcome":"ok","value":{"url":"http://127.0.0.1:7474","token_from_env":false,"email":"dan@example.com","role":"member","token_kind":"interactive"}}';
+// What the real CLI prints, with exit 1, when no server is configured (verified against reeve-planner 0.1.0).
+const SIGNED_OUT = '{"outcome":"error","code":"internal","message":"no server url: set REEVE_URL or run reeve auth set-token"}';
+
+// An executable `reeve` that logs its argv to <dir>/log and answers --version and auth.
+function fake(versionLine, authBody, authExit = 0) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-detect-'));
+  const bin = path.join(dir, 'reeve');
+  const log = path.join(dir, 'log');
+  fs.writeFileSync(bin, [
+    '#!/bin/sh',
+    `echo "$*" >> '${log}'`,
+    'case "$1" in',
+    `  --version) ${versionLine};;`,
+    `  auth) echo '${authBody}'; exit ${authExit};;`,
+    '  *) exit 1;;',
+    'esac',
+    '',
+  ].join('\n'));
+  fs.chmodSync(bin, 0o755);
+  return { bin, log };
 }
-test('planner present and signed in', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rd-'));
-  const bin = fake(dir, 'reeve-planner 0.1.0', '{"outcome":"ok","value":{"email":"dan@example.com","url":"http://127.0.0.1:7474"}}');
-  const out = JSON.parse(execFileSync('node', [script], { env: { ...process.env, REEVE_BIN: bin } }));
-  assert.deepStrictEqual(out, { present: true, signed_in: true, url: 'http://127.0.0.1:7474', email: 'dan@example.com', reason: '' });
+function detect(bin, env = {}) {
+  return JSON.parse(execFileSync('node', [script], { encoding: 'utf8', env: { ...process.env, REEVE_BIN: bin, ...env } }));
+}
+const logged = (log) => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '');
+
+test('the planner, signed in', () => {
+  for (const version of ['reeve-planner 0.1.0', 'reeve-planner 0.1.0-fake']) {
+    const { bin } = fake(`echo '${version}'`, OK);
+    const { run_id, ...out } = detect(bin);
+    assert.deepEqual(out, { present: true, signed_in: true, url: 'http://127.0.0.1:7474', email: 'dan@example.com', bin, reason: '' });
+    assert.match(run_id, /^[0-9a-f]{8}$/);
+  }
 });
-test('the runner answering to reeve is not the planner', () => { /* version "reeve 0.9.0" → present:false, reason mentions reeve-planner */ });
-test('present but signed out', () => { /* auth status → {"outcome":"error","code":"unauthenticated",...} → present:true, signed_in:false */ });
-test('missing binary', () => { /* REEVE_BIN pointing at a non-existent path → present:false; exit code 0 */ });
-test('a hanging binary times out', () => { /* fake sleeps 15s → present:false, reason "timed out"; runs under 11s */ });
+
+test('anything else answering to reeve is not the planner, and its auth is never run', () => {
+  for (const version of ['reeve 0.9.0', 'reeve-runner 0.9.0', 'reeve-plannerx 1.0']) {
+    const { bin, log } = fake(`echo '${version}'`, OK);
+    const out = detect(bin);
+    assert.equal(out.present, false, version);
+    assert.equal(out.signed_in, false, version);
+    assert.match(out.reason, /reeve-planner/, version);
+    assert.doesNotMatch(logged(log), /^auth/m, version);
+  }
+});
+
+test('the planner, signed out (exit 1 with an error envelope)', () => {
+  const { bin } = fake("echo 'reeve-planner 0.1.0'", SIGNED_OUT, 1);
+  const out = detect(bin);
+  assert.equal(out.present, true);
+  assert.equal(out.signed_in, false);
+  assert.equal(out.email, null);
+  assert.match(out.reason, /^signed out: no server url/);
+});
+
+test('a missing binary is absent, and the detector still exits 0', () => {
+  const out = detect(path.join(os.tmpdir(), 'no-such-dir-reeve', 'reeve')); // execFileSync would throw on a non-zero exit
+  assert.equal(out.present, false);
+  assert.match(out.reason, /not found/);
+});
+
+test('a hanging binary times out instead of hanging the session', () => {
+  const { bin } = fake('sleep 5', OK);
+  const started = Date.now();
+  const out = detect(bin, { REEVE_DETECT_TIMEOUT_MS: '500' });
+  assert.ok(Date.now() - started < 4000, 'returned at the timeout, not when the child finished');
+  assert.equal(out.present, false);
+  assert.match(out.reason, /timed out/);
+});
 ```
 
-What these distinguish: a detector that accepts the renamed runner (kb/ADR-0005 R1/R2), one that reports signed-in from `--version` alone, and one that hangs a session.
+What these distinguish: test 1 a detector that rejects a pre-release suffix or reports the wrong binary; test 2 a looser rule (`startsWith('reeve')`, `/^reeve-\w+/`, `includes('reeve-planner')`) that accepts the runner renamed by kb/ADR-0005 R2 or a lookalike, and a detector that runs an unknown binary's `auth status`; test 3 one that trusts stdout without the exit status, or reports signed-in from `--version` alone; test 4 one that throws or exits non-zero when `reeve` is absent; test 5 one without a timeout.
 
-- [ ] **Step 2: Script**
+- [ ] **Step 2: Run them, see them fail**
 
-`reeve-detect.js`: resolve the binary (`REEVE_BIN` or `reeve` on PATH via `execFileSync('sh', ['-c', 'command -v reeve'])`), run `--version` and `auth status --json` with `timeout: 10_000`, parse, print one JSON line, always exit 0. No dependencies.
+Run: `node --test scripts/__tests__/reeve-detect.test.js`
+Expected: 5 failing tests (`Cannot find module` / non-JSON output: the script does not exist yet).
 
-- [ ] **Step 3: The fake planner for scenarios**
+- [ ] **Step 3: The detector**
 
-`test/fixtures/reeve-bin/reeve`: a POSIX shell script that answers `--version` (`reeve-planner 0.1.0-fake`), `auth status --json` (ok), `story context <key> --json` (a fixed bundle with an initiative brief, an epic brief, one required decision `{"id": 7, "title": "Queue or cron", "check": {"kind":"no_record"}}`, two criteria, no blockers, one comment), `story ls --untriaged --json` (two stories), `initiative ls|show|create|edit --json`, `epic ls|create|edit --json`, `story create --json`, `decision require|link --json`, each echoing an `{"outcome":"ok","value":…}` envelope and appending the full argv line to `$REEVE_FAKE_LOG` so scenarios can assert what was called (including `--idempotency-key` and `--json`); unknown commands exit 1 with an error envelope. Documented in `test/README.md`: `PATH="$PWD/test/fixtures/reeve-bin:$PATH" REEVE_FAKE_LOG=/tmp/reeve.log bb test/run-tests.clj --filter reeve`.
+```js
+#!/usr/bin/env node
+// scripts/reeve-detect.js — is the Reeve planner present and is the user signed in? (kb/ADR-0005 R1)
+// Prints one JSON line and always exits 0. REEVE_BIN overrides the binary (tests);
+// REEVE_DETECT_TIMEOUT_MS overrides the 10 s timeout per call (tests).
+'use strict';
+const { execFileSync } = require('node:child_process');
+const crypto = require('node:crypto');
 
-- [ ] **Step 4: The CLI reference**
+const bin = process.env.REEVE_BIN || 'reeve';
+const timeout = Number(process.env.REEVE_DETECT_TIMEOUT_MS) || 10_000;
+const result = { present: false, signed_in: false, url: null, email: null, bin, run_id: crypto.randomBytes(4).toString('hex'), reason: '' };
 
-`references/reeve-cli.md`: the contract skills quote — detection (the script), the envelope and exit codes, idempotency keys (`<skill>:<session-or-item>:<n>`), and the exact commands used: `reeve story context <key> --json`; `reeve story ls --untriaged --json`; `reeve story ls --epic <KEY> --json`; `reeve initiative show <KEY> --json`; `reeve initiative edit <KEY> --brief-file <path> --version <n> --json`; `reeve initiative discovery <KEY> --complete --version <n> --json`; `reeve epic create --initiative <KEY> --title … --idempotency-key … --json`; `reeve epic edit <KEY> --brief-file … --version <n> --json`; `reeve epic discovery <KEY> --complete --version <n> --json`; `reeve story create --epic <KEY> --title … --kind story --criterion … --idempotency-key … --json`; `reeve story edit <KEY> --epic <KEY> --version <n> --json`; `reeve decision require --on <KEY> --title … --decider <email> [--due YYYY-MM-DD] --idempotency-key … --json`; `reeve decision link <id> --record <id> --repo <name> --path <path> --pr <url> --household <dir> --json`. Each with the response field the skill reads (`value.key`, `value.version`, `value.id`). (Verify every flag against `reeve <cmd> --help` in ~/Source/reeve at implementation time and correct the reference; the reference is the one place skills copy from.)
+function finish(reason) {
+  result.reason = reason;
+  process.stdout.write(JSON.stringify(result) + '\n');
+  process.exit(0);
+}
+function run(args) {
+  try {
+    return { status: 0, out: execFileSync(bin, args, { encoding: 'utf8', timeout, stdio: ['ignore', 'pipe', 'pipe'] }) };
+  } catch (e) {
+    if (e.code === 'ENOENT') finish(`${bin} not found`);
+    if (e.code === 'ETIMEDOUT' || e.signal === 'SIGTERM') finish(`${bin} ${args.join(' ')} timed out`);
+    return { status: typeof e.status === 'number' ? e.status : 1, out: String(e.stdout || '') };
+  }
+}
+
+const version = run(['--version']);
+const first = version.out.split('\n')[0].trim();
+if (version.status !== 0 || !/^reeve-planner(\s|$)/.test(first)) finish(`${bin} --version printed "${first}", not reeve-planner`);
+result.present = true;
+
+const auth = run(['auth', 'status', '--json']);
+let envelope = null;
+try { envelope = JSON.parse(auth.out); } catch { finish(`${bin} auth status printed no JSON`); }
+if (auth.status !== 0 || envelope.outcome !== 'ok') finish(`signed out: ${envelope.message || envelope.code || 'auth status failed'}`);
+result.signed_in = true;
+result.url = envelope.value.url ?? null;
+result.email = envelope.value.email ?? null;
+finish('');
+```
+
+Run: `node --test scripts/__tests__/reeve-detect.test.js` — Expected: 5 passing.
+
+- [ ] **Step 4: The fake planner**
+
+`test/fixtures/reeve-bin/reeve` (`chmod 755`; git keeps the mode):
+
+```js
+#!/usr/bin/env node
+// A fake Reeve planner CLI for the scenario tests (test/README.md). Every call is appended to
+// $REEVE_FAKE_LOG as one line (argv joined by spaces, newlines flattened). Flags the real CLI
+// lacks are usage errors (exit 1). Answers use the planner's wire shapes (StoryContextDto,
+// RequiredDecisionDto, CheckResult, Reason in the Reeve repository's
+// crates/reeve-server/tests/snapshots/openapi.json). REEVE_FAKE_LINK_CHECK=unreadable makes
+// `decision link` behave like a link whose immediate check could not run.
+'use strict';
+const fs = require('node:fs');
+
+const argv = process.argv.slice(2);
+const log = process.env.REEVE_FAKE_LOG;
+let calls = 0;
+if (log) {
+  try { calls = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).length; } catch { calls = 0; }
+  fs.appendFileSync(log, argv.join(' ').replace(/\r?\n/g, ' ') + '\n');
+}
+const nextId = 100 + calls; // ids and keys of created items: distinct within one scenario run
+
+const emit = (envelope, code) => { process.stdout.write(JSON.stringify(envelope) + '\n'); process.exit(code); };
+const ok = (value) => emit({ outcome: 'ok', value }, 0);
+const error = (code, message) => emit({ outcome: 'error', code, message }, 1);
+
+if (argv[0] === '--version') { process.stdout.write('reeve-planner 0.1.0-fake\n'); process.exit(0); }
+if (!argv.includes('--json')) error('validation', 'the fake planner answers --json calls only');
+const words = argv.filter((a) => a !== '--json');
+
+const DISCOVERY = { pos: 1, val: ['version'], bool: ['complete', 'reopen'], req: ['version'] };
+const SPEC = {
+  'auth status': { pos: 0 },
+  'story context': { pos: 1 },
+  'story ls': { pos: 0, val: ['epic'], bool: ['untriaged'] },
+  'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
+  'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank'], bool: ['no-epic'], rep: ['criterion'], req: ['version'] }, // --kind: Reeve plan C Task 5
+  'initiative show': { pos: 1 },
+  'initiative ls': { pos: 0 },
+  'initiative create': { pos: 0, val: ['idempotency-key', 'title', 'horizon', 'brief', 'target-month', 'owner'], req: ['idempotency-key', 'title', 'horizon'] },
+  'initiative edit': { pos: 1, val: ['version', 'title', 'brief', 'horizon', 'target-month', 'owner'], req: ['version'] },
+  'initiative discovery': DISCOVERY,
+  'epic show': { pos: 1 },
+  'epic ls': { pos: 0, val: ['initiative'] },
+  'epic create': { pos: 0, val: ['idempotency-key', 'title', 'initiative', 'brief'], req: ['idempotency-key', 'title'] },
+  'epic edit': { pos: 1, val: ['version', 'title', 'brief', 'initiative'], bool: ['no-initiative'], req: ['version'] },
+  'epic discovery': DISCOVERY,
+  'decision ls': { pos: 0, val: ['on'], bool: ['mine'] },
+  'decision require': { pos: 0, val: ['idempotency-key', 'on', 'title', 'decider', 'due'], req: ['idempotency-key', 'on', 'title', 'decider'] },
+  'decision link': { pos: 1, val: ['record', 'repo', 'path', 'pr', 'household'], req: ['record', 'repo', 'path'] },
+  'comment add': { pos: 0, val: ['idempotency-key', 'story', 'decision', 'body'], req: ['idempotency-key', 'body'] },
+};
+const cmd = words.slice(0, 2).join(' ');
+const spec = SPEC[cmd] || error('validation', `unknown command: reeve ${cmd}`);
+const pos = [];
+const f = {};
+for (let i = 2; i < words.length; i++) {
+  const w = words[i];
+  if (!w.startsWith('--')) { pos.push(w); continue; }
+  const name = w.slice(2);
+  if ((spec.bool || []).includes(name)) f[name] = true;
+  else if ((spec.val || []).includes(name) || (spec.rep || []).includes(name)) {
+    if (i + 1 >= words.length) error('validation', `--${name} needs a value`);
+    const v = words[++i];
+    if ((spec.rep || []).includes(name)) (f[name] ||= []).push(v); else f[name] = v;
+  } else error('validation', `unknown flag --${name} for reeve ${cmd}`);
+}
+if (pos.length !== spec.pos) error('validation', `reeve ${cmd} takes ${spec.pos} positional argument(s), got ${pos.length}`);
+for (const r of spec.req || []) if (!(r in f)) error('validation', `reeve ${cmd} needs --${r}`);
+if (spec === DISCOVERY && !f.complete && !f.reopen) error('validation', 'pass --complete or --reopen');
+if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) error('validation', `--kind must be story, bug or chore`);
+if (f.version && !/^\d+$/.test(f.version)) error('validation', '--version must be an integer');
+if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) error('validation', '--due must be YYYY-MM-DD');
+
+const NOW = '2026-10-20T09:00:00Z';
+const initiative = (key, title, o = {}) => ({ key, title, brief: '', horizon: 'Later', owner: null, target_month: null, discovery_complete: null, external_ref: null, progress: null, version: 1, ...o });
+const epic = (key, title, o = {}) => ({ key, title, brief: '', initiative: null, discovery_complete: null, external_ref: null, version: 1, ...o });
+const story = (key, title, o = {}) => ({ key, title, kind: 'story', epic: null, description: '', criteria: [], labels: [], rank: 0, blocked_by: [], delivery: 'todo', resolution: null, owner: null, external_ref: null, prs: [], version: 1, ...o });
+const initiatives = {
+  'GRA-12': initiative('GRA-12', 'Faster mentor matching', { brief: 'Mentees wait too long for a mentor.', horizon: 'Next', owner: 'dan@example.com', version: 3 }),
+  'GRA-13': initiative('GRA-13', 'Mentor onboarding', { brief: 'New mentors get started without help.', horizon: 'Now', owner: 'sam@example.com' }),
+};
+const epics = {
+  'GRA-20': epic('GRA-20', 'Matching queue', { brief: 'Match mentors through a queue.', initiative: 'GRA-12', version: 2 }),
+  'GRA-21': epic('GRA-21', 'Mentor profiles', { brief: 'Mentors describe their skills and availability.', initiative: 'GRA-13' }),
+};
+const decision7 = { id: 7, on: 'GRA-20', title: 'Queue or cron', decider: 'dan@example.com', due: null, record: null, pr_url: null, check: { kind: 'unchecked' }, checked_at: null, closed: null, created_at: NOW, version: 1 };
+const stories = {
+  'GRA-31': story('GRA-31', 'Retry failed matches', { epic: 'GRA-20', criteria: [{ text: 'A failed match is retried up to three times', done: false }, { text: 'The third failure is reported to the coordinator', done: false }] }),
+  'GRA-32': story('GRA-32', 'Show match history', { epic: 'GRA-20' }),
+  'GRA-40': story('GRA-40', 'Matching crashes when a mentor has no timezone'),
+  'GRA-41': story('GRA-41', 'Upgrade the queue client library'),
+  'GRA-42': story('GRA-42', 'Mentees can pause matching for a month'),
+  'GRA-43': story('GRA-43', 'Welcome email with an onboarding checklist for new mentors'),
+  'GRA-44': story('GRA-44', 'Invoice employers for programme fees'),
+};
+const readiness = {
+  'GRA-31': { ready: false, reasons: [{ reason: 'ancestor_discovery_incomplete', item: 'GRA-20' }, { reason: 'decision_no_record', decision_id: 7, title: 'Queue or cron' }] },
+  'GRA-32': { ready: false, reasons: [{ reason: 'no_criteria' }, { reason: 'ancestor_discovery_incomplete', item: 'GRA-20' }] },
+};
+const untriaged = { ready: false, reasons: [{ reason: 'untriaged' }, { reason: 'no_criteria' }] };
+const created = /^GRA-1\d\d$/; // keys this fake handed out in the current run
+const find = (table, key, make) => table[key] || (created.test(key) ? make(key, 'Created in this run') : error('not_found', `no item ${key}`));
+const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`));
+const [p0] = pos;
+
+({
+  'auth status': () => ok({ url: 'http://127.0.0.1:7474', token_from_env: false, email: 'dan@example.com', role: 'member', token_kind: 'interactive' }),
+  'story context': () => {
+    const s = stories[p0] || error('not_found', `no story ${p0}`);
+    const e = s.epic ? epics[s.epic] : null;
+    ok({ story: s, epic: e, initiative: e && e.initiative ? initiatives[e.initiative] : null, required_decisions: s.epic === 'GRA-20' ? [decision7] : [], blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readiness[s.key] || untriaged });
+  },
+  'story ls': () => ok(Object.values(stories).filter((s) => (f.untriaged ? !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readiness[s.key] || untriaged }))),
+  'story create': () => ok(story(`GRA-${nextId}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })) })),
+  'story edit': () => { const s = find(stories, p0, story); ok({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic }); },
+  'initiative show': () => ok(find(initiatives, p0, initiative)),
+  'initiative ls': () => ok(Object.values(initiatives)),
+  'initiative create': () => ok(initiative(`GRA-${nextId}`, f.title, { brief: f.brief || '', horizon: f.horizon, owner: f.owner || null })),
+  'initiative edit': () => { const i = find(initiatives, p0, initiative); ok({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon }); },
+  'initiative discovery': () => ok({ ...bump(find(initiatives, p0, initiative)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null }),
+  'epic show': () => ok(find(epics, p0, epic)),
+  'epic ls': () => ok(Object.values(epics).filter((e) => !f.initiative || e.initiative === f.initiative)),
+  'epic create': () => ok(epic(`GRA-${nextId}`, f.title, { brief: f.brief || '', initiative: f.initiative || null })),
+  'epic edit': () => { const e = find(epics, p0, epic); ok({ ...bump(e), brief: f.brief ?? e.brief, title: f.title ?? e.title }); },
+  'epic discovery': () => ok({ ...bump(find(epics, p0, epic)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null }),
+  'decision ls': () => ok(!f.on || f.on === 'GRA-20' ? [decision7] : []),
+  'decision require': () => ok({ ...decision7, id: nextId, on: f.on, title: f.title, decider: f.decider, due: f.due || null }),
+  'decision link': () => {
+    if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
+    const linked = { ...decision7, id: Number(p0), record: { repo: f.repo, path: f.path, record_id: f.record }, pr_url: f.pr || null, version: 2 };
+    if (process.env.REEVE_FAKE_LINK_CHECK === 'unreadable') {
+      process.stderr.write(`decision ${p0}: cannot read ${f.path}: ${f.household || '.'}/${f.repo} is not a git checkout\n`);
+      emit({ outcome: 'ok', value: { ...linked, check: { kind: 'unchecked' } } }, 1);
+    }
+    ok({ ...linked, check: { kind: f.pr ? 'proposed_pr_open' : 'not_found' }, checked_at: NOW });
+  },
+  'comment add': () => {
+    if (!f.story === !f.decision) error('validation', 'pass exactly one of --story and --decision');
+    ok([{ id: nextId, author: 'dan@example.com', body: f.body, at: NOW, on_story: f.story || null, on_decision: f.decision ? Number(f.decision) : null, external_ref: null }]);
+  },
+})[cmd]();
+```
+
+The fake's own tests (`scripts/__tests__/reeve-fake.test.js`), so a scenario failure is never a fake bug:
+
+```js
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
+const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
+
+const fake = path.join(__dirname, '..', '..', 'test', 'fixtures', 'reeve-bin', 'reeve');
+function run(args, env = {}) {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const r = spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log, ...env } });
+  return { status: r.status, envelope: r.stdout.trim().startsWith('{') ? JSON.parse(r.stdout) : null, stdout: r.stdout, stderr: r.stderr, log: fs.readFileSync(log, 'utf8') };
+}
+
+test('every call is one log line, newlines flattened', () => {
+  const r = run(['epic', 'create', '--initiative', 'GRA-12', '--title', 'A', '--brief', 'one\ntwo', '--idempotency-key', 'k', '--json']);
+  assert.equal(r.status, 0);
+  assert.equal(r.log, 'epic create --initiative GRA-12 --title A --brief one two --idempotency-key k --json\n');
+});
+test('--version names the fake planner', () => {
+  const r = run(['--version']);
+  assert.equal(r.stdout, 'reeve-planner 0.1.0-fake\n');
+  assert.equal(r.log, '--version\n');
+});
+test('a flag the real CLI lacks is a usage error', () => {
+  const r = run(['epic', 'edit', 'GRA-20', '--brief-file', 'brief.md', '--version', '2', '--json']);
+  assert.equal(r.status, 1);
+  assert.deepEqual([r.envelope.outcome, r.envelope.code], ['error', 'validation']);
+});
+test('a call without --json is refused', () => {
+  assert.equal(run(['epic', 'show', 'GRA-20']).status, 1);
+});
+test('the story context carries a required decision with no record', () => {
+  const { value } = run(['story', 'context', 'GRA-31', '--json']).envelope;
+  assert.equal(value.required_decisions[0].record, null);
+  assert.equal(value.required_decisions[0].check.kind, 'unchecked');
+  assert.ok(value.readiness.reasons.some((x) => x.reason === 'decision_no_record' && x.decision_id === 7));
+});
+test('a stale version is a conflict', () => {
+  const r = run(['initiative', 'edit', 'GRA-12', '--brief', 'b', '--version', '1', '--json']);
+  assert.deepEqual([r.status, r.envelope.code], [1, 'conflict']);
+});
+test('a link whose check cannot run exits 1 with the decision in an ok envelope', () => {
+  const r = run(['decision', 'link', '7', '--record', 'kb/ADR-0002', '--repo', 'lore', '--path', 'knowledge/adrs/0002-inventory-reservation.md', '--pr', 'https://github.com/example/test-workspace/pull/9', '--json'], { REEVE_FAKE_LINK_CHECK: 'unreadable' });
+  assert.equal(r.status, 1);
+  assert.equal(r.envelope.outcome, 'ok');
+  assert.equal(r.envelope.value.record.record_id, 'kb/ADR-0002');
+  assert.match(r.stderr, /^decision 7: /);
+});
+```
+
+What these distinguish: a fake that shares or drops log lines, that accepts `--brief-file` (the flag the first draft invented), that answers calls without `--json`, that invents a `no_record` check kind, or that cannot reproduce the conflict and the half-successful link.
+
+Run: `chmod 755 test/fixtures/reeve-bin/reeve && node --test scripts/__tests__/reeve-fake.test.js` — Expected: 7 passing.
+
+- [ ] **Step 5: The runner**
+
+`test/run-tests.clj` gains four scenario keys and one option; everything else is unchanged.
+
+| Key | Meaning |
+|---|---|
+| `:requires ["reeve-fake"]` | Runs only when the runner is invoked with `--with reeve-fake`; otherwise printed as `[SKIP]` and not counted. Such a scenario gets `<checkout>/test/fixtures/reeve-bin` first on `PATH` and a fresh empty `REEVE_FAKE_LOG` file for each run (also each `--runs` repeat and each mutation run). |
+| `:env {"NAME" "value"}` | Merged last into the child's environment (the link scenario sets `REEVE_FAKE_LINK_CHECK`). |
+| `:allowed-tools [...]` | Added to the base allow-list; reeve scenarios add `"Bash(reeve *)"` (`Bash(node *)` is already in the base list). |
+| `:log-expects [...]` / `:log-rejects [...]` | Regexes matched, multiline (`(?m)` prepended), against the fake log after the run; failures print as `log: <regex>`. Positive evidence that a command was executed, which a transcript match cannot give. |
+
+Every scenario, fake or not, runs with a fresh empty `REEVE_CONFIG_DIR` and without `REEVE_URL`, `REEVE_TOKEN` and `REEVE_BIN`, so a real `reeve` on the PATH can never reach a server.
+
+Add after `plugin-root`:
+
+```clojure
+;; Every scenario runs with an empty REEVE_CONFIG_DIR and without REEVE_URL, REEVE_TOKEN and
+;; REEVE_BIN, so a real `reeve` on the PATH can never reach a server. A scenario that requires
+;; "reeve-fake" also gets the fake planner first on the PATH and a fresh REEVE_FAKE_LOG, so no two
+;; scenarios, repeats or mutation runs share a log. The scenario's own :env is merged last.
+(defn scenario-env [{:keys [requires env]}]
+  (let [config-dir (str (fs/create-temp-dir {:prefix "reeve-config-"}))
+        fake? (some #{"reeve-fake"} requires)
+        log (when fake? (str (fs/create-temp-file {:prefix "reeve-fake-" :suffix ".log"})))
+        base (-> (into {} (System/getenv))
+                 (dissoc "REEVE_URL" "REEVE_TOKEN" "REEVE_BIN")
+                 (assoc "REEVE_CONFIG_DIR" config-dir))]
+    {:env (merge (cond-> base
+                   fake? (assoc "PATH" (str (plugin-root) "/test/fixtures/reeve-bin"
+                                            java.io.File/pathSeparator (System/getenv "PATH"))
+                                "REEVE_FAKE_LOG" log))
+                 env)
+     :log log
+     :config-dir config-dir}))
+
+(defn log-matches [patterns text]
+  (filter #(re-find (re-pattern (str "(?m)" %)) text) patterns))
+```
+
+Replace `run-test`:
+
+```clojure
+(defn run-test [{:keys [name prompt workdir expects rejects log-expects log-rejects] :as scenario}
+                {:keys [workspace-root plugin-dir]}]
+  (let [{:keys [env log config-dir]} (scenario-env scenario)]
+    (try
+      (let [_ (println (colorize :yellow "  Running:") prompt "(context:" workdir ")")
+            tools (distinct (concat allowed-tools (:allowed-tools scenario)))
+            {:keys [out err]} (apply shell {:dir workspace-root :out :string :err :string
+                                            :continue true :env env}
+                                     (concat ["claude" "--print" "--permission-mode" "default"
+                                              "--allowedTools"] tools
+                                             ["--disallowedTools"] disallowed-tools
+                                             (when plugin-dir ["--plugin-dir" plugin-dir])
+                                             ["--" prompt]))
+            output (str out err)
+            log-text (if log (slurp log) "")
+            missing (concat (filter #(not (re-find (re-pattern %) output)) expects)
+                            (map #(str "log: " %)
+                                 (remove (set (log-matches log-expects log-text)) log-expects)))
+            present (concat (filter #(re-find (re-pattern %) output) (or rejects []))
+                            (map #(str "log: " %) (log-matches log-rejects log-text)))]
+        {:name name
+         :passed (and (empty? missing) (empty? present))
+         :missing missing
+         :present present
+         :output (cond-> output log (str "\n--- reeve fake log ---\n" log-text))})
+      (finally
+        (fs/delete-tree config-dir)
+        (when log (fs/delete-if-exists log))))))
+```
+
+In `-main`, replace the `scenarios` binding and print the skipped ones before running:
+
+```clojure
+        with (set (some-> (:with opts) str (str/split #",")))
+        runnable? (fn [s] (every? with (:requires s)))
+        selected (cond->> (load-scenarios)
+                   filter-name (filter #(str/includes? (:name %) filter-name)))
+        scenarios (filter runnable? selected)
+        skipped (remove runnable? selected)
+```
+
+```clojure
+                     (doseq [s skipped]
+                       (println (colorize :yellow "[SKIP]") (:name s)
+                                (str "(requires " (str/join ", " (:requires s))
+                                     "; run with --with " (str/join "," (:requires s)) ")")))
+```
+
+and the results line becomes `(println (str "\nResults: " passed "/" total " passed" (when (seq skipped) (str ", " (count skipped) " skipped"))))`.
+
+- [ ] **Step 6: Runner self-test scenario**
+
+Append to `test/scenarios.edn`:
+
+```clojure
+ {:name "reeve-runner-selftest"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "Run `reeve --version` and report what it printed. Do not ask questions; the answers are given."
+  :workdir "."
+  :expects ["0\\.1\\.0-fake"]
+  :log-expects ["^--version$"]}
+```
+
+What it distinguishes: the fake not first on the Bash tool's PATH (a shell rc re-prepending `~/.local/bin`, where the real planner prints `reeve-planner 0.1.0` without `-fake`, and the log stays empty), `Bash(reeve *)` not reaching the child, and a log that is not wired through.
+
+Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-runner-selftest` — Expected: `[PASS] reeve-runner-selftest`. Then `bb test/run-tests.clj --filter reeve-runner-selftest` — Expected: `[SKIP] reeve-runner-selftest (requires reeve-fake; run with --with reeve-fake)`, `Results: 0/0 passed, 1 skipped`. If the first run fails with `0.1.0` in the output, the PATH prefix does not reach the Bash tool: stop and report; no reeve scenario is meaningful until it does.
+
+- [ ] **Step 7: test/README.md**
+
+Add a section "Scenarios against the Reeve planner" with the key table from Step 5, the environment pin (every scenario: empty `REEVE_CONFIG_DIR`, no `REEVE_URL`/`REEVE_TOKEN`/`REEVE_BIN`; fake scenarios: the fake first on `PATH`, a fresh `REEVE_FAKE_LOG` per run), the log format (one line per call, argv joined by spaces, newlines flattened), what the fake answers (the item keys in Step 4: initiatives GRA-12/GRA-13, epics GRA-20/GRA-21, decision 7 "Queue or cron" with no record, stories GRA-31/GRA-32 in GRA-20, untriaged GRA-40…GRA-44; created items get `GRA-1NN`), `REEVE_FAKE_LINK_CHECK=unreadable`, and the two commands:
 
 ```bash
-git add scripts references test
-git commit -m "feat(skills): reeve planner detector, cli reference and fake planner for scenarios" -m "Task 1 of docs/superpowers/plans/2026-10-26-reeve-planning-skills.md.
+bb test/run-tests.clj --with reeve-fake --filter reeve-   # the planner scenarios
+bb test/run-tests.clj                                     # everything else; reeve-fake scenarios print [SKIP]
+```
+
+- [ ] **Step 8: The CLI reference**
+
+`references/reeve-cli.md`, verified against `crates/reeve/src/commands/*.rs` in ~/Source/reeve (2026-10-26):
+
+````markdown
+# The Reeve planner CLI — what skills may call
+
+Skills copy commands from this file, never from memory. Every flag below exists in the
+`reeve-planner` CLI; `story edit --kind` arrives with Reeve plan C (Task 5).
+
+## Detection and the binary
+
+Run `node <plugin-root>/scripts/reeve-detect.js` once per skill invocation. It prints
+`{"present", "signed_in", "url", "email", "bin", "run_id", "reason"}` and always exits 0. Use the
+planner only when `present` and `signed_in` are both true; otherwise behave exactly as without it.
+
+The binary is `${REEVE_BIN:-reeve}`, the one the detector checked; the detector prints it as `bin`.
+Write that value as the command's first word (it is `reeve` unless `REEVE_BIN` is set), never the
+`${…}` expression: permission rules such as `Bash(reeve *)` match the literal word. Below, `reeve`
+stands for it.
+
+## Arguments
+
+`--json` goes last on every command. Pass Markdown (a brief) or any text with spaces as one
+ANSI-C-quoted argument on one line: `--brief $'## Vision\nEvery mentee …\n\n## Capabilities\n- …'`
+(`\n` for a newline, `\'` for an apostrophe), so the whole command stays one line.
+
+## Envelope and exit status
+
+| Exit | stdout | Do |
+|---|---|---|
+| 0 | `{"outcome":"ok","value":…}` | proceed; read the field named below |
+| 2 | `{"outcome":"refused","reasons":[…]}` | show the reasons (worded as below) and stop that step |
+| 1 | `{"outcome":"error","code":"…","message":"…"}` | show code and message and stop that step |
+
+Exceptions: `code: conflict` (the `--version` is stale) — re-read the item, show what changed, and
+retry once with the new `version`. `decision link` — see its section. A usage error (an unknown
+flag) also exits 1.
+
+## Confirmation
+
+Show each write (the command and the text it carries) before running it. An answer the user
+already gave in the request counts as the confirmation for that write; do not ask again.
+
+## Idempotency keys
+
+Every create passes `--idempotency-key <skill>:<KEY>:<run-id>:<n>`: the skill's name, the key of
+the item the run works on, the detector's `run_id`, and the ordinal of this create in the run
+(1, 2, …, across every create of the run). A retry within the run reuses its key; a new run
+never reuses an old one; never derive a key from a title. Print the run id in the report.
+
+## Commands
+
+| Command | Read |
+|---|---|
+| `reeve initiative show <KEY> --json` | `value.brief`, `.horizon`, `.owner`, `.discovery_complete` (null = not complete), `.version` |
+| `reeve initiative ls --json` | `value[]`: `key`, `title`, `horizon` |
+| `reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key <key> --json` | `value.key`, `value.version` |
+| `reeve initiative edit <KEY> --brief <md> --version <n> --json` | `value.version` |
+| `reeve initiative discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
+| `reeve epic show <KEY> --json` | `value.brief`, `.initiative`, `.discovery_complete`, `.version` |
+| `reeve epic ls [--initiative <KEY>] --json` | `value[]`: `key`, `title`, `initiative` |
+| `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key <key> --json` | `value.key`, `value.version` |
+| `reeve epic edit <KEY> --brief <md> --version <n> --json` | `value.version` |
+| `reeve epic discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
+| `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version` |
+| `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] --idempotency-key <key> --json` | `value.key` |
+| `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] --json` | `value.version` (`--kind`: Reeve plan C) |
+| `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}` |
+| `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `title`, `decider`, `due`, `record` (null = no record), `pr_url`, `check.kind` |
+| `reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json` | `value.id` |
+| `reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json` | `value.check.kind` |
+| `reeve comment add --decision <id> --body <text> --idempotency-key <key> --json` (or `--story <KEY>`) | `value[]`, the thread |
+
+No command lists the planner's configured repositories or horizon buckets (they are in
+`GET /api/v1/config`, which the CLI does not expose): ask for them, or take them from the request.
+
+## decision link
+
+`--repo` is the repository name as configured in the planner; the record must be readable at
+`<household>/<repo>/<path>`, or at `<household>/<path>` when the household directory's own name is
+`<repo>`. `--pr` is omitted only for a record already merged to the default branch.
+
+| Result | Say |
+|---|---|
+| exit 0, `check.kind` `proposed_pr_open` | "Linked: <record> answers decision #<id> — proposed, PR open." |
+| exit 0, `accepted` | "Linked: … — accepted." |
+| exit 0, `not_accepted` | "Linked: … — the record is <check.status>." |
+| exit 0, `not_found` | "Linked, but the planner found no record at <repo>/<path>: check the repository name and path." |
+| exit 1 with an `ok` envelope (`value` present) | "Linked; the check could not run here: <the stderr line>; it runs on the next scheduled check." |
+| exit 2, or exit 1 with an `error` envelope | show the reasons or the message; nothing was linked |
+
+## Wording the planner's answers
+
+Readiness is read, never computed (kb/ADR-0003 R1). A required decision with `record: null` is
+"no record"; otherwise its `check.kind`: `unchecked` "not checked yet", `proposed_pr_open`
+"proposed, PR open", `accepted` "accepted", `not_accepted` "record <status>", `not_found`
+"record not found".
+
+| `reason` | Words |
+|---|---|
+| `untriaged` | untriaged |
+| `no_criteria` | no acceptance criteria |
+| `ancestor_discovery_incomplete` | discovery not complete on <item> |
+| `decision_no_record` | decision: no record — #<decision_id> <title> |
+| `decision_unchecked` | decision: not checked yet — #<decision_id> <title> |
+| `decision_proposed_pr_open` | decision: proposed, PR open — #<decision_id> <title> |
+| `decision_record_not_found` | decision: record not found — #<decision_id> <title> |
+| `decision_not_accepted` | decision: record <status> — #<decision_id> <title> |
+| `blocked_by` | blocked by <story> |
+
+A story is "ready" when `readiness.ready` is true, else "blocked: " and its reasons in these words.
+````
+
+- [ ] **Step 9: Run and commit**
+
+Run: `node --test scripts/__tests__/*.test.js` — Expected: all pass, including the 5 detector and 7 fake tests.
+
+```bash
+git add scripts/reeve-detect.js scripts/__tests__/reeve-detect.test.js scripts/__tests__/reeve-fake.test.js references/reeve-cli.md test/fixtures/reeve-bin/reeve test/run-tests.clj test/README.md test/scenarios.edn
+git commit -m "feat(skills): reeve planner detector, cli reference, fake planner and scenario runner support" -m "Task 1 of docs/superpowers/plans/2026-10-26-reeve-planning-skills.md.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -117,20 +672,139 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `skills/planning-initiative/SKILL.md`, `skills/planning-initiative/reference/brief-template.md`
-- Test: `test/scenarios.edn` (scenario `skill-planning-initiative`)
+- Test: `test/scenarios.edn` (scenario `reeve-planning-initiative`)
 
-The skill (frontmatter `name: planning-initiative`, description: "Plan an initiative in the Reeve planner: run discovery with the architect's survey plus research, update the brief, create required decisions with a decider, propose epics. Use when the user names an initiative key (GRA-12) or says 'plan this initiative', 'discovery for …', 'what do we need to decide before …'. Only when the Reeve planner is present and signed in; otherwise say so and stop."). Steps:
+- [ ] **Step 1: The scenario**
 
-0. **Detect.** `node <plugin-root>/scripts/reeve-detect.js`; if not `present && signed_in`, say "the Reeve planner is not available in this session (reason)" and stop; this skill has no fallback (it exists only for the planner).
-1. **Read.** `reeve initiative show <KEY> --json` (brief, horizon, owner, discovery mark, version) and `reeve decision ls --on <KEY> --json`; dispatch in parallel the **architect** in `survey` mode on the repositories the initiative touches and the **knowledge-reader** with the initiative's title; research what the team does not know yet (web or docs) when the user asks.
-2. **Discovery conversation**, one question at a time, following `reference/brief-template.md` headings (Vision, Capabilities, Known knowns, Open questions — the team's convention, not fields): what the outcome is, who it is for, what we already know, what is open.
-3. **Write the brief**: compose the Markdown, show it, on confirmation `reeve initiative edit <KEY> --brief-file <tmpfile> --version <n> --json`; a 409 (`code: conflict`) re-reads and retries once with the new version after showing the diff.
-4. **Required decisions**: for each open question that is a consequential choice blocking work (not a clarification — kb/ADR-0004 R2 wording), ask who decides and by when, then `reeve decision require --on <KEY> --title … --decider … [--due …] --idempotency-key planning-initiative:<KEY>:<slug> --json`; for each, offer to draft the record now through **recording-decisions** ("draft only; do not apply"), noting the decision id so the link happens at apply (Task 5).
-5. **Propose epics**: 2–5 epics sized as deliverable slices, each with a one-line brief; on confirmation `reeve epic create --initiative <KEY> --title … --idempotency-key planning-initiative:<KEY>:epic:<slug> --json`, then `reeve epic edit <EPIC> --brief-file … --version 1 --json`.
-6. **Discovery mark**: ask whether discovery is complete; if yes `reeve initiative discovery <KEY> --complete --version <n> --json`; never mark it on the user's behalf.
-7. **Report**: the keys written, the open decisions with deciders, and the next step ("refine an epic with refining-epic").
+```clojure
+ {:name "reeve-planning-initiative"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "Plan initiative GRA-12 in Reeve. Do not ask questions; the answers are given. Vision: every mentee has a mentor within one working day. It is for programme coordinators and mentees. Known: coordinators match by hand once a week today. Open question: whether matching runs from a queue or on a cron schedule; it is a consequential choice that blocks the work, decided by dan@example.com, due 2026-11-15. Draft its record but do not apply it now. Epics: 'Matching queue' (brief: match mentors through a queue) and 'Match notifications' (brief: tell mentor and mentee when a match is made). I confirm every write to the planner. Discovery is not complete yet."
+  :workdir "."
+  :expects ["(?i)researched:" "(?i)run id:? *`?[0-9a-f]{8}" "dan@example\\.com"]
+  :rejects ["docs/agent/specs"]
+  :log-expects ["^--version$"
+                "^initiative show GRA-12 --json$"
+                "^decision ls --on GRA-12 --json$"
+                "^initiative edit GRA-12 (?=.*--brief )(?=.*--version 3\\b).*--json$"
+                "^decision require (?=.*--on GRA-12\\b)(?=.*--decider dan@example\\.com\\b)(?=.*--due 2026-11-15\\b)(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^comment add (?=.*--decision 1\\d\\d\\b)(?=.*/lore:adr link )(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^epic create (?=.*--initiative GRA-12\\b)(?=.*--title Matching queue )(?=.*--brief )(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^epic create (?=.*--initiative GRA-12\\b)(?=.*--title Match notifications )(?=.*--brief ).*--json$"
+                "(?s)planning-initiative:GRA-12:([0-9a-f]{8}):1\\b.*planning-initiative:GRA-12:\\1:2\\b"]
+  :log-rejects ["--brief-file" "^epic edit " "^initiative discovery "]}
+```
 
-The skill produces no spec file (kb/ADR-0005 R4). Scenario `skill-planning-initiative`: prompt "Plan initiative GRA-12 in Reeve; the outcome is faster mentor matching; decisions: queue vs cron, decider dan@example.com; propose two epics", workdir the fixture, expects: the fake log contains `initiative show GRA-12 --json`, `initiative edit GRA-12 --brief-file`, `decision require --on GRA-12`, `--decider dan@example.com`, `--idempotency-key`, two `epic create --initiative GRA-12`, and the transcript contains no `docs/agent/specs` path. Mutation check: with the SKILL.md body emptied, the scenario fails (the fake log lacks `initiative edit`).
+What each expectation distinguishes: `initiative edit … --version 3` a brief write with a guessed version or a nonexistent flag (`--brief-file` is also rejected outright); `decision require` with decider, due and a run-scoped key a decision created without its decider or with a title-derived key; `comment add --decision 1NN … /lore:adr link` a drafted record left with no route to its link (the id must be the one the fake returned, so an invented id fails); the two `epic create` lines with `--brief` a create-then-edit pair (`^epic edit` is rejected) or a missing epic; the back-referenced key pair two creates of one run that do not share the run id or do not count up; `initiative discovery` rejected, a skill that marks discovery on the user's behalf; `Researched:` a skipped research step; `docs/agent/specs` rejected, a skill that writes a spec.
+
+- [ ] **Step 2: Run it, see it fail**
+
+Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-planning-initiative`
+Expected: `[FAIL]` with `log: ^initiative edit GRA-12 …` among the missing (no skill exists yet).
+
+- [ ] **Step 3: The skill**
+
+`skills/planning-initiative/SKILL.md`:
+
+````markdown
+---
+name: planning-initiative
+description: Use when the user names a Reeve initiative to plan (a key such as GRA-12) or asks for initiative discovery — "plan this initiative", "discovery for …", "what do we need to decide before we build …" — and the Reeve planner CLI is installed.
+---
+
+# Planning an initiative
+
+Discovery for one initiative in the Reeve planner: its brief, the required decisions with their
+deciders and drafted records, and its epics. Everything goes into the planner through the `reeve`
+CLI. This skill writes no spec and no plan (kb/ADR-0005 R4).
+
+The plugin root is `${CLAUDE_PLUGIN_ROOT}`; below it is `<plugin-root>`, written out as an absolute
+path in every Bash command. Read `<plugin-root>/references/reeve-cli.md` before the first `reeve`
+call: commands, flags, exit statuses, idempotency keys and wording come from there. Invoke
+`${REEVE_BIN:-reeve}` as that reference says: the detector's `bin` as the first word.
+
+## The rule
+
+1. **Show, confirm, then write.** Show each write before running it. An answer the user already
+   gave in the request counts as the confirmation for that write; do not ask it again.
+2. **One question at a time**, skipping every question the request already answers.
+3. **Branch on the exit status** as the reference says; on a refusal or an error, stop that step
+   and say so.
+4. **The user decides.** Deciders, due dates, applying a record and the discovery mark come from
+   the user, never from you.
+
+## Steps
+
+0. **Detect.** Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints `"present":true`
+   and `"signed_in":true`, say "The Reeve planner is not available in this session: <reason>."
+   and stop; this skill has no fallback. Keep `bin` and `run_id`.
+1. **Read.** `reeve initiative show <KEY> --json` (keep `value.version`) and
+   `reeve decision ls --on <KEY> --json`. In parallel, dispatch the **architect** in `survey` mode
+   on the repositories the initiative touches and the **knowledge-reader** with the initiative's
+   title and "Prioritise domain context and architecture patterns."
+2. **Research.** For each open question that research can answer (a library's limits, a vendor's
+   API, how others solve the same problem), look it up: web search or documentation when the
+   session has them, otherwise the knowledge base and the code. Say what you looked up and what
+   it answered in one line, `Researched: <topics and findings>`, or
+   `Researched: nothing — no open question is answerable by research`.
+3. **Discovery conversation**, following `<plugin-root>/skills/planning-initiative/reference/brief-template.md`:
+   the outcome, who it is for, what is known, what is open.
+4. **Brief.** Compose the Markdown from the template, show it, then
+   `reeve initiative edit <KEY> --brief <md> --version <version> --json`; keep the new `value.version`.
+5. **Required decisions.** For each open question that is a consequential choice blocking work
+   (not a clarification): ask who decides and by when, show and run
+   `reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`,
+   and keep `value.id`. Then, for each decision, one at a time:
+   1. Invoke **recording-decisions** to draft and show its record: "draft only; do not apply;
+      it answers required decision #<id>". Note the record's id-to-be.
+   2. Ask whether to apply the record now, or take the answer the request gave.
+   3. Yes: have recording-decisions apply it with `Required decision: #<id>`; its record step 6
+      links the applied record in the planner.
+   4. No: run `reeve comment add --decision <id> --body 'Draft <id-to-be>: <title> — apply and link with /lore:adr link <id-to-be> to decision <id>' --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`,
+      so the decision's thread in the planner carries the pointer.
+6. **Epics.** Propose 2–5 epics, each a deliverable slice with a one-paragraph brief; show them,
+   then for each `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`.
+7. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
+   only on yes run `reeve initiative discovery <KEY> --complete --version <latest version> --json`.
+8. **Report.** `Run id: <run_id>`; the `Researched:` line; every key written; each required
+   decision with its decider, due date and state (record applied and the link's answer, or
+   drafted with the comment pointer); the next step: "refine an epic with refining-epic".
+
+`<n>` counts every create of this run from 1: decisions, comments and epics together.
+````
+
+`skills/planning-initiative/reference/brief-template.md`:
+
+````markdown
+# Initiative brief
+
+The headings are the team's convention, not planner fields: the planner stores the brief as one
+Markdown text.
+
+## Vision
+What changes, and for whom, when this is done. Two or three sentences.
+
+## Capabilities
+What people will be able to do, one bullet each.
+
+## Known knowns
+What the team already knows: facts, constraints, earlier attempts, each with where it can be checked.
+
+## Open questions
+What is still open. A consequential choice that blocks work becomes a required decision (step 5);
+a clarification stays here.
+````
+
+- [ ] **Step 4: Run it, see it pass**
+
+Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-planning-initiative` — Expected: `[PASS]`.
+
+- [ ] **Step 5: Mutation check**
+
+Empty the body of `skills/planning-initiative/SKILL.md` below the frontmatter and run Step 4's command. Expected: `[FAIL]` with `log: ^initiative edit GRA-12 …` and the `comment add` line among the missing. Restore with `git checkout -- skills/planning-initiative/SKILL.md` (or re-save the Step 3 text if not yet committed).
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add skills/planning-initiative test/scenarios.edn
@@ -145,9 +819,141 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `skills/refining-epic/SKILL.md`
-- Test: `test/scenarios.edn` (scenario `skill-refining-epic`)
+- Test: `test/scenarios.edn` (scenario `reeve-refining-epic`)
 
-Description: "Refine an epic in the Reeve planner: epic-level discovery, required decisions, then stories sized for one person or one agent session with acceptance criteria, and a home for untriaged stories. Use when the user names an epic key or says 'refine this epic', 'break this down', 'write the stories for …'. Only when the planner is present and signed in." Steps: 0 detect (as Task 2); 1 read `epic show`, its initiative's brief, `decision ls --on <EPIC>`, `story ls --epic <EPIC> --json` and `story ls --untriaged --json`; architect `survey` on the touched repositories and knowledge-reader; 2 discovery conversation for the epic (what done looks like, the boundaries, what is unknown); 3 brief via `epic edit --brief-file`; 4 required decisions as in Task 2 (idempotency prefix `refining-epic:<EPIC>:`); 5 **stories**: propose stories each finishable by one person or one agent session (kb/ADR-0002 R1), each with 2–6 acceptance criteria written as observable outcomes; on confirmation `reeve story create --epic <EPIC> --title … --kind story|bug|chore --criterion … (repeated) --idempotency-key refining-epic:<EPIC>:story:<slug> --json`; 6 **placement**: for each untriaged story, propose this epic or another from `epic ls --json` (or "leave untriaged") and on confirmation `reeve story edit <KEY> --epic <EPIC> --version <n> --json`; 7 **readiness check**: `reeve story ls --epic <EPIC> --json` and list each story's `readiness.ready` and reasons as the planner reports them (never computed by the skill); offer the discovery mark via `epic discovery --complete --version <n>` when the user says discovery is done; 8 report. No spec, no plan file. Scenario `skill-refining-epic`: prompt "Refine epic GRA-20 in Reeve into three stories with criteria and place the untriaged ones", expects the fake log to contain `epic show GRA-20`, three `story create --epic GRA-20` each with at least two `--criterion` and an `--idempotency-key`, `story ls --untriaged --json`, at least one `story edit … --epic`, and the transcript shows "ready"/"blocked" wording taken from the fake's readiness field. Mutation check as in Task 2.
+- [ ] **Step 1: The scenario**
+
+```clojure
+ {:name "reeve-refining-epic"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "Refine epic GRA-20 in Reeve. Do not ask questions; the answers are given. Done looks like: every match request is processed from the queue within an hour. Boundary: no change to mentor profiles. No new required decisions. Stories: 'Enqueue match requests' with criteria 'a new request is on the queue within a minute' and 'a repeated request is enqueued once'; 'Process the match queue' with criteria 'each queued request gets a match or a reason within an hour' and 'a failed attempt is retried'; 'Alert on a stuck queue' with criteria 'an alert fires when the oldest request is over two hours old' and 'the alert names the stuck request'. Place every untriaged story with the placement tree; the horizon buckets are Now, Next, Later, Won't do. I confirm every write to the planner. Discovery is not complete yet."
+  :workdir "."
+  :expects ["no acceptance criteria" "decision: no record" "(?i)researched:" "(?i)run id:? *`?[0-9a-f]{8}"]
+  :rejects ["docs/agent/specs"]
+  :log-expects ["^epic show GRA-20 --json$"
+                "^initiative show GRA-12 --json$"
+                "^decision ls --on GRA-20 --json$"
+                "^story ls --untriaged --json$"
+                "^epic edit GRA-20 (?=.*--brief )(?=.*--version 2\\b).*--json$"
+                "^story create (?=.*--epic GRA-20\\b)(?=.*--title Enqueue match requests )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^story create (?=.*--epic GRA-20\\b)(?=.*--title Process the match queue )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^story create (?=.*--epic GRA-20\\b)(?=.*--title Alert on a stuck queue )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^story edit GRA-40 (?=.*--kind bug\\b)(?=.*--epic GRA-20\\b)(?=.*--version 1\\b).*--json$"
+                "^story edit GRA-41 (?=.*--kind chore\\b).*--json$"
+                "^story edit GRA-42 (?=.*--epic GRA-20\\b).*--json$"
+                "^epic create (?=.*--initiative GRA-13\\b)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^story edit GRA-43 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
+                "^initiative create (?=.*--horizon Later\\b)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^epic create (?=.*--initiative GRA-1\\d\\d\\b).*--json$"
+                "^story edit GRA-44 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
+                "(?s)^story ls --epic GRA-20 --json$.*^story ls --epic GRA-20 --json$"]
+  :log-rejects ["--brief-file" "^story edit GRA-42 .*--kind" "^epic discovery " "^decision require "]}
+```
+
+What each expectation distinguishes: the three `story create` lines a story without criteria, outside the epic or with a title-derived key; the five placement lines one branch of the placement tree each — GRA-40 (broken behaviour → bug under the covering epic), GRA-41 (internal work → chore), GRA-42 (product change covered by this epic; a `--kind` on it is rejected), GRA-43 (covered by initiative GRA-13 but no epic → new epic there), GRA-44 (covered by nothing → new initiative in `Later`, the last bucket before "Won't do", plus an epic under it); a skill that only offers "this epic or leave it" fails four of them; `story ls --epic` twice and the transcript's "no acceptance criteria" (GRA-32) and "decision: no record" (GRA-31) a readiness summary that is not read back from the planner after the writes, or that is invented rather than worded from the fake's reasons; `epic edit … --version 2` a guessed version; `decision require` and `epic discovery` rejected, a skill that creates decisions or marks discovery the user did not ask for.
+
+- [ ] **Step 2: Run it, see it fail**
+
+Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-refining-epic` — Expected: `[FAIL]` with `log: ^story create …` among the missing.
+
+- [ ] **Step 3: The skill**
+
+`skills/refining-epic/SKILL.md`:
+
+````markdown
+---
+name: refining-epic
+description: Use when the user names a Reeve epic to refine (a key such as GRA-20), asks to break an epic into stories or write its stories and acceptance criteria, or asks to place or triage untriaged stories — and the Reeve planner CLI is installed.
+---
+
+# Refining an epic
+
+Epic-level discovery in the Reeve planner, its required decisions, stories that one person or one
+agent session can finish (kb/ADR-0002 R1) with acceptance criteria, and a home for every untriaged
+story. Everything goes into the planner through the `reeve` CLI. This skill writes no spec and no
+plan (kb/ADR-0005 R4).
+
+The plugin root is `${CLAUDE_PLUGIN_ROOT}`; below it is `<plugin-root>`, written out as an absolute
+path in every Bash command. Read `<plugin-root>/references/reeve-cli.md` before the first `reeve`
+call: commands, flags, exit statuses, idempotency keys and wording come from there. Invoke
+`${REEVE_BIN:-reeve}` as that reference says: the detector's `bin` as the first word.
+
+## The rule
+
+1. **Show, confirm, then write.** Show each write before running it. An answer the user already
+   gave in the request counts as the confirmation for that write; do not ask it again.
+2. **One question at a time**, skipping every question the request already answers.
+3. **Branch on the exit status** as the reference says; on a refusal or an error, stop that step
+   and say so.
+4. **Readiness is the planner's.** Report what `story ls` says, in the reference's words; never
+   judge readiness yourself (kb/ADR-0003 R1).
+
+## Steps
+
+0. **Detect.** Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints `"present":true`
+   and `"signed_in":true`, say "The Reeve planner is not available in this session: <reason>."
+   and stop; this skill has no fallback. Keep `bin` and `run_id`.
+1. **Read.** `reeve epic show <EPIC> --json` (keep `value.version` and `value.initiative`),
+   `reeve initiative show <INITIATIVE> --json`, `reeve decision ls --on <EPIC> --json`,
+   `reeve story ls --epic <EPIC> --json`, `reeve story ls --untriaged --json`,
+   `reeve epic ls --json` and `reeve initiative ls --json`. In parallel, dispatch the
+   **architect** in `survey` mode on the repositories the epic touches and the
+   **knowledge-reader** with the epic's title and "Prioritise domain context and architecture
+   patterns."
+2. **Research.** For each open question that research can answer, look it up: web search or
+   documentation when the session has them, otherwise the knowledge base and the code. Say what
+   you looked up and what it answered in one line, `Researched: <topics and findings>`, or
+   `Researched: nothing — no open question is answerable by research`.
+3. **Discovery and brief.** One question at a time: what done looks like, the boundaries, what is
+   unknown. Compose the epic's brief, show it, then
+   `reeve epic edit <EPIC> --brief <md> --version <version> --json`.
+4. **Required decisions.** Exactly as planning-initiative's step 5 (require with a decider, then
+   for each: draft through recording-decisions, apply now with `Required decision: #<id>` or
+   leave the comment pointer), with keys `refining-epic:<EPIC>:<run_id>:<n>`. Existing decisions
+   with `record: null` are listed as open in the report.
+5. **Stories.** Propose stories, each finishable by one person or one agent session, each with
+   2–6 acceptance criteria written as observable outcomes; show them, then for each
+   `reeve story create --epic <EPIC> --title <title> --kind story --criterion <text> --criterion <text> … --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
+6. **Placement tree.** For each story from `story ls --untriaged`, classify it, propose its home,
+   and on confirmation write it (`<v>` is the story's `version` from the listing):
+   - **Broken behaviour** → a bug under the epic that covers the broken feature:
+     `reeve story edit <KEY> --kind bug --epic <COVERING-EPIC> --version <v> --json`
+     (no covering epic: `--kind bug` alone).
+   - **Internal work** (an upgrade, a refactor, tooling; nothing a user sees) → a chore:
+     `reeve story edit <KEY> --kind chore --version <v> --json` (add `--epic` when one covers it).
+   - **Product change**, in this order:
+     1. an epic covers it (this one, or one from `epic ls`):
+        `reeve story edit <KEY> --epic <COVERING-EPIC> --version <v> --json`;
+     2. else an initiative covers it: `reeve epic create --initiative <COVERING-INITIATIVE> --title <title> --brief <md> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
+        then `reeve story edit <KEY> --epic <new epic> --version <v> --json`;
+     3. else a new initiative in the last horizon bucket before "Won't do":
+        `reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
+        an epic under it as in 2, then the `story edit`. The CLI does not list the buckets: ask for
+        them (offering the horizons seen in `initiative ls`), or take them from the request.
+   - The user may say "leave it untriaged"; then write nothing for it.
+   `--kind` on `story edit` comes with Reeve plan C (Task 5); before that the CLI rejects it as a
+   usage error (exit 1): say so and leave the story's kind as it is.
+7. **Readiness and discovery.** Run `reeve story ls --epic <EPIC> --json` again and list each
+   story as "ready", or "blocked:" with its reasons, worded by the reference's table. Ask whether
+   discovery is complete, or take the answer the request gave; only on yes run
+   `reeve epic discovery <EPIC> --complete --version <latest version> --json`.
+8. **Report.** `Run id: <run_id>`; the `Researched:` line; every key written; each placement
+   with its branch; open required decisions; the readiness list from step 7.
+
+`<n>` counts every create of this run from 1: decisions, comments, stories, epics and initiatives
+together.
+````
+
+- [ ] **Step 4: Run it, see it pass**
+
+Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-refining-epic` — Expected: `[PASS]`.
+
+- [ ] **Step 5: Mutation check**
+
+Empty the body of `skills/refining-epic/SKILL.md` below the frontmatter, run Step 4's command. Expected: `[FAIL]` (the placement lines and the second `story ls --epic` missing). Restore.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add skills/refining-epic test/scenarios.edn
@@ -161,63 +967,336 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ### Task 4: brainstorming reads the story context first
 
 **Files:**
-- Modify: `skills/brainstorming/SKILL.md`
-- Test: `test/scenarios.edn` (scenario `skill-brainstorming-with-reeve-context`, and the existing brainstorming scenarios must still pass without the fake on PATH)
+- Modify: `skills/brainstorming/SKILL.md`, `skills/writing-plans/SKILL.md`
+- Test: `test/scenarios.edn` (scenarios `reeve-brainstorming-without-planner`, `reeve-brainstorming-no-story-key`, `reeve-brainstorming-story-context`)
 
-Change: a new checklist item **0. Planner context (only when present)** before step 1: run the detector; when `present && signed_in` and the request names a story key (`<PREFIX>-<n>`) or the user says which story this is for, run `reeve story context <KEY> --json`, and treat the bundle (initiative brief, epic brief, required decisions with check results, criteria, blockers, comments) as project context for step 1: every required decision that is not satisfied is listed under the architect's binding decisions as "open required decision #id — title (status)", and the design must either wait for it or make it explicit that it is being decided now (then step 5 drafts the record and Task 5 links it). Also in step 6, the spec's `## Decisions` section gains a line `Required decisions in the planner: #7 Queue or cron (no record)` per open decision. Every other step is unchanged, verbatim; the HARD-GATE is unchanged (kb/ADR-0005 R4). The Process Flow graph gains one node "Read planner context (if present)" before "Explore project context". Scenario: prompt "/lore:brainstorming add a retry policy for story GRA-31", expects the fake log to contain `story context GRA-31 --json`, the transcript to mention "Queue or cron" (the fake bundle's decision) before any design section, and the existing clarifying-question behaviour. Without the fake on PATH, the existing scenario `skill-brainstorming-*` (whatever its name is on origin/main) passes unchanged — run it to prove the guard.
+- [ ] **Step 1: The baseline, before any edit**
+
+`origin/main` has no brainstorming scenario, so the planner-absent baseline is added first and must pass against the unmodified skill. It deliberately carries no `:requires`: it runs in the plain suite and in the `--filter reeve-` run alike, always without the fake (with the runner's empty `REEVE_CONFIG_DIR`, a real `reeve` on the PATH is signed out).
+
+```clojure
+ {:name "reeve-brainstorming-without-planner"
+  :prompt "/lore:brainstorming add a retry policy for failed payment webhooks"
+  :workdir "."
+  :expects ["\\?" "(?i)payment"]
+  :rejects ["(?i)reeve|planner|story context" "docs/agent/specs/"]}
+```
+
+What it distinguishes: a step 0 that leaks into sessions with no story (planner talk in the transcript), and a broken hard gate (a spec path before any clarifying question).
+
+Run: `bb test/run-tests.clj --filter reeve-brainstorming-without-planner` — Expected: `[PASS]` on the unmodified skill.
+
+- [ ] **Step 2: The planner scenarios**
+
+```clojure
+ {:name "reeve-brainstorming-no-story-key"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:brainstorming add a retry policy for failed payment webhooks"
+  :workdir "."
+  :expects ["\\?"]
+  :rejects ["(?i)reeve|story context"]
+  :log-rejects ["."]}
+
+ {:name "reeve-brainstorming-story-context"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:brainstorming add a retry policy for story GRA-31. Do not ask questions; the answers are given: retries cover failed matches only, at most three attempts. Stop after presenting the project context, including the open required decisions."
+  :workdir "."
+  :expects ["Queue or cron" "#7" "(?i)no record"]
+  :rejects ["docs/agent/specs/"]
+  :log-expects ["^--version$" "^auth status --json$" "^story context GRA-31 --json$"]}
+```
+
+What they distinguish: `no-story-key` (the log must stay empty) a step 0 that runs the detector on every brainstorming session; `story-context` a skill that does not read the bundle (log), reads it but does not surface the open decision ("Queue or cron", "#7"), or misreads `check.kind: unchecked` as satisfied instead of deriving "no record" from `record: null`.
+
+Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-brainstorming` — Expected: `no-story-key` and `without-planner` pass, `story-context` fails (`log: ^story context GRA-31 --json$` missing).
+
+- [ ] **Step 3: The edit**
+
+In `skills/brainstorming/SKILL.md`, *Checklist*, insert before item 1:
+
+```markdown
+0. **Planner context (only when the request names a story)** — when the request names a story
+   key (`<PREFIX>-<n>`, such as `GRA-31`) or the user says which story this is for, run
+   `node <plugin-root>/scripts/reeve-detect.js` (`<plugin-root>` is `${CLAUDE_PLUGIN_ROOT}`,
+   written out as an absolute path). Only when it prints `"present":true` and `"signed_in":true`,
+   read `<plugin-root>/references/reeve-cli.md` and run `reeve story context <KEY> --json` (the
+   detector's `bin` as the first word): the initiative and epic briefs, the required decisions,
+   the criteria, the blockers and the comments are project context for step 1. With no story
+   named, or the planner absent or signed out, skip this step without mentioning it.
+```
+
+Append to item 1 (after "…rather than quietly violate it."):
+
+```markdown
+   With a planner bundle from step 0, list each required decision that is not satisfied among the
+   binding decisions as "open required decision #<id> — <title> (<status>)", the status worded as
+   the CLI reference says (`record: null` is "no record"). The design either waits for it or
+   decides it now; then step 5 drafts its record.
+```
+
+Append to item 5:
+
+```markdown
+   For a record that answers an open required decision, tell recording-decisions which one
+   ("it answers required decision #<id>").
+```
+
+Append to item 6:
+
+```markdown
+   Under each proposed record that answers a required decision, add a line
+   `Required decision: #<id>` outside the fenced record text (no item key is ever written into a
+   record, kb/ADR-0004 R3), so whoever applies it later links it.
+```
+
+Append to item 9:
+
+```markdown
+   When applying a stored draft, pass its `Required decision: #<id>` line to recording-decisions;
+   its record step 6 links the applied record in the planner.
+```
+
+In the *Process Flow* graph, add the node `"Read planner context (story named, planner present)" [shape=box];` first and the edge `"Read planner context (story named, planner present)" -> "Explore project context";`.
+
+Every other line of the skill is unchanged: the HARD-GATE, the anti-pattern section, items 2–4, 7–8, *The Process*, *After the Design* and *Key Principles* (kb/ADR-0005 R4).
+
+In `skills/writing-plans/SKILL.md`, the low-tier bullet "**Low tier** drafts alone become the ride-along apply task: copy each one into the plan," becomes "**Low tier** drafts alone become the ride-along apply task: copy each one into the plan, with its `Required decision: #<id>` line when the spec has one,". Without it, a low-tier draft that answers a required decision loses its id between the spec and the apply.
+
+- [ ] **Step 4: Run, see all three pass**
+
+Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-brainstorming` — Expected: 3 `[PASS]`.
+
+- [ ] **Step 5: Mutation check**
+
+Delete the inserted step 0 and the item-1 addition, run Step 4's command. Expected: `reeve-brainstorming-story-context` fails; the other two still pass. Restore.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add skills/brainstorming test/scenarios.edn
-git commit -m "feat(skills): brainstorming reads the reeve story context when the planner is present" -m "Task 4 of docs/superpowers/plans/2026-10-26-reeve-planning-skills.md. The hard gate and every existing step are unchanged.
+git add skills/brainstorming skills/writing-plans test/scenarios.edn
+git commit -m "feat(skills): brainstorming reads the reeve story context when a story is named and the planner is present" -m "Task 4 of docs/superpowers/plans/2026-10-26-reeve-planning-skills.md. The hard gate and every existing step are unchanged.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 5: recording-decisions triages product records and links them to required decisions
+### Task 5: recording-decisions triages process records and links records to required decisions
 
 **Files:**
-- Modify: `skills/recording-decisions/actions/record.md` (steps 3 and 6), `skills/recording-decisions/SKILL.md` ("Where a change lands": one sentence)
-- Test: `test/scenarios.edn` (scenario `skill-adr-links-required-decision`; and the existing `command-adr-new-triages-and-interviews` must still pass)
+- Create: `skills/recording-decisions/actions/link.md`
+- Modify: `skills/recording-decisions/SKILL.md`, `skills/recording-decisions/actions/record.md`
+- Test: `test/scenarios.edn` (new `command-adr-triages-process-decision`, `reeve-adr-link-proposed`, `reeve-adr-link-check-unreadable`; the existing `command-adr-new-triages-and-interviews` gains a reject)
 
-Step 3 today sends "a decision with no code behind it (a tool, a process)" to "an RFC or meeting notes". Change (kb/ADR-0004 R5): "a decision with no code behind it (a tool, a process, a product choice) is still a record when it is hard to reverse: draft it with the same format; its `scope` names the documents or repositories it governs". Step 6 gains, after apply and only when the detector says the planner is present and signed in: "If this record answers a required decision in the planner (the user named a decision id, or brainstorming/planning passed one), run `reeve decision link <id> --record <qualified id> --repo <repo name as configured in the planner> --path <path of the record file in that repo> --pr <PR url> --household <household dir> --json`; show the planner's answer (`check.kind`, expected `proposed_pr_open` while the PR is open); a refusal (exit 2) is shown and does not undo the apply." Nothing is written into the record (kb/ADR-0004 R3). The interview (step 2) gains one optional question when the planner is present: "Does this answer a required decision in the planner? (id, or none)". Scenario: prompt "/lore:adr Use a queue for mentor matching — this answers required decision 7 in Reeve, decided by dan@example.com, repo portal", expects the fake log to contain `decision link 7 --record` and `--pr`, and the transcript to show "proposed, PR open" from the fake's answer; the existing triage scenario passes with the fake absent.
+- [ ] **Step 1: The scenarios**
+
+The triage scenario is planner-independent (the triage change is unconditional, kb/ADR-0004 R5), so it is a plain `command-adr-…` scenario without `:requires`:
+
+```clojure
+ {:name "command-adr-triages-process-decision"
+  :prompt "/lore:adr We decided to hold retrospectives every two weeks instead of every week. Interview answers: decided by Dan Doe; it affects only the backend repo, where the process doc is backend:docs/process/retrospectives.md; easy to undo (two-way); no security, privacy, billing, legal or contract sensitivity; the alternative was weekly retrospectives, dropped because they took time from delivery; it keeps being re-debated and I want a record. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["backend/ADR-0002" "(?i)low[- ]tier" "docs/process/retrospectives\\.md"]
+  :rejects ["(?i)meeting notes|in an RFC" "Accepted \\d{4}-\\d{2}-\\d{2} by"]}
+```
+
+What it distinguishes: the old step 3, which sends "a decision with no code behind it (a tool, a process)" to "an RFC or meeting notes", from the new one, which drafts it as a low-tier record whose `scope` names the document it governs.
+
+In the existing `command-adr-new-triages-and-interviews`, add `"(?i)meeting notes|in an RFC"` to `:rejects` (an architectural decision must never be sent there either; `rfc:` in the drafted front matter does not match).
+
+```clojure
+ {:name "reeve-adr-link-proposed"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the planner calls this repository lore, the PR proposing the record is https://github.com/example/test-workspace/pull/9, and the household is the current directory."
+  :workdir "."
+  :expects ["proposed, PR open"]
+  :rejects ["(?i)could not run"]
+  :log-expects ["^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b).*--json$"]}
+
+ {:name "reeve-adr-link-check-unreadable"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :env {"REEVE_FAKE_LINK_CHECK" "unreadable"}
+  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the planner calls this repository lore, the PR proposing the record is https://github.com/example/test-workspace/pull/9, and the household is the current directory."
+  :workdir "."
+  :expects ["(?i)linked; the check could not run here" "(?i)next scheduled check"]
+  :rejects ["(?i)nothing was linked|link failed"]
+  :log-expects ["^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b).*--json$"]}
+```
+
+The record is the fixture's existing `lore/knowledge/adrs/0002-inventory-reservation.md` (`id: kb/ADR-0002`): the inline knowledge base `lore` is a directory of the household, so the path inside the repository is `knowledge/adrs/0002-inventory-reservation.md`. No fixture file is added (a new `kb/ADR-0003` would change the next number other scenarios expect). No git, gh or apply is needed.
+
+What they distinguish: `link-proposed` a link that needs an apply first (impossible here), a wrong path (absolute, or relative to the household instead of the repository), a missing `--pr`, and an answer not read from `check.kind`; `link-check-unreadable` a skill that applies "exit 1 → failure" to a link that in fact succeeded.
+
+- [ ] **Step 2: Run them, see them fail**
+
+Run: `bb test/run-tests.clj --filter command-adr-triages` — Expected: `[FAIL]`, "meeting notes" or "RFC" present (old step 3). Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-adr-link` — Expected: 2 `[FAIL]` (no link action; the log has no `decision link`).
+
+- [ ] **Step 3: `actions/link.md`**
+
+````markdown
+# link
+
+Link a record to a required decision in the Reeve planner, so the planner checks the record
+instead of reporting "no record". Read `<plugin-root>/references/reeve-cli.md` first. This writes
+nothing into the record or any repository (kb/ADR-0004 R3): it stores one reference in the planner.
+
+1. **Detect.** Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints
+   `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this
+   session: <reason>; nothing was linked." and stop.
+2. **Inputs.** Take each from the request or the caller (record step 6); ask, one at a time, only
+   for what is missing:
+   - the decision id, an integer ("decision 7", "#7");
+   - the record's qualified id, and its file from `node <plugin-root>/scripts/adr-lint.js index --json`
+     (`records[].id` → `records[].file`); an id the index lacks: say so and stop;
+   - the household directory: the current directory unless the user names another;
+   - the repository name as configured in the planner: no `reeve` command lists the planner's
+     repositories, so ask, offering the `household.json` repository whose directory holds the
+     file;
+   - the record's path inside that repository: the file's path relative to `<household>/<repo>`,
+     or to the household itself when its directory name is the repository name;
+   - the PR proposing the record: the url in the request, else `gh pr view --json url --jq .url`
+     run in the repository on the record's branch when `gh` is available, else ask; a record
+     already merged to the default branch has none (omit `--pr`).
+3. **Show and run.** The request (or the apply the user confirmed) naming the record and the
+   decision is the confirmation:
+   `reeve decision link <id> --record <qualified id> --repo <repo> --path <path> --pr <url> --household <household> --json`
+4. **Report** the answer with the reference's *decision link* table, word for word: exit 0 is
+   "Linked: <record> answers decision #<id> — <check>"; exit 1 with an `ok` envelope is "Linked;
+   the check could not run here: <stderr line>; it runs on the next scheduled check."; exit 2 or
+   an `error` envelope shows the reasons or the message and says nothing was linked.
+````
+
+- [ ] **Step 4: `SKILL.md` and `actions/record.md`**
+
+`skills/recording-decisions/SKILL.md`:
+- Description: append before "Not for PR approvals…": `when a record should be linked to a required decision in the Reeve planner;`.
+- Rule 3, append: `A planner link (actions/link.md) is not a record write: the request naming the record, the decision and the PR confirms it.`
+- *Understand the request*: add the example `/lore:adr link kb/ADR-0007 to decision 7` and the table row `| link an applied record to a required decision in the planner ("link kb/ADR-0007 to decision 7") | **link** |`.
+- The action list in "Read `<plugin-root>/skills/recording-decisions/actions/<action>.md` (…)" gains `link`.
+- *Where a change lands*, append: `When the Reeve planner is present and the record answers a required decision, the record action links it after apply (actions/link.md); a link never changes the record.`
+
+`skills/recording-decisions/actions/record.md`:
+- Step 3, replace "a decision with no code behind it (a tool, a process) belongs in an RFC or meeting notes." with: "A decision with no code behind it (a tool, a process, a product choice) is a record like any other when it is hard to reverse or the user wants one: same format, its `scope` names the documents or repositories it governs; never send it to an RFC or meeting notes (kb/ADR-0004 R5)." This change is unconditional (Design choices).
+- Step 6, append: "Then, only when a decision id is known — the user named one, the spec entry the draft came from carries `Required decision: #<id>` (outside the record text), or a planning skill passed one — follow `actions/link.md` with that id, the record's qualified id and the PR url the knowledge-updater reported; link.md's step 1 skips it when the planner is absent. A link that is refused or cannot check never undoes the apply."
+
+- [ ] **Step 5: Run them, see them pass**
+
+Run: `bb test/run-tests.clj --filter command-adr` — Expected: every `command-adr-…` scenario passes, including the new triage one. Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-adr-link` — Expected: 2 `[PASS]`.
+
+- [ ] **Step 6: Mutation checks**
+
+Empty `actions/link.md`: both `reeve-adr-link-…` scenarios fail. Restore the old step 3 sentence: `command-adr-triages-process-decision` fails. Restore both.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add skills/recording-decisions test/scenarios.edn
-git commit -m "feat(skills): recording-decisions drafts product records and links them to reeve required decisions" -m "Task 5 of docs/superpowers/plans/2026-10-26-reeve-planning-skills.md.
+git commit -m "feat(skills): recording-decisions drafts process records and links records to reeve required decisions" -m "Task 5 of docs/superpowers/plans/2026-10-26-reeve-planning-skills.md.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 6: Router, README, Codex twins, version, docs
+### Task 6: Router, README, Codex twins, CLAUDE.md, version, full runs
 
 **Files:**
 - Create: `skills/lore-planning-initiative/SKILL.md`, `skills/lore-refining-epic/SKILL.md`
-- Modify: `hooks/load-standards-reminder.sh` (two router rows: "PLANNING AN INITIATIVE in the Reeve planner → planning-initiative; REFINING AN EPIC / writing stories with criteria → refining-epic; both only when `reeve` is present"), `README.md` (two skill rows + a "Reeve planner" paragraph: optional, detected on the path, nothing to configure), `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `package.json` (3.2.0), `test/README.md` (the fake planner section), `docs/agent/backlog.md` (tick the item if present)
+- Modify: `hooks/load-standards-reminder.sh`, `README.md`, `CLAUDE.md`, `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `package.json`
 
-Run the whole suite: `node --test scripts/__tests__/*.test.js` and `PATH="$PWD/test/fixtures/reeve-bin:$PATH" REEVE_FAKE_LOG=$(mktemp) bb test/run-tests.clj --filter reeve`, then `bb test/run-tests.clj` without the fake to prove every existing scenario is unchanged.
+- [ ] **Step 1: Codex twins** (thin pointers, like `skills/lore-adr/SKILL.md`)
+
+````markdown
+---
+name: lore-planning-initiative
+description: Use when the user names a Reeve initiative to plan or asks for initiative discovery, and the Reeve planner CLI is installed.
+---
+
+# Lore planning initiative
+
+Read `../../references/codex-runtime.md`, resolve the knowledge paths, then follow
+`../../skills/planning-initiative/SKILL.md`. The user's words are the request.
+````
+
+````markdown
+---
+name: lore-refining-epic
+description: Use when the user names a Reeve epic to refine, asks to break an epic into stories with acceptance criteria, or asks to place untriaged stories, and the Reeve planner CLI is installed.
+---
+
+# Lore refining epic
+
+Read `../../references/codex-runtime.md`, resolve the knowledge paths, then follow
+`../../skills/refining-epic/SKILL.md`. The user's words are the request.
+````
+
+- [ ] **Step 2: Router rows**
+
+In `hooks/load-standards-reminder.sh`, inside `SKILL_ROUTER`, after the `CREATIVE WORK` entry (`-> Use the brainstorming skill (design before code, always)`), insert:
+
+```
+\n\n- PLANNING AN INITIATIVE in the Reeve planner (an initiative key, \"plan this initiative\", discovery, what must be decided first)\n  -> Use the planning-initiative skill (only when the reeve CLI is installed)\n\n- REFINING AN EPIC in the Reeve planner (stories with acceptance criteria, \"break this down\", placing untriaged stories)\n  -> Use the refining-epic skill (only when the reeve CLI is installed)
+```
+
+Run: `node --test scripts/__tests__/load-standards-hook.test.js` — Expected: pass (the hook still emits valid JSON).
+
+- [ ] **Step 3: README and CLAUDE.md**
+
+`README.md`, *Skills (Auto-Invoked)* table, after the `recording-decisions` row:
+
+```markdown
+| `planning-initiative` | Planning a Reeve initiative: discovery, brief, required decisions, epics (only with the Reeve planner) |
+| `refining-epic` | Refining a Reeve epic: stories with acceptance criteria, placing untriaged stories (only with the Reeve planner) |
+```
+
+and after the table a paragraph: "**Reeve planner.** Optional. When a `reeve` CLI on the path reports `reeve-planner` and you are signed in (`reeve auth login`), the two skills above write into the planner, brainstorming reads a named story's context first, and `/lore:adr link` links a record to a required decision. Nothing to configure; without it every skill behaves as before."
+
+`CLAUDE.md`, *Zero-runtime principle*, after the `adr-lint.js` paragraph: "The second exception is `scripts/reeve-detect.js`: every skill that touches the Reeve planner must agree on whether it is present and signed in (kb/ADR-0005 R1: `reeve --version` reports `reeve-planner`, `reeve auth status --json` is ok), with a timeout so a hanging binary never hangs a session — one tested script instead of the same two checks written into five skills. It reads nothing from a knowledge base and writes nothing." In the overview paragraph (line 7), the script list gains `reeve-detect.js`.
+
+- [ ] **Step 4: Version 3.2.0**
+
+Set `"version": "3.2.0"` in `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json` and `package.json` (minor: new skills, CLAUDE.md *Version bumps are mandatory*).
+
+- [ ] **Step 5: Full runs**
 
 ```bash
-git add skills hooks README.md .claude-plugin .codex-plugin package.json test docs
+node --test scripts/__tests__/*.test.js
+bb test/run-tests.clj --with reeve-fake --filter reeve-
+bb test/run-tests.clj
+```
+
+Expected: every Node test passes; the second command runs the eight `reeve-…` scenarios (`reeve-runner-selftest`, `reeve-planning-initiative`, `reeve-refining-epic`, the three `reeve-brainstorming-…`, the two `reeve-adr-link-…`) and all pass; the third prints `[SKIP]` for the seven that require `reeve-fake` and passes every other scenario, including `reeve-brainstorming-without-planner`, `command-adr-triages-process-decision` and the updated `command-adr-new-triages-and-interviews`. Use `--runs 3 --min 2` on a scenario that fails once to see whether it is flaky before changing a skill.
+
+- [ ] **Step 6: Commit, PR and the marketplace companion**
+
+```bash
+git add skills hooks README.md CLAUDE.md .claude-plugin .codex-plugin package.json
 git commit -m "feat(skills): reeve planning skills in the router, readme and codex twins (3.2.0)" -m "Task 6 of docs/superpowers/plans/2026-10-26-reeve-planning-skills.md.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
+Open the PR. Then, as CLAUDE.md's *Version bumps are mandatory* requires, open the companion PR in `Mindful-Stack/witan` that sets the `lore` entry's `version` in `.claude-plugin/marketplace.json` to `3.2.0`, and link each PR from the other; the marketplace PR merges after this one.
+
 ---
 
 ## Environment assumptions pinned
 
-- **Scenario runner**: `claude --print --plugin-dir <checkout>` inherits the shell's `PATH`, so the fake planner is injected by prefixing `PATH`; `REEVE_FAKE_LOG` must be writable; without `bb` (Babashka) the scenarios cannot run — the Node test still can.
-- **The real CLI's flags** come from plans A–C in `~/Source/reeve` (`reeve <cmd> --help`); Task 1's reference is corrected against them before the skills quote it.
-- **Detection timeout**: `child_process.execFileSync` with `timeout` kills the child with SIGTERM; the detector catches the error and reports `present: false`.
+- **Scenario environment**: the runner builds the child's environment explicitly (Task 1 Step 5): every scenario has a fresh empty `REEVE_CONFIG_DIR` and no `REEVE_URL`, `REEVE_TOKEN` or `REEVE_BIN`, so a real `reeve` (this machine has one in `~/.local/bin`, reporting `reeve-planner 0.1.0`) can never reach a server and reports signed out. Fake scenarios put `test/fixtures/reeve-bin` before everything else on `PATH`, including `~/.local/bin`. Whether that prefix survives into the Bash tool's shell (a `~/.bashrc` that re-prepends `~/.local/bin` would defeat it) is checked by `reeve-runner-selftest` before any other reeve scenario counts.
+- **Permissions**: `--permission-mode default` with `Bash(reeve *)` added per scenario; skills write the literal command word `reeve`, and keep each command on one line (ANSI-C quoting for Markdown), so the rule matches.
+- **Non-interactive runs**: `claude --print` is one turn, so every reeve scenario prompt gives every answer; recording-decisions drafts stay draft-only; the only executed writes go to the fake.
+- **The real CLI's flags** were read from `crates/reeve/src/commands/*.rs` in ~/Source/reeve on 2026-10-26; `story edit --kind` comes with Reeve plan C (Task 5). The wire shapes come from `crates/reeve-server/tests/snapshots/openapi.json`.
+- **Detection timeout**: `execFileSync` with `timeout` kills the child with SIGTERM and returns at the timeout (verified with a `sleep` child holding stdout); the detector reports `present: false`.
+- **Without `bb`** (Babashka) no scenario runs; the Node tests still do.
 
 ## Self-review notes
 
-- Spec coverage ("Lorekeeper integration"): direction and detection → Task 1; the two skills with the architect survey, research, brief, required decisions with a decider, epics / stories with criteria → Tasks 2–3; brainstorming's first step → Task 4; recording-decisions' link step and triage change → Task 5; the placement proposal against `story ls --untriaged` → Task 3 step 6; `story context` as the bundle → Task 4. Not in this plan: an MCP server (kb/ADR-0005 R5 permits one later).
-- Would-it-fail: each scenario asserts fake-log lines that only the skill's commands produce, and the mutation check deletes the skill text; the detector tests include the renamed runner and a hang.
-- Spec-conflict: the spec calls the untriaged placement "the triage skill"; this plan places it inside refining-epic and says so (kb/ADR-0005 R4 names only two planning skills).
-- Governing decisions: no task weakens the brainstorming gate; no skill produces a spec; every command carries `--json` and an idempotency key; no manifest change.
+- Spec coverage ("Lorekeeper integration"): detection → Task 1; the two planning skills with architect survey, research, brief, required decisions with a decider and a drafted record each, epics, stories with criteria → Tasks 2–3; the placement tree against `story ls --untriaged` → Task 3 step 6; `story context` as the bundle → Task 4; recording-decisions' link and triage change → Task 5. Not in this plan: an MCP server (kb/ADR-0005 R5 permits one later).
+- Spec drift: the spec links "when it drafts a record"; this plan links at apply, when the path and the PR exist, and leaves a pointer (a planner comment, or `Required decision: #<id>` in the spec) for drafts not applied in the session. The spec's Lorekeeper section should say the same.
+- Spec-conflict: the spec calls the untriaged placement "the triage skill"; this plan places it inside refining-epic (kb/ADR-0005 R4 names only two planning skills).
+- Would-it-fail: every write a scenario expects is asserted in the fake's log, which only an executed command produces, with a fresh log per run; transcript expectations are fixture-specific ("Queue or cron", "no acceptance criteria", "decision: no record", "proposed, PR open"); each new skill has a mutation check; the detector tests include the renamed runner, a lookalike, the real signed-out shape, a missing binary and a hang; the fake has its own tests.
+- Governing decisions: no task weakens the brainstorming gate or its checklist; no skill produces a spec; every command carries `--json` and every create a run-scoped idempotency key; no manifest change; triage is unconditional because kb/ADR-0004 R5 does not depend on the planner, and every planner-dependent step is guarded by the detector (kb/ADR-0005 R1).

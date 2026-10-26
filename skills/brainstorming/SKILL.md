@@ -29,7 +29,9 @@ When the request presents a story key as the story it is for ("story GRA-31", "f
 any other `<PREFIX>-<n>` token, such as UTF-8, SHA-256 or ISO-8601; with no story key, create no
 task for this and say nothing about it. Run `node <plugin-root>/scripts/reeve-detect.js`
 (`<plugin-root>` is `${CLAUDE_PLUGIN_ROOT}`, written out as an absolute path). Unless it prints
-`"present":true` and `"signed_in":true`, skip the rest without mentioning the planner. Otherwise
+`"present":true` and `"signed_in":true`, this section ends here and leaves no trace: your reply
+never mentions the planner, the detector, a sign-in or a story lookup (not even that the story
+could not be loaded), and reads exactly as it would if the planner did not exist. Otherwise
 read `<plugin-root>/references/reeve-cli.md` and run `reeve story context <KEY> --json` (the
 detector's `bin` as the first word). If it does not exit 0, say so in one line (the planner has no
 story <KEY>, and an epic or initiative key is not a story; for a sign-in error, run

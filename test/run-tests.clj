@@ -73,6 +73,7 @@
     (try
       (let [_ (println (colorize :yellow "  Running:") prompt "(context:" workdir ")")
             tools (distinct (concat allowed-tools (:allowed-tools scenario)))
+            ;; empty stdin: claude --print otherwise waits 3 s and warns on stderr, after the transcript
             {:keys [out err]} (apply shell {:dir workspace-root :out :string :err :string
                                             :in "" :continue true :env env}
                                      (concat ["claude" "--print" "--permission-mode" "default"

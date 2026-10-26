@@ -203,7 +203,7 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "reeve-brainstorming-no-story-key"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
-  :prompt "/lore:brainstorming add a retry policy for failed payment webhooks"
+  :prompt "/lore:brainstorming add a retry policy for failed payment webhooks, signed with SHA-256"
   :workdir "."
   :expects ["Using the brainstorming skill: no code until the design is approved\\." "\\?"]
   :rejects ["(?i)reeve|story context"]
@@ -212,9 +212,9 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "reeve-brainstorming-story-context"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
-  :prompt "/lore:brainstorming add a retry policy for story GRA-31. Do not ask questions; the answers are given: retries cover failed matches only, at most three attempts. Stop after presenting the project context, including the open required decisions, and your first clarifying question."
+  :prompt "/lore:brainstorming add a retry policy for story GRA-31. The answers are given: retries cover failed matches only, at most three attempts. Stop after presenting the project context, including the open required decisions, and your first clarifying question."
   :workdir "."
-  :expects ["Using the brainstorming skill: no code until the design is approved\\." "(?s)Queue or cron.*\\n[^\\n]*\\?\\s*\\z" "#7" "(?i)no record"]
+  :expects ["Using the brainstorming skill: no code until the design is approved\\." "(?s)\\A[^?]*Queue or cron.*\\?" "(?i)open required decision #7\\W+Queue or cron\\W+\\(no record\\)"]
   :rejects ["docs/agent/specs/"]
   :log-expects ["^--version$" "^auth status --json$" "^story context GRA-31 --json$"]}
 
@@ -286,4 +286,10 @@ git commit -m \"feat: add DeviceStatusDto\"
   :log-rejects ["--brief-file" "^story edit GRA-42 .*--kind" "^story edit GRA-45 .*--epic GRA-20\\b" "^story (?:edit|mv) GRA-46 "
                 "^story mv " "^epic discovery " "^decision require " "^decision link "
                 "^story create .*--title (?:Retry failed matches|Show match history) "
-                "(?s)^(\\w+ create)\\b[^\\n]*--idempotency-key (\\S+) .*^(?!\\1\\b)\\w+ create\\b[^\\n]*--idempotency-key \\2 "]}]
+                "(?s)^(\\w+ create)\\b[^\\n]*--idempotency-key (\\S+) .*^(?!\\1\\b)\\w+ create\\b[^\\n]*--idempotency-key \\2 "]}
+
+ {:name "reeve-brainstorming-story-key-without-planner"
+  :prompt "/lore:brainstorming add a retry policy for story GRA-31"
+  :workdir "."
+  :expects ["Using the brainstorming skill: no code until the design is approved\\." "\\?"]
+  :rejects ["(?i)reeve|planner|story context|not available|signed out" "docs/agent/specs/"]}]

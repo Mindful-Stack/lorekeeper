@@ -337,3 +337,17 @@ test('reeve router rows: absent without a reeve CLI, with a lookalike, or with a
             assert.match(ctx(json), /CREATIVE WORK[\s\S]*HARD-TO-REVERSE DECISION/, bin);
         }
     }));
+
+test('reeve router rows: a probe that ignores TERM is killed, the hook returns within ~3 s', () =>
+    withTmp((tmp) => {
+        const kb = mkKb(path.join(tmp, 'kb'));
+        const stubborn = path.join(tmp, 'reeve-stubborn');
+        fs.writeFileSync(stubborn, "#!/bin/sh\ntrap '' TERM\nsleep 10\necho reeve-planner 0.1.0\n");
+        fs.chmodSync(stubborn, 0o755);
+        const started = Date.now();
+        const { json } = runHook(tmp, { KNOWLEDGE_BASE_PATH: kb, REEVE_BIN: stubborn });
+        const elapsed = Date.now() - started;
+        assert.ok(elapsed < 4000, `hook took ${elapsed} ms`);
+        assert.match(ctx(json), /Knowledge path: .*\/kb\/knowledge\//);
+        assert.doesNotMatch(ctx(json), /Reeve planner/);
+    }));

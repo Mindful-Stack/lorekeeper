@@ -112,6 +112,7 @@ const initiatives = {
 const epics = {
   'GRA-20': epic('GRA-20', 'Matching queue', { brief: 'Match mentors through a queue.', initiative: 'GRA-12', version: 2 }),
   'GRA-21': epic('GRA-21', 'Mentor profiles', { brief: 'Mentors describe their skills and availability.', initiative: 'GRA-13' }),
+  'GRA-22': epic('GRA-22', 'Session feedback', { brief: 'Mentees rate each mentoring session after it ends.' }), // standalone: no initiative
 };
 const decision7 = { id: 7, on: 'GRA-20', title: 'Queue or cron', decider: 'dan@example.com', due: null, record: null, pr_url: null, check: { kind: 'unchecked' }, checked_at: null, closed: null, created_at: NOW, version: 1 };
 // Closed without a record: listed by `decision ls`, never open, never a readiness reason (kb/ADR-0003 R3).

@@ -24,7 +24,10 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
      `node <plugin-root>/scripts/adr-lint.js index --json` (`records[].id` → `records[].file`);
      an id the index lacks: say so and stop, unless the user gave the repository and path (and the
      PR, or said there is none yet) explicitly, which are then used as given;
-   - the household directory: the current directory unless the user names another;
+   - the household directory: the one the user names, else the homes JSON's `root`
+     (`node <plugin-root>/scripts/adr-lint.js homes`, the household root the ADR homes resolve
+     from), never the current directory: invoked from `<household>/backend` to link a shared
+     record in the sibling `lore`, `--household` is `<household>`, not `<household>/backend`;
    - the repository name as configured in the planner: no `reeve` command lists the planner's
      repositories, so ask, offering the `household.json` repository whose directory holds the
      file;

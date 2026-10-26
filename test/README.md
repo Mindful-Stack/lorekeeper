@@ -121,7 +121,8 @@ the reference and the skills through the fake, and through the real CLI when `RE
 set. Answers use the planner's wire shapes:
 
 - initiatives `GRA-12` "Faster mentor matching" (version 3) and `GRA-13` "Mentor onboarding";
-- epics `GRA-20` "Matching queue" (in GRA-12, version 2) and `GRA-21` "Mentor profiles" (in GRA-13);
+- epics `GRA-20` "Matching queue" (in GRA-12, version 2), `GRA-21` "Mentor profiles" (in GRA-13)
+  and `GRA-22` "Session feedback", a standalone epic (`initiative: null`, no decisions, no stories);
 - decision `7` "Queue or cron" on GRA-20, with no record (`record: null`, check `unchecked`), and
   decision `8` "Match by postcode" on GRA-20, closed without a record (listed by `decision ls`,
   readable with `decision show`, never a readiness reason);

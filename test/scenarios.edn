@@ -296,6 +296,19 @@ git commit -m \"feat: add DeviceStatusDto\"
                 "^story mv " "^epic discovery " "^decision require " "^decision link "
                 "^story create .*--title (?:Retry failed matches|Show match history) "
                 "(?s)^(\\w+ create)\\b[^\\n]*--idempotency-key (\\S+) .*^(?!\\1\\b)\\w+ create\\b[^\\n]*--idempotency-key \\2 "]}
+ {:name "reeve-refining-epic-standalone"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "Refine epic GRA-22 in Reeve. Do not ask questions; the answers are given. Done looks like: a mentee rates a session within a day of it ending. Boundary: no change to mentor profiles. Update the epic's brief with these answers. No new required decisions. Stories: 'Rate a session' with criteria 'a mentee can rate a finished session from one to five' and 'a mentee rates a session at most once'. Leave the untriaged stories untriaged. I confirm every write to the planner. Discovery is not complete yet."
+  :workdir "."
+  :expects ["(?i)using the refining-epic skill" "(?i)run id:? *`?[0-9a-f]{8}" "GRA-1\\d\\d"]
+  :rejects ["(?im)^\\W*Stopped" "(?i)planner has no (?:epic|initiative)"]
+  :log-expects ["^epic show GRA-22 --json$"
+                "^decision ls --on GRA-22 --json$"
+                "^epic edit GRA-22 (?=.*--brief )(?=.*--version 1\\b).*--json$"
+                "^story create (?=.*--epic GRA-22\\b)(?=.*--title Rate a session )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-22:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "(?s)^story create .*^story ls --epic GRA-22 --json$"]
+  :log-rejects ["^initiative show " "^story edit " "^epic discovery " "^decision require " "^epic create " "^initiative create "]}
 
  {:name "reeve-brainstorming-story-key-without-planner"
   :prompt "/lore:brainstorming add a retry policy for story GRA-31"
@@ -306,12 +319,12 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "reeve-adr-link-proposed"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
-  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the planner calls this repository lore, the PR proposing the record is https://github.com/example/test-workspace/pull/9, and the household is the current directory."
+  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the planner calls this repository lore, and the PR proposing the record is https://github.com/example/test-workspace/pull/9."
   :workdir "."
   :expects ["proposed, PR open"]
   :rejects ["(?i)could not run"]
   :log-expects ["^decision show 7 --json$"
-                "^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b).*--json$"]}
+                "^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b)(?=.*--household /\\S)(?!.*--household \\.).*--json$"]}
 
  {:name "reeve-adr-link-check-unreadable"
   :requires ["reeve-fake"]

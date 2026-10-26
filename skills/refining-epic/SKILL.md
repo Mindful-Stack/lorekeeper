@@ -56,15 +56,16 @@ section says.
    answers. In a session that cannot ask, end with `Stopped: missing the epic key.` Never pick an
    epic yourself.
 1. **Read.** `reeve epic show <EPIC> --json` (keep `value.brief`, `value.version` and
-   `value.initiative`), then `reeve initiative show <INITIATIVE> --json` for that initiative,
-   `reeve decision ls --on <EPIC> --json`, `reeve story ls --epic <EPIC> --json`,
-   `reeve story ls --untriaged --json`, `reeve epic ls --json` and `reeve initiative ls --json`.
-   If any of them does not answer `ok`, stop the run: for `not_found` say "The planner has no epic
-   <EPIC>." (or the item it names); for `unauthenticated` or `forbidden` say it and tell the user
-   to run `reeve auth login`; otherwise show the code and message. In parallel, dispatch
-   the **knowledge-reader** with the epic's title and "Prioritise domain context and architecture
-   patterns.", and the **architect** in `survey` mode on the repositories the brief or the user
-   names.
+   `value.initiative`), then `reeve initiative show <INITIATIVE> --json` only when
+   `value.initiative` is not null (a standalone epic has no initiative: skip that read and go on
+   with the epic's own context), `reeve decision ls --on <EPIC> --json`,
+   `reeve story ls --epic <EPIC> --json`, `reeve story ls --untriaged --json`,
+   `reeve epic ls --json` and `reeve initiative ls --json`. If any of them does not answer `ok`,
+   stop the run: for `not_found` say "The planner has no epic <EPIC>." (or the item it names);
+   for `unauthenticated` or `forbidden` say it and tell the user to run `reeve auth login`;
+   otherwise show the code and message. In parallel, dispatch the **knowledge-reader** with the
+   epic's title and "Prioritise domain context and architecture patterns.", and the **architect**
+   in `survey` mode on the repositories the brief or the user names.
 2. **Discovery conversation.** One question at a time: what done looks like, the boundaries, what
    is unknown.
 3. **Research.** For each open question from step 2 that research can answer, look it up: web

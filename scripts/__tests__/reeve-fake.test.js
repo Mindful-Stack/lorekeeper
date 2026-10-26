@@ -106,6 +106,8 @@ test('decision ls and epic ls show what this run created', () => {
   assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-12', '--json']).value.map((x) => [x.id, x.record]), [[d.id, null]]);
   assert.deepEqual(call(['epic', 'ls', '--initiative', 'GRA-12', '--json']).value.map((x) => x.key), ['GRA-20', e.key]);
   assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-20', '--json']).value.map((x) => [x.id, x.closed === null]), [[7, true], [8, false]]);
+  assert.equal(call(['epic', 'show', 'GRA-22', '--json']).value.initiative, null); // a standalone epic
+  assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-22', '--json']).value, []);
 });
 test('creates and edits persist: story ls, show and the readiness reasons see them', () => {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');

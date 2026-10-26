@@ -6,6 +6,10 @@ description: "You MUST use this before any creative work - creating features, bu
 
 # Brainstorming Ideas Into Designs
 
+Announce at the start: "Using the brainstorming skill: no code until the design is approved."
+The message that ends your first turn (with your first question) opens with the same sentence,
+since a non-interactive session shows only that message.
+
 Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
 
 Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.

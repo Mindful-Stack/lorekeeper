@@ -109,7 +109,7 @@ without `REEVE_URL`, `REEVE_TOKEN` and `REEVE_BIN`, so a real `reeve` on the `PA
 reach a server. A fake scenario also gets the fake first on `PATH` and a fresh `REEVE_FAKE_LOG`
 per run; the log is appended to the output shown by `--verbose` and deleted afterwards.
 
-**The log.** One line per call: the argv joined by spaces, newlines inside an argument
+**The log.** One line per call that passed the fake's validation (a malformed call is not logged, so it never satisfies a log expectation; a valid call the planner refuses is): the argv joined by spaces, newlines inside an argument
 flattened to spaces, e.g. `epic create --initiative GRA-12 --title A --brief one two --idempotency-key planning-initiative:GRA-12:0a1b2c3d:1 --json`.
 
 **What the fake answers.** `--version` prints `reeve-planner 0.1.0-fake`; every other call must
@@ -121,6 +121,7 @@ exit 1). Answers use the planner's wire shapes:
 - decision `7` "Queue or cron" on GRA-20, with no record (`record: null`, check `unchecked`);
 - stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
   in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-44`;
+- `decision ls` and `epic ls` also list the decisions and epics created earlier in the same run;
 - created items get keys `GRA-100`, `GRA-101`, … (decision and comment ids `100`, …), minted from a counter
   in the per-run state file `$REEVE_FAKE_LOG.state`, distinct within a run;
 - every create needs `--idempotency-key <skill>:<KEY>:<run-id>:<n>` (kb/ADR-0005 R3; anything else is a

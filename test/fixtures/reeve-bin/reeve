@@ -12,7 +12,8 @@ const fs = require('node:fs');
 
 const argv = process.argv.slice(2);
 const log = process.env.REEVE_FAKE_LOG;
-if (log) fs.appendFileSync(log, argv.join(' ').replace(/[\r\n\u2028\u2029\u0085]+/g, ' ') + '\n');
+// Logged only once the call passed validation, so a malformed call never satisfies a log expectation.
+const logCall = () => { if (log) fs.appendFileSync(log, argv.join(' ').replace(/[\r\n\u2028\u2029\u0085]+/g, ' ') + '\n'); };
 
 // Per-run state next to the log: { next, creates: { <idempotency key>: <response value> } }. Updates
 // run under an exclusive lock file, so parallel calls neither share an id nor lose a replay entry.
@@ -40,7 +41,7 @@ const emit = (envelope, code) => { process.stdout.write(JSON.stringify(envelope)
 const ok = (value) => emit({ outcome: 'ok', value }, 0);
 const error = (code, message) => emit({ outcome: 'error', code, message }, 1);
 
-if (argv[0] === '--version') { process.stdout.write('reeve-planner 0.1.0-fake\n'); process.exit(0); }
+if (argv[0] === '--version') { logCall(); process.stdout.write('reeve-planner 0.1.0-fake\n'); process.exit(0); }
 if (!argv.includes('--json')) error('validation', 'the fake planner answers --json calls only');
 const words = argv.filter((a) => a !== '--json');
 
@@ -88,6 +89,7 @@ if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) error('validation', `
 if (f.version && !/^\d+$/.test(f.version)) error('validation', '--version must be an integer');
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
 if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) error('validation', '--due must be YYYY-MM-DD');
+logCall(); // valid: the call reached the planner (a refusal below is the planner's answer)
 if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)) emit({ outcome: 'refused', reasons: [{ reason: 'no_criteria' }] }, 2);
 
 const NOW = '2026-10-20T09:00:00Z';
@@ -121,6 +123,8 @@ const created = /^GRA-[1-9]\d{2,}$/; // keys this fake handed out in the current
 const find = (table, key, make) => table[key] || (created.test(key) ? make(key, 'Created in this run') : error('not_found', `no item ${key}`));
 const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`));
 const [p0] = pos;
+// Items created in this run, by kind, in creation order (lists show them like the real planner).
+const createdOf = (kind) => withState((state) => Object.values(state.creates)).filter((v) => !Array.isArray(v) && (kind === 'decision' ? 'decider' in v : kind === 'epic' ? 'initiative' in v && !('horizon' in v) && !('criteria' in v) : false));
 // A create answers with the item built for a fresh id; the same key again replays the first answer.
 const mint = (build) => withState((state) => {
   const key = f['idempotency-key'];
@@ -144,11 +148,11 @@ const mint = (build) => withState((state) => {
   'initiative edit': () => { const i = find(initiatives, p0, initiative); ok({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon }); },
   'initiative discovery': () => ok({ ...bump(find(initiatives, p0, initiative)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null }),
   'epic show': () => ok(find(epics, p0, epic)),
-  'epic ls': () => ok(Object.values(epics).filter((e) => !f.initiative || e.initiative === f.initiative)),
+  'epic ls': () => ok([...Object.values(epics), ...createdOf('epic')].filter((e) => !f.initiative || e.initiative === f.initiative)),
   'epic create': () => ok(mint((id) => epic(`GRA-${id}`, f.title, { brief: f.brief || '', initiative: f.initiative || null }))),
   'epic edit': () => { const e = find(epics, p0, epic); ok({ ...bump(e), brief: f.brief ?? e.brief, title: f.title ?? e.title }); },
   'epic discovery': () => ok({ ...bump(find(epics, p0, epic)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null }),
-  'decision ls': () => ok(!f.on || f.on === 'GRA-20' ? [decision7] : []),
+  'decision ls': () => ok([decision7, ...createdOf('decision')].filter((d) => !f.on || d.on === f.on)),
   'decision require': () => ok(mint((id) => ({ ...decision7, id, on: f.on, title: f.title, decider: f.decider, due: f.due || null }))),
   'decision link': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');

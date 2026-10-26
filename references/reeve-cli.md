@@ -18,8 +18,10 @@ stands for it.
 
 Put `--json` on every command, as the last argument (the real CLI takes it anywhere; these
 examples end with it). Pass Markdown (a brief) or any text with spaces as one single-quoted
-argument with real newlines, `'\''` for an apostrophe, and no line starting with `#`: write a
-heading in setext form, its title underlined with `---`:
+argument with real newlines, `'\''` for an apostrophe, and no line whose first non-blank
+character is `#` (an indented `#` is refused too): write a heading in setext form, its title
+underlined with `---`. A brief never starts with `-` (the real CLI would read it as a flag): open
+with a sentence or a heading, not a bullet.
 
 ```
 reeve epic create --initiative GRA-12 --title 'Matching queue' --brief 'Vision
@@ -32,7 +34,7 @@ Capabilities
 ```
 
 Claude Code's permission check cannot inspect ANSI-C quoting (`$'…'`) and refuses a quoted
-newline followed by `#`; either one turns an allowed `Bash(reeve *)` call into a permission
+newline followed by `#`, indented or not; either one turns an allowed `Bash(reeve *)` call into a permission
 prompt, and into a refusal when nobody can answer it (`claude --print`, CI).
 
 ## Envelope and exit status

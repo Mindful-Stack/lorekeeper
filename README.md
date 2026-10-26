@@ -528,6 +528,8 @@ These skills trigger automatically when relevant:
 | `standards-curate` | "Document our conventions", "import the standards from <project>", "check the standards against the code" |
 | `brainstorming` | Creative work — features, components, new functionality |
 | `recording-decisions` | A hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) |
+| `planning-initiative` | Planning a Reeve initiative: discovery, brief, required decisions, epics (only with the Reeve planner) |
+| `refining-epic` | Refining a Reeve epic: stories with acceptance criteria, placing untriaged stories (only with the Reeve planner) |
 | `writing-plans` | Multi-step tasks with spec/requirements |
 | `executing-plans` | Executing a written implementation plan |
 | `test-driven-development` | Implementing any feature or bugfix |
@@ -537,6 +539,8 @@ These skills trigger automatically when relevant:
 | `subagent-driven-development` | Independent tasks from a plan (same session) |
 | `dispatching-parallel-agents` | Multiple independent problems |
 | `cultivate` / `cultivate-discovery` | Domain cultivation via `/lore:cultivate` |
+
+**Reeve planner.** Optional. When a `reeve` CLI on the path reports `reeve-planner` and you are signed in (`reeve auth login`), the two skills above write into the planner, brainstorming reads a named story's context first, and `/lore:adr link` links a record to a required decision. Nothing to configure; without it every skill behaves as before.
 
 ### Pattern Identifier Flow
 

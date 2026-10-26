@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Lorekeeper is a **Claude Code plugin** distributed via the Witan marketplace (`Mindful-Stack/witan`). It exposes the `/lore:*` slash commands, plus a SessionStart hook, several agents, and a set of skills that wire Claude into a separate "shared knowledge base" repo. The plugin itself is almost entirely markdown — commands, skills, and agents are markdown files that Claude reads as instructions. The only executable code is `hooks/load-standards-reminder.sh` and the scripts under `scripts/` (`init-detect.js`, `cultivate-detect.js`, `migrate-manifest.js`, and `adr-lint.js` with its modules under `scripts/adr/`).
+Lorekeeper is a **Claude Code plugin** distributed via the Witan marketplace (`Mindful-Stack/witan`). It exposes the `/lore:*` slash commands, plus a SessionStart hook, several agents, and a set of skills that wire Claude into a separate "shared knowledge base" repo. The plugin itself is almost entirely markdown — commands, skills, and agents are markdown files that Claude reads as instructions. The only executable code is `hooks/load-standards-reminder.sh` and the scripts under `scripts/` (`init-detect.js`, `cultivate-detect.js`, `migrate-manifest.js`, `adr-lint.js` with its modules under `scripts/adr/`, and `reeve-detect.js`).
 
 The knowledge base that the plugin reads is **not in this repo**. It lives at a separate path resolved at session start.
 
@@ -75,6 +75,8 @@ and agents the same answer the validator would: where the homes are, what the ca
 with its reverse links, which number is next. It never writes a catalogue, and nothing reads its
 output back into the knowledge base.
 
+The second exception is `scripts/reeve-detect.js`: every skill that touches the Reeve planner must agree on whether it is present and signed in (kb/ADR-0005 R1: `reeve --version` reports `reeve-planner`, `reeve auth status --json` is ok), with a timeout so a hanging binary never hangs a session — one tested script instead of the same two checks written into five skills. It reads nothing from a knowledge base and writes nothing.
+
 ### Layer priority for knowledge
 
 Whenever multiple knowledge sources address the same topic, the agreed priority (encoded in `agents/knowledge-reader/AGENT.md`, `agents/knowledge-question-answerer/AGENT.md`, and `skills/reviewing-changes/SKILL.md`) is:
@@ -92,7 +94,7 @@ Accepted ADRs (in each code repo's `docs/adr/` local home and the KB's `adrs/` s
 
 ### Skill router vs. user-installed superpowers
 
-The SessionStart hook's systemMessage names skills like `pattern-identifier`, `brainstorming`, `test-driven-development`, `systematic-debugging`, `verification-before-completion`, `executing-plans`, `writing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `knowledge-update`, and `reviewing-changes`. The plugin's own skills are `pattern-identifier`, `knowledge-update`, `reviewing-changes`, `standards-curate`, `cultivate`, `cultivate-discovery`, and `recording-decisions` (the ADR gate, which also holds the ADR procedure); the rest are bundled copies of the **superpowers** workflow skills under `skills/`. They have separate identities from the user-level superpowers skills with the same names — treat them as the plugin's own copies and edit them here. (If the user-level superpowers skills evolve, those changes are not automatically reflected here.)
+The SessionStart hook's systemMessage names skills like `pattern-identifier`, `brainstorming`, `test-driven-development`, `systematic-debugging`, `verification-before-completion`, `executing-plans`, `writing-plans`, `subagent-driven-development`, `dispatching-parallel-agents`, `knowledge-update`, and `reviewing-changes`. The plugin's own skills are `pattern-identifier`, `knowledge-update`, `reviewing-changes`, `standards-curate`, `cultivate`, `cultivate-discovery`, `recording-decisions` (the ADR gate, which also holds the ADR procedure), and the two Reeve planner skills `planning-initiative` and `refining-epic` (active only when the planner CLI is present); the rest are bundled copies of the **superpowers** workflow skills under `skills/`. They have separate identities from the user-level superpowers skills with the same names — treat them as the plugin's own copies and edit them here. (If the user-level superpowers skills evolve, those changes are not automatically reflected here.)
 
 ### Slash-command namespace
 

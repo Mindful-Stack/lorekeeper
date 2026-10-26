@@ -297,6 +297,7 @@ const SPEC = {
   'story context': { pos: 1 },
   'story ls': { pos: 0, val: ['epic'], bool: ['untriaged'] },
   'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
+  'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
   'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank'], bool: ['no-epic'], rep: ['criterion'], req: ['version'] }, // --kind: Reeve plan C Task 5
   'initiative show': { pos: 1 },
   'initiative ls': { pos: 0 },
@@ -335,8 +336,6 @@ if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) error('validation', `
 if (f.version && !/^\d+$/.test(f.version)) error('validation', '--version must be an integer');
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
 if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) error('validation', '--due must be YYYY-MM-DD');
-logCall(); // valid: the call reached the planner (a refusal below is the planner's answer)
-if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)) emit({ outcome: 'refused', reasons: [{ reason: 'no_criteria' }] }, 2);
 
 const NOW = '2026-10-20T09:00:00Z';
 const initiative = (key, title, o = {}) => ({ key, title, brief: '', horizon: 'Later', owner: null, target_month: null, discovery_complete: null, external_ref: null, progress: null, version: 1, ...o });
@@ -356,22 +355,21 @@ const stories = {
   'GRA-32': story('GRA-32', 'Show match history', { epic: 'GRA-20' }),
   'GRA-40': story('GRA-40', 'Matching crashes when a mentor has no timezone'),
   'GRA-41': story('GRA-41', 'Upgrade the queue client library'),
-  'GRA-42': story('GRA-42', 'Mentees can pause matching for a month'),
+  'GRA-42': story('GRA-42', 'Drop a match request the mentee withdrew from the queue'),
   'GRA-43': story('GRA-43', 'Welcome email with an onboarding checklist for new mentors'),
   'GRA-44': story('GRA-44', 'Invoice employers for programme fees'),
+  'GRA-45': story('GRA-45', 'Coordinators match a mentee by hand in one click'),
+  'GRA-46': story('GRA-46', 'Fax match summaries to coordinators'),
 };
-const readiness = {
-  'GRA-31': { ready: false, reasons: [{ reason: 'ancestor_discovery_incomplete', item: 'GRA-20' }, { reason: 'decision_no_record', decision_id: 7, title: 'Queue or cron' }] },
-  'GRA-32': { ready: false, reasons: [{ reason: 'no_criteria' }, { reason: 'ancestor_discovery_incomplete', item: 'GRA-20' }] },
-};
-const created = /^GRA-[1-9]\d{2,}$/; // keys this fake handed out in the current run
-const find = (table, key, make) => itemsOf()[key] || table[key] || (created.test(key) ? make(key, 'Created in this run') : error('not_found', `no item ${key}`));
+// The run's state, read once: items created or edited in this run, by key (a show or a list sees
+// the last write), and the creates by idempotency key.
+const state = withState((st) => st);
+const itemsOf = () => state.items || {};
+const find = (table, key) => itemsOf()[key] || table[key] || error('not_found', `no item ${key}`);
 const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`));
 const [p0] = pos;
 // Items created in this run, by kind, in creation order (lists show them like the real planner).
-const createdOf = (kind) => withState((state) => Object.values(state.creates)).filter((v) => !Array.isArray(v) && 'decider' in v && kind === 'decision');
-// Items created or edited in this run, by key; a show or a list sees the last write.
-const itemsOf = () => withState((state) => state.items || {});
+const createdDecisions = () => Object.values(state.creates).filter((v) => !Array.isArray(v) && 'decider' in v);
 const kindOf = (v) => ('criteria' in v ? 'story' : 'horizon' in v ? 'initiative' : 'epic');
 const all = (table, kind) => Object.values({ ...table, ...Object.fromEntries(Object.entries(itemsOf()).filter(([, v]) => kindOf(v) === kind)) });
 const save = (item) => withState((state) => { (state.items ||= {})[item.key] = item; return item; });
@@ -384,17 +382,24 @@ const mint = (build) => withState((state) => {
   }
   return state.creates[key];
 });
-// The fixture's readiness for its own unchanged stories; anything else derived like the planner does.
+// Readiness derived like the planner does, for every story.
 const readinessOf = (s) => {
-  if (readiness[s.key] && !itemsOf()[s.key]) return readiness[s.key];
   const reasons = [];
   if (!s.epic) reasons.push({ reason: 'untriaged' });
   if (!s.criteria.length) reasons.push({ reason: 'no_criteria' });
   const e = s.epic && (itemsOf()[s.epic] || epics[s.epic]);
   if (e && !e.discovery_complete) reasons.push({ reason: 'ancestor_discovery_incomplete', item: e.key });
-  if (e) for (const d of [decision7, ...createdOf('decision')]) if (d.on === e.key && !d.record) reasons.push({ reason: 'decision_no_record', decision_id: d.id, title: d.title });
+  if (e) for (const d of [decision7, ...createdDecisions()]) if (d.on === e.key && !d.record) reasons.push({ reason: 'decision_no_record', decision_id: d.id, title: d.title });
   return { ready: !reasons.length, reasons };
 };
+
+// A write that names an epic or initiative nobody created is not_found, and not logged: a guessed
+// key never satisfies a log expectation.
+if (['story create', 'story edit', 'epic create', 'epic edit'].includes(cmd)) {
+  for (const [flag, table] of [['epic', epics], ['initiative', initiatives]]) if (f[flag] !== undefined && !itemsOf()[f[flag]] && !table[f[flag]]) error('not_found', `no ${flag} ${f[flag]}`);
+}
+logCall(); // valid: the call reached the planner (a refusal below is the planner's answer)
+if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)) emit({ outcome: 'refused', reasons: [{ reason: 'no_criteria' }] }, 2);
 
 ({
   'auth status': () => ok({ url: 'http://127.0.0.1:7474', token_from_env: false, email: 'dan@example.com', role: 'member', token_kind: 'interactive' }),
@@ -405,18 +410,19 @@ const readinessOf = (s) => {
   },
   'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readinessOf(s) }))),
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })) }))),
-  'story edit': () => { const s = find(stories, p0, story); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic })); },
-  'initiative show': () => ok(find(initiatives, p0, initiative)),
+  'story mv': () => { const s = find(stories, p0); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1] })); }, // exists so a delivery change is logged; no skill may call it
+  'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic })); },
+  'initiative show': () => ok(find(initiatives, p0)),
   'initiative ls': () => ok(all(initiatives, 'initiative')),
   'initiative create': () => ok(mint((id) => initiative(`GRA-${id}`, f.title, { brief: f.brief || '', horizon: f.horizon, owner: f.owner || null }))),
-  'initiative edit': () => { const i = find(initiatives, p0, initiative); ok(save({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon })); },
-  'initiative discovery': () => ok(save({ ...bump(find(initiatives, p0, initiative)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
-  'epic show': () => ok(find(epics, p0, epic)),
+  'initiative edit': () => { const i = find(initiatives, p0); ok(save({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon })); },
+  'initiative discovery': () => ok(save({ ...bump(find(initiatives, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
+  'epic show': () => ok(find(epics, p0)),
   'epic ls': () => ok(all(epics, 'epic').filter((e) => !f.initiative || e.initiative === f.initiative)),
   'epic create': () => ok(mint((id) => epic(`GRA-${id}`, f.title, { brief: f.brief || '', initiative: f.initiative || null }))),
-  'epic edit': () => { const e = find(epics, p0, epic); ok(save({ ...bump(e), brief: f.brief ?? e.brief, title: f.title ?? e.title })); },
-  'epic discovery': () => ok(save({ ...bump(find(epics, p0, epic)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
-  'decision ls': () => ok([decision7, ...createdOf('decision')].filter((d) => !f.on || d.on === f.on)),
+  'epic edit': () => { const e = find(epics, p0); ok(save({ ...bump(e), brief: f.brief ?? e.brief, title: f.title ?? e.title })); },
+  'epic discovery': () => ok(save({ ...bump(find(epics, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
+  'decision ls': () => ok([decision7, ...createdDecisions()].filter((d) => !f.on || d.on === f.on)),
   'decision require': () => ok(mint((id) => ({ ...decision7, id, on: f.on, title: f.title, decider: f.decider, due: f.due || null }))),
   'decision link': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
@@ -551,11 +557,27 @@ test('creates and edits persist: story ls, show and the readiness reasons see th
   const i = call(['initiative', 'create', '--title', 'Billing', '--horizon', 'Later', '--idempotency-key', 'refining-epic:GRA-20:0a1b2c3d:2', '--json']).value;
   assert.ok(call(['initiative', 'ls', '--json']).value.some((x) => x.key === i.key));
 });
+test('a write naming an epic or initiative nobody created is not_found and not logged', () => {
+  const r = run(['story', 'edit', 'GRA-43', '--version', '1', '--epic', 'GRA-199', '--json']);
+  assert.deepEqual([r.status, r.envelope.code, r.log], [1, 'not_found', '']);
+  const e = run(['epic', 'create', '--initiative', 'GRA-150', '--title', 'A', '--idempotency-key', KEY, '--json']);
+  assert.deepEqual([e.status, e.envelope.code, e.log], [1, 'not_found', '']);
+  assert.equal(run(['epic', 'show', 'GRA-150', '--json']).envelope.code, 'not_found');
+});
+test('readiness is derived for every story; story mv exists so a delivery change is logged', () => {
+  const listed = run(['story', 'ls', '--epic', 'GRA-20', '--json']).envelope.value;
+  assert.deepEqual(listed.map((x) => x.readiness.reasons.map((r) => r.reason)), [
+    ['ancestor_discovery_incomplete', 'decision_no_record'],
+    ['no_criteria', 'ancestor_discovery_incomplete', 'decision_no_record'],
+  ]);
+  const mv = run(['story', 'mv', 'GRA-31', 'in-progress', '--json']);
+  assert.deepEqual([mv.status, mv.envelope.value.delivery, mv.log], [0, 'in-progress', 'story mv GRA-31 in-progress --json\n']);
+});
 ```
 
-What these distinguish: a fake that shares or drops log lines, that accepts `--brief-file` (the flag the first draft invented), that answers calls without `--json` (or insists it be last), that accepts a create key that is not `<skill>:<KEY>:<run-id>:<n>` or mints a second item for a replayed key, that cannot refuse (exit 2, `REEVE_FAKE_REFUSE`), that invents a `no_record` check kind, that cannot reproduce the conflict and the half-successful link, or that forgets a create or an edit on the next show or list (a re-read after the last write would then contradict the writes).
+What these distinguish: a fake that shares or drops log lines, that accepts `--brief-file` (the flag the first draft invented), that answers calls without `--json` (or insists it be last), that accepts a create key that is not `<skill>:<KEY>:<run-id>:<n>` or mints a second item for a replayed key, that cannot refuse (exit 2, `REEVE_FAKE_REFUSE`), that invents a `no_record` check kind, that cannot reproduce the conflict and the half-successful link, that forgets a create or an edit on the next show or list (a re-read after the last write would then contradict the writes), that accepts a write naming an epic or initiative nobody created (a guessed key would satisfy a log line), or that has no `story mv` to log a delivery change.
 
-Run: `chmod 755 test/fixtures/reeve-bin/reeve && node --test scripts/__tests__/reeve-fake.test.js` — Expected: 13 passing.
+Run: `chmod 755 test/fixtures/reeve-bin/reeve && node --test scripts/__tests__/reeve-fake.test.js` — Expected: 15 passing.
 
 - [ ] **Step 5: The runner**
 
@@ -626,7 +648,7 @@ Replace `run-test`:
          :output (cond-> output log (str "\n--- reeve fake log ---\n" log-text))})
       (finally
         (fs/delete-tree config-dir)
-        (when log (fs/delete-if-exists log))))))
+        (when log (fs/delete-if-exists log) (fs/delete-if-exists (str log ".state")))))))
 ```
 
 In `-main`, replace the `scenarios` binding and print the skipped ones before running:
@@ -669,7 +691,7 @@ Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-runner-selftest` �
 
 - [ ] **Step 7: test/README.md**
 
-Add a section "Scenarios against the Reeve planner" with the key table from Step 5, the environment pin (every scenario: empty `REEVE_CONFIG_DIR`, no `REEVE_URL`/`REEVE_TOKEN`/`REEVE_BIN`; fake scenarios: the fake first on `PATH`, a fresh `REEVE_FAKE_LOG` per run), the log format (one line per call that passed the fake's validation, argv joined by spaces, newlines flattened; a malformed call is not logged, a valid call the planner refuses is), what the fake answers (the item keys in Step 4: initiatives GRA-12/GRA-13, epics GRA-20/GRA-21, decision 7 "Queue or cron" with no record, stories GRA-31/GRA-32 in GRA-20, untriaged GRA-40…GRA-44; created items get `GRA-100`, `GRA-101`, … from the state file `$REEVE_FAKE_LOG.state`; creates need `--idempotency-key <skill>:<KEY>:<run-id>:<n>` and replay by key; `decision ls` and `epic ls` also list the run's creates), `REEVE_FAKE_REFUSE`,, `REEVE_FAKE_LINK_CHECK=unreadable`, and the two commands:
+Add a section "Scenarios against the Reeve planner" with the key table from Step 5, the environment pin (every scenario: empty `REEVE_CONFIG_DIR`, no `REEVE_URL`/`REEVE_TOKEN`/`REEVE_BIN`; fake scenarios: the fake first on `PATH`, a fresh `REEVE_FAKE_LOG` per run), the log format (one line per call that passed the fake's validation, argv joined by spaces, newlines flattened; a malformed call is not logged, a valid call the planner refuses is), what the fake answers (the item keys in Step 4: initiatives GRA-12/GRA-13, epics GRA-20/GRA-21, decision 7 "Queue or cron" with no record, stories GRA-31/GRA-32 in GRA-20, untriaged GRA-40…GRA-46; created items get `GRA-100`, `GRA-101`, … from the state file `$REEVE_FAKE_LOG.state`; creates need `--idempotency-key <skill>:<KEY>:<run-id>:<n>` and replay by key; creates and edits persist for the run, so every show and list sees them, and readiness is derived for every story; a write naming an epic or initiative that does not exist is `not_found` and not logged; `story mv` exists only so a delivery change is logged), `REEVE_FAKE_REFUSE`,, `REEVE_FAKE_LINK_CHECK=unreadable`, and the two commands:
 
 ```bash
 bb test/run-tests.clj --with reeve-fake --filter reeve-   # the planner scenarios
@@ -889,7 +911,10 @@ argument.
    gave in the request counts as the confirmation for that write; do not ask it again.
 2. **One question at a time**, skipping every question the request already answers.
 3. **Branch on the exit status** as the reference says. A failed read in step 1 stops the run:
-   every later step depends on it. A refused or failed write stops that step; say so.
+   every later step depends on it. An error about sign-in or authorization on any call stops the
+   run: say it and tell the user to run `reeve auth login`. Any other refused or failed write
+   skips that one item (that decision, comment or epic): show the reasons or the message, go on
+   with the next item, and list what was skipped in the report.
 4. **The user decides.** Deciders, due dates, applying a record and the discovery mark come from
    the user, never from you.
 5. **Build on what is there.** The planner may already hold a brief, decisions and epics for this
@@ -1018,9 +1043,14 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
  {:name "reeve-refining-epic"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
-  :prompt "Refine epic GRA-20 in Reeve. Do not ask questions; the answers are given. Done looks like: every match request is processed from the queue within an hour. Boundary: no change to mentor profiles. No new required decisions. Stories: 'Enqueue match requests' with criteria 'a new request is on the queue within a minute' and 'a repeated request is enqueued once'; 'Process the match queue' with criteria 'each queued request gets a match or a reason within an hour' and 'a failed attempt is retried'; 'Alert on a stuck queue' with criteria 'an alert fires when the oldest request is over two hours old' and 'the alert names the stuck request'. Place every untriaged story with the placement tree; the horizon buckets are Now, Next, Later, Won't do. I confirm every write to the planner. Discovery is not complete yet."
+  :prompt "Refine epic GRA-20 in Reeve. Do not ask questions; the answers are given. Done looks like: every match request is processed from the queue within an hour. Boundary: no change to mentor profiles. No new required decisions. Stories: 'Enqueue match requests' with criteria 'a new request is on the queue within a minute' and 'a repeated request is enqueued once'; 'Process the match queue' with criteria 'each queued request gets a match or a reason within an hour' and 'requests are processed oldest first'; 'Alert on a stuck queue' with criteria 'an alert fires when the oldest request is over two hours old' and 'the alert names the stuck request'. Place every untriaged story with the placement tree, except GRA-46, which we won't do; the horizon buckets are Now, Next, Later, Won't do. I confirm every write to the planner. Discovery is not complete yet."
   :workdir "."
-  :expects ["(?i)using the refining-epic skill" "no acceptance criteria" "decision: no record" "(?i)researched:" "(?i)run id:? *`?[0-9a-f]{8}"]
+  :expects ["(?i)using the refining-epic skill" "(?i)researched:" "(?i)run id:? *`?[0-9a-f]{8}"
+            "#7\\W+Queue or cron" "discovery not complete on GRA-20"
+            "GRA-42\\b(?:(?!GRA-(?!20\\b)\\d)[\\s\\S]){0,400}discovery not complete on GRA-20"
+            "(?i)GRA-40[^\\n]{0,200}\\bbug\\b" "(?i)GRA-41[^\\n]{0,200}\\bchore\\b" "(?i)GRA-42[^\\n]{0,200}this epic"
+            "(?i)GRA-43[^\\n]{0,200}new epic under GRA-13" "(?i)GRA-45[^\\n]{0,200}new epic under GRA-12"
+            "(?i)GRA-44[^\\n]{0,200}new initiative" "(?i)GRA-46[^\\n]{0,200}won.?t do"]
   :rejects ["docs/agent/specs"]
   :log-expects ["^--version$"
                 "^epic show GRA-20 --json$"
@@ -1031,26 +1061,31 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
                 "^story create (?=.*--epic GRA-20\\b)(?=.*--title Enqueue match requests )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "^story create (?=.*--epic GRA-20\\b)(?=.*--title Process the match queue )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "^story create (?=.*--epic GRA-20\\b)(?=.*--title Alert on a stuck queue )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
-                "^story create [^\\n]*--idempotency-key (\\S+) [^\\n]*\\n(?s:.*)^story create [^\\n]*--idempotency-key (?!\\1 )\\S+ "
+                "^story create [^\\n]*--idempotency-key (\\S+) [^\\n]*\\n(?s:.*)^story create [^\\n]*--idempotency-key (?!\\1 )(\\S+) [^\\n]*\\n(?s:.*)^story create [^\\n]*--idempotency-key (?!\\1 |\\2 )\\S+ "
                 "(?s)refining-epic:GRA-20:([0-9a-f]{8}):1\\b.*refining-epic:GRA-20:\\1:2\\b"
                 "^story edit GRA-40 (?=.*--kind bug\\b)(?=.*--epic GRA-20\\b)(?=.*--version 1\\b).*--json$"
                 "^story edit GRA-41 (?=.*--kind chore\\b).*--json$"
                 "^story edit GRA-42 (?=.*--epic GRA-20\\b).*--json$"
                 "^epic create (?=.*--initiative GRA-13\\b)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "^story edit GRA-43 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
+                "^epic create (?=.*--initiative GRA-12\\b)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^story edit GRA-45 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
                 "^initiative create (?=.*--horizon Later\\b)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "^epic create (?=.*--initiative GRA-1\\d\\d\\b).*--json$"
                 "^story edit GRA-44 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
-                "(?s)^story create .*^story ls --epic GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add) )"]
-  :log-rejects ["--brief-file" "^story edit GRA-42 .*--kind" "^epic discovery " "^decision require " "^decision link "
-                "^story create .*--title (?:Retry failed matches|Show match history) "]}
+                "(?s)^story create .*^story ls --epic GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add) )"
+                "(?s)^story edit .*^decision ls --on GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add) )"]
+  :log-rejects ["--brief-file" "^story edit GRA-42 .*--kind" "^story edit GRA-45 .*--epic GRA-20\\b" "^story (?:edit|mv) GRA-46 "
+                "^story mv " "^epic discovery " "^decision require " "^decision link "
+                "^story create .*--title (?:Retry failed matches|Show match history) "
+                "(?s)^(\\w+ create)\\b[^\\n]*--idempotency-key (\\S+) .*^(?!\\1\\b)\\w+ create\\b[^\\n]*--idempotency-key \\2 "]}
 ```
 
-What each expectation distinguishes: the three `story create` lines a story without criteria, outside the epic or with a title-derived key; the five placement lines one branch of the placement tree each — GRA-40 (broken behaviour → bug under the covering epic), GRA-41 (internal work → chore), GRA-42 (product change covered by this epic; a `--kind` on it is rejected), GRA-43 (covered by initiative GRA-13 but no epic → new epic there), GRA-44 (covered by nothing → new initiative in `Later`, the last bucket before "Won't do", plus an epic under it); a skill that only offers "this epic or leave it" fails four of them; the single regex `(?s)story create.*story ls --epic` a readiness listing that does not come after the creates (two listings before any write, the step 1 read among them, no longer satisfy it), and the transcript's "no acceptance criteria" (GRA-32) and "decision: no record" (GRA-31) a readiness summary that is invented rather than quoted from the fake's reasons; `epic edit … --version 2` a guessed version; `decision require` and `epic discovery` rejected, a skill that creates decisions or marks discovery the user did not ask for. Added when the skill was built: the announce line and `^--version$` (a skill that skips step 0); distinct `story create` keys and the `:1 … :2` back-reference (a per-kind or per-title counter); the readiness listing pinned after the last write, not merely after a create (a report quoting a listing that later placements made stale); `decision link` and a `story create` for the fixture's GRA-31/GRA-32 rejected (a skill that links a record unasked or recreates existing stories).
+What each expectation distinguishes: the three `story create` lines a story without criteria, outside the epic or with a title-derived key; the three-way distinct-key line two stories sharing a key (the planner would replay the first and lose the second); the `:1 … :2` back-reference a counter that does not start at 1 or a run id that changes mid-run, and the log-reject on one key used by two different `… create` commands a per-kind counter (stories `:1–3`, epics `:1–2`: the epic create would replay the story); the seven placements one branch of the placement tree each — GRA-40 (broken behaviour → bug under the covering epic), GRA-41 (internal work → chore), GRA-42 (a queue story GRA-20 covers; a `--kind` on it is rejected), GRA-43 (covered by initiative GRA-13 but none of its epics → new epic there), GRA-45 (covered by GRA-12, the refined epic's own initiative, but not by the queue epic → new epic under GRA-12, and `--epic GRA-20` on it rejected: the counter-example to "covers"), GRA-44 (covered by nothing → new initiative in `Later`, the last bucket before "Won't do", plus an epic under it) and GRA-46 (won't do: any `story edit` or `story mv` on it rejected); a skill that only offers "this epic or leave it" fails five of them, and since the fake refuses (unlogged) a write naming an epic nobody created, a guessed `--epic GRA-1xx` satisfies nothing; the transcript lines naming each placement's branch a report that lists writes without the tree; the `story ls --epic` and `decision ls --on` reads pinned after the last write a report quoting a listing that later writes made stale; the transcript's "#7 … Queue or cron", "discovery not complete on GRA-20" and GRA-42 followed by that reason (GRA-42 gets it only after its move) a readiness summary invented, copied from the skill or the reference, or read before the placements, rather than quoted from the planner's answer after the last write; the announce line and `^--version$` a skill that skips step 0; `epic edit … --version 2` a guessed version; `decision require`, `decision link`, `epic discovery` and `story mv` rejected, a skill that creates decisions, links records, marks discovery or moves delivery the user did not ask for; a `story create` for the fixture's GRA-31/GRA-32 rejected, a skill that recreates existing stories. The `--brief-file` reject cannot fire (the fake does not log an invalid call); it documents the flag the first draft invented.
 
 - [ ] **Step 2: Run it, see it fail**
 
-Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-refining-epic` — Expected: `[FAIL]`. Without the skill a model that finds `references/reeve-cli.md` gets most of the way; the run that built this task missed the announce line and GRA-42's placement under this epic (it made a new initiative for it), which is why the skill spells out what "an epic covers a story" means.
+Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-refining-epic` — Expected: `[FAIL]`. Without the skill a model that finds `references/reeve-cli.md` gets most of the way; the run that built this task missed the announce line and the placement of the original GRA-42 ("Mentees can pause matching for a month"), which it put in a new initiative. The fixture now titles GRA-42 as a plain queue story and adds GRA-45 as the counter-example, so the skill's one-sentence definition of "covers" is tested both ways.
 
 - [ ] **Step 3: The skill**
 
@@ -1083,7 +1118,10 @@ section says.
    gave in the request counts as the confirmation for that write; do not ask it again.
 2. **One question at a time**, skipping every question the request already answers.
 3. **Branch on the exit status** as the reference says. A failed read in step 1 stops the run:
-   every later step depends on it. A refused or failed write stops that step; say so.
+   every later step depends on it. An error about sign-in or authorization on any call stops the
+   run: say it and tell the user to run `reeve auth login`. Any other refused or failed write
+   skips that one item (that story, placement, decision or comment): show the reasons or the
+   message, go on with the next item, and list what was skipped in the report.
 4. **The user decides.** Deciders, due dates, applying a record, a story's home and the discovery
    mark come from the user, never from you; you propose.
 5. **Build on what is there.** The planner may already hold a brief, decisions and stories for
@@ -1099,6 +1137,11 @@ section says.
    the Reeve planner." Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints
    `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this
    session: <reason>." and stop; this skill has no fallback. Keep `bin` and `run_id`.
+   **No epic named** (for example "triage the untriaged stories"): run
+   `reeve story ls --untriaged --json`, show the stories, say that this skill works on one epic,
+   ask which epic to refine (or which epic a story should go to), and stop until the user
+   answers. When nobody can answer (a non-interactive session), say that an epic key is required
+   and stop. Never pick an epic yourself.
 1. **Read.** `reeve epic show <EPIC> --json` (keep `value.brief`, `value.version` and
    `value.initiative`), then `reeve initiative show <INITIATIVE> --json` for that initiative,
    `reeve decision ls --on <EPIC> --json`, `reeve story ls --epic <EPIC> --json`,
@@ -1106,18 +1149,19 @@ section says.
    If any of them does not exit 0, stop the run: for `not_found` say "The planner has no epic
    <EPIC>." (or the item it names); for an error about sign-in or authorization say it and tell
    the user to run `reeve auth login`; otherwise show the code and message. In parallel, dispatch
-   the **architect** in `survey` mode on the repositories the epic touches and the
-   **knowledge-reader** with the epic's title and "Prioritise domain context and architecture
-   patterns."
-2. **Research.** For each open question that research can answer, look it up: web search or
-   documentation when the session has them, otherwise the knowledge base and the code. Say what
-   you looked up and what it answered in one line, `Researched: <topics and findings>`, or
-   `Researched: nothing — no open question is answerable by research`.
-3. **Discovery and brief.** One question at a time: what done looks like, the boundaries, what is
-   unknown. Start from the existing `value.brief`: keep what still holds, fold in the answers, and
-   show what changes. Then `reeve epic edit <EPIC> --brief <md> --version <version> --json`; keep
-   the new `value.version`.
-4. **Required decisions.** Show the decisions step 1 found; those with `record: null` stay open
+   the **knowledge-reader** with the epic's title and "Prioritise domain context and architecture
+   patterns.", and the **architect** in `survey` mode on the repositories the brief or the user
+   names.
+2. **Discovery conversation.** One question at a time: what done looks like, the boundaries, what
+   is unknown.
+3. **Research.** For each open question from step 2 that research can answer, look it up: web
+   search or documentation when the session has them, otherwise the knowledge base and the code.
+   Say what you looked up and what it answered in one line, `Researched: <topics and findings>`,
+   or `Researched: nothing — no open question is answerable by research`.
+4. **Brief.** Start from the existing `value.brief`: keep what still holds, fold in the answers,
+   and show what changes. Then `reeve epic edit <EPIC> --brief <md> --version <version> --json`;
+   keep the new `value.version`.
+5. **Required decisions.** Show the decisions step 1 found; those with `record: null` stay open
    and go into the report. Only for a consequential choice the user names that blocks work and
    has no decision yet: ask who decides and by when, show and run
    `reeve decision require --on <EPIC> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
@@ -1126,12 +1170,12 @@ section says.
    with `Required decision: #<id>`); otherwise run
    `reeve comment add --decision <id> --body 'Draft <id-to-be>: <title> — apply and link with /lore:adr link <id-to-be> to decision <id>' --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
    When the user says there are no new required decisions, create none.
-5. **Stories.** Propose stories, each finishable by one person or one agent session, each with
+6. **Stories.** Propose stories, each finishable by one person or one agent session, each with
    2–6 acceptance criteria written as observable outcomes, leaving out what an existing story
    from step 1 already covers (say which key). Show them, then for each new one
    `reeve story create --epic <EPIC> --title <title> --kind story --criterion <text> --criterion <text> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
    one `--criterion` per criterion.
-6. **Placement tree.** For each story from `story ls --untriaged`, classify it, propose its home
+7. **Placement tree.** For each story from `story ls --untriaged`, classify it, propose its home
    with the branch that led there, and on confirmation write it (`<v>` is the story's `version`
    from the listing; covering epics and initiatives come from `epic ls` and `initiative ls`):
    - **Broken behaviour** → a bug under the epic that covers the broken feature:
@@ -1140,10 +1184,8 @@ section says.
    - **Internal work** (an upgrade, a refactor, tooling; nothing a user sees) → a chore:
      `reeve story edit <KEY> --version <v> --kind chore --json` (add `--epic` when one covers it).
    - **Product change**, the first that applies, with no `--kind` (it stays a story). An epic
-     covers a story when the story changes the feature or flow the epic delivers (whether, when
-     or how its work happens), even if the epic's brief does not name that change yet; a new epic
-     or initiative is only for work that no existing epic's feature touches. Try the epic being
-     refined first, and when in doubt between it and a new home, propose it and say why:
+     covers a story when the story changes the feature that epic delivers, even if its brief does
+     not name the change yet.
      1. an epic covers it (this one, or one from `epic ls`):
         `reeve story edit <KEY> --version <v> --epic <COVERING-EPIC> --json`;
      2. else an initiative covers it, but none of its epics does: a new epic under it,
@@ -1154,23 +1196,28 @@ section says.
         an epic under it as in 2, then the `story edit`. The CLI does not list the buckets: ask for
         them (offering the horizons seen in `initiative ls`), or take them from the request.
    - **Won't do**, or the user says "leave it untriaged": write nothing for it.
-   `--kind` on `story edit` comes with Reeve plan C (Task 5); before that the CLI rejects it as a
-   usage error (exit 1): say so and leave the story's kind as it is.
-7. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
+   `--kind` on `story edit` comes with Reeve plan C (Task 5); a planner without it answers a
+   usage error (exit 1). Then run the same edit again without `--kind` (the story keeps its kind
+   and still gets its home), and say so in the report.
+8. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
    only on yes run `reeve epic discovery <EPIC> --complete --version <latest version> --json`.
-8. **Re-read.** After the last write (the discovery mark, or the last placement when there is
+9. **Re-read.** After the last write (the discovery mark, or the last placement when there is
    none), run `reeve story ls --epic <EPIC> --json`, `reeve decision ls --on <EPIC> --json` and
    `reeve story ls --untriaged --json`. Completing discovery and placing stories change the
    readiness reasons, so these are the last reads of the run and the only ones the report quotes.
-9. **Report.** Start with the plain lines `Using the refining-epic skill.`, `Run id: <run_id>`
+10. **Report.** Start with the plain lines `Using the refining-epic skill.`, `Run id: <run_id>`
    and the `Researched:` line, all unformatted (no bold, so they can be searched for; a
-   non-interactive session shows only this report, not the announcement). Then every key written
-   and every existing key reused; each placement with its branch (bug, chore, this epic, another
-   epic, new epic under an initiative, new initiative, left untriaged); the open required
-   decisions from the re-read, worded by the reference ("no record", …); and every story of the
-   epic from the re-read as "ready", or "blocked:" with the planner's reasons worded by the
-   reference's table (for example "no acceptance criteria", "decision: no record — #7 …"). End
-   with the next step: "pick a ready story and brainstorm it".
+   non-interactive session shows only this report, not the announcement). Then:
+   - every key written and every existing key reused, and every item skipped with its reason;
+   - each placement on one line: the story's key, its title and its branch, named `bug`,
+     `chore`, `this epic`, `another epic <KEY>`, `new epic under <INITIATIVE>`,
+     `new initiative`, `won't do` or `left untriaged`;
+   - the open required decisions from the re-read, worded by the reference;
+   - each story of the epic from the re-read on one line: its key, its title, and "ready" or
+     "blocked:" followed by every one of the planner's reasons, worded by the reference's table.
+     Write each story's reasons out in full on its own line, even when stories share them; never
+     abbreviate them as "the shared reasons" or "as above".
+   End with the next step: "pick a ready story and brainstorm it".
 
 `<n>` is one counter for the whole run, from 1, shared by decisions, comments, stories, epics and
 initiatives: every create takes the next number, and a retry of the same create reuses its number.
@@ -1182,7 +1229,7 @@ Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-refining-epic` — 
 
 - [ ] **Step 5: Mutation check**
 
-Empty the body of `skills/refining-epic/SKILL.md` below the frontmatter, run Step 4's command. Expected: `[FAIL]`; the run that built this task missed 25 expectations, among them every `story create`, every placement line, the readiness listing after the last write and the transcript's "no acceptance criteria" and "decision: no record". Restore.
+Empty the body of `skills/refining-epic/SKILL.md` below the frontmatter, run Step 4's command. Expected: `[FAIL]`, with every `story create`, the placement lines, the re-reads after the last write and the quoted readiness reasons among the missing. Restore.
 
 - [ ] **Step 6: Commit**
 

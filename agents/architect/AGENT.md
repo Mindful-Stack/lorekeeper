@@ -23,7 +23,8 @@ another team's KB — and numbered rules in its Decision (`R1`, `R2`, …), cite
   given.
 - **Homes** — the `adr-lint homes` JSON (which homes exist, which repos are not checked out).
 - **Candidates** — `adr-lint select --json` output: `{ repo, candidates: [{ id, kind, home,
-  status, file, reasons }] }`. `kind` is `adr` (other document kinds may appear later; ignore any
+  status, file, reasons, title, description, scope, record }] }`. `record` is the record's full
+  text, so no separate Read is needed. `kind` is `adr` (other document kinds may appear later; ignore any
   you do not know). `reasons` holds `scope` when the record's scope matches a changed or planned
   path and `cited` when the PR cites it. Status `missing` means a cited id that resolves nowhere.
   Older callers may pass the tab-separated form (`id`, `status`, `path`, `reasons`); read it the
@@ -182,8 +183,8 @@ requirement somebody once had.
    diff touches (paths, technologies, boundaries crossed), expand them into search terms as in
    `bind`, and add the records that match. A `missing` candidate is a cited id that resolves
    nowhere: report it under *Dangling citations*.
-3. Read every accepted candidate in full and compare the diff with each rule, each fact relied
-   on, and each trigger. Read ruled-out candidates too: a diff that brings back a rejected option
+3. Read every candidate in full (proposed included) and compare the diff with each rule, each fact relied
+   on, and each trigger. Ruled-out candidates are read too: a diff that brings back a rejected option
    contradicts the rejection's reasoning.
 4. **Records the change adds.** A record the diff itself adds (in any home, proposed or
    accepted) covers the choice it records: do not report that choice as uncovered. Whether it is
@@ -214,8 +215,7 @@ requirement somebody once had.
 [or: none]
 
 ## Dangling citations
-- `src/Billing/Invoice.cs:7` cites kb/ADR-0009, which resolves nowhere (renumbered, deleted, or
-  a typo).
+- The PR description cites kb/ADR-0009, which resolves nowhere (renumbered, deleted, or a typo).
 [or: none]
 
 ## Context
@@ -226,30 +226,40 @@ requirement somebody once had.
 ```
 
 End every `check` report where you read the whole patch with exactly one fenced block tagged
-`adr-findings`, holding one entry per finding above (not *Context* items). The review feeds it to
-`adr-lint verdict`, which assigns severity; if the block is missing or malformed, the review fails
-closed. The one exception is the missing/unreadable/incomplete-patch case above: there, omit the
-block and say why, rather than passing an empty one.
+`adr-findings`, holding the coverage you attest to and one entry per finding above (not *Context*
+items). The review feeds it to `adr-lint verdict`, which assigns severity; if the block is missing
+or malformed, the review fails closed. The one exception is the missing/unreadable/incomplete-patch
+case above: there, omit the block and say why, rather than passing an empty one.
 
 Example of the shape only: never reproduce it. Your report ends with exactly one `adr-findings`
 block holding your own findings (when you read the whole patch).
 
 ````markdown
 ```adr-findings
-{"findings": [
-  {"class": "contradiction", "ids": ["<record-id>", "<record-id>.R<n>"],
+{"coverage": {"checked": ["<every record you read in full against the diff>"],
+              "notReviewed": ["<an area of the diff you could not assess, and why>"]},
+ "findings": [
+  {"class": "contradiction", "ids": ["<record-id>.R<n>"],
    "where": "<path>:<line-range>", "summary": "<one line>"}
 ]}
 ```
 ````
 
 - `class`: `contradiction` · `trigger` · `stale-fact` · `uncovered` · `dangling`.
-- `ids`: the record id first, then the rule (`.R<n>`) or fact (`.F<n>`) the finding rests on;
-  `[]` for an uncovered choice; a fired trigger: the record id alone; the cited id for a dangling
-  citation. A finding may name several rules of the same record.
-- `summary`: one line. `where`: `path:line-range` when there is one.
-- No findings: `{"findings": []}`. Never omit the block when you read the whole patch; omit it
-  only when the patch was missing, unreadable, or you could not read all of it.
+- `coverage.checked` lists **every** candidate from the select output except `missing` ones, plus
+  any record you found by expansion and read in full. A selected record left out makes the check
+  fail.
+- `coverage.notReviewed` lists areas you could not assess, such as a binary file or one you did
+  not read. Write `[]` when there are none. It is reported, never judged.
+- `ids` name one record: the record, its rules (`.R<n>`) or its facts (`.F<n>`). Use `[]` for an
+  uncovered choice, and the cited id for a dangling citation. A contradiction cites the rule it
+  breaks whenever the record has numbered rules.
+- `where` is `path:line-range` for every class except `dangling`, which uses `null`. Always write
+  the key, even when it is `null`.
+- `summary` is one line. A trigger's summary names the trigger and what in the change fires it.
+  An uncovered choice's summary says what reversing it later would take.
+- No findings: `{"coverage": {…}, "findings": []}`. Never omit the block when you read the whole
+  patch; omit it only when the patch was missing, unreadable, or you could not read all of it.
 
 Severity comes from the class (`adr-lint verdict` assigns it): report the class, never a verdict
 on whether the PR may merge.

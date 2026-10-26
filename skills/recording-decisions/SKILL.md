@@ -1,6 +1,6 @@
 ---
 name: recording-decisions
-description: Architecture decision records (ADRs) from plain words. Use when a hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, hosting, data model); when a named person approved or rejected a proposed decision record; when a fact an accepted record relies on no longer holds; when a decision is replaced, superseded, retired or dropped; when asked which decisions bind a change, path or area; or to list or discover ADRs. Not for PR approvals, reversible conventions, or routine implementation choices.
+description: Architecture decision records (ADRs) from plain words. Use when a hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, hosting, data model); when a named person approved or rejected a proposed decision record; when a fact an accepted record relies on no longer holds; when a decision is replaced, superseded, retired or dropped; when asked which decisions bind a change, path or area; or to list or discover ADRs; when a record should be linked to a required decision in the Reeve planner. Not for PR approvals, reversible conventions, or routine implementation choices.
 ---
 
 # Recording Decisions
@@ -28,7 +28,9 @@ does not expand it).
 3. **Not interactive?** If you cannot ask a question and wait for the answer (`claude -p`,
    `codex exec`, a CI job, a subagent), never write: draft, show what you would write with your
    assumptions stated, then stop. A ratification without a named human stops and says one is
-   required. The knowledge-updater is dispatched only after the user confirmed.
+   required. The knowledge-updater is dispatched only after the user confirmed. A planner link
+   (actions/link.md) is not a record write: the request naming the record, the decision and the
+   PR confirms it.
 4. **Record before building.** Code waits for a high-tier record to be accepted, and a proposal's
    PR merges only once it is accepted.
 5. **Locked records change by the five edits only.** Anything else is a replacing record.
@@ -46,6 +48,7 @@ The request is in plain words. There are no subcommands to learn. Typed as a com
 /lore:adr What decisions apply to src/Billing in billing-api?
 /lore:adr list
 /lore:adr find the decisions the code already made
+/lore:adr link kb/ADR-0007 to decision 7
 ```
 
 A record is named by its qualified id (`kb/ADR-0004`, `billing-api/ADR-0002`) or a bare number. A
@@ -66,11 +69,12 @@ Pick one action from what the user says. If two fit, ask one question.
 | which decisions apply to a change, a path, or a topic | **what binds** |
 | nothing, or `list`, optionally a status | **list** |
 | find the decisions the code already made | **discover** |
+| link an applied record to a required decision in the planner ("link kb/ADR-0007 to decision 7") | **link** |
 | the review is blocking on a record ("why is review blocking?", "can I merge anyway?") | no action: explain from `<plugin-root>/references/pr-decisions.md` — conform, or replace the record; for an uncovered choice, low tier: add the record and have it accepted in this PR before merge, high tier: open its own ADR PR and wait until it is accepted; to merge anyway, a member of the repository's bypass group overrides the required check. |
 
 **This file holds no procedure.** Once you know the action, Read
 `<plugin-root>/skills/recording-decisions/actions/<action>.md` (`record`, `ratify`, `amend`,
-`note-a-change`, `replace`, `what-binds`, `list`, `discover`) and follow it. Do not show
+`note-a-change`, `replace`, `what-binds`, `list`, `discover`, `link`) and follow it. Do not show
 or write anything before you have read it. Each action names the reference files it needs.
 
 ## Homes
@@ -100,3 +104,6 @@ it fell back from what the user asked, and the next step.
 
 For a decision surfacing mid-brainstorm, draft the record and link it from the spec: the spec
 describes the design, the record defends the decision.
+
+When the Reeve planner is present and the record answers a required decision, the record action
+links it after apply (actions/link.md); a link never changes the record.

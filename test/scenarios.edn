@@ -116,7 +116,13 @@ git commit -m \"feat: add DeviceStatusDto\"
   :prompt "/lore:adr Use a message queue between the order and inventory services"
   :workdir "."
   :expects ["kb/ADR-000[12]" "(?i)\\b(record it|one line|no record|high[- ]tier|low[- ]tier|amend)\\b"]
-  :rejects ["Accepted \\d{4}-\\d{2}-\\d{2} by"]}
+  :rejects ["Accepted \\d{4}-\\d{2}-\\d{2} by" "(?i)meeting notes|in an RFC"]}
+
+ {:name "command-adr-triages-process-decision"
+  :prompt "/lore:adr We decided to hold retrospectives every two weeks instead of every week. Interview answers: decided by Dan Doe; it affects only the backend repo, where the process doc is backend:docs/process/retrospectives.md; easy to undo (two-way); no security, privacy, billing, legal or contract sensitivity; the alternative was weekly retrospectives, dropped because they took time from delivery; it keeps being re-debated and I want a record. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
+  :workdir "."
+  :expects ["backend/ADR-0002" "(?i)low[- ]tier" "docs/process/retrospectives\\.md"]
+  :rejects ["(?i)meeting notes|in an RFC" "Accepted \\d{4}-\\d{2}-\\d{2} by"]}
 
  {:name "command-adr-list-spans-homes"
   :prompt "/lore:adr list"
@@ -292,4 +298,42 @@ git commit -m \"feat: add DeviceStatusDto\"
   :prompt "/lore:brainstorming add a retry policy for story GRA-31"
   :workdir "."
   :expects ["Using the brainstorming skill: no code until the design is approved\\." "\\?"]
-  :rejects ["(?i)reeve|planner|story context|not available|signed out" "docs/agent/specs/"]}]
+  :rejects ["(?i)reeve|planner|story context|not available|signed out" "docs/agent/specs/"]}
+
+ {:name "reeve-adr-link-proposed"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the planner calls this repository lore, the PR proposing the record is https://github.com/example/test-workspace/pull/9, and the household is the current directory."
+  :workdir "."
+  :expects ["proposed, PR open"]
+  :rejects ["(?i)could not run"]
+  :log-expects ["^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b).*--json$"]}
+
+ {:name "reeve-adr-link-check-unreadable"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :env {"REEVE_FAKE_LINK_CHECK" "unreadable"}
+  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the planner calls this repository lore, the PR proposing the record is https://github.com/example/test-workspace/pull/9, and the household is the current directory."
+  :workdir "."
+  :expects ["(?i)linked; the check could not run here" "(?i)next scheduled check"]
+  :rejects ["(?i)nothing was linked|link failed"]
+  :log-expects ["^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b).*--json$"]}
+
+ {:name "reeve-adr-link-ride-along"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:adr link backend/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the record rides along on branch feat/retry in the backend repository, staged and not committed, at docs/adr/0002-payment-webhook-retries.md; there is no PR yet; the planner calls this repository backend; the household is the current directory."
+  :workdir "."
+  :expects ["(?i)rides along on branch feat/retry" "/lore:adr link backend/ADR-0002 to decision 7" "once the implementing PR is open"]
+  :rejects ["(?i)linked:"]
+  :log-expects ["^comment add (?=.*--decision 7\\b)(?=.*rides along on branch feat/retry)(?=.*/lore:adr link backend/ADR-0002 to decision 7\\b)(?=.*--idempotency-key \\S+:7:[0-9a-f]{8}:\\d+\\b).*--json$"]
+  :log-rejects ["^decision link "]}
+
+ {:name "reeve-adr-link-headless-missing-input"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; nobody can answer them in this session."
+  :workdir "."
+  :expects ["(?i)nothing was linked" "(?i)repositor"]
+  :rejects ["(?m)^\\W*Linked[:;]"]
+  :log-rejects ["^decision link "]}]

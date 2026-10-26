@@ -36,7 +36,7 @@ Design choices this plan makes (reversible):
 - **Required decisions carry the Lorekeeper id-to-be.** When brainstorming or a planning skill drafts a record for a required decision, the decision's title is the record's title and the link is made at apply time, when the file path exists on a branch with a PR: `reeve decision link <id> --record <kb/ADR-NNNN> --repo <name> --path <path> --pr <url> --household <dir> --json`. A draft that is not applied in the session leaves a pointer: planning skills add a comment on the required decision, brainstorming stores `Required decision: #<id>` beside the draft in the spec. Before link, the planner shows the decision as "no record" (`record: null`); after link, "proposed, PR open"; after acceptance and the next check, satisfied. Nothing is written into records (kb/ADR-0004 R3).
 - **Placement lives in refining-epic.** Untriaged stories (`reeve story ls --untriaged --json`) get the spec's placement tree during epic refinement; no separate triage skill.
 - **Codex twins are thin pointers.** `lore-planning-initiative` and `lore-refining-epic` are three-line SKILL.md files like `skills/lore-adr/SKILL.md`: load `../../references/codex-runtime.md`, then follow the canonical skill. No procedure is duplicated.
-- **Triage is unconditional.** kb/ADR-0004 R5 is an accepted Lorekeeper rule that does not depend on the planner, so record.md's step 3 drafts process, tooling and product records whether or not `reeve` is present. kb/ADR-0005 R1's "every skill MUST behave as before" covers planner-dependent behaviour (detection, reading the planner, writing to it, linking), and every such addition is guarded by the detector.
+- **Triage is unconditional.** kb/ADR-0004 R5 is an accepted Lorekeeper rule that does not depend on the planner, so record.md's step 3 drafts process, tooling and product records whether or not `reeve` is present. Two more record.md lines are unguarded and behave the same without the planner: step 5 stops after the draft when the caller says "draft only; do not apply" (brainstorming already passes that phrase), and step 3 titles a record after the required decision it answers (only reachable when a required decision exists). kb/ADR-0005 R1's "every skill MUST behave as before" covers planner-dependent behaviour (detection, reading the planner, writing to it, linking), and every such addition is guarded by the detector.
 
 ## File structure
 
@@ -64,7 +64,7 @@ Design choices this plan makes (reversible):
 - Every `reeve` call in a skill is copied from `references/reeve-cli.md`: `--json` as the last argument; exit 0 → proceed, 2 → show the refusal reasons and stop that step, 1 → show the error and stop that step. Two exceptions, both in the reference: `code: conflict` (a stale `--version`) re-reads, shows what changed and retries once; `decision link` exiting 1 with an `ok` envelope means "linked, check not run here".
 - Creates (`initiative create`, `epic create`, `story create`, `decision require`, `comment add`) pass `--idempotency-key <skill>:<KEY>:<run-id>:<n>`: the skill name, the item the run works on, the detector's `run_id` (minted once per skill invocation and printed in the report), and the ordinal of this create in the run, from 1. A retry within the run reuses its key; a new run never reuses an old key; keys never derive from titles (kb/ADR-0005 R3).
 - An answer the user already gave in the request counts as the confirmation for that write; skills do not ask it again. Scenario prompts give every answer and say "Do not ask questions; the answers are given."
-- Absent the planner (detector says `present: false` or `signed_in: false`), every planner-dependent step is skipped and the skill behaves exactly as on `origin/main`; the only unconditional change is record.md's triage (see Design choices).
+- Absent the planner (detector says `present: false` or `signed_in: false`), every planner-dependent step is skipped and the skill behaves exactly as on `origin/main`; the only unconditional change is record.md's triage, with its two behaviour-neutral companions (see Design choices).
 - Paths inside skills are written as `<plugin-root>/…`, absolute in every Bash command.
 - Vocabulary: initiative, epic, story, decision; "discovery complete"; "ready" / "blocked" with the planner's reasons, worded by the reference's table and never computed by a skill (kb/ADR-0003 R1).
 - Tests: Node tests for the detector and the fake; a Babashka scenario per behaviour, each stating the defect it distinguishes; for each new or changed skill, the mutation check from docs/writing-skills-guide.md (empty the skill's body below the frontmatter, the scenario must fail, restore).
@@ -281,7 +281,7 @@ function withState(fn) {
     return result;
   } finally { fs.unlinkSync(lock); }
 }
-const KEY_SHAPE = /^[a-z][a-z0-9-]*:[A-Z][A-Z0-9]*-[0-9]+:[0-9a-f]{8}:[0-9]+$/; // <skill>:<KEY>:<run-id>:<n>
+const KEY_SHAPE = /^[a-z][a-z0-9-]*:(?:[A-Z][A-Z0-9]*-[0-9]+|[0-9]+):[0-9a-f]{8}:[0-9]+$/; // <skill>:<KEY>:<run-id>:<n>; KEY an item key or a decision id
 
 const emit = (envelope, code) => { process.stdout.write(JSON.stringify(envelope) + '\n'); process.exit(code); };
 const ok = (value) => emit({ outcome: 'ok', value }, 0);
@@ -486,6 +486,7 @@ test('an idempotency key must be <skill>:<KEY>:<run-id>:<n>', () => {
     assert.deepEqual([r.status, r.envelope.code], [1, 'validation'], bad);
   }
   assert.equal(run(['epic', 'create', '--title', 'A', '--idempotency-key', 'refining-epic:GRA-20:0a1b2c3d:12', '--json']).status, 0);
+  assert.equal(run(['comment', 'add', '--decision', '7', '--body', 'B', '--idempotency-key', 'recording-decisions:7:0a1b2c3d:1', '--json']).status, 0);
 });
 test('a create replays by key; a new key mints a new item', () => {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
@@ -1389,8 +1390,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `skills/recording-decisions/actions/link.md`
-- Modify: `skills/recording-decisions/SKILL.md`, `skills/recording-decisions/actions/record.md`
-- Test: `test/scenarios.edn` (new `command-adr-triages-process-decision`, `reeve-adr-link-proposed`, `reeve-adr-link-check-unreadable`, `reeve-adr-link-ride-along`; the existing `command-adr-new-triages-and-interviews` gains a reject)
+- Modify: `skills/recording-decisions/SKILL.md`, `skills/recording-decisions/actions/record.md`, `test/fixtures/reeve-bin/reeve` and `scripts/__tests__/reeve-fake.test.js` (an idempotency key's `<KEY>` may be a decision id; mirrored in Task 1)
+- Test: `test/scenarios.edn` (new `command-adr-triages-process-decision`, `reeve-adr-link-proposed`, `reeve-adr-link-check-unreadable`, `reeve-adr-link-ride-along`, `reeve-adr-link-headless-missing-input`; the existing `command-adr-new-triages-and-interviews` gains a reject)
 
 - [ ] **Step 1: The scenarios**
 
@@ -1434,22 +1435,35 @@ The record is the fixture's existing `lore/knowledge/adrs/0002-inventory-reserva
 ```clojure
  {:name "reeve-adr-link-ride-along"
   :requires ["reeve-fake"]
-  :allowed-tools ["Bash(reeve *)" "Bash(git *)" "Bash(node *)"]
-  :prompt "/lore:adr record: backend retries failed payment webhooks at most three times, because the queue cannot absorb more. It answers required decision 7 in Reeve. Do not ask questions; the answers are given: decided by Dan Doe; low tier, local home backend; apply it as a ride-along on the current branch (first create and switch to a branch feat/retry); the planner calls this repository backend."
-  :workdir "backend"
-  :expects ["(?i)rides along on branch feat/retry" "/lore:adr link backend/ADR-\\d{4} to decision 7"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:adr link backend/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the record rides along on branch feat/retry in the backend repository, staged and not committed, at docs/adr/0002-payment-webhook-retries.md; there is no PR yet; the planner calls this repository backend; the household is the current directory."
+  :workdir "."
+  :expects ["(?i)rides along on branch feat/retry" "/lore:adr link backend/ADR-0002 to decision 7" "once the implementing PR is open"]
   :rejects ["(?i)linked:"]
-  :log-expects ["^comment add (?=.*--decision 7\\b)(?=.*rides along on branch feat/retry)(?=.*--idempotency-key \\S+:7:[0-9a-f]{8}:\\d+\\b).*--json$"]
+  :log-expects ["^comment add (?=.*--decision 7\\b)(?=.*rides along on branch feat/retry)(?=.*/lore:adr link backend/ADR-0002 to decision 7\\b)(?=.*--idempotency-key \\S+:7:[0-9a-f]{8}:\\d+\\b).*--json$"]
   :log-rejects ["^decision link "]}
 ```
 
-It runs in the `backend` fixture, the same repository `command-adr-triages-process-decision` names. What it distinguishes: a ride-along apply that links straight away with the updater's (absent) PR url, from one that leaves the planner pointer and tells the user the sentence; the log has the comment and no `decision link`.
+It starts after the apply: a scenario runs under `claude --print`, where rule 3 forbids the record write itself (the model refuses it, and the fixture's `backend` is not a git checkout), so the user names the staged record and asks for the link. What it distinguishes: a ride-along record that is linked straight away without `--pr` (which the planner would take as merged), from one that leaves the planner pointer and tells the user the sentence; the log has the comment, keyed by the decision id, and no `decision link`. Record step 6's ride-along bullet hands off to the same link.md step 5, so both paths share one pointer.
+
+```clojure
+ {:name "reeve-adr-link-headless-missing-input"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; nobody can answer them in this session."
+  :workdir "."
+  :expects ["(?i)nothing was linked" "(?i)repositor"]
+  :rejects ["(?m)^\\W*Linked[:;]"]
+  :log-rejects ["^decision link "]}
+```
+
+What it distinguishes: a link run where nobody can answer that guesses the planner's repository name or leaves out `--pr` (telling the planner the record is merged), from one that names the missing inputs and says nothing was linked; the log has no `decision link`.
 
 What they distinguish: `link-proposed` a link that needs an apply first (impossible here), a wrong path (absolute, or relative to the household instead of the repository), a missing `--pr`, and an answer not read from `check.kind`; `link-check-unreadable` a skill that applies "exit 1 → failure" to a link that in fact succeeded.
 
 - [ ] **Step 2: Run them, see them fail**
 
-Run: `bb test/run-tests.clj --filter command-adr-triages` — Expected: `[FAIL]`, "meeting notes" or "RFC" present (old step 3). Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-adr-link` — Expected: 2 `[FAIL]` (no link action; the log has no `decision link`) and the ride-along scenario `[FAIL]` (no planner pointer comment).
+Run: `bb test/run-tests.clj --filter command-adr-triages` — Expected: `[FAIL]`, "meeting notes" or "RFC" present (old step 3). Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-adr-link` — Expected: `-check-unreadable` `[FAIL]` (no link action, so the answer is paraphrased) and the ride-along scenario `[FAIL]` (no planner pointer comment). `-proposed` may pass before link.md exists: the model can assemble the call from `references/reeve-cli.md` alone; the mutation check (Step 6) is what proves link.md carries it.
 
 - [ ] **Step 3: `actions/link.md`**
 
@@ -1460,35 +1474,62 @@ Link a record to a required decision in the Reeve planner, so the planner checks
 instead of reporting "no record". Read `<plugin-root>/references/reeve-cli.md` first. This writes
 nothing into the record or any repository (kb/ADR-0004 R3): it stores one reference in the planner.
 
-1. **Detect.** Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints
-   `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this
-   session: <reason>; nothing was linked." and stop.
+1. **Detect.** Run `node <plugin-root>/scripts/reeve-detect.js` (record step 6 has already run it:
+   reuse its output). Keep `bin` and `run_id`. Unless it prints `"present":true` and
+   `"signed_in":true`, say "The Reeve planner is not available in this session: <reason>; nothing
+   was linked." and stop.
 2. **Inputs.** Take each from the request or the caller (record step 6); ask, one at a time, only
-   for what is missing:
-   - the decision id, an integer ("decision 7", "#7");
+   for what is missing. In a session that cannot ask (rule 3), a missing input stops the action
+   with the line "Nothing was linked: missing <the inputs>." verbatim, on its own line; never
+   guess the planner's repository name, and never leave out `--pr` to fill a gap. The inputs:
+   - the decision id, an integer ("decision 7", "#7"). The link needs no decision title; to name
+     the decision, take its title from the request or the caller, else ask (no `reeve` command
+     reads a decision by its id alone; `decision ls --on <KEY>` does when the item is known);
    - the record's qualified id, repository and repository-relative path. From record step 6 these
-     are the knowledge-updater's report (below) and need no index lookup: the updater's worktree
-     is gone by then and the user's checkout does not contain the record. For a record that
+     come with the call (built from the draft and the homes JSON) and need no index lookup: the
+     updater's worktree is gone by then and the user's checkout does not contain the record. For a record that
      already exists in a checkout (the standalone `link` action), take its file from
      `node <plugin-root>/scripts/adr-lint.js index --json` (`records[].id` → `records[].file`);
-     an id the index lacks: say so and stop, unless the user gave the repository, `--path` and PR
-     explicitly, which are then used as given;
+     an id the index lacks: say so and stop, unless the user gave the repository and path (and the
+     PR, or said there is none yet) explicitly, which are then used as given;
    - the household directory: the current directory unless the user names another;
    - the repository name as configured in the planner: no `reeve` command lists the planner's
      repositories, so ask, offering the `household.json` repository whose directory holds the
      file;
    - the record's path inside that repository: the file's path relative to `<household>/<repo>`,
-     or to the household itself when its directory name is the repository name;
-   - the PR proposing the record: the url in the request or the report, else `gh pr view --json url --jq .url`
-     run in the repository on the record's branch when `gh` is available, else ask; a record
-     already merged to the default branch has none (omit `--pr`).
+     or to the household itself when its directory name is the repository name; never absolute,
+     never relative to the household when the repository is a directory of it;
+   - the PR proposing the record: the url in the request or the report is used as given.
+     Otherwise first settle whether the record is merged: when the file is on the default branch
+     (the homes JSON's `defaultBranch` / `sharedDefaultBranch`;
+     `git -C <repository directory> cat-file -e origin/<default branch>:<path>`), it has no PR and
+     `--pr` is left out. Else, knowing the record's branch, run
+     `gh pr view <branch> --json url --jq .url` in the repository directory when `gh` is
+     available (never without the branch: that returns the checked-out branch's PR); else ask. A
+     record that only rides along on a branch, staged or committed but with no PR yet, is neither
+     merged nor proposed: do not link it, go to step 5.
 3. **Show and run.** The request (or the apply the user confirmed) naming the record and the
-   decision is the confirmation:
+   decision is the confirmation, also in a session that cannot ask (rule 3: a link is not a
+   record write):
    `reeve decision link <id> --record <qualified id> --repo <repo> --path <path> --pr <url> --household <household> --json`
-4. **Report** the answer with the reference's *decision link* table, word for word: exit 0 is
-   "Linked: <record> answers decision #<id> — <check>"; exit 1 with an `ok` envelope is "Linked;
-   the check could not run here: <stderr line>; it runs on the next scheduled check."; exit 2 or
-   an `error` envelope shows the reasons or the message and says nothing was linked.
+4. **Report** the answer with the reference's *decision link* table: give the table's sentence
+   for the result verbatim, on its own line, read from `value.check.kind` (never from your own
+   reading of the record). Exit 0 has one row per `check.kind` (`proposed_pr_open`, `accepted`,
+   `not_accepted`, `not_found`; `not_found` carries its remedy, check the repository name and
+   path). Exit 1 with an `ok` envelope is "Linked; the check could not run here: <stderr line>;
+   it runs on the next scheduled check." (the link succeeded: do not call it a failure and do
+   not run it again). Exit 2 or an `error` envelope shows the reasons or the message and says
+   nothing was linked. A `not_accepted` check whose status the planner could not read (for
+   example "unparsable front matter") is reported as the planner states it, with the record's
+   path; fixing the record is a separate change, never a blind retry of the link. End with
+   `Run id: <run_id>` on its own line, unformatted.
+5. **Ride-along, no PR yet.** Never link (without `--pr` the planner would take the record as
+   merged). Leave the pointer on the decision instead, then tell the user that same sentence:
+   `reeve comment add --decision <id> --body 'Record <qualified id> at <repo>:<path> rides along on branch <branch>; link it with /lore:adr link <qualified id> to decision <id> once the implementing PR is open' --idempotency-key <skill>:<id>:<run_id>:<n> --json`
+   (the key's skill and run id from the calling skill, else `recording-decisions` and the
+   detector's `run_id`; `<n>` counts this run's creates from 1), and print `Run id: <run_id>`.
+   The link is made later by this action, once the PR exists (`--pr` from the request, else
+   `gh pr view <branch>`).
 ````
 
 - [ ] **Step 4: `SKILL.md` and `actions/record.md`**
@@ -1501,23 +1542,46 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
 - *Where a change lands*, append: `When the Reeve planner is present and the record answers a required decision, the record action links it after apply (actions/link.md); a link never changes the record.`
 
 `skills/recording-decisions/actions/record.md`:
-- Step 3, replace "a decision with no code behind it (a tool, a process) belongs in an RFC or meeting notes." with: "A decision with no code behind it (a tool, a process, a product choice) is a record like any other when it is hard to reverse or the user wants one: same format, its `scope` names the documents or repositories it governs; never send it to an RFC or meeting notes (kb/ADR-0004 R5)." This change is unconditional (Design choices).
-- Step 6, append: "Then, only when a decision id is known — the user named one, the spec entry the draft came from carries `Required decision: #<id>` (outside the record text), or a planning skill passed one — act on the knowledge-updater's report, never on the current checkout's index (the updater's own-pr worktree is removed before it returns, so the record is not in the index). The report supplies: the record's qualified id (the id the draft was numbered with), the repository (the home's `repo` from the homes JSON the updater was given; the planner's name for it is asked as link.md says), the repository-relative path (the report's *Files changed* entry for that record), the PR url and the branch. Where the report says the change landed:
-  - *opened PR <url>*, *committed to PR <url>*: follow `actions/link.md` with those inputs; its step 1 skips it when the planner is absent. A link that is refused or cannot check never undoes the apply.
-  - *staged on your branch `<branch>`, not committed* (a ride-along; there may be no upstream and no PR yet): do not link. When the planner is present (link.md step 1), run `reeve comment add --decision <id> --body 'Record <qualified id> at <repo>:<path> rides along on branch <branch>; link it with /lore:adr link <qualified id> to decision <id> once the implementing PR is open' --idempotency-key <skill>:<id>:<run_id>:<n> --json` (the key's skill and run id from the calling skill, else `recording-decisions` and the detector's `run_id`), and tell the user that same sentence. The link is made later by the standalone `link` action, once the PR exists (`--pr` from the request, else `gh pr view`)."
+- Step 3, replace "a decision with no code behind it (a tool, a process) belongs in an RFC or meeting notes." with: "A decision with no code behind it (a tool, a process, a product choice) is a record like any other when it is hard to reverse or the user wants one: same format, its `scope` names the documents or repositories it governs; never send it to an RFC or meeting notes (kb/ADR-0004 R5). A decision that answers a required decision in the planner is always drafted as a record, titled after that decision when its title is known (from the caller's context or the request; no `reeve` command reads a decision by its id alone), worded as a decision rather than a question." This change is unconditional (Design choices).
+- Step 5, append: "When the caller said \"draft only; do not apply\", stop here: return the draft and its id-to-be; the caller keeps the `Required decision: #<id>` pointer (never written into the record, kb/ADR-0004 R3)." (the phrase brainstorming, planning-initiative and refining-epic pass).
+- Step 6, append (as shipped):
+
+```markdown
+   Then, only when a decision id is known — the user named one, the spec entry the draft came
+   from carries `Required decision: #<id>` (outside the record text), or a planning skill passed
+   one — act on the knowledge-updater's report, never on the current checkout's index (the
+   updater's own-pr worktree is removed before it returns, so the record is not in the index).
+   Run `node <plugin-root>/scripts/reeve-detect.js` once and keep `bin` and `run_id`; unless it
+   prints `"present":true` and `"signed_in":true`, skip the rest of this step. The inputs:
+   - the qualified id and the file name: the ones the draft was numbered and saved with;
+   - the repository-relative path, from the homes JSON the updater was given, never from the
+     report's file list (its paths may point into the removed worktree): `<relDir>/<file name>`
+     of the local home (`sharedRelDir` for the shared home); when that is `null` (not a git
+     checkout), the home's directory relative to its repository directory, then the file name;
+   - the repository offered for the planner's name (asked as link.md says): the local home's
+     `repo`, or for the shared home the directory name of `sharedRoot`;
+   - the PR url and the branch: from the report.
+
+   Where the report says the change landed:
+   - *opened PR <url>*, *committed to PR <url>*: follow `actions/link.md` with those inputs. A
+     link that is refused or cannot check never undoes the apply.
+   - *staged on your branch `<branch>`, not committed* (a ride-along; there may be no upstream
+     and no PR yet): do not link; follow `actions/link.md` step 5, which leaves the planner
+     pointer and tells the user the sentence.
+```
 
 - [ ] **Step 5: Run them, see them pass**
 
-Run: `bb test/run-tests.clj --filter command-adr` — Expected: every `command-adr-…` scenario passes, including the new triage one. Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-adr-link` — Expected: 3 `[PASS]`.
+Run: `bb test/run-tests.clj --filter command-adr` — Expected: every `command-adr-…` scenario passes, including the new triage one. Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-adr-link` — Expected: 4 `[PASS]`, each 3/3 with `--runs 3`.
 
 - [ ] **Step 6: Mutation checks**
 
-Empty `actions/link.md`: both `reeve-adr-link-proposed` and `-check-unreadable` fail. Remove the ride-along bullet from record step 6: `reeve-adr-link-ride-along` fails. Restore the old step 3 sentence: `command-adr-triages-process-decision` fails. Restore both.
+Empty `actions/link.md` (title only): `reeve-adr-link-proposed`, `-check-unreadable` and `-ride-along` all fail. Restore the old step 3 sentence: `command-adr-triages-process-decision` fails. Restore both.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add skills/recording-decisions test/scenarios.edn
+git add skills/recording-decisions test/scenarios.edn test/fixtures/reeve-bin/reeve scripts/__tests__/reeve-fake.test.js
 git commit -m "feat(skills): recording-decisions drafts process records and links records to reeve required decisions" -m "Task 5 of docs/superpowers/plans/2026-10-26-reeve-planning-skills.md.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"

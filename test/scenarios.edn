@@ -375,4 +375,4 @@ git commit -m \"feat: add DeviceStatusDto\"
   :prompt "Break this feature down into stories: mentors can pause matching for a month."
   :workdir "."
   :expects ["(?i)paus"]
-  :rejects ["(?i)reeve|planner|not available"]}]
+  :rejects ["(?i)not available|reeve-detect|planning-initiative|refining-epic|stopped: missing|epic key is required"]}]

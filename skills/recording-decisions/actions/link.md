@@ -36,7 +36,8 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
      (the home is missing, or the record's file is outside it), ask for the household; in a
      session that cannot ask, stop with "Stopped: missing household." on its own line;
    - the repository name as configured in the planner: the one the user names, else the
-     checkout's directory name (`lore` for `/work/lore`): the planner reads the record at
+     checkout's directory name (`lore` for `/work/lore`; `api`, not `lore`, for a knowledge base
+     inside the repository at `/work/api/docs/lore`): the planner reads the record at
      `<household>/<repo>/<path>`, so a name other than the directory's is given, never guessed;
    - the record's path inside that repository: the file's path relative to the checkout
      (`<household>/<repo>`); never absolute, never relative to the household;

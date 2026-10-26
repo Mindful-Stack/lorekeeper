@@ -1785,7 +1785,8 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
      (the home is missing, or the record's file is outside it), ask for the household; in a
      session that cannot ask, stop with "Stopped: missing household." on its own line;
    - the repository name as configured in the planner: the one the user names, else the
-     checkout's directory name (`lore` for `/work/lore`): the planner reads the record at
+     checkout's directory name (`lore` for `/work/lore`; `api`, not `lore`, for a knowledge base
+     inside the repository at `/work/api/docs/lore`): the planner reads the record at
      `<household>/<repo>/<path>`, so a name other than the directory's is given, never guessed;
    - the record's path inside that repository: the file's path relative to the checkout
      (`<household>/<repo>`); never absolute, never relative to the household;
@@ -1854,8 +1855,10 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
      report's file list (its paths may point into the removed worktree): `<relDir>/<file name>`
      of the local home (`sharedRelDir` for the shared home); when that is `null` (not a git
      checkout), the home's directory relative to its repository directory, then the file name;
-   - the repository offered for the planner's name (asked as link.md says): the local home's
-     `repo`, or for the shared home the directory name of `sharedRoot`;
+   - the repository offered for the planner's name (asked as link.md says): the directory name
+     of the record's checkout as link.md step 2 derives it (for the shared home `sharedRepoRoot`,
+     else `sharedRoot`; for a local home its `repoRoot`), so it matches the checkout `<relDir>`
+     and `sharedRelDir` are relative to (`api` for `/work/api/docs/lore`, never `lore`);
    - the PR url and the branch: from the report.
 
    Where the report says the change landed:

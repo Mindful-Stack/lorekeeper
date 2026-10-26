@@ -99,7 +99,7 @@ Skills that drive the Reeve planner are tested against a fake `reeve` CLI,
 
 | Key | Meaning |
 |---|---|
-| `:requires ["reeve-fake"]` | Runs only when the runner is invoked with `--with reeve-fake`; otherwise printed as `[SKIP]` and not counted. Such a scenario gets `<checkout>/test/fixtures/reeve-bin` first on `PATH` and a fresh empty `REEVE_FAKE_LOG` file for each run (also each `--runs` repeat and each mutation run). |
+| `:requires ["reeve-fake"]` | Runs only when the runner is invoked with `--with reeve-fake`; otherwise printed as `[SKIP]` and not counted. Such a scenario gets `<checkout>/test/fixtures/reeve-bin` first on `PATH` and a fresh empty `REEVE_FAKE_LOG` file for each run (also each `--runs` repeat). |
 | `:env {"NAME" "value"}` | Merged last into the child's environment (the link scenario sets `REEVE_FAKE_LINK_CHECK`). |
 | `:allowed-tools [...]` | Added to the base allow-list; reeve scenarios add `"Bash(reeve *)"` (`Bash(node *)` is already in the base list). |
 | `:log-expects [...]` / `:log-rejects [...]` | Regexes matched, multiline (`(?m)` prepended), against the fake log after the run; failures print as `log: <regex>`. Positive evidence that a command was executed, which a transcript match cannot give. |
@@ -110,10 +110,10 @@ reach a server. A fake scenario also gets the fake first on `PATH` and a fresh `
 per run; the log is appended to the output shown by `--verbose` and deleted afterwards.
 
 **The log.** One line per call: the argv joined by spaces, newlines inside an argument
-flattened to spaces, e.g. `epic create --initiative GRA-12 --title A --brief one two --idempotency-key k --json`.
+flattened to spaces, e.g. `epic create --initiative GRA-12 --title A --brief one two --idempotency-key planning-initiative:GRA-12:0a1b2c3d:1 --json`.
 
 **What the fake answers.** `--version` prints `reeve-planner 0.1.0-fake`; every other call must
-end in `--json` and uses only flags the real CLI has (anything else is a `validation` error,
+include `--json` (anywhere, as the real CLI's global flag) and uses only flags the real CLI has (anything else is a `validation` error,
 exit 1). Answers use the planner's wire shapes:
 
 - initiatives `GRA-12` "Faster mentor matching" (version 3) and `GRA-13` "Mentor onboarding";
@@ -121,8 +121,16 @@ exit 1). Answers use the planner's wire shapes:
 - decision `7` "Queue or cron" on GRA-20, with no record (`record: null`, check `unchecked`);
 - stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
   in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-44`;
-- created items get keys `GRA-1NN` (decisions and comments ids `1NN`), distinct within a run;
+- created items get keys `GRA-100`, `GRA-101`, … (decision and comment ids `100`, …), minted from a counter
+  in the per-run state file `$REEVE_FAKE_LOG.state`, distinct within a run;
+- every create needs `--idempotency-key <skill>:<KEY>:<run-id>:<n>` (kb/ADR-0005 R3; anything else is a
+  `validation` error) and replays by key: the same key again returns the first item, it never mints a second;
 - an edit or discovery mark with a stale `--version` is a `conflict` (exit 1).
+
+`REEVE_FAKE_REFUSE=<text>` makes every command whose name contains `<text>` (e.g. `story create`)
+answer `{"outcome":"refused","reasons":[{"reason":"no_criteria"}]}` with exit 2, so a scenario can
+check that a skill shows the reasons and stops that step. `decision link` never reports
+`accepted`/`not_accepted`: its check is `not_found`, or `proposed_pr_open` when `--pr` is passed.
 
 `REEVE_FAKE_LINK_CHECK=unreadable` makes `decision link` behave like a link whose immediate
 check could not run: exit 1 with an `ok` envelope (the decision, check `unchecked`) and a

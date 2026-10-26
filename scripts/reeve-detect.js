@@ -17,10 +17,10 @@ function finish(reason) {
 }
 function run(args) {
   try {
-    return { status: 0, out: execFileSync(bin, args, { encoding: 'utf8', timeout, stdio: ['ignore', 'pipe', 'pipe'] }) };
+    return { status: 0, out: execFileSync(bin, args, { encoding: 'utf8', timeout, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] }) };
   } catch (e) {
     if (e.code === 'ENOENT') finish(`${bin} not found`);
-    if (e.code === 'ETIMEDOUT' || e.signal === 'SIGTERM') finish(`${bin} ${args.join(' ')} timed out`);
+    if (e.code === 'ETIMEDOUT') finish(`${bin} ${args.join(' ')} timed out`);
     return { status: typeof e.status === 'number' ? e.status : 1, out: String(e.stdout || '') };
   }
 }

@@ -93,7 +93,7 @@ const os = require('node:os');
 const script = path.join(__dirname, '..', 'reeve-detect.js');
 const OK = '{"outcome":"ok","value":{"url":"http://127.0.0.1:7474","token_from_env":false,"email":"dan@example.com","role":"member","token_kind":"interactive"}}';
 // What the real CLI prints, with exit 1, when no server is configured (verified against reeve-planner 0.1.0).
-const SIGNED_OUT = '{"outcome":"error","code":"internal","message":"no server url: set REEVE_URL or run reeve auth set-token"}';
+const SIGNED_OUT = '{"code":"internal","message":"no server url: set REEVE_URL or run `reeve auth set-token --url ... --token ...`","outcome":"error"}';
 
 // An executable `reeve` that logs its argv to <dir>/log and answers --version and auth.
 function fake(versionLine, authBody, authExit = 0) {
@@ -134,6 +134,7 @@ test('anything else answering to reeve is not the planner, and its auth is never
     assert.equal(out.present, false, version);
     assert.equal(out.signed_in, false, version);
     assert.match(out.reason, /reeve-planner/, version);
+    assert.match(logged(log), /^--version$/m, `${version}: the fake was run`);
     assert.doesNotMatch(logged(log), /^auth/m, version);
   }
 });
@@ -145,6 +146,15 @@ test('the planner, signed out (exit 1 with an error envelope)', () => {
   assert.equal(out.signed_in, false);
   assert.equal(out.email, null);
   assert.match(out.reason, /^signed out: no server url/);
+});
+
+test('signed out is read from the envelope, not the exit code', () => {
+  // exit 0 with an error envelope: still signed out
+  const { bin } = fake("echo 'reeve-planner 0.1.0'", '{"outcome":"error","code":"unauthenticated","message":"token rejected"}', 0);
+  const out = detect(bin);
+  assert.equal(out.present, true);
+  assert.equal(out.signed_in, false);
+  assert.match(out.reason, /^signed out: token rejected/);
 });
 
 test('a missing binary is absent, and the detector still exits 0', () => {
@@ -161,14 +171,23 @@ test('a hanging binary times out instead of hanging the session', () => {
   assert.equal(out.present, false);
   assert.match(out.reason, /timed out/);
 });
+
+test('a child that ignores SIGTERM is still killed at the timeout', () => {
+  const { bin } = fake("trap '' TERM; sleep 6", OK);
+  const started = Date.now();
+  const out = detect(bin, { REEVE_DETECT_TIMEOUT_MS: '500' });
+  assert.ok(Date.now() - started < 4000, 'returned at the timeout');
+  assert.equal(out.present, false);
+  assert.match(out.reason, /timed out/);
+});
 ```
 
-What these distinguish: test 1 a detector that rejects a pre-release suffix or reports the wrong binary; test 2 a looser rule (`startsWith('reeve')`, `/^reeve-\w+/`, `includes('reeve-planner')`) that accepts the runner renamed by kb/ADR-0005 R2 or a lookalike, and a detector that runs an unknown binary's `auth status`; test 3 one that trusts stdout without the exit status, or reports signed-in from `--version` alone; test 4 one that throws or exits non-zero when `reeve` is absent; test 5 one without a timeout.
+What these distinguish: test 1 a detector that rejects a pre-release suffix or reports the wrong binary; test 2 a looser rule (`startsWith('reeve')`, `/^reeve-\w+/`, `includes('reeve-planner')`) that accepts the runner renamed by kb/ADR-0005 R2 or a lookalike, and a detector that runs an unknown binary's `auth status`; test 3 one that trusts stdout without the exit status, or reports signed-in from `--version` alone; test 4 one that throws or exits non-zero when `reeve` is absent; test 5 a signed-out check keyed on the exit code alone; test 6 one without a timeout; test 7 one whose timeout a child ignoring SIGTERM defeats (`killSignal: 'SIGKILL'`).
 
 - [ ] **Step 2: Run them, see them fail**
 
 Run: `node --test scripts/__tests__/reeve-detect.test.js`
-Expected: 5 failing tests (`Cannot find module` / non-JSON output: the script does not exist yet).
+Expected: 7 failing tests (`Cannot find module` / non-JSON output: the script does not exist yet).
 
 - [ ] **Step 3: The detector**
 
@@ -192,10 +211,10 @@ function finish(reason) {
 }
 function run(args) {
   try {
-    return { status: 0, out: execFileSync(bin, args, { encoding: 'utf8', timeout, stdio: ['ignore', 'pipe', 'pipe'] }) };
+    return { status: 0, out: execFileSync(bin, args, { encoding: 'utf8', timeout, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] }) };
   } catch (e) {
     if (e.code === 'ENOENT') finish(`${bin} not found`);
-    if (e.code === 'ETIMEDOUT' || e.signal === 'SIGTERM') finish(`${bin} ${args.join(' ')} timed out`);
+    if (e.code === 'ETIMEDOUT') finish(`${bin} ${args.join(' ')} timed out`);
     return { status: typeof e.status === 'number' ? e.status : 1, out: String(e.stdout || '') };
   }
 }
@@ -207,15 +226,16 @@ result.present = true;
 
 const auth = run(['auth', 'status', '--json']);
 let envelope = null;
-try { envelope = JSON.parse(auth.out); } catch { finish(`${bin} auth status printed no JSON`); }
+try { envelope = JSON.parse(auth.out); } catch { envelope = null; }
+if (!envelope || typeof envelope !== 'object') finish(`${bin} auth status printed no JSON envelope`);
 if (auth.status !== 0 || envelope.outcome !== 'ok') finish(`signed out: ${envelope.message || envelope.code || 'auth status failed'}`);
 result.signed_in = true;
-result.url = envelope.value.url ?? null;
-result.email = envelope.value.email ?? null;
+result.url = envelope.value?.url ?? null;
+result.email = envelope.value?.email ?? null;
 finish('');
 ```
 
-Run: `node --test scripts/__tests__/reeve-detect.test.js` — Expected: 5 passing.
+Run: `node --test scripts/__tests__/reeve-detect.test.js` — Expected: 7 passing.
 
 - [ ] **Step 4: The fake planner**
 
@@ -228,18 +248,37 @@ Run: `node --test scripts/__tests__/reeve-detect.test.js` — Expected: 5 passin
 // lacks are usage errors (exit 1). Answers use the planner's wire shapes (StoryContextDto,
 // RequiredDecisionDto, CheckResult, Reason in the Reeve repository's
 // crates/reeve-server/tests/snapshots/openapi.json). REEVE_FAKE_LINK_CHECK=unreadable makes
-// `decision link` behave like a link whose immediate check could not run.
+// `decision link` behave like a link whose immediate check could not run. REEVE_FAKE_REFUSE=<text>
+// makes every command whose name contains <text> (e.g. `story create`) answer with a `refused`
+// envelope and exit 2. Creates replay by --idempotency-key from the state file $REEVE_FAKE_LOG.state.
 'use strict';
 const fs = require('node:fs');
 
 const argv = process.argv.slice(2);
 const log = process.env.REEVE_FAKE_LOG;
-let calls = 0;
-if (log) {
-  try { calls = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).length; } catch { calls = 0; }
-  fs.appendFileSync(log, argv.join(' ').replace(/\r?\n/g, ' ') + '\n');
+if (log) fs.appendFileSync(log, argv.join(' ').replace(/[\r\n\u2028\u2029\u0085]+/g, ' ') + '\n');
+
+// Per-run state next to the log: { next, creates: { <idempotency key>: <response value> } }. Updates
+// run under an exclusive lock file, so parallel calls neither share an id nor lose a replay entry.
+function withState(fn) {
+  if (!log) return fn({ next: 100, creates: {} }); // no log, no run: nothing to replay
+  const file = `${log}.state`;
+  const lock = `${file}.lock`;
+  for (let tries = 0; ; tries++) {
+    try { fs.closeSync(fs.openSync(lock, 'wx')); break; } catch (e) {
+      if (e.code !== 'EEXIST' || tries > 2000) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+    }
+  }
+  try {
+    let state;
+    try { state = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { state = { next: 100, creates: {} }; }
+    const result = fn(state);
+    fs.writeFileSync(file, JSON.stringify(state));
+    return result;
+  } finally { fs.unlinkSync(lock); }
 }
-const nextId = 100 + calls; // ids and keys of created items: distinct within one scenario run
+const KEY_SHAPE = /^[a-z][a-z0-9-]*:[A-Z][A-Z0-9]*-[0-9]+:[0-9a-f]{8}:[0-9]+$/; // <skill>:<KEY>:<run-id>:<n>
 
 const emit = (envelope, code) => { process.stdout.write(JSON.stringify(envelope) + '\n'); process.exit(code); };
 const ok = (value) => emit({ outcome: 'ok', value }, 0);
@@ -291,7 +330,9 @@ for (const r of spec.req || []) if (!(r in f)) error('validation', `reeve ${cmd}
 if (spec === DISCOVERY && !f.complete && !f.reopen) error('validation', 'pass --complete or --reopen');
 if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) error('validation', `--kind must be story, bug or chore`);
 if (f.version && !/^\d+$/.test(f.version)) error('validation', '--version must be an integer');
+if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
 if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) error('validation', '--due must be YYYY-MM-DD');
+if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)) emit({ outcome: 'refused', reasons: [{ reason: 'no_criteria' }] }, 2);
 
 const NOW = '2026-10-20T09:00:00Z';
 const initiative = (key, title, o = {}) => ({ key, title, brief: '', horizon: 'Later', owner: null, target_month: null, discovery_complete: null, external_ref: null, progress: null, version: 1, ...o });
@@ -320,10 +361,16 @@ const readiness = {
   'GRA-32': { ready: false, reasons: [{ reason: 'no_criteria' }, { reason: 'ancestor_discovery_incomplete', item: 'GRA-20' }] },
 };
 const untriaged = { ready: false, reasons: [{ reason: 'untriaged' }, { reason: 'no_criteria' }] };
-const created = /^GRA-1\d\d$/; // keys this fake handed out in the current run
+const created = /^GRA-[1-9]\d{2,}$/; // keys this fake handed out in the current run
 const find = (table, key, make) => table[key] || (created.test(key) ? make(key, 'Created in this run') : error('not_found', `no item ${key}`));
 const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`));
 const [p0] = pos;
+// A create answers with the item built for a fresh id; the same key again replays the first answer.
+const mint = (build) => withState((state) => {
+  const key = f['idempotency-key'];
+  if (!(key in state.creates)) state.creates[key] = build(state.next++);
+  return state.creates[key];
+});
 
 ({
   'auth status': () => ok({ url: 'http://127.0.0.1:7474', token_from_env: false, email: 'dan@example.com', role: 'member', token_kind: 'interactive' }),
@@ -333,20 +380,20 @@ const [p0] = pos;
     ok({ story: s, epic: e, initiative: e && e.initiative ? initiatives[e.initiative] : null, required_decisions: s.epic === 'GRA-20' ? [decision7] : [], blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readiness[s.key] || untriaged });
   },
   'story ls': () => ok(Object.values(stories).filter((s) => (f.untriaged ? !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readiness[s.key] || untriaged }))),
-  'story create': () => ok(story(`GRA-${nextId}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })) })),
+  'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })) }))),
   'story edit': () => { const s = find(stories, p0, story); ok({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic }); },
   'initiative show': () => ok(find(initiatives, p0, initiative)),
   'initiative ls': () => ok(Object.values(initiatives)),
-  'initiative create': () => ok(initiative(`GRA-${nextId}`, f.title, { brief: f.brief || '', horizon: f.horizon, owner: f.owner || null })),
+  'initiative create': () => ok(mint((id) => initiative(`GRA-${id}`, f.title, { brief: f.brief || '', horizon: f.horizon, owner: f.owner || null }))),
   'initiative edit': () => { const i = find(initiatives, p0, initiative); ok({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon }); },
   'initiative discovery': () => ok({ ...bump(find(initiatives, p0, initiative)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null }),
   'epic show': () => ok(find(epics, p0, epic)),
   'epic ls': () => ok(Object.values(epics).filter((e) => !f.initiative || e.initiative === f.initiative)),
-  'epic create': () => ok(epic(`GRA-${nextId}`, f.title, { brief: f.brief || '', initiative: f.initiative || null })),
+  'epic create': () => ok(mint((id) => epic(`GRA-${id}`, f.title, { brief: f.brief || '', initiative: f.initiative || null }))),
   'epic edit': () => { const e = find(epics, p0, epic); ok({ ...bump(e), brief: f.brief ?? e.brief, title: f.title ?? e.title }); },
   'epic discovery': () => ok({ ...bump(find(epics, p0, epic)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null }),
   'decision ls': () => ok(!f.on || f.on === 'GRA-20' ? [decision7] : []),
-  'decision require': () => ok({ ...decision7, id: nextId, on: f.on, title: f.title, decider: f.decider, due: f.due || null }),
+  'decision require': () => ok(mint((id) => ({ ...decision7, id, on: f.on, title: f.title, decider: f.decider, due: f.due || null }))),
   'decision link': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
     const linked = { ...decision7, id: Number(p0), record: { repo: f.repo, path: f.path, record_id: f.record }, pr_url: f.pr || null, version: 2 };
@@ -358,7 +405,7 @@ const [p0] = pos;
   },
   'comment add': () => {
     if (!f.story === !f.decision) error('validation', 'pass exactly one of --story and --decision');
-    ok([{ id: nextId, author: 'dan@example.com', body: f.body, at: NOW, on_story: f.story || null, on_decision: f.decision ? Number(f.decision) : null, external_ref: null }]);
+    ok(mint((id) => [{ id, author: 'dan@example.com', body: f.body, at: NOW, on_story: f.story || null, on_decision: f.decision ? Number(f.decision) : null, external_ref: null }]));
   },
 })[cmd]();
 ```
@@ -374,6 +421,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 
+const KEY = 'planning-initiative:GRA-12:0a1b2c3d:1'; // <skill>:<KEY>:<run-id>:<n>
 const fake = path.join(__dirname, '..', '..', 'test', 'fixtures', 'reeve-bin', 'reeve');
 function run(args, env = {}) {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
@@ -382,9 +430,9 @@ function run(args, env = {}) {
 }
 
 test('every call is one log line, newlines flattened', () => {
-  const r = run(['epic', 'create', '--initiative', 'GRA-12', '--title', 'A', '--brief', 'one\ntwo', '--idempotency-key', 'k', '--json']);
+  const r = run(['epic', 'create', '--initiative', 'GRA-12', '--title', 'A', '--brief', 'one\ntwo', '--idempotency-key', KEY, '--json']);
   assert.equal(r.status, 0);
-  assert.equal(r.log, 'epic create --initiative GRA-12 --title A --brief one two --idempotency-key k --json\n');
+  assert.equal(r.log, `epic create --initiative GRA-12 --title A --brief one two --idempotency-key ${KEY} --json\n`);
 });
 test('--version names the fake planner', () => {
   const r = run(['--version']);
@@ -396,8 +444,36 @@ test('a flag the real CLI lacks is a usage error', () => {
   assert.equal(r.status, 1);
   assert.deepEqual([r.envelope.outcome, r.envelope.code], ['error', 'validation']);
 });
-test('a call without --json is refused', () => {
+test('a call without --json is refused; --json may stand anywhere (the real global flag)', () => {
   assert.equal(run(['epic', 'show', 'GRA-20']).status, 1);
+  const r = run(['story', 'ls', '--json', '--epic', 'GRA-20']);
+  assert.equal(r.status, 0);
+  assert.deepEqual(r.envelope.value.map((x) => x.story.key), ['GRA-31', 'GRA-32']);
+});
+test('an idempotency key must be <skill>:<KEY>:<run-id>:<n>', () => {
+  for (const bad of ['k', 'epic-title', 'refining-epic:GRA-20:1234:1', 'Refining:GRA-20:0a1b2c3d:1', 'refining-epic:gra-20:0a1b2c3d:1', 'refining-epic:GRA-20:0a1b2c3d:', 'refining-epic:GRA-20:0a1b2c3d:1:2']) {
+    const r = run(['epic', 'create', '--title', 'A', '--idempotency-key', bad, '--json']);
+    assert.deepEqual([r.status, r.envelope.code], [1, 'validation'], bad);
+  }
+  assert.equal(run(['epic', 'create', '--title', 'A', '--idempotency-key', 'refining-epic:GRA-20:0a1b2c3d:12', '--json']).status, 0);
+});
+test('a create replays by key; a new key mints a new item', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const create = (key, title) => JSON.parse(spawnSync(fake, ['story', 'create', '--title', title, '--idempotency-key', key, '--json'], { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } }).stdout).value;
+  const first = create('refining-epic:GRA-20:0a1b2c3d:1', 'One');
+  assert.deepEqual(create('refining-epic:GRA-20:0a1b2c3d:1', 'One again'), first);
+  const second = create('refining-epic:GRA-20:0a1b2c3d:2', 'Two');
+  assert.notEqual(second.key, first.key);
+  assert.equal(second.title, 'Two');
+  assert.equal(JSON.parse(fs.readFileSync(`${log}.state`, 'utf8')).next, 102);
+});
+test('REEVE_FAKE_REFUSE makes the matching command answer refused, exit 2', () => {
+  const create = ['story', 'create', '--title', 'T', '--idempotency-key', 'refining-epic:GRA-20:0a1b2c3d:1', '--json'];
+  const r = run(create, { REEVE_FAKE_REFUSE: 'story create' });
+  assert.equal(r.status, 2);
+  assert.deepEqual(r.envelope, { outcome: 'refused', reasons: [{ reason: 'no_criteria' }] });
+  assert.equal(run(create).status, 0); // unset: no refusal
+  assert.equal(run(['story', 'ls', '--json'], { REEVE_FAKE_REFUSE: 'story create' }).status, 0); // other commands unaffected
 });
 test('the story context carries a required decision with no record', () => {
   const { value } = run(['story', 'context', 'GRA-31', '--json']).envelope;
@@ -418,9 +494,9 @@ test('a link whose check cannot run exits 1 with the decision in an ok envelope'
 });
 ```
 
-What these distinguish: a fake that shares or drops log lines, that accepts `--brief-file` (the flag the first draft invented), that answers calls without `--json`, that invents a `no_record` check kind, or that cannot reproduce the conflict and the half-successful link.
+What these distinguish: a fake that shares or drops log lines, that accepts `--brief-file` (the flag the first draft invented), that answers calls without `--json` (or insists it be last), that accepts a create key that is not `<skill>:<KEY>:<run-id>:<n>` or mints a second item for a replayed key, that cannot refuse (exit 2, `REEVE_FAKE_REFUSE`), that invents a `no_record` check kind, or that cannot reproduce the conflict and the half-successful link.
 
-Run: `chmod 755 test/fixtures/reeve-bin/reeve && node --test scripts/__tests__/reeve-fake.test.js` — Expected: 7 passing.
+Run: `chmod 755 test/fixtures/reeve-bin/reeve && node --test scripts/__tests__/reeve-fake.test.js` — Expected: 10 passing.
 
 - [ ] **Step 5: The runner**
 
@@ -428,7 +504,7 @@ Run: `chmod 755 test/fixtures/reeve-bin/reeve && node --test scripts/__tests__/r
 
 | Key | Meaning |
 |---|---|
-| `:requires ["reeve-fake"]` | Runs only when the runner is invoked with `--with reeve-fake`; otherwise printed as `[SKIP]` and not counted. Such a scenario gets `<checkout>/test/fixtures/reeve-bin` first on `PATH` and a fresh empty `REEVE_FAKE_LOG` file for each run (also each `--runs` repeat and each mutation run). |
+| `:requires ["reeve-fake"]` | Runs only when the runner is invoked with `--with reeve-fake`; otherwise printed as `[SKIP]` and not counted. Such a scenario gets `<checkout>/test/fixtures/reeve-bin` first on `PATH` and a fresh empty `REEVE_FAKE_LOG` file for each run (also each `--runs` repeat). |
 | `:env {"NAME" "value"}` | Merged last into the child's environment (the link scenario sets `REEVE_FAKE_LINK_CHECK`). |
 | `:allowed-tools [...]` | Added to the base allow-list; reeve scenarios add `"Bash(reeve *)"` (`Bash(node *)` is already in the base list). |
 | `:log-expects [...]` / `:log-rejects [...]` | Regexes matched, multiline (`(?m)` prepended), against the fake log after the run; failures print as `log: <regex>`. Positive evidence that a command was executed, which a transcript match cannot give. |
@@ -441,7 +517,7 @@ Add after `plugin-root`:
 ;; Every scenario runs with an empty REEVE_CONFIG_DIR and without REEVE_URL, REEVE_TOKEN and
 ;; REEVE_BIN, so a real `reeve` on the PATH can never reach a server. A scenario that requires
 ;; "reeve-fake" also gets the fake planner first on the PATH and a fresh REEVE_FAKE_LOG, so no two
-;; scenarios, repeats or mutation runs share a log. The scenario's own :env is merged last.
+;; scenarios or repeats share a log. The scenario's own :env is merged last.
 (defn scenario-env [{:keys [requires env]}]
   (let [config-dir (str (fs/create-temp-dir {:prefix "reeve-config-"}))
         fake? (some #{"reeve-fake"} requires)
@@ -534,7 +610,7 @@ Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-runner-selftest` �
 
 - [ ] **Step 7: test/README.md**
 
-Add a section "Scenarios against the Reeve planner" with the key table from Step 5, the environment pin (every scenario: empty `REEVE_CONFIG_DIR`, no `REEVE_URL`/`REEVE_TOKEN`/`REEVE_BIN`; fake scenarios: the fake first on `PATH`, a fresh `REEVE_FAKE_LOG` per run), the log format (one line per call, argv joined by spaces, newlines flattened), what the fake answers (the item keys in Step 4: initiatives GRA-12/GRA-13, epics GRA-20/GRA-21, decision 7 "Queue or cron" with no record, stories GRA-31/GRA-32 in GRA-20, untriaged GRA-40…GRA-44; created items get `GRA-1NN`), `REEVE_FAKE_LINK_CHECK=unreadable`, and the two commands:
+Add a section "Scenarios against the Reeve planner" with the key table from Step 5, the environment pin (every scenario: empty `REEVE_CONFIG_DIR`, no `REEVE_URL`/`REEVE_TOKEN`/`REEVE_BIN`; fake scenarios: the fake first on `PATH`, a fresh `REEVE_FAKE_LOG` per run), the log format (one line per call, argv joined by spaces, newlines flattened), what the fake answers (the item keys in Step 4: initiatives GRA-12/GRA-13, epics GRA-20/GRA-21, decision 7 "Queue or cron" with no record, stories GRA-31/GRA-32 in GRA-20, untriaged GRA-40…GRA-44; created items get `GRA-100`, `GRA-101`, … from the state file `$REEVE_FAKE_LOG.state`; creates need `--idempotency-key <skill>:<KEY>:<run-id>:<n>` and replay by key), `REEVE_FAKE_REFUSE`,, `REEVE_FAKE_LINK_CHECK=unreadable`, and the two commands:
 
 ```bash
 bb test/run-tests.clj --with reeve-fake --filter reeve-   # the planner scenarios
@@ -564,7 +640,7 @@ stands for it.
 
 ## Arguments
 
-`--json` goes last on every command. Pass Markdown (a brief) or any text with spaces as one
+Put `--json` on every command (the real CLI takes it anywhere; these examples end with it). Pass Markdown (a brief) or any text with spaces as one
 ANSI-C-quoted argument on one line: `--brief $'## Vision\nEvery mentee …\n\n## Capabilities\n- …'`
 (`\n` for a newline, `\'` for an apostrophe), so the whole command stays one line.
 

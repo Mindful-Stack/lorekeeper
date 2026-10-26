@@ -16,7 +16,7 @@ stands for it.
 
 ## Arguments
 
-`--json` goes last on every command. Pass Markdown (a brief) or any text with spaces as one
+Put `--json` on every command (the real CLI takes it anywhere; these examples end with it). Pass Markdown (a brief) or any text with spaces as one
 ANSI-C-quoted argument on one line: `--brief $'## Vision\nEvery mentee …\n\n## Capabilities\n- …'`
 (`\n` for a newline, `\'` for an apostrophe), so the whole command stays one line.
 

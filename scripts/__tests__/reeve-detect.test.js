@@ -51,6 +51,7 @@ test('anything else answering to reeve is not the planner, and its auth is never
     assert.equal(out.present, false, version);
     assert.equal(out.signed_in, false, version);
     assert.match(out.reason, /reeve-planner/, version);
+    assert.match(logged(log), /^--version$/m, `${version}: the fake was run`);
     assert.doesNotMatch(logged(log), /^auth/m, version);
   }
 });
@@ -64,6 +65,15 @@ test('the planner, signed out (exit 1 with an error envelope)', () => {
   assert.match(out.reason, /^signed out: no server url/);
 });
 
+test('signed out is read from the envelope, not the exit code', () => {
+  // exit 0 with an error envelope: still signed out
+  const { bin } = fake("echo 'reeve-planner 0.1.0'", '{"outcome":"error","code":"unauthenticated","message":"token rejected"}', 0);
+  const out = detect(bin);
+  assert.equal(out.present, true);
+  assert.equal(out.signed_in, false);
+  assert.match(out.reason, /^signed out: token rejected/);
+});
+
 test('a missing binary is absent, and the detector still exits 0', () => {
   const out = detect(path.join(os.tmpdir(), 'no-such-dir-reeve', 'reeve')); // execFileSync would throw on a non-zero exit
   assert.equal(out.present, false);
@@ -75,6 +85,15 @@ test('a hanging binary times out instead of hanging the session', () => {
   const started = Date.now();
   const out = detect(bin, { REEVE_DETECT_TIMEOUT_MS: '500' });
   assert.ok(Date.now() - started < 4000, 'returned at the timeout, not when the child finished');
+  assert.equal(out.present, false);
+  assert.match(out.reason, /timed out/);
+});
+
+test('a child that ignores SIGTERM is still killed at the timeout', () => {
+  const { bin } = fake("trap '' TERM; sleep 6", OK);
+  const started = Date.now();
+  const out = detect(bin, { REEVE_DETECT_TIMEOUT_MS: '500' });
+  assert.ok(Date.now() - started < 4000, 'returned at the timeout');
   assert.equal(out.present, false);
   assert.match(out.reason, /timed out/);
 });

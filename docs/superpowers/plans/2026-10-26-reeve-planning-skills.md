@@ -357,6 +357,7 @@ const initiatives = {
 const epics = {
   'GRA-20': epic('GRA-20', 'Matching queue', { brief: 'Match mentors through a queue.', initiative: 'GRA-12', version: 2 }),
   'GRA-21': epic('GRA-21', 'Mentor profiles', { brief: 'Mentors describe their skills and availability.', initiative: 'GRA-13' }),
+  'GRA-22': epic('GRA-22', 'Session feedback', { brief: 'Mentees rate each mentoring session after it ends.' }), // standalone: no initiative
 };
 const decision7 = { id: 7, on: 'GRA-20', title: 'Queue or cron', decider: 'dan@example.com', due: null, record: null, pr_url: null, check: { kind: 'unchecked' }, checked_at: null, closed: null, created_at: NOW, version: 1 };
 // Closed without a record: listed by `decision ls`, never open, never a readiness reason (kb/ADR-0003 R3).
@@ -573,6 +574,8 @@ test('decision ls and epic ls show what this run created', () => {
   assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-12', '--json']).value.map((x) => [x.id, x.record]), [[d.id, null]]);
   assert.deepEqual(call(['epic', 'ls', '--initiative', 'GRA-12', '--json']).value.map((x) => x.key), ['GRA-20', e.key]);
   assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-20', '--json']).value.map((x) => [x.id, x.closed === null]), [[7, true], [8, false]]);
+  assert.equal(call(['epic', 'show', 'GRA-22', '--json']).value.initiative, null); // a standalone epic
+  assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-22', '--json']).value, []);
 });
 test('creates and edits persist: story ls, show and the readiness reasons see them', () => {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
@@ -752,7 +755,7 @@ Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-runner-selftest` �
 
 - [ ] **Step 7: test/README.md**
 
-Add a section "Scenarios against the Reeve planner" with the key table from Step 5, the environment pin (every scenario: empty `REEVE_CONFIG_DIR`, no `REEVE_URL`/`REEVE_TOKEN`/`REEVE_BIN`; fake scenarios: the fake first on `PATH`, a fresh `REEVE_FAKE_LOG` per run), the log format (one line per call that passed the fake's validation, argv joined by spaces, newlines flattened; a malformed call is not logged, a valid call the planner refuses is), what the fake answers (the item keys in Step 4: initiatives GRA-12/GRA-13, epics GRA-20/GRA-21, decision 7 "Queue or cron" with no record and decision 8 "Match by postcode" closed without one, stories GRA-31/GRA-32 in GRA-20, untriaged GRA-40…GRA-47 (kind `story` with no epic, as the real planner lists them); created items get `GRA-100`, `GRA-101`, … from the state file `$REEVE_FAKE_LOG.state`; creates need `--idempotency-key <skill>:<KEY>:<run-id>:<n>` and replay by key; creates and edits persist for the run, so every show and list sees them, and readiness is derived for every story in the planner's order, the epic's initiative included; `initiative create` checks the horizon bucket; what the real CLI's parser rejects is a usage error with no envelope; `--version` is not logged, since the SessionStart hook runs it too; a write naming an epic or initiative that does not exist is `not_found` and not logged; `story mv` exists only so a delivery change is logged), `REEVE_FAKE_REFUSE`, `REEVE_FAKE_SIGNIN=expired`, `REEVE_FAKE_LINK_CHECK=unreadable`, and the two commands:
+Add a section "Scenarios against the Reeve planner" with the key table from Step 5, the environment pin (every scenario: empty `REEVE_CONFIG_DIR`, no `REEVE_URL`/`REEVE_TOKEN`/`REEVE_BIN`; fake scenarios: the fake first on `PATH`, a fresh `REEVE_FAKE_LOG` per run), the log format (one line per call that passed the fake's validation, argv joined by spaces, newlines flattened; a malformed call is not logged, a valid call the planner refuses is), what the fake answers (the item keys in Step 4: initiatives GRA-12/GRA-13, epics GRA-20/GRA-21 and the standalone GRA-22 (`initiative: null`; codex fix round), decision 7 "Queue or cron" with no record and decision 8 "Match by postcode" closed without one, stories GRA-31/GRA-32 in GRA-20, untriaged GRA-40…GRA-47 (kind `story` with no epic, as the real planner lists them); created items get `GRA-100`, `GRA-101`, … from the state file `$REEVE_FAKE_LOG.state`; creates need `--idempotency-key <skill>:<KEY>:<run-id>:<n>` and replay by key; creates and edits persist for the run, so every show and list sees them, and readiness is derived for every story in the planner's order, the epic's initiative included; `initiative create` checks the horizon bucket; what the real CLI's parser rejects is a usage error with no envelope; `--version` is not logged, since the SessionStart hook runs it too; a write naming an epic or initiative that does not exist is `not_found` and not logged; `story mv` exists only so a delivery change is logged), `REEVE_FAKE_REFUSE`, `REEVE_FAKE_SIGNIN=expired`, `REEVE_FAKE_LINK_CHECK=unreadable`, and the two commands:
 
 ```bash
 bb test/run-tests.clj --with reeve-fake --filter reeve-   # the planner scenarios
@@ -1282,6 +1285,26 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 What each expectation distinguishes: the three `story create` lines a story without criteria, outside the epic or with a title-derived key; the three-way distinct-key line two stories sharing a key (the planner would replay the first and lose the second); the `:1 … :2` back-reference a counter that does not start at 1 or a run id that changes mid-run, and the log-reject on one key used by two different `… create` commands a per-kind counter (stories `:1–3`, epics `:1–2`: the epic create would replay the story); the seven placements one branch of the placement tree each — GRA-40 (broken behaviour → bug under the covering epic), GRA-41 (internal work → chore), GRA-42 (a queue story GRA-20 covers; a `--kind` on it is rejected), GRA-43 (covered by initiative GRA-13 but none of its epics → new epic there), GRA-45 (covered by GRA-12, the refined epic's own initiative, but not by the queue epic → new epic under GRA-12, and `--epic GRA-20` on it rejected: the counter-example to "covers"), GRA-44 (covered by nothing → new initiative in `Later`, the last bucket before "Won't do", plus an epic under it) and GRA-46 (won't do: any `story edit` or `story mv` on it rejected); a skill that only offers "this epic or leave it" fails five of them, and since the fake refuses (unlogged) a write naming an epic nobody created, a guessed `--epic GRA-1xx` satisfies nothing; the transcript lines naming each placement's branch a report that lists writes without the tree; the `story ls --epic` and `decision ls --on` reads pinned after the last write a report quoting a listing that later writes made stale; the transcript's "#7 … Queue or cron", "discovery not complete on GRA-20" and GRA-42 followed by that reason (GRA-42 gets it only after its move) a readiness summary invented, copied from the skill or the reference, or read before the placements, rather than quoted from the planner's answer after the last write; the announce line and `^--version$` a skill that skips step 0; `epic edit … --version 2` a guessed version; `decision require`, `decision link`, `epic discovery` and `story mv` rejected, a skill that creates decisions, links records, marks discovery or moves delivery the user did not ask for; a `story create` for the fixture's GRA-31/GRA-32 rejected, a skill that recreates existing stories. The `--brief-file` reject cannot fire (the fake does not log an invalid call); it documents the flag the first draft invented.
 
+A standalone epic (codex fix round): the fake's `GRA-22` has `initiative: null`, which the planner allows. Appended after `reeve-refining-epic`:
+
+```clojure
+ {:name "reeve-refining-epic-standalone"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "Refine epic GRA-22 in Reeve. Do not ask questions; the answers are given. Done looks like: a mentee rates a session within a day of it ending. Boundary: no change to mentor profiles. Update the epic's brief with these answers. No new required decisions. Stories: 'Rate a session' with criteria 'a mentee can rate a finished session from one to five' and 'a mentee rates a session at most once'. Leave the untriaged stories untriaged. I confirm every write to the planner. Discovery is not complete yet."
+  :workdir "."
+  :expects ["(?i)using the refining-epic skill" "(?i)run id:? *`?[0-9a-f]{8}" "GRA-1\\d\\d"]
+  :rejects ["(?im)^\\W*Stopped" "(?i)planner has no (?:epic|initiative)"]
+  :log-expects ["^epic show GRA-22 --json$"
+                "^decision ls --on GRA-22 --json$"
+                "^epic edit GRA-22 (?=.*--brief )(?=.*--version 1\\b).*--json$"
+                "^story create (?=.*--epic GRA-22\\b)(?=.*--title Rate a session )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-22:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "(?s)^story create .*^story ls --epic GRA-22 --json$"]
+  :log-rejects ["^initiative show " "^story edit " "^epic discovery " "^decision require " "^epic create " "^initiative create "]}
+```
+
+It distinguishes a skill that reads the initiative unconditionally (`initiative show` is rejected; the failed read would stop the run before the brief, so `epic edit` and `story create` would be missing and the transcript would say "Stopped" or "The planner has no initiative") from one that reads it only when `value.initiative` is set and goes on with the epic's own context.
+
 - [ ] **Step 2: Run it, see it fail**
 
 Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-refining-epic` — Expected: `[FAIL]`. Without the skill a model that finds `references/reeve-cli.md` gets most of the way; the run that built this task missed the announce line and the placement of the original GRA-42 ("Mentees can pause matching for a month"), which it put in a new initiative. The fixture now titles GRA-42 as a plain queue story and adds GRA-45 as the counter-example, so the skill's one-sentence definition of "covers" is tested both ways.
@@ -1349,15 +1372,16 @@ section says.
    answers. In a session that cannot ask, end with `Stopped: missing the epic key.` Never pick an
    epic yourself.
 1. **Read.** `reeve epic show <EPIC> --json` (keep `value.brief`, `value.version` and
-   `value.initiative`), then `reeve initiative show <INITIATIVE> --json` for that initiative,
-   `reeve decision ls --on <EPIC> --json`, `reeve story ls --epic <EPIC> --json`,
-   `reeve story ls --untriaged --json`, `reeve epic ls --json` and `reeve initiative ls --json`.
-   If any of them does not answer `ok`, stop the run: for `not_found` say "The planner has no epic
-   <EPIC>." (or the item it names); for `unauthenticated` or `forbidden` say it and tell the user
-   to run `reeve auth login`; otherwise show the code and message. In parallel, dispatch
-   the **knowledge-reader** with the epic's title and "Prioritise domain context and architecture
-   patterns.", and the **architect** in `survey` mode on the repositories the brief or the user
-   names.
+   `value.initiative`), then `reeve initiative show <INITIATIVE> --json` only when
+   `value.initiative` is not null (a standalone epic has no initiative: skip that read and go on
+   with the epic's own context), `reeve decision ls --on <EPIC> --json`,
+   `reeve story ls --epic <EPIC> --json`, `reeve story ls --untriaged --json`,
+   `reeve epic ls --json` and `reeve initiative ls --json`. If any of them does not answer `ok`,
+   stop the run: for `not_found` say "The planner has no epic <EPIC>." (or the item it names);
+   for `unauthenticated` or `forbidden` say it and tell the user to run `reeve auth login`;
+   otherwise show the code and message. In parallel, dispatch the **knowledge-reader** with the
+   epic's title and "Prioritise domain context and architecture patterns.", and the **architect**
+   in `survey` mode on the repositories the brief or the user names.
 2. **Discovery conversation.** One question at a time: what done looks like, the boundaries, what
    is unknown.
 3. **Research.** For each open question from step 2 that research can answer, look it up: web
@@ -1632,12 +1656,12 @@ In the existing `command-adr-new-triages-and-interviews`, add `"(?i)meeting note
  {:name "reeve-adr-link-proposed"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
-  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the planner calls this repository lore, the PR proposing the record is https://github.com/example/test-workspace/pull/9, and the household is the current directory."
+  :prompt "/lore:adr link kb/ADR-0002 to decision 7 in Reeve. Do not ask questions; the answers are given: the planner calls this repository lore, and the PR proposing the record is https://github.com/example/test-workspace/pull/9."
   :workdir "."
   :expects ["proposed, PR open"]
   :rejects ["(?i)could not run"]
   :log-expects ["^decision show 7 --json$"
-                "^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b).*--json$"]}
+                "^decision link 7 (?=.*--record kb/ADR-0002\\b)(?=.*--repo lore\\b)(?=.*--path knowledge/adrs/0002-inventory-reservation\\.md\\b)(?=.*--pr https://github\\.com/example/test-workspace/pull/9\\b)(?=.*--household /\\S)(?!.*--household \\.).*--json$"]}
 
  {:name "reeve-adr-link-check-unreadable"
   :requires ["reeve-fake"]
@@ -1714,7 +1738,10 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
      `node <plugin-root>/scripts/adr-lint.js index --json` (`records[].id` → `records[].file`);
      an id the index lacks: say so and stop, unless the user gave the repository and path (and the
      PR, or said there is none yet) explicitly, which are then used as given;
-   - the household directory: the current directory unless the user names another;
+   - the household directory: the one the user names, else the homes JSON's `root`
+     (`node <plugin-root>/scripts/adr-lint.js homes`, the household root the ADR homes resolve
+     from), never the current directory: invoked from `<household>/backend` to link a shared
+     record in the sibling `lore`, `--household` is `<household>`, not `<household>/backend`;
    - the repository name as configured in the planner: no `reeve` command lists the planner's
      repositories, so ask, offering the `household.json` repository whose directory holds the
      file;
@@ -1855,12 +1882,13 @@ In `hooks/load-standards-reminder.sh`, split `SKILL_ROUTER` after the `CREATIVE 
 
 ```bash
 # The two Reeve planner rows only when a reeve-planner CLI answers within 2 s (kb/ADR-0005 R1:
-# a session without the planner routes exactly as before). One exec, silent on any failure.
+# a session without the planner routes exactly as before). One exec, silent on any failure;
+# `-k 1` kills one that ignores TERM, so the probe never holds the hook past 3 s.
 REEVE_ROUTER_ROWS=''
 reeve_version() {
     local bin="${REEVE_BIN:-reeve}"
     command -v "$bin" >/dev/null 2>&1 || return 0
-    if command -v timeout >/dev/null 2>&1; then timeout 2 "$bin" --version </dev/null 2>/dev/null
+    if command -v timeout >/dev/null 2>&1; then timeout -k 1 2 "$bin" --version </dev/null 2>/dev/null
     elif command -v perl >/dev/null 2>&1; then perl -e 'alarm 2; exec @ARGV' "$bin" --version </dev/null 2>/dev/null
     fi
 }
@@ -1870,7 +1898,7 @@ esac
 SKILL_ROUTER="${SKILL_ROUTER_HEAD}${REEVE_ROUTER_ROWS}${SKILL_ROUTER_TAIL}"
 ```
 
-Run: `node --test scripts/__tests__/load-standards-hook.test.js` — Expected: pass (the hook still emits valid JSON; the two `reeve router rows` tests: present with the fake as `REEVE_BIN`, absent with a missing binary, a `reeve-runner` lookalike and one that hangs past 2 s).
+Run: `node --test scripts/__tests__/load-standards-hook.test.js` — Expected: pass (the hook still emits valid JSON; the two `reeve router rows` tests: present with the fake as `REEVE_BIN`, absent with a missing binary, a `reeve-runner` lookalike and one that hangs past 2 s; codex fix round, a third: a probe that ignores TERM is killed by `timeout -k 1`, so the hook returns within ~3 s and still emits the knowledge paths).
 
 - [ ] **Step 3: README and CLAUDE.md**
 

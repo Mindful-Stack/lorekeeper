@@ -1319,7 +1319,9 @@ When the request presents a story key as the story it is for ("story GRA-31", "f
 any other `<PREFIX>-<n>` token, such as UTF-8, SHA-256 or ISO-8601; with no story key, create no
 task for this and say nothing about it. Run `node <plugin-root>/scripts/reeve-detect.js`
 (`<plugin-root>` is `${CLAUDE_PLUGIN_ROOT}`, written out as an absolute path). Unless it prints
-`"present":true` and `"signed_in":true`, skip the rest without mentioning the planner. Otherwise
+`"present":true` and `"signed_in":true`, this section ends here and leaves no trace: your reply
+never mentions the planner, the detector, a sign-in or a story lookup (not even that the story
+could not be loaded), and reads exactly as it would if the planner did not exist. Otherwise
 read `<plugin-root>/references/reeve-cli.md` and run `reeve story context <KEY> --json` (the
 detector's `bin` as the first word). If it does not exit 0, say so in one line (the planner has no
 story <KEY>, and an epic or initiative key is not a story; for a sign-in error, run
@@ -1642,7 +1644,7 @@ Run: `node --test scripts/__tests__/load-standards-hook.test.js` — Expected: p
 
 and after the table a paragraph: "**Reeve planner.** Optional. When a `reeve` CLI on the path reports `reeve-planner` and you are signed in (`reeve auth login`), the two skills above write into the planner, brainstorming reads a named story's context first, and `/lore:adr link` links a record to a required decision. Nothing to configure; without it every skill behaves as before."
 
-`CLAUDE.md`, *Zero-runtime principle*, after the `adr-lint.js` paragraph: "The second exception is `scripts/reeve-detect.js`: every skill that touches the Reeve planner must agree on whether it is present and signed in (kb/ADR-0005 R1: `reeve --version` reports `reeve-planner`, `reeve auth status --json` is ok), with a timeout so a hanging binary never hangs a session — one tested script instead of the same two checks written into five skills. It reads nothing from a knowledge base and writes nothing." In the overview paragraph (line 7), the script list gains `reeve-detect.js`.
+`CLAUDE.md`, *Zero-runtime principle*, after the `adr-lint.js` paragraph: "The second exception is `scripts/reeve-detect.js`: every skill that touches the Reeve planner must agree on whether it is present and signed in (kb/ADR-0005 R1: `reeve --version` reports `reeve-planner`, `reeve auth status --json` is ok), with a timeout so a hanging binary never hangs a session — one tested script instead of the same two checks written into five skills. It reads nothing from a knowledge base and writes nothing." In the overview paragraph (line 7), the script list gains `reeve-detect.js`. In *Skill router vs. user-installed superpowers*, the list of the plugin's own skills gains "the two Reeve planner skills `planning-initiative` and `refining-epic` (active only when the planner CLI is present)" (added during Task 6: the list would otherwise be stale).
 
 - [ ] **Step 4: Version 3.2.0**
 
@@ -1656,7 +1658,9 @@ bb test/run-tests.clj --with reeve-fake --filter reeve-
 bb test/run-tests.clj
 ```
 
-Expected: every Node test passes; the second command runs the nine `reeve-…` scenarios (`reeve-runner-selftest`, `reeve-planning-initiative`, `reeve-refining-epic`, the three `reeve-brainstorming-…`, the three `reeve-adr-link-…`) and all pass; the third prints `[SKIP]` for the eight that require `reeve-fake` and passes every other scenario, including `reeve-brainstorming-without-planner`, `command-adr-triages-process-decision` and the updated `command-adr-new-triages-and-interviews`. Use `--runs 3 --min 2` on a scenario that fails once to see whether it is flaky before changing a skill.
+Expected: every Node test passes; the second command runs the eleven `reeve-…` scenarios (the nine that require `reeve-fake`: `reeve-runner-selftest`, `reeve-planning-initiative`, `reeve-refining-epic`, `reeve-brainstorming-no-story-key`, `reeve-brainstorming-story-context`, the four `reeve-adr-link-…`; plus the two planner-absent ones, `reeve-brainstorming-without-planner` and `reeve-brainstorming-story-key-without-planner`) and all pass; the third prints `[SKIP]` for the nine that require `reeve-fake` and passes the other twenty-nine, including `reeve-brainstorming-without-planner`, `command-adr-triages-process-decision` and the updated `command-adr-new-triages-and-interviews`. (Counts corrected in Task 6: the Task 4 and Task 5 fix rounds added `reeve-brainstorming-no-story-key`, `reeve-brainstorming-story-key-without-planner` and `reeve-adr-link-headless-missing-input`, and the filter also matches the two planner-absent scenarios.) Use `--runs 3 --min 2` on a scenario that fails once to see whether it is flaky before changing a skill.
+
+Task 6 run (2026-10-26): `reeve-brainstorming-story-key-without-planner` failed in 3 of 5 runs (both full runs, and 1 of 3 repeats): the reply said "The planner isn't signed in" / "I couldn't load story GRA-31 from the planner". Task 4's "skip the rest without mentioning the planner" was too weak against a detector line that carries a `reason`; *Planner Context* now says the section "ends here and leaves no trace: your reply never mentions the planner, the detector, a sign-in or a story lookup (not even that the story could not be loaded), and reads exactly as it would if the planner did not exist" (mirrored into Task 4 Step 3). The assertion is unchanged. After the fix, `--with reeve-fake --filter reeve-brainstorming --runs 3`: `without-planner` 3/3, `story-key-without-planner` 3/3, `story-context` 3/3, `no-story-key` 2/3 (one run omitted the announce sentence; it passed in both earlier runs, so it is noted as a flake and left alone).
 
 - [ ] **Step 6: Commit, PR and the marketplace companion**
 
@@ -1667,7 +1671,7 @@ git commit -m "feat(skills): reeve planning skills in the router, readme and cod
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
-Open the PR. Then, as CLAUDE.md's *Version bumps are mandatory* requires, open the companion PR in `Mindful-Stack/witan` that sets the `lore` entry's `version` in `.claude-plugin/marketplace.json` to `3.2.0`, and link each PR from the other; the marketplace PR merges after this one.
+Open the PR. Then, as CLAUDE.md's *Version bumps are mandatory* requires, open the companion PR in `Mindful-Stack/witan` that sets the `lore` entry's `version` in `.claude-plugin/marketplace.json` to `3.2.0`, and link each PR from the other; the marketplace PR merges after this one. (Task 6 was executed without pushing or opening either PR; both are left to the person merging the branch.)
 
 ---
 

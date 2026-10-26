@@ -628,7 +628,7 @@ Replace `run-test`:
       (let [_ (println (colorize :yellow "  Running:") prompt "(context:" workdir ")")
             tools (distinct (concat allowed-tools (:allowed-tools scenario)))
             {:keys [out err]} (apply shell {:dir workspace-root :out :string :err :string
-                                            :continue true :env env}
+                                            :in "" :continue true :env env}
                                      (concat ["claude" "--print" "--permission-mode" "default"
                                               "--allowedTools"] tools
                                              ["--disallowedTools"] disallowed-tools
@@ -1292,7 +1292,16 @@ Run: `bb test/run-tests.clj --with reeve-fake --filter reeve-brainstorming` — 
 
 - [ ] **Step 3: The edit**
 
-In `skills/brainstorming/SKILL.md`, first add one line at the very start of the body, before *Checklist* (and before the HARD-GATE block), exactly: `Announce at the start: "Using the brainstorming skill: no code until the design is approved."` Run Step 1's mutation check now, then continue. Then, in *Checklist*, insert before item 1:
+In `skills/brainstorming/SKILL.md`, first add these lines at the very start of the body, under the title, before *Checklist* (and before the HARD-GATE block), exactly:
+
+```markdown
+Announce at the start: "Using the brainstorming skill: no code until the design is approved."
+The message that ends your first turn opens with the same sentence, since a non-interactive
+session shows only that message. Its last line is your first question: list any options before
+that line, and write nothing after it.
+```
+
+`claude --print` shows only the final message, so the announce alone never reaches the transcript (the baseline failed with it alone); and with options after the question, or a closing remark, `story-context`'s last-line assertion failed 3 runs in 3. The runner feeds `claude` an empty stdin (`:in ""` in Task 1's `run-test`): otherwise, with a non-terminal stdin, `claude` appends "Warning: no stdin data received in 3s" to stderr, which lands after the question and breaks the `\z` anchor. Run Step 1's mutation check now, then continue. Then, in *Checklist*, insert before item 1:
 
 ```markdown
 0. **Planner context (only when the request names a story)** — when the request names a story

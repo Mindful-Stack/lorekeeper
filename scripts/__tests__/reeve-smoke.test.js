@@ -26,7 +26,7 @@ test('commandRows reads the Commands table only and reads \\| inside a cell as |
 });
 test('commandRows finds the rows of the reference, each with its Read cell', () => {
   const rows = s.commandRows(fs.readFileSync(path.join(__dirname, '..', '..', 'references', 'reeve-cli.md'), 'utf8'));
-  assert.ok(rows.length >= 19, `found ${rows.length}`);
+  assert.equal(rows.length, 19);
   for (const r of rows) {
     assert.match(r.row, /^`reeve [a-z]+ [a-z]+[ `]/, r.row);
     assert.match(r.read, /`value/, r.row);
@@ -90,6 +90,8 @@ test('coverageProblems names each defect', () => {
     [[r(ROW)], [entry({ reads: [], types: {} })], /the entry reads nothing/],
     [[r(ROW)], [entry({ unread: { 'value[].title': 'x' } })], /unread value\[\]\.title is not in the reference's Read/],
     [[r(ROW)], [entry({ unread: { 'value[].key': 'x' } })], /unread value\[\]\.key is read/],
+    [[r(ROW, '`value[]`: `key`, `title`')], [entry({ unread: { 'value[].title': '' } })], /unread value\[\]\.title needs a reason/],
+    [[r(ROW, '`value[]`: `key`, `title`')], [entry({ unread: { 'value[].title': 5 } })], /unread value\[\]\.title needs a reason/],
     [[r(ROW)], [entry({ types: {} })], /read value\[\]\.key has no declared type/],
     [[r(ROW)], [entry({ types: { 'value[].key': 'string', 'value[].title': 'string' } })], /type for value\[\]\.title, which is not read/],
     [[r(ROW)], [entry({ types: { 'value[].key': 'text' } })], /value\[\]\.key: text is not a JSON type/],
@@ -100,6 +102,22 @@ test('coverageProblems names each defect', () => {
     const got = s.coverageProblems(rows, { seed, entries });
     assert.ok(got.some((p) => want.test(p)), `${want}: got ${JSON.stringify(got)}`);
   }
+});
+
+test('readPaths throws on a span it cannot classify and pins the real reference', () => {
+  assert.throws(() => s.readPaths('`value.a`, see `mystery` here'), /cannot classify `mystery`/);
+  assert.throws(() => s.readPaths('`.x`'), /no field to follow/);
+  assert.deepEqual(s.readPaths('`value[]`, `.x`'), ['value[]', 'value[].x']); // a path without a dot is its own parent
+  const rows = s.commandRows(fs.readFileSync(path.join(__dirname, '..', '..', 'references', 'reeve-cli.md'), 'utf8'));
+  for (const x of rows) assert.ok(s.readPaths(x.read).every((p) => p.startsWith('value')), x.row);
+  const of = (prefix) => s.readPaths(rows.find((x) => x.row.startsWith(prefix)).read);
+  assert.deepEqual(of('`reeve story context'), ['value', 'value.story', 'value.epic', 'value.initiative', 'value.required_decisions[]', 'value.blockers[]', 'value.comments[]', 'value.readiness']);
+  assert.ok(of('`reeve decision ls').includes('value[].closed.reason'));
+  assert.ok(of('`reeve story ls').includes('value[].story.version'));
+});
+test('"the same fields" needs a value[] list source', () => {
+  const rows = [r('`reeve epic ls --json`', '`value`: `key`'), r('`reeve epic show <KEY> --json`', '`value`: one epic, the same fields')];
+  assert.throws(() => s.coverageProblems(rows, { seed: [], entries: [] }).concat(s.coverageProblems(rows, { seed: [], entries: [entry({ row: rows[1].row, argv: ['epic', 'show', 'X', '--json'], reads: ['value.key'], types: { 'value.key': 'string' } })] })), /does not read a value\[\] list/);
 });
 
 test('bind fills dotted placeholders and refuses unbound or non-scalar ones', () => {
@@ -123,6 +141,14 @@ test('realProblems names a missing field, an empty array, a type outside the dec
   assert.deepEqual(s.realProblems(linked, ok({ check: { kind: 'unchecked' } })), ['the planner\'s value.check.kind is "unchecked", expected "accepted"']);
   assert.deepEqual(s.realProblems(linked, ok({ check: { kind: 'unchecked' } }), { expect: false }), []);
 });
+test('realProblems checks every element of an array, not the first', () => {
+  assert.deepEqual(s.realProblems(E(), ok({ brief: 'b', items: [{ key: 'A' }, {}] })), ["the planner's answer has no value.items[1].key"]);
+  assert.deepEqual(s.realProblems(E(), ok({ brief: 'b', items: [{ key: 'A' }, { key: 3 }] })), ["the planner's value.items[].key is number, the fixture declares string|null"]);
+  assert.deepEqual(s.realProblems(E(), ok({ brief: 'b', items: [{ key: 'A' }, { key: 'B' }, { key: 'C' }, 7] })), ["the planner's answer has no value.items[3].key"]);
+});
+test('realProblems: null is a type, and a plain declaration refuses it', () => {
+  assert.deepEqual(s.realProblems(E(), ok({ brief: null, items: [{ key: 'A' }] })), ["the planner's value.brief is null, the fixture declares string"]);
+});
 test('realProblems accepts only exit 0 with an ok envelope', () => {
   assert.match(s.realProblems(E(), { status: 1, stdout: '', stderr: "error: unexpected argument '--x'\n" })[0], /^no JSON envelope on stdout \(exit 1\): error: unexpected argument/);
   assert.match(s.realProblems(E(), { status: 2, stdout: '{"outcome":"refused","reasons":[{"reason":"no_criteria"}]}', stderr: '' })[0], /^outcome refused \(exit 2\)/);
@@ -138,6 +164,13 @@ test('fakeProblems blames the fake for a missing field, a different type set or 
   assert.deepEqual(s.fakeProblems(e, real, ok({ items: [{}] })), [`the fake's answer has no value.owner (the planner's has it); ${FIX}`]);
   assert.deepEqual(s.fakeProblems(e, real, ok({ owner: 'dan@example.com', items: [{}] })), [`value.owner is null from the planner but string from the fake; ${FIX}`]);
   assert.deepEqual(s.fakeProblems(e, real, ok({ owner: null, items: [] })), [`value.items[] is object from the planner but (nothing: empty) from the fake; ${FIX}`]);
+  // the planner reaches {string,null} across elements; a fake that only ever gives string is a subset, not the same
+  const e2 = E({ reads: ['value.items[].key'], types: { 'value.items[].key': 'string|null' } });
+  const real2 = { outcome: 'ok', value: { items: [{ key: 'A' }, { key: null }] } };
+  assert.deepEqual(s.fakeProblems(e2, real2, ok({ items: [{ key: 'A' }, { key: 'B' }] })), [`value.items[].key is null|string from the planner but string from the fake; ${FIX}`]);
+  assert.deepEqual(s.fakeProblems(e2, real2, ok({ items: [{ key: null }, { key: 'B' }] })), []);
+  // the planner's array empty, the fake's not (and the reverse)
+  assert.deepEqual(s.fakeProblems(e2, { outcome: 'ok', value: { items: [] } }, ok({ items: [{ key: 'A' }] })), [`value.items[].key is (nothing: empty) from the planner but string from the fake; ${FIX}`]);
   assert.deepEqual(s.fakeProblems(e, real, { status: 1, stdout: '', stderr: "error: unexpected argument '--household'\n" }),
     [`the fake answered exit 1 without an envelope: error: unexpected argument '--household'; ${FIX}`]);
 });

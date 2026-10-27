@@ -75,7 +75,10 @@ function braced(text, base) {
   }
   return out;
 }
-const parentOf = (p) => p.slice(0, p.lastIndexOf('.'));
+// A path with no field after the base (`value`, `value[]`) is its own parent: `.x` after it is `value.x`.
+const parentOf = (p) => (p.includes('.') ? p.slice(0, p.lastIndexOf('.')) : p);
+// Backticked words in a Read cell that are prose, not fields. Any other span that is not classified is an error.
+const PROSE = new Set(['validation', 'story']);
 // The field paths a Read cell names, nesting and relative fields kept. Spans are read left to right:
 // - `value…` followed by ":" is a base (`value[]`: …): later bare names and `{…}` right after the ":" are under it;
 // - `value…` otherwise is an absolute path; `.x` replaces the last path's final field (`value.brief`, `.owner`);
@@ -104,15 +107,19 @@ function readPaths(cell) {
       base = span; last = span; paths.push(span); prevWasBase = true;
     } else if (span.startsWith('{')) {
       const parent = afterBase ? base : last;
-      if (parent) paths.push(...braced(span, parent));
+      if (!parent) throw new Error(`readPaths: ${span} has no field to belong to in ${cell}`);
+      paths.push(...braced(span, parent));
     } else if (absolute(span)) {
       last = span; paths.push(span);
     } else if (span.startsWith('.')) {
-      if (last) { last = parentOf(last) + span; paths.push(last); }
+      if (!last) throw new Error(`readPaths: ${span} has no field to follow in ${cell}`);
+      last = parentOf(last) + span; paths.push(last);
     } else if (span.includes('.')) {
       last = `${base}.${span}`; paths.push(last);
     } else if (inList && /^[a-z_]+(\[\])?$/.test(span)) {
       last = `${base}.${span}`; paths.push(last);
+    } else if (!PROSE.has(span)) {
+      throw new Error(`readPaths: cannot classify \`${span}\` in ${cell} (a field outside the base's list, or prose to add to PROSE)`);
     }
   });
   return paths;
@@ -133,6 +140,7 @@ function cellPaths(rows, ref, entries) {
   const item = ref.row.split(' ')[1];
   const src = rows.slice(0, rows.indexOf(ref)).reverse().find((x) => x.row.split(' ')[1] === item && !SAME.test(x.read));
   if (!src) throw new Error(`${ref.row}: "the same fields" names no earlier ${item} row`);
+  if (!src.read.startsWith('`value[]`')) throw new Error(`${ref.row}: "the same fields" source ${src.row} does not read a value[] list`);
   const srcEntry = entries.find((e) => e.row === src.row);
   const waived = Object.fromEntries(Object.entries((srcEntry && srcEntry.unread) || {}).map(([k, v]) => [asOne(k), v]));
   return { paths: [...new Set([...own, ...readPaths(src.read).map(asOne)])], waived };
@@ -178,7 +186,8 @@ function coverageProblems(rows, fixture) {
     for (const n of named) {
       if (!reached(n) && !(n in unread) && !(n in waived)) problems.push(`${e.row}: the reference's Read names ${n}, which no read reaches (read it, or list it in unread with a reason)`);
     }
-    for (const n of Object.keys(unread)) {
+    for (const [n, why] of Object.entries(unread)) {
+      if (typeof why !== 'string' || !why.trim()) problems.push(`${e.row}: unread ${n} needs a reason (a non-empty string)`);
       if (!named.includes(n)) problems.push(`${e.row}: unread ${n} is not in the reference's Read`);
       if (reached(n)) problems.push(`${e.row}: unread ${n} is read`);
     }

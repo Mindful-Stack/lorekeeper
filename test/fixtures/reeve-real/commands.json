@@ -120,9 +120,9 @@
       "reads": ["value[].id", "value[].on", "value[].title", "value[].decider", "value[].due", "value[].record", "value[].pr_url", "value[].check.kind", "value[].closed"],
       "types": { "value[].id": "number", "value[].on": "string", "value[].title": "string", "value[].decider": "string", "value[].due": "string|null", "value[].record": "object|null", "value[].pr_url": "string|null", "value[].check.kind": "string", "value[].closed": "object|null" },
       "unread": {
-        "value[].closed.at": "closed is null for every decision the smoke can make (no table command closes one); value[].closed is read",
-        "value[].closed.by": "closed is null for every smoke decision; value[].closed is read",
-        "value[].closed.reason": "closed is null for every smoke decision; value[].closed is read"
+        "value[].closed.at": "the Commands table has no close command and the skills never close a decision; value[].closed is read",
+        "value[].closed.by": "the Commands table has no close command and the skills never close a decision; value[].closed is read",
+        "value[].closed.reason": "the Commands table has no close command and the skills never close a decision; value[].closed is read"
       }
     },
     {

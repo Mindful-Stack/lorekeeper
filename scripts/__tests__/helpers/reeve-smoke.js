@@ -3,6 +3,10 @@
 // binding, and the shape checks on the planner's and the fake's answers.
 'use strict';
 
+const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+
 const JSON_TYPES = ['null', 'array', 'object', 'string', 'number', 'boolean'];
 const FIX_FAKE = 'fix test/fixtures/reeve-bin/reeve';
 
@@ -297,4 +301,59 @@ function liveConfig(env) {
   return { skip: false, missing: LIVE_COMPANIONS.filter((k) => !env[k]) };
 }
 
-module.exports = { typeOf, envelopeOf, commandRows, formsOf, readPaths, coverageProblems, runsOf, bind, walk, realProblems, fakeProblems, liveConfig };
+function run(side, argv) {
+  const r = spawnSync(side.bin, argv, { encoding: 'utf8', env: side.env, timeout: 60_000 });
+  return { status: r.error ? `error ${r.error.code}` : r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+
+// The seed on both sides, then every entry in file order. Returns one { row, problems } per failed seed step and one per
+// entry. `real` and `fake` are { bin, env }; `scope` holds the seed file's values and run_id; `out` (optional) receives
+// every answer as JSON. PROPERTY: each side binds from its own answers only, so the fake never runs on a planner key.
+function runSmoke({ fixture, real, fake, scope, expect = true, out }) {
+  const scopes = { real: { ...scope }, fake: { ...scope } };
+  const record = (name, data) => {
+    if (!out) return;
+    fs.mkdirSync(out, { recursive: true });
+    fs.writeFileSync(path.join(out, `${name}.json`), JSON.stringify(data, null, 2) + '\n');
+  };
+  const results = [];
+  fixture.seed.forEach((step, i) => {
+    const problems = [];
+    for (const [name, side] of [['real', real], ['fake', fake]]) {
+      let argv;
+      try { argv = bind(step.argv, scopes[name]); } catch (e) { problems.push(`${name}: ${e.message}`); continue; }
+      const r = run(side, argv);
+      record(`seed-${i + 1}-${name}`, { argv, ...r });
+      const env = envelopeOf(r.stdout);
+      if (r.status !== 0 || !env || env.outcome !== 'ok') problems.push(`${name}: seed step failed (exit ${r.status}): ${r.stdout.trim() || firstLine(r.stderr)}`);
+      else if (step.bind) scopes[name][step.bind] = env.value;
+    }
+    if (problems.length) results.push({ row: `seed ${i + 1}: ${step.argv.slice(0, 2).join(' ')}`, problems });
+  });
+  fixture.entries.forEach((entry, i) => {
+    const problems = [];
+    runsOf(entry).forEach((spec, j) => {
+      const name = `${String(i + 1).padStart(2, '0')}-${spec.slice(0, 2).join('-')}${j ? `-${j + 1}` : ''}`;
+      let rArgv;
+      let fArgv;
+      try { rArgv = bind(spec, scopes.real); } catch (e) { problems.push(`real: ${e.message}`); return; }
+      try { fArgv = bind(spec, scopes.fake); } catch (e) { problems.push(`fake: ${e.message}`); return; }
+      const r = run(real, rArgv);
+      const f = run(fake, fArgv);
+      record(name, { row: entry.row, real: { argv: rArgv, ...r }, fake: { argv: fArgv, ...f } });
+      const rp = realProblems(entry, r, { expect });
+      problems.push(...rp.map((p) => `real: ${p}`));
+      const realEnv = envelopeOf(r.stdout);
+      if (!rp.length) problems.push(...fakeProblems(entry, realEnv, f).map((p) => `fake: ${p}`));
+      if (entry.bind && j === 0) {
+        if (!rp.length) scopes.real[entry.bind] = realEnv.value;
+        const fe = envelopeOf(f.stdout);
+        if (fe && fe.outcome === 'ok') scopes.fake[entry.bind] = fe.value;
+      }
+    });
+    results.push({ row: entry.row, problems });
+  });
+  return results;
+}
+
+module.exports = { runSmoke, typeOf, envelopeOf, commandRows, formsOf, readPaths, coverageProblems, runsOf, bind, walk, realProblems, fakeProblems, liveConfig };

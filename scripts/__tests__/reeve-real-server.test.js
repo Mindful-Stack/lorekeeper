@@ -5,6 +5,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -87,4 +88,26 @@ test("a field the fake drops is reported as the fake's to fix", (t) => {
   const show = results.find((r) => r.row === '`reeve initiative show <KEY> --json`');
   assert.ok(show.problems.some((p) => /^fake: the fake's answer has no value\.discovery_complete \(the planner's has it\); fix test\/fixtures\/reeve-bin\/reeve$/.test(p)), show.problems.join('\n'));
   assert.deepEqual(results.flatMap((r) => r.problems).filter((p) => !p.startsWith('fake: ')), [], 'only the fake is blamed');
+});
+
+const DETECT = path.join(root, 'scripts', 'reeve-detect.js');
+const live = s.liveConfig(process.env);
+test('every Commands row against a real planner, the fake answering in the same shape', { skip: live.skip }, async (t) => {
+  assert.deepEqual(live.missing, [], 'REEVE_SMOKE_SEED is set, so a live run needs these too');
+  const seed = JSON.parse(fs.readFileSync(process.env.REEVE_SMOKE_SEED, 'utf8'));
+  const home = tmp(t);
+  // An empty CLI config and HOME: only REEVE_URL and REEVE_TOKEN reach the planner (crates/reeve/src/config.rs).
+  const realEnv = { ...baseEnv(), REEVE_URL: process.env.REEVE_URL, REEVE_TOKEN: process.env.REEVE_TOKEN, REEVE_CONFIG_DIR: home, HOME: home };
+  // The skills' first call (kb/ADR-0005 R1), against the real binary; its run id keys every create of this run.
+  const d = spawnSync(process.execPath, [DETECT], { encoding: 'utf8', env: { ...realEnv, REEVE_BIN: process.env.REEVE_REAL_BIN }, timeout: 30_000 });
+  const detected = JSON.parse(d.stdout);
+  assert.deepEqual([detected.present, detected.signed_in, detected.reason], [true, true, ''], d.stdout);
+  const results = s.runSmoke({
+    fixture,
+    real: { bin: process.env.REEVE_REAL_BIN, env: realEnv },
+    fake: fakeSide(FAKE, tmp(t)),
+    scope: { ...seed, run_id: detected.run_id },
+    out: process.env.REEVE_SMOKE_OUT,
+  });
+  for (const r of results) await t.test(r.row, () => assert.deepEqual(r.problems, []));
 });

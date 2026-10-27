@@ -1,7 +1,8 @@
 // scripts/__tests__/reeve-real-server.test.js — node --test
-// Every row of references/reeve-cli.md's *Commands* table has exactly one entry in test/fixtures/reeve-real/commands.json
-// (always checked). Tasks 3 and 4 of the smoke's plan add: the entries against the fake on both sides, a broken fake
-// blamed as the fake, and the live run against a real planner.
+// Keeps the fake `reeve` honest against the real planner. Always run: every row of references/reeve-cli.md's *Commands*
+// table has exactly one entry in test/fixtures/reeve-real/commands.json; the seed and entries run against the fake on
+// both sides; a broken fake is blamed as the fake. Live, only when REEVE_SMOKE_SEED is set: the same entries against a
+// real planner (REEVE_REAL_BIN, REEVE_URL, REEVE_TOKEN), compared with the fake's answers.
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -110,8 +111,10 @@ test('every Commands row against a real planner, the fake answering in the same 
     scope: { ...seed, run_id: detected.run_id },
     out: process.env.REEVE_SMOKE_OUT,
   });
-  // not vacuous: the seed had steps and the run covered at least one command per entry
-  assert.ok(fixture.seed.length > 0, 'the fixture has seed steps');
-  assert.ok(results.length >= fixture.entries.length, `ran ${results.length} results for ${fixture.entries.length} entries`);
+  // not vacuous: every entry's runs all reached the real planner and got an envelope back
+  for (const e of fixture.entries) {
+    const r = results.find((x) => x.row === e.row);
+    assert.equal(r && r.ran, s.runsOf(e).length, `${e.row}: runs answered by the real CLI`);
+  }
   for (const r of results) await t.test(r.row, () => assert.deepEqual(r.problems, []));
 });

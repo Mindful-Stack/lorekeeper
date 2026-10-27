@@ -293,12 +293,13 @@ function fakeProblems(entry, realEnvelope, r) {
   return problems;
 }
 
-// Whether the live test runs. PROPERTY: skipping needs every live variable unset; once REEVE_SMOKE_SEED or any companion
-// is set, a missing one is a failure (listed), never a skip.
+// Whether the live test runs. PROPERTY: REEVE_SMOKE_SEED alone decides skipping; once it is set, a missing companion
+// variable is a failure (listed), never a skip. (REEVE_URL and REEVE_TOKEN are the CLI's own sign-in variables and
+// REEVE_REAL_BIN drives the reference test, so a developer shell may have them without a smoke run.)
 const LIVE_COMPANIONS = ['REEVE_REAL_BIN', 'REEVE_URL', 'REEVE_TOKEN'];
 function liveConfig(env) {
-  if (!env.REEVE_SMOKE_SEED && !LIVE_COMPANIONS.some((k) => env[k])) return { skip: "REEVE_SMOKE_SEED is not set (the Reeve repository's `mise run skill-smoke` sets it)" };
-  return { skip: false, missing: ['REEVE_SMOKE_SEED', ...LIVE_COMPANIONS].filter((k) => !env[k]) };
+  if (!env.REEVE_SMOKE_SEED) return { skip: "REEVE_SMOKE_SEED is not set (the Reeve repository's `mise run skill-smoke` sets it)" };
+  return { skip: false, missing: LIVE_COMPANIONS.filter((k) => !env[k]) };
 }
 
 function run(side, argv) {
@@ -332,6 +333,7 @@ function runSmoke({ fixture, real, fake, scope, expect = true, out }) {
   });
   fixture.entries.forEach((entry, i) => {
     const problems = [];
+    let ran = 0; // runs whose real side answered with an envelope
     runsOf(entry).forEach((spec, j) => {
       const name = `${String(i + 1).padStart(2, '0')}-${spec.slice(0, 2).join('-')}${j ? `-${j + 1}` : ''}`;
       let rArgv;
@@ -344,6 +346,7 @@ function runSmoke({ fixture, real, fake, scope, expect = true, out }) {
       const rp = realProblems(entry, r, { expect });
       problems.push(...rp.map((p) => `real: ${p}`));
       const realEnv = envelopeOf(r.stdout);
+      if (realEnv) ran += 1;
       if (!rp.length) problems.push(...fakeProblems(entry, realEnv, f).map((p) => `fake: ${p}`));
       if (entry.bind && j === 0) {
         if (!rp.length) scopes.real[entry.bind] = realEnv.value;
@@ -351,7 +354,7 @@ function runSmoke({ fixture, real, fake, scope, expect = true, out }) {
         if (fe && fe.outcome === 'ok') scopes.fake[entry.bind] = fe.value;
       }
     });
-    results.push({ row: entry.row, problems });
+    results.push({ row: entry.row, problems, ran });
   });
   return results;
 }

@@ -179,4 +179,7 @@ test('liveConfig skips without REEVE_SMOKE_SEED and lists what else a live run l
   assert.match(s.liveConfig({}).skip, /REEVE_SMOKE_SEED is not set/);
   assert.deepEqual(s.liveConfig({ REEVE_SMOKE_SEED: 'seed.json', REEVE_URL: 'http://127.0.0.1:7476' }), { skip: false, missing: ['REEVE_REAL_BIN', 'REEVE_TOKEN'] });
   assert.deepEqual(s.liveConfig({ REEVE_SMOKE_SEED: 'seed.json', REEVE_REAL_BIN: 'reeve', REEVE_URL: 'u', REEVE_TOKEN: 't' }), { skip: false, missing: [] });
+  // a companion set without the seed is a misconfigured live run, not a skip
+  assert.deepEqual(s.liveConfig({ REEVE_REAL_BIN: 'reeve', REEVE_URL: 'u', REEVE_TOKEN: 't' }), { skip: false, missing: ['REEVE_SMOKE_SEED'] });
+  assert.deepEqual(s.liveConfig({ REEVE_TOKEN: 't', REEVE_SMOKE_SEED: '' }), { skip: false, missing: ['REEVE_SMOKE_SEED', 'REEVE_REAL_BIN', 'REEVE_URL'] });
 });

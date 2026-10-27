@@ -100,6 +100,7 @@ test('every Commands row against a real planner, the fake answering in the same 
   const realEnv = { ...baseEnv(), REEVE_URL: process.env.REEVE_URL, REEVE_TOKEN: process.env.REEVE_TOKEN, REEVE_CONFIG_DIR: home, HOME: home };
   // The skills' first call (kb/ADR-0005 R1), against the real binary; its run id keys every create of this run.
   const d = spawnSync(process.execPath, [DETECT], { encoding: 'utf8', env: { ...realEnv, REEVE_BIN: process.env.REEVE_REAL_BIN }, timeout: 30_000 });
+  assert.ok(d.status === 0 && d.stdout.trim(), `the detector failed (exit ${d.status}${d.error ? `, ${d.error.code}` : ''}): ${d.stderr.trim() || d.stdout.trim() || 'no output'}`);
   const detected = JSON.parse(d.stdout);
   assert.deepEqual([detected.present, detected.signed_in, detected.reason], [true, true, ''], d.stdout);
   const results = s.runSmoke({
@@ -109,5 +110,8 @@ test('every Commands row against a real planner, the fake answering in the same 
     scope: { ...seed, run_id: detected.run_id },
     out: process.env.REEVE_SMOKE_OUT,
   });
+  // not vacuous: the seed had steps and the run covered at least one command per entry
+  assert.ok(fixture.seed.length > 0, 'the fixture has seed steps');
+  assert.ok(results.length >= fixture.entries.length, `ran ${results.length} results for ${fixture.entries.length} entries`);
   for (const r of results) await t.test(r.row, () => assert.deepEqual(r.problems, []));
 });

@@ -293,12 +293,12 @@ function fakeProblems(entry, realEnvelope, r) {
   return problems;
 }
 
-// Whether the live test runs. PROPERTY: REEVE_SMOKE_SEED alone decides skipping; once it is set, a missing companion
-// variable is a failure (listed), never a skip.
+// Whether the live test runs. PROPERTY: skipping needs every live variable unset; once REEVE_SMOKE_SEED or any companion
+// is set, a missing one is a failure (listed), never a skip.
 const LIVE_COMPANIONS = ['REEVE_REAL_BIN', 'REEVE_URL', 'REEVE_TOKEN'];
 function liveConfig(env) {
-  if (!env.REEVE_SMOKE_SEED) return { skip: "REEVE_SMOKE_SEED is not set (the Reeve repository's `mise run skill-smoke` sets it)" };
-  return { skip: false, missing: LIVE_COMPANIONS.filter((k) => !env[k]) };
+  if (!env.REEVE_SMOKE_SEED && !LIVE_COMPANIONS.some((k) => env[k])) return { skip: "REEVE_SMOKE_SEED is not set (the Reeve repository's `mise run skill-smoke` sets it)" };
+  return { skip: false, missing: ['REEVE_SMOKE_SEED', ...LIVE_COMPANIONS].filter((k) => !env[k]) };
 }
 
 function run(side, argv) {

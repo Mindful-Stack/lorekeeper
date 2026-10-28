@@ -96,6 +96,7 @@
     },
     {
       "row": "`reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json`",
+      "bind": "required",
       "argv": ["decision", "require", "--on", "{{epic.key}}", "--title", "Skill smoke required decision", "--decider", "{{email}}", "--due", "2027-01-15", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:2", "--json"],
       "reads": ["value.id"],
       "types": { "value.id": "number" }
@@ -103,9 +104,16 @@
     {
       "row": "`reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json`",
       "argv": ["decision", "link", "{{decision.id}}", "--record", "{{record.id}}", "--repo", "{{repo}}", "--path", "{{record.path}}", "--pr", "https://github.com/example/kb/pull/1", "--household", "{{household}}", "--json"],
-      "reads": ["value.check.kind"],
-      "types": { "value.check.kind": "string" },
-      "expect": { "value.check.kind": "accepted" }
+      "reads": ["value.check.kind", "immediate_check.outcome"],
+      "types": { "value.check.kind": "string", "immediate_check.outcome": "string" },
+      "expect": { "value.check.kind": "accepted", "immediate_check.outcome": "stored" }
+    },
+    {
+      "row": "`reeve decision check --household <dir> --only <id> --json`",
+      "argv": ["decision", "check", "--household", "{{household}}", "--only", "{{decision.id}}", "--json"],
+      "reads": ["value.checked", "value.held", "value.skipped", "value.unreadable", "value.failed", "value.results[].id", "value.results[].outcome"],
+      "types": { "value.checked": "number", "value.held": "number", "value.skipped": "number", "value.unreadable": "number", "value.failed": "number", "value.results[].id": "number", "value.results[].outcome": "string" },
+      "expect": { "value.checked": 1, "value.held": 0, "value.skipped": 0 }
     },
     {
       "row": "`reeve comment add --decision <id> --body <text> --idempotency-key <key> --json` (or `--story <KEY>`)",
@@ -115,28 +123,52 @@
       "types": { "value[].id": "number", "value[].body": "string" }
     },
     {
+      "row": "`reeve decision edit <id> --version <n> [--title <title>] [--decider <email>] [--due YYYY-MM-DD | --no-due] --json`",
+      "bind": "required",
+      "argv": ["decision", "edit", "{{required.id}}", "--version", "{{required.version}}", "--title", "Skill smoke edited decision", "--decider", "{{email}}", "--no-due", "--json"],
+      "reads": ["value.version"],
+      "types": { "value.version": "number" }
+    },
+    {
+      "row": "`reeve decision close <id> --reason <reason> --json`",
+      "argv": ["decision", "close", "{{required.id}}", "--reason", "Closed by the skill smoke.", "--json"],
+      "reads": ["value.closed.at", "value.closed.by", "value.closed.reason"],
+      "types": { "value.closed.at": "string", "value.closed.by": "string", "value.closed.reason": "string" }
+    },
+    {
       "row": "`reeve decision ls --on <KEY> --json`",
       "argv": ["decision", "ls", "--on", "{{epic.key}}", "--json"],
-      "reads": ["value[].id", "value[].on", "value[].title", "value[].decider", "value[].due", "value[].record", "value[].pr_url", "value[].check.kind", "value[].closed"],
-      "types": { "value[].id": "number", "value[].on": "string", "value[].title": "string", "value[].decider": "string", "value[].due": "string|null", "value[].record": "object|null", "value[].pr_url": "string|null", "value[].check.kind": "string", "value[].closed": "object|null" },
+      "reads": ["value[].id", "value[].on", "value[].title", "value[].decider", "value[].due", "value[].record", "value[].pr_url", "value[].check.kind", "value[].version", "value[].closed"],
+      "types": { "value[].id": "number", "value[].on": "string", "value[].title": "string", "value[].decider": "string", "value[].due": "string|null", "value[].record": "object|null", "value[].pr_url": "string|null", "value[].check.kind": "string", "value[].version": "number", "value[].closed": "object|null" },
       "unread": {
-        "value[].closed.at": "the Commands table has no close command and the skills never close a decision; value[].closed is read",
-        "value[].closed.by": "the Commands table has no close command and the skills never close a decision; value[].closed is read",
-        "value[].closed.reason": "the Commands table has no close command and the skills never close a decision; value[].closed is read"
+        "value[].closed.at": "closed is null on every open decision, so no path under it reaches each element; value[].closed is read here and decision close reads value.closed.at",
+        "value[].closed.by": "closed is null on every open decision, so no path under it reaches each element; value[].closed is read here and decision close reads value.closed.by",
+        "value[].closed.reason": "closed is null on every open decision, so no path under it reaches each element; value[].closed is read here and decision close reads value.closed.reason"
       }
     },
     {
       "row": "`reeve decision show <id> --json`",
       "argv": ["decision", "show", "{{decision.id}}", "--json"],
-      "reads": ["value.id", "value.on", "value.title", "value.decider", "value.due", "value.record", "value.pr_url", "value.check.kind", "value.closed"],
-      "types": { "value.id": "number", "value.on": "string", "value.title": "string", "value.decider": "string", "value.due": "string|null", "value.record": "object|null", "value.pr_url": "string|null", "value.check.kind": "string", "value.closed": "object|null" }
+      "reads": ["value.id", "value.on", "value.title", "value.decider", "value.due", "value.record", "value.pr_url", "value.check.kind", "value.version", "value.closed"],
+      "types": { "value.id": "number", "value.on": "string", "value.title": "string", "value.decider": "string", "value.due": "string|null", "value.record": "object|null", "value.pr_url": "string|null", "value.check.kind": "string", "value.version": "number", "value.closed": "object|null" }
+    },
+    {
+      "row": "`reeve story block <KEY> --by <BLOCKER> --json`",
+      "argv": ["story", "block", "{{story.key}}", "--by", "{{untriaged.key}}", "--json"],
+      "reads": ["value"],
+      "types": { "value": "object" }
     },
     {
       "row": "`reeve story context <KEY> --json`",
       "argv": ["story", "context", "{{story.key}}", "--json"],
       "reads": ["value.story", "value.epic", "value.initiative", "value.required_decisions[]", "value.blockers[]", "value.comments[]", "value.readiness", "value.readiness.ready"],
-      "types": { "value.story": "object", "value.epic": "object|null", "value.initiative": "object|null", "value.required_decisions[]": "object", "value.blockers[]": "object", "value.comments[]": "object", "value.readiness": "object", "value.readiness.ready": "boolean" },
-      "may_be_empty": ["value.blockers[]"]
+      "types": { "value.story": "object", "value.epic": "object|null", "value.initiative": "object|null", "value.required_decisions[]": "object", "value.blockers[]": "object", "value.comments[]": "object", "value.readiness": "object", "value.readiness.ready": "boolean" }
+    },
+    {
+      "row": "`reeve story unblock <KEY> --by <BLOCKER> --json`",
+      "argv": ["story", "unblock", "{{story.key}}", "--by", "{{untriaged.key}}", "--json"],
+      "reads": ["value"],
+      "types": { "value": "object" }
     }
   ]
 }

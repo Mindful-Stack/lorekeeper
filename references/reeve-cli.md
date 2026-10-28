@@ -53,7 +53,7 @@ from a sign-in error.
 
 Exceptions: `code: conflict` (the `--version` is stale) — re-read the item, fold what changed into
 your text (a teammate's edit is kept, never overwritten), show it, and retry once with the new
-`version`. `decision link` — see its section. A usage error (an unknown flag, a value starting with
+`version`. `decision link` and `decision check` — see their sections. A usage error (an unknown flag, a value starting with
 `-`) prints the CLI's usage text on stderr and no envelope (stdout is empty), exit 1: fix the
 command, never retry it as it was.
 
@@ -100,15 +100,28 @@ items; never derive a key from a title. Print the run id in the report.
 | `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version`. Untriaged: kind `story` with no epic (a bug or chore without one is not listed) |
 | `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] --idempotency-key <key> --json` | `value.key` |
 | `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] --json` | `value.version` |
+| `reeve story block <KEY> --by <BLOCKER> --json` | `value`, an empty object; blocking again changes nothing |
+| `reeve story unblock <KEY> --by <BLOCKER> --json` | `value`, an empty object; removing a block that does not exist succeeds and changes nothing |
 | `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}` |
-| `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `on`, `title`, `decider`, `due`, `record` (null = no record), `pr_url`, `check.kind`, `closed` (null, or `{at, by, reason}`); closed decisions are listed too |
+| `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `on`, `title`, `decider`, `due`, `record` (null = no record), `pr_url`, `check.kind`, `version`, `closed` (null, or `{at, by, reason}`); closed decisions are listed too |
 | `reeve decision show <id> --json` | `value`: one decision, the same fields |
 | `reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json` | `value.id` |
-| `reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json` | `value.check.kind` |
+| `reeve decision edit <id> --version <n> [--title <title>] [--decider <email>] [--due YYYY-MM-DD \| --no-due] --json` | `value.version`; an open decision only, and its record reference changes only by a link |
+| `reeve decision close <id> --reason <reason> --json` | `value.closed`: `{at, by, reason}` |
+| `reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json` | `value.check.kind`, `immediate_check.outcome` |
+| `reeve decision check --household <dir> --only <id> --json` | `value`: `checked`, `held`, `skipped`, `unreadable`, `failed`; `value.results[]`: `id`, `outcome` |
 | `reeve comment add --decision <id> --body <text> --idempotency-key <key> --json` (or `--story <KEY>`) | `value[]`, the thread |
 
 No command lists the planner's configured repositories or horizon buckets (they are in
 `GET /api/v1/config`, which the CLI does not expose): ask for them, or take them from the request.
+
+`decision edit` and `decision close` change what the user asked to change, nothing else: an edit
+carries only the flags for the fields that change (`--no-due` removes the due date) and the
+`version` from the last `decision ls` or `decision show`; an edit that changes nothing keeps the
+version. A closed decision cannot be edited, linked or closed again (`validation`). The reason for
+a close is the user's words, never yours. A blocker is a story that must be done before the
+blocked one can start: the planner reports it as the `blocked_by` reason until the blocker is
+done.
 
 ## decision link
 
@@ -116,13 +129,21 @@ No command lists the planner's configured repositories or horizon buckets (they 
 `<household>/<repo>/<path>`, or at `<household>/<path>` when the household directory's own name is
 `<repo>`. `--pr` is omitted only for a record already merged to the default branch.
 
+The answer carries the immediate check beside the decision: `immediate_check.outcome` is `stored`
+(the planner has the result: read `value.check.kind`), `held` (the record is accepted on the default
+branch, but only an admin's check stores that, kb/ADR-0003 R3: nothing was stored and
+`value.check.kind` stays `unchecked` until the scheduled check, run by an admin), or `unreadable` /
+`failed` (nothing stored).
+
 | Result | Say |
 |---|---|
+| exit 0, `immediate_check.outcome` `held` | "Linked: <record> answers decision #<id> — accepted on the default branch; the planner records it at the next scheduled check." |
 | exit 0, `check.kind` `proposed_pr_open` | "Linked: <record> answers decision #<id> — proposed, PR open." |
 | exit 0, `accepted` | "Linked: … — accepted." |
 | exit 0, `not_accepted` | "Linked: … — the record is <check.status>." |
 | exit 0, `not_found` | "Linked, but the planner found no record at <repo>/<path>: check the repository name and path." |
-| exit 1 with an `ok` envelope (`value` present) | "Linked; the check could not run here: <the stderr line>; it runs on the next scheduled check." |
+| exit 1 with an `ok` envelope and a `refresh_error` (the check ran; reading the decision back failed) | the sentence above for `immediate_check.outcome` (`stored`: from `immediate_check.check.kind`), then "The planner could not be read back: <refresh_error>." and run `reeve decision show <id> --json` |
+| exit 1 with an `ok` envelope, no `refresh_error` | "Linked; the check could not run here: <the stderr line>; it runs on the next scheduled check." |
 | `refused`, or an `error` envelope other than `internal` | show the reasons or the message; nothing was linked |
 | an `internal` error (the server may have stored the link before the CLI failed) | run `reeve decision show <id> --json`: a `record` naming this record means "Linked; …" as above, else nothing was linked |
 
@@ -151,3 +172,27 @@ is never open, whatever its record; skills that list open decisions use this def
 
 Any other `reason` is a delivery rule; show it verbatim. A story is "ready" when `readiness.ready`
 is true, else "blocked: " and its reasons in these words.
+
+## decision check
+
+`reeve decision check --household <dir> --only <id> --json` checks one linked decision again, as the
+immediate check of a link does: it fetches `<household>/<repo>` (or the household itself when it is
+that repository), reads the record on the default branch and posts the result. Run it only for a
+decision whose check could not run (after the checkout is fixed); the scheduled check covers the
+rest. Only open decisions with a record are checked: an `--only` naming any other decision is a
+`not_found` error, exit 1. Never pass `--strict`: it makes `held` a failure, for the scheduled run
+whose token is an admin's.
+
+Each `value.results[]` entry has an `outcome`:
+
+| `outcome` | Say |
+|---|---|
+| `stored` | the decision's state from `results[].check.kind`, worded as below |
+| `held` | "accepted on the default branch; the planner records it at the next scheduled check" |
+| `skipped` | "skipped: the decision was closed or changed during the check; the next scheduled check reads it again" (the planner refused a result for a decision that moved on; not a failure) |
+| `unreadable` | "the check could not run here: <results[].error>"; nothing was posted |
+| `failed` | "the planner did not store the result: <results[].error>" |
+
+Exit 0 with an `ok` envelope when no entry is `unreadable` or `failed` (`held` and `skipped` are
+not failures). Otherwise exit 1 with `{"outcome":"error","code":"internal","message":…,"value":…}`:
+`value` still holds every result; word each one as above instead of stopping at the code.

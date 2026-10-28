@@ -35,8 +35,9 @@ section says.
    `reeve auth login`. Any other refused or failed write skips that one item (that story,
    placement, decision or comment): show the reasons or the message, go on with the next item,
    and list what was skipped in the report.
-4. **The user decides.** Deciders, due dates, applying a record, a story's home and the discovery
-   mark come from the user, never from you; you propose.
+4. **The user decides.** Deciders, due dates, applying a record, closing a decision, an order
+   between stories, a story's home and the discovery mark come from the user, never from you; you
+   propose.
 5. **Build on what is there.** The planner may already hold a brief, decisions and stories for
    this epic. Reuse them; create only what the user's answers add. Whether an existing item covers
    what the user asked for is your judgment in the conversation, shown to the user, never a rule
@@ -90,12 +91,24 @@ section says.
    the key prefix `refining-epic:<EPIC>` and the next `<n>`); otherwise run
    `reeve comment add --decision <id> --body 'Draft <id-to-be>: <title> — apply and link with /lore:adr link <id-to-be> to decision <id>' --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
    When the user says there are no new required decisions, create none.
+   Changes to an existing decision come from the user: a new decider, due date or title for an
+   open one is
+   `reeve decision edit <id> --version <v> [--title <title>] [--decider <email>] [--due YYYY-MM-DD] --json`
+   (only the flags for what changes, `--no-due` in place of `--due` to remove the date; `<v>` is
+   the decision's `version` from step 1's `decision ls`), and a decision the user says is no longer needed is closed
+   with the user's reason, `reeve decision close <id> --reason <reason> --json`. In a session that
+   cannot ask, close one only when the request names the decision and the reason; never close a
+   decision to tidy up, and never one a record is still expected to answer.
 6. **Stories.** Propose stories, each finishable by one person or one agent session, each with
    2–6 acceptance criteria written as observable outcomes, leaving out what an existing story
    from step 1 already covers (say which key). Show them, and write the ones confirmed as rule 1
    says (stories and criteria the request names are confirmed by it); for each
    `reeve story create --epic <EPIC> --title <title> --kind story --criterion <text> --criterion <text> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
-   one `--criterion` per criterion.
+   one `--criterion` per criterion. When the user says a story cannot start before another is
+   done (the user's to say, never your inference from the titles), record it once both stories
+   exist: `reeve story block <KEY> --by <BLOCKER> --json`; a block the user says no longer holds is
+   removed with `reeve story unblock <KEY> --by <BLOCKER> --json`. The planner then reports the
+   blocked story as "blocked by <BLOCKER>" until the blocker is done.
 7. **Placement tree.** For each story from `story ls --untriaged`, classify it, propose its home
    with the branch that led there, and write it on a confirmation as rule 1 says ("place the
    untriaged stories" names the `story edit`s; `<v>` is the story's `version` from the listing;
@@ -134,7 +147,8 @@ section says.
 10. **Report.** Open with the step 0 sentence, then the plain lines `Run id: <run_id>` and the
    `Researched:` line, all unformatted (no bold, so they can be searched for; a non-interactive
    session shows only this report, not the announcement). Then:
-   - every key written and every existing key reused, and every item skipped with its reason;
+   - every key written and every existing key reused, every decision edited or closed, every
+     block recorded or removed, and every item skipped with its reason;
    - each placement on one line: the story's key, its title and its branch, named `bug`,
      `chore`, `this epic`, `another epic <KEY>`, `new epic under <INITIATIVE>`,
      `new initiative`, `won't do` or `left untriaged` (with the proposed home, when there is one);

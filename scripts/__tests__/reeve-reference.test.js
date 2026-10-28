@@ -21,7 +21,7 @@ const PLACEHOLDERS = {
   run_id: '0a1b2c3d', key: 'planning-initiative:GRA-12:0a1b2c3d:1', prefix: 'recording-decisions:7', title: 'Title',
   md: 'Brief', text: 'Criterion', email: 'dan@example.com', bucket: 'Later', 'qualified id': 'kb/ADR-0002', 'front-matter id': 'kb/ADR-0002',
   repo: 'lore', 'path in repo': 'knowledge/adrs/0002-x.md', path: 'knowledge/adrs/0002-x.md', url: 'https://github.com/example/w/pull/9',
-  household: '.', dir: '.', branch: 'feat/x', 'the new epic or initiative, its title and where it goes': 'new epic under GRA-13',
+  BLOCKER: 'GRA-32', reason: 'Dropped', household: '.', dir: '.', branch: 'feat/x', 'the new epic or initiative, its title and where it goes': 'new epic under GRA-13',
 };
 
 // `reeve … --json` spans: inline code, and fenced blocks that start with `reeve `.
@@ -34,10 +34,10 @@ function commands() {
   }
   return out;
 }
-// Fill one span into argv: optional groups kept, `a\|b` alternatives take the first, `…` dropped,
+// Fill one span into argv: optional groups kept (`[a \| b]` keeps a), `a\|b` alternatives take the first, `…` dropped,
 // placeholders filled, then split like a shell (single quotes only, as the reference allows).
 function argvOf(cmd) {
-  let s = cmd.replace(/\\\|/g, '|').replace(/\s*…/g, '').replace(/\[([^\]]*)\]/g, '$1')
+  let s = cmd.replace(/\\\|/g, '|').replace(/\s*…/g, '').replace(/\[([^\]]*)\]/g, (_, group) => group.split(' | ')[0])
     .replace(/(\w+)(?:\|\w+)+/g, '$1').replace(/YYYY-MM-DD/g, '2026-11-15');
   s = s.replace(/<([^<>]+)>/g, (_, name) => {
     assert.ok(name in PLACEHOLDERS, `no value for placeholder <${name}> in: ${cmd}`);

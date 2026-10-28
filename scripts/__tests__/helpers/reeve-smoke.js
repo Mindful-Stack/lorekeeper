@@ -81,6 +81,9 @@ function braced(text, base) {
 }
 // A path with no field after the base (`value`, `value[]`) is its own parent: `.x` after it is `value.x`.
 const parentOf = (p) => (p.includes('.') ? p.slice(0, p.lastIndexOf('.')) : p);
+// A path that starts at the envelope: `value…`, or a member the CLI writes beside it (`decision link`'s
+// `immediate_check`). Any other dotted span is read under the current base.
+const ENVELOPE = /^(value|immediate_check)(\[\]|\.|$)/;
 // Backticked words in a Read cell that are prose, not fields. Any other span that is not classified is an error.
 const PROSE = new Set(['validation', 'story']);
 // The field paths a Read cell names, nesting and relative fields kept. Spans are read left to right:
@@ -98,7 +101,7 @@ function readPaths(cell) {
   let last = null;
   let inList = false;
   let prevWasBase = false;
-  const absolute = (span) => /^value(\[\]|\.|$)/.test(span);
+  const absolute = (span) => ENVELOPE.test(span);
   spans.forEach((m, i) => {
     const span = m[1];
     const from = i ? spans[i - 1].index + spans[i - 1][0].length : 0;

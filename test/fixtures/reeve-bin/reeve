@@ -6,11 +6,14 @@
 // stdout, exit 1. Answers use the planner's wire shapes (StoryContextDto, RequiredDecisionDto,
 // CheckResult, Reason in the Reeve repository's crates/reeve-server/tests/snapshots/openapi.json).
 // REEVE_FAKE_LINK_CHECK=unreadable makes `decision link` behave like a link whose immediate check
-// could not run. REEVE_FAKE_REFUSE=<text> makes every command whose name contains <text> (e.g.
+// could not run; REEVE_FAKE_LINK_CHECK=held like a member's link of an accepted record (held for the
+// scheduled admin check). REEVE_FAKE_CHECK=held|skipped|unreadable gives every decision `decision check`
+// checks that outcome instead of `stored`. REEVE_FAKE_REFUSE=<text> makes every command whose name contains <text> (e.g.
 // `story create`) answer with a `refused` envelope and exit 2. REEVE_FAKE_SIGNIN=expired makes every
 // call but `auth status` answer an `unauthenticated` error, exit 2. Creates replay by
-// --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates, edits and decision links
-// persist there, so later shows, lists and readiness see them like the real planner.
+// --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates, edits, decision links, edits,
+// closes and checks, and story blocks persist there, so later shows, lists and readiness see them like
+// the real planner.
 // `story context` bundles the open decisions on the story's initiative, epic and the story itself, as the planner does.
 'use strict';
 const fs = require('node:fs');
@@ -21,7 +24,8 @@ const log = process.env.REEVE_FAKE_LOG;
 const logCall = () => { if (log) fs.appendFileSync(log, argv.join(' ').replace(/[\r\n\u2028\u2029\u0085]+/g, ' ') + '\n'); };
 
 // Per-run state next to the log: { next, creates: { <idempotency key>: <response value> },
-// items: { <KEY>: <the item as last written> }, decisions: { <id>: <the decision as last linked> } }. Updates
+// items: { <KEY>: <the item as last written> }, decisions: { <id>: <the decision as last written> },
+// blocks: { <story KEY>: [<blocker KEY>, …] } }. Updates
 // run under an exclusive lock file, so parallel calls neither share an id nor lose a replay entry.
 function withState(fn) {
   if (!log) return fn({ next: 100, creates: {} }); // no log, no run: nothing to replay
@@ -60,6 +64,8 @@ const SPEC = {
   'story ls': { pos: 0, val: ['epic'], bool: ['untriaged'] },
   'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
   'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
+  'story block': { pos: 1, val: ['by'], req: ['by'] },
+  'story unblock': { pos: 1, val: ['by'], req: ['by'] },
   'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank'], bool: ['no-epic'], rep: ['criterion'], req: ['version'] },
   'initiative show': { pos: 1 },
   'initiative ls': { pos: 0 },
@@ -75,6 +81,9 @@ const SPEC = {
   'decision show': { pos: 1 },
   'decision require': { pos: 0, val: ['idempotency-key', 'on', 'title', 'decider', 'due'], req: ['idempotency-key', 'on', 'title', 'decider'] },
   'decision link': { pos: 1, val: ['record', 'repo', 'path', 'pr', 'household'], req: ['record', 'repo', 'path'] },
+  'decision check': { pos: 0, val: ['household', 'only'], bool: ['strict'] },
+  'decision edit': { pos: 1, val: ['version', 'title', 'decider', 'due'], bool: ['no-due'], req: ['version'] },
+  'decision close': { pos: 1, val: ['reason'], req: ['reason'] },
   'comment add': { pos: 0, val: ['idempotency-key', 'story', 'decision', 'body'], req: ['idempotency-key', 'body'] },
 };
 const cmd = words.slice(0, 2).join(' ');
@@ -100,6 +109,10 @@ if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) usage(`invalid value 
 if (f.version && !/^\d+$/.test(f.version)) usage(`invalid value '${f.version}' for '--version'`);
 if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}' for '--due'`);
 if (cmd === 'comment add' && !f.story === !f.decision) usage('pass exactly one of --story and --decision');
+if (cmd === 'decision edit' && !['title', 'decider', 'due', 'no-due'].some((k) => k in f)) usage('the following required arguments were not provided: <--title|--decider|--due|--no-due>');
+if (f.due && f['no-due']) usage("the argument '--due <DUE>' cannot be used with '--no-due'");
+if (f.only && !/^\d+$/.test(f.only)) usage(`invalid value '${f.only}' for '--only'`);
+if (['decision edit', 'decision close', 'decision check'].includes(cmd) && pos.length && !/^\d+$/.test(pos[0])) usage(`invalid value '${pos[0]}' for '<ID>'`);
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
 
 const NOW = '2026-10-20T09:00:00Z';
@@ -152,8 +165,21 @@ const mint = (build) => withState((state) => {
   }
   return state.creates[key];
 });
-// A decision as last linked in this run, else as seeded or created.
+// A decision as last written in this run (linked, edited, closed, checked), else as seeded or created.
 const allDecisions = () => [decision7, decision8, ...createdDecisions()].map((d) => (state.decisions || {})[d.id] || d);
+const findDecision = (id) => allDecisions().find((d) => String(d.id) === id) || error('not_found', `no decision ${id}`);
+const saveDecision = (d) => withState((st) => { (st.decisions ||= {})[d.id] = d; return d; });
+// Stories this run blocked, in the planner's order (key length, then key); a story is shown with them.
+const keyOrder = (a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
+const blockersOf = (key) => [...((state.blocks || {})[key] || [])].sort(keyOrder);
+const isStory = (key) => (itemsOf()[key] ? kindOf(itemsOf()[key]) === 'story' : key in stories);
+const findStory = (key) => (isStory(key) ? itemsOf()[key] || stories[key] : error('not_found', `no story ${key}`));
+const shown = (s) => ({ ...s, blocked_by: blockersOf(s.key) });
+// What `decision link` and `decision check` read at the record: the fake reads no git, so a reference with a PR is
+// proposed and one without is not found (never accepted or not accepted).
+const fakeCheck = (d) => ({ kind: d.pr_url ? 'proposed_pr_open' : 'not_found' });
+const HELD = 'held: accepted on the default branch; stored by the next scheduled check run by an admin';
+const ACCEPTED = { kind: 'accepted', commit: '0123456789abcdef0123456789abcdef01234567' };
 // Readiness derived like the planner does (domain/readiness.rs), in its order: untriaged; the epic's
 // discovery and open decisions, then the initiative's; the story's own decisions; no criteria.
 const readinessOf = (s) => {
@@ -171,6 +197,8 @@ const readinessOf = (s) => {
   }
   reasons.push(...open(s.key));
   if (!s.criteria.length) reasons.push({ reason: 'no_criteria' });
+  // Blockers last, only those not done (repo.rs: delivery <> 'done').
+  for (const b of blockersOf(s.key)) if (findStory(b).delivery !== 'done') reasons.push({ reason: 'blocked_by', story: b });
   return { ready: !reasons.length, reasons };
 };
 
@@ -187,18 +215,30 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
 ({
   'auth status': () => ok({ url: 'http://127.0.0.1:7474', token_from_env: false, email: 'dan@example.com', role: 'member', token_kind: 'interactive' }),
   'story context': () => {
-    const s = itemsOf()[p0] || stories[p0] || error('not_found', `no story ${p0}`);
+    const s = shown(findStory(p0));
     const e = s.epic ? itemsOf()[s.epic] || epics[s.epic] : null;
     const i = e && e.initiative ? itemsOf()[e.initiative] || initiatives[e.initiative] || null : null;
     // The planner's bundle (story_context): the open decisions on the initiative, then the epic, then the story.
     const on = [i && i.key, e && e.key, s.key].filter(Boolean);
     const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
-    ok({ story: s, epic: e, initiative: i, required_decisions: required, blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
+    ok({ story: s, epic: e, initiative: i, required_decisions: required, blockers: s.blocked_by.map((b) => shown(findStory(b))), comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
   },
-  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readinessOf(s) }))),
+  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: shown(s), readiness: readinessOf(s) }))),
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })) }))),
-  'story mv': () => { const s = find(stories, p0); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1] })); }, // exists so a delivery change is logged; no skill may call it
-  'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic })); },
+  'story mv': () => { const s = find(stories, p0); ok(shown(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1] }))); }, // exists so a delivery change is logged; no skill may call it
+  'story edit': () => { const s = find(stories, p0); ok(shown(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic }))); },
+  // Both stories must exist; a self-block is refused; a block that exists already, or an unblock of one that does not, changes nothing.
+  'story block': () => {
+    findStory(p0); findStory(f.by);
+    if (p0 === f.by) error('validation', 'a story cannot block itself');
+    withState((st) => { const b = ((st.blocks ||= {})[p0] ||= []); if (!b.includes(f.by)) b.push(f.by); });
+    ok({});
+  },
+  'story unblock': () => {
+    findStory(p0); findStory(f.by);
+    withState((st) => { if (st.blocks && st.blocks[p0]) st.blocks[p0] = st.blocks[p0].filter((b) => b !== f.by); });
+    ok({});
+  },
   'initiative show': () => ok(find(initiatives, p0)),
   'initiative ls': () => ok(all(initiatives, 'initiative')),
   'initiative create': () => ok(mint((id) => initiative(`GRA-${id}`, f.title, { brief: f.brief || '', horizon: f.horizon, owner: f.owner || null }))),
@@ -214,17 +254,71 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
   'decision require': () => ok(mint((id) => ({ ...decision7, id, on: f.on, title: f.title, decider: f.decider, due: f.due || null }))),
   'decision link': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
-    const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);
-    const linked = { ...d, record: { repo: f.repo, path: f.path, record_id: f.record }, pr_url: f.pr || null, version: d.version + 1 };
-    // The link is stored even when its immediate check cannot run; the check stays unchecked.
-    const unreadable = process.env.REEVE_FAKE_LINK_CHECK === 'unreadable';
-    const value = unreadable ? { ...linked, check: { kind: 'unchecked' }, checked_at: null } : { ...linked, check: { kind: f.pr ? 'proposed_pr_open' : 'not_found' }, checked_at: NOW };
-    withState((st) => { (st.decisions ||= {})[d.id] = value; });
-    if (unreadable) {
-      process.stderr.write(`decision ${p0}: cannot read ${f.path}: ${f.household || '.'}/${f.repo} is not a git checkout\n`);
-      emit({ outcome: 'ok', value }, 1);
+    const d = findDecision(p0);
+    if (d.closed) error('validation', 'decision is closed');
+    // A link resets the check; the immediate check then stores its result (one version more), is held (a member found
+    // the record accepted: nothing stored) or could not run (nothing stored).
+    const linked = { ...d, record: { repo: f.repo, path: f.path, record_id: f.record }, pr_url: f.pr || null, check: { kind: 'unchecked' }, checked_at: null, version: d.version + 1 };
+    const mode = process.env.REEVE_FAKE_LINK_CHECK;
+    const id = d.id;
+    if (mode === 'unreadable') {
+      const err = `cannot read ${f.path}: ${f.household || '.'}/${f.repo} is not a git checkout; nothing recorded`;
+      saveDecision(linked);
+      process.stderr.write(`decision ${p0}: ${err}\n`);
+      emit({ outcome: 'ok', value: linked, immediate_check: { id, outcome: 'unreadable', error: err } }, 1);
     }
+    if (mode === 'held') {
+      saveDecision(linked);
+      process.stderr.write(`decision ${p0}: ${HELD}\n`);
+      emit({ outcome: 'ok', value: linked, immediate_check: { id, outcome: 'held', check: ACCEPTED } }, 0);
+    }
+    const value = saveDecision({ ...linked, check: fakeCheck(linked), checked_at: NOW, version: linked.version + 1 });
+    emit({ outcome: 'ok', value, immediate_check: { id, outcome: 'stored', check: value.check } }, 0);
+  },
+  // Every open decision with a record (or only --only), one entry each; the exit status and the envelope as the CLI
+  // computes them: unreadable and failed are bad, held only under --strict, skipped never.
+  'decision check': () => {
+    const ds = allDecisions().filter((d) => !d.closed && d.record && (!f.only || String(d.id) === f.only));
+    if (f.only && !ds.length) error('not_found', `no open decision with a record has id ${f.only}`);
+    const mode = process.env.REEVE_FAKE_CHECK || 'stored';
+    const results = ds.map((d) => {
+      if (mode === 'unreadable') return { id: d.id, outcome: 'unreadable', error: `cannot read ${d.record.path}: ${f.household || '.'}/${d.record.repo} is not a git checkout; nothing recorded` };
+      if (mode === 'held') return { id: d.id, outcome: 'held', check: ACCEPTED };
+      const check = fakeCheck(d);
+      if (mode === 'skipped') return { id: d.id, outcome: 'skipped', check, error: `Conflict decision ${d.id} is at version ${d.version + 1}; skipped: it changed (version ${d.version} is now ${d.version + 1}) during the run, so the next run checks it` };
+      // An unchanged result only moves checked_at; a changed one is stored under a new version.
+      saveDecision(check.kind === d.check.kind ? { ...d, checked_at: NOW } : { ...d, check, checked_at: NOW, version: d.version + 1 });
+      return { id: d.id, outcome: 'stored', check };
+    });
+    for (const e of results) {
+      if (e.error) process.stderr.write(`decision ${e.id}: ${e.error}\n`);
+      if (e.outcome === 'held') process.stderr.write(`decision ${e.id}: ${HELD}\n`);
+    }
+    const count = (o) => results.filter((e) => e.outcome === o).length;
+    const value = { checked: count('stored'), held: count('held'), skipped: count('skipped'), unreadable: count('unreadable'), failed: count('failed'), results };
+    const bad = value.unreadable + value.failed + (f.strict ? value.held : 0);
+    if (bad) emit({ outcome: 'error', code: 'internal', message: `${bad} of ${results.length} checks failed`, value }, 1);
     ok(value);
+  },
+  // An open decision's title, decider and due date under its version (stale: conflict, before the closed rule); an edit
+  // that changes nothing keeps the version.
+  'decision edit': () => {
+    const d = findDecision(p0);
+    const title = f.title === undefined ? undefined : f.title.trim();
+    const decider = f.decider === undefined ? undefined : f.decider.trim();
+    if (title === '' || decider === '') error('validation', 'title and decider must not be blank');
+    if (Number(f.version) !== d.version) error('conflict', `decision ${d.id} is at version ${d.version}, not ${f.version}`);
+    if (d.closed) error('validation', 'decision is closed');
+    const due = f['no-due'] ? null : f.due ?? d.due;
+    const next = { ...d, title: title ?? d.title, decider: decider ?? d.decider, due };
+    const changed = next.title !== d.title || next.decider !== d.decider || next.due !== d.due;
+    ok(changed ? saveDecision({ ...next, version: d.version + 1 }) : d);
+  },
+  'decision close': () => {
+    const d = findDecision(p0);
+    if (!f.reason.trim()) error('validation', 'closing needs a reason');
+    if (d.closed) error('validation', 'already closed');
+    ok(saveDecision({ ...d, closed: { at: NOW, by: 'dan@example.com', reason: f.reason.trim() }, version: d.version + 1 }));
   },
   'comment add': () => {
     ok(mint((id) => [{ id, author: 'dan@example.com', body: f.body, at: NOW, on_story: f.story || null, on_decision: f.decision ? Number(f.decision) : null, external_ref: null }]));

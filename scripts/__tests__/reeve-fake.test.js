@@ -194,3 +194,21 @@ test('decision link persists: show, ls --on, story context and readiness see the
   assert.equal(call(['decision', 'show', '7', '--json']).value.pr_url, null);
   assert.equal(call(['decision', 'link', '99', '--record', 'kb/ADR-0002', '--repo', 'lore', '--path', 'p.md', '--json']).code, 'not_found');
 });
+test('story context of a created story bundles its created initiative and the open decisions on the initiative, the epic and the story, in that order', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => JSON.parse(spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } }).stdout);
+  const i = call(['initiative', 'create', '--title', 'Billing', '--horizon', 'Later', '--idempotency-key', 'planning-initiative:GRA-12:0a1b2c3d:1', '--json']).value;
+  const e = call(['epic', 'create', '--initiative', i.key, '--title', 'Invoices', '--idempotency-key', 'planning-initiative:GRA-12:0a1b2c3d:2', '--json']).value;
+  const st = call(['story', 'create', '--epic', e.key, '--title', 'Send invoices', '--criterion', 'sent', '--idempotency-key', 'refining-epic:GRA-20:0a1b2c3d:1', '--json']).value;
+  const requireOn = (on, n) => call(['decision', 'require', '--on', on, '--title', `On ${on}`, '--decider', 'dan@example.com', '--idempotency-key', `refining-epic:GRA-20:0a1b2c3d:${n}`, '--json']).value.id;
+  const onStory = requireOn(st.key, 2);
+  const onEpic = requireOn(e.key, 3);
+  const onInitiative = requireOn(i.key, 4);
+  const { value } = call(['story', 'context', st.key, '--json']);
+  assert.equal(value.initiative?.key, i.key);
+  assert.deepEqual(value.required_decisions.map((d) => d.id), [onInitiative, onEpic, onStory]);
+});
+test('story context leaves a closed decision out of the bundle', () => {
+  const { value } = run(['story', 'context', 'GRA-31', '--json']).envelope;
+  assert.deepEqual(value.required_decisions.map((d) => d.id), [7]); // #8 on GRA-20 is closed
+});

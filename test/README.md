@@ -131,7 +131,8 @@ set. Answers use the planner's wire shapes:
   stories of kind `story` with no epic, as the real planner does);
 - creates, edits and decision links persist for the run: every show and list (`decision ls`,
   `decision show`, `epic ls`, `initiative ls`, `story ls`, `story context`) sees what the run
-  wrote, and readiness is derived for every story in the planner's order (untriaged; its epic's
+  wrote; `story context` bundles the open decisions on the story's initiative, its epic and
+  the story, in that order, as the planner does; and readiness is derived for every story in the planner's order (untriaged; its epic's
   discovery not complete and the epic's open decisions, each by its check: no record, unchecked,
   proposed with the PR open, record not found, not accepted; the same for the epic's initiative;
   the story's own; no criteria);
@@ -145,6 +146,23 @@ set. Answers use the planner's wire shapes:
 - every create needs `--idempotency-key <skill>:<KEY>:<run-id>:<n>` (kb/ADR-0005 R3; anything else is a
   `validation` error) and replays by key: the same key again returns the first item, it never mints a second;
 - an edit or discovery mark with a stale `--version` is a `conflict` (exit 1).
+
+**The real-planner smoke.** `scripts/__tests__/reeve-real-server.test.js` keeps the fake honest.
+`test/fixtures/reeve-real/commands.json` holds a seed and one entry per row of the reference's
+*Commands* table: the argv (placeholders `{{name.field}}`), the envelope paths the skills read
+(`x[]` is every element), each path's JSON types, the arrays that may be empty and, for `decision
+link`, the planner's expected `check.kind`. Five tests always run: every row has exactly one entry,
+every command form of the row (`story ls --untriaged`, `comment add --story`) exactly one run, and
+every field path in the row's Read column a read at or below it, or a reasoned `unread` waiver (a
+command or a Read added to the reference without a matching entry fails), and two mutation tests
+prove that check on the committed files; the seed and the entries run against the fake on both
+sides; and a copy of the fake with a field renamed is reported as the fake's to fix. The sixth, the
+live test, runs only when `REEVE_SMOKE_SEED` is set, which the Reeve repository's `mise run
+skill-smoke` does after starting a real server: it runs the detector, then the seed and every entry
+against the real CLI (`REEVE_REAL_BIN`, `REEVE_URL`, `REEVE_TOKEN`) and the fake side by side, and
+fails when a path is missing on the planner, an array the skills read is empty, or the fake answers
+a path with a different set of JSON types (the message names the side to fix). `REEVE_SMOKE_OUT`
+names a directory for every answer.
 
 `REEVE_FAKE_REFUSE=<text>` makes every command whose name contains `<text>` (e.g. `story create`)
 answer `{"outcome":"refused","reasons":[{"reason":"no_criteria"}]}` with exit 2, so a scenario can

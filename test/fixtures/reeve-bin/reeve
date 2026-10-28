@@ -11,6 +11,7 @@
 // call but `auth status` answer an `unauthenticated` error, exit 2. Creates replay by
 // --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates, edits and decision links
 // persist there, so later shows, lists and readiness see them like the real planner.
+// `story context` bundles the open decisions on the story's initiative, epic and the story itself, as the planner does.
 'use strict';
 const fs = require('node:fs');
 
@@ -188,7 +189,11 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
   'story context': () => {
     const s = itemsOf()[p0] || stories[p0] || error('not_found', `no story ${p0}`);
     const e = s.epic ? itemsOf()[s.epic] || epics[s.epic] : null;
-    ok({ story: s, epic: e, initiative: e && e.initiative ? initiatives[e.initiative] : null, required_decisions: s.epic === 'GRA-20' ? allDecisions().filter((d) => d.id === 7) : [], blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
+    const i = e && e.initiative ? itemsOf()[e.initiative] || initiatives[e.initiative] || null : null;
+    // The planner's bundle (story_context): the open decisions on the initiative, then the epic, then the story.
+    const on = [i && i.key, e && e.key, s.key].filter(Boolean);
+    const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
+    ok({ story: s, epic: e, initiative: i, required_decisions: required, blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
   },
   'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readinessOf(s) }))),
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })) }))),

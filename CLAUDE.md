@@ -28,7 +28,7 @@ The runner executes `claude --print` from a workspace root, passing `--plugin-di
 node --test scripts/__tests__/*.test.js
 ```
 
-These cover the Node scripts (`init-detect.js`, `adr-lint.js` and its helpers, `reeve-detect.js` and the fake `reeve` under `test/fixtures/reeve-bin/`) and need Node 22 or later. Use the glob: Node 22+ no longer expands a bare directory argument. CI runs them on Node 22 and 24 (`.github/workflows/test.yml`).
+These cover the Node scripts (`init-detect.js`, `adr-lint.js` and its helpers, `reeve-detect.js`, the fake `reeve` under `test/fixtures/reeve-bin/`, and the real-planner smoke's helpers in `scripts/__tests__/helpers/reeve-smoke.js`, tested by `reeve-smoke.test.js`) and need Node 22 or later. Use the glob: Node 22+ no longer expands a bare directory argument. CI runs them on Node 22 and 24 (`.github/workflows/test.yml`). `reeve-real-server.test.js` checks that every row of `references/reeve-cli.md`'s *Commands* table has an entry in `test/fixtures/reeve-real/commands.json` and runs those entries against the fake; with `REEVE_SMOKE_SEED` set (the Reeve repository's `mise run skill-smoke`) it runs them against a real planner too (see `test/README.md`).
 
 ### Debug mode for the SessionStart hook
 

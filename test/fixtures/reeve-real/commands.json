@@ -1,0 +1,142 @@
+{
+  "about": "The real-planner smoke (scripts/__tests__/reeve-real-server.test.js). The seed runs first on the planner and on the fake; then every entry, one per row of references/reeve-cli.md's Commands table, in file order. bind stores the answer's value under a name for {{name.field}} placeholders. reads are paths into the envelope (x[] = every element of the array x); types gives each read's JSON types (a|b allowed); may_be_empty lists array paths allowed to be empty; unread waives, with a reason, a path the Read cell names that no read can reach; expect is checked on the planner's answer only.",
+  "seed": [
+    { "bind": "initiative", "argv": ["initiative", "create", "--title", "Skill smoke initiative", "--horizon", "Now", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:1", "--json"] },
+    { "bind": "epic", "argv": ["epic", "create", "--initiative", "{{initiative.key}}", "--title", "Skill smoke epic", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:2", "--json"] },
+    { "bind": "story", "argv": ["story", "create", "--epic", "{{epic.key}}", "--title", "Skill smoke story", "--kind", "story", "--criterion", "It is seeded", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:3", "--json"] },
+    { "bind": "untriaged", "argv": ["story", "create", "--title", "Skill smoke untriaged story", "--kind", "story", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:4", "--json"] },
+    { "bind": "decision", "argv": ["decision", "require", "--on", "{{epic.key}}", "--title", "Skill smoke seeded decision", "--decider", "{{email}}", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:5", "--json"] }
+  ],
+  "entries": [
+    {
+      "row": "`reeve initiative show <KEY> --json`",
+      "bind": "initiative",
+      "argv": ["initiative", "show", "{{initiative.key}}", "--json"],
+      "reads": ["value.brief", "value.horizon", "value.owner", "value.discovery_complete", "value.version"],
+      "types": { "value.brief": "string", "value.horizon": "string", "value.owner": "string|null", "value.discovery_complete": "object|null", "value.version": "number" }
+    },
+    {
+      "row": "`reeve initiative ls --json`",
+      "argv": ["initiative", "ls", "--json"],
+      "reads": ["value[].key", "value[].title", "value[].horizon"],
+      "types": { "value[].key": "string", "value[].title": "string", "value[].horizon": "string" }
+    },
+    {
+      "row": "`reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key <key> --json`",
+      "argv": ["initiative", "create", "--title", "Skill smoke second initiative", "--horizon", "Now", "--brief", "Created by the skill smoke.", "--idempotency-key", "planning-initiative:{{initiative.key}}:{{run_id}}:1", "--json"],
+      "reads": ["value.key", "value.version"],
+      "types": { "value.key": "string", "value.version": "number" }
+    },
+    {
+      "row": "`reeve initiative edit <KEY> --brief <md> --version <n> --json`",
+      "bind": "initiative",
+      "argv": ["initiative", "edit", "{{initiative.key}}", "--brief", "Edited by the skill smoke.", "--version", "{{initiative.version}}", "--json"],
+      "reads": ["value.version"],
+      "types": { "value.version": "number" }
+    },
+    {
+      "row": "`reeve initiative discovery <KEY> --complete --version <n> --json`",
+      "bind": "initiative",
+      "argv": ["initiative", "discovery", "{{initiative.key}}", "--complete", "--version", "{{initiative.version}}", "--json"],
+      "reads": ["value.discovery_complete"],
+      "types": { "value.discovery_complete": "object" }
+    },
+    {
+      "row": "`reeve epic show <KEY> --json`",
+      "bind": "epic",
+      "argv": ["epic", "show", "{{epic.key}}", "--json"],
+      "reads": ["value.brief", "value.initiative", "value.discovery_complete", "value.version"],
+      "types": { "value.brief": "string", "value.initiative": "string|null", "value.discovery_complete": "object|null", "value.version": "number" }
+    },
+    {
+      "row": "`reeve epic ls [--initiative <KEY>] --json`",
+      "argv": ["epic", "ls", "--initiative", "{{initiative.key}}", "--json"],
+      "reads": ["value[].key", "value[].title", "value[].initiative"],
+      "types": { "value[].key": "string", "value[].title": "string", "value[].initiative": "string|null" }
+    },
+    {
+      "row": "`reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key <key> --json`",
+      "argv": ["epic", "create", "--initiative", "{{initiative.key}}", "--title", "Skill smoke second epic", "--brief", "Created by the skill smoke.", "--idempotency-key", "planning-initiative:{{initiative.key}}:{{run_id}}:2", "--json"],
+      "reads": ["value.key", "value.version"],
+      "types": { "value.key": "string", "value.version": "number" }
+    },
+    {
+      "row": "`reeve epic edit <KEY> --brief <md> --version <n> --json`",
+      "bind": "epic",
+      "argv": ["epic", "edit", "{{epic.key}}", "--brief", "Edited by the skill smoke.", "--version", "{{epic.version}}", "--json"],
+      "reads": ["value.version"],
+      "types": { "value.version": "number" }
+    },
+    {
+      "row": "`reeve epic discovery <KEY> --complete --version <n> --json`",
+      "bind": "epic",
+      "argv": ["epic", "discovery", "{{epic.key}}", "--complete", "--version", "{{epic.version}}", "--json"],
+      "reads": ["value.discovery_complete"],
+      "types": { "value.discovery_complete": "object" }
+    },
+    {
+      "row": "`reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json`",
+      "argv": ["story", "ls", "--epic", "{{epic.key}}", "--json"],
+      "alternates": [["story", "ls", "--untriaged", "--json"]],
+      "reads": ["value[].story.key", "value[].story.title", "value[].story.kind", "value[].story.version", "value[].readiness.ready", "value[].readiness.reasons[].reason"],
+      "types": { "value[].story.key": "string", "value[].story.title": "string", "value[].story.kind": "string", "value[].story.version": "number", "value[].readiness.ready": "boolean", "value[].readiness.reasons[].reason": "string" }
+    },
+    {
+      "row": "`reeve story create --epic <KEY> --title <title> --kind story|bug|chore --criterion <text> [--criterion <text> …] --idempotency-key <key> --json`",
+      "argv": ["story", "create", "--epic", "{{epic.key}}", "--title", "Skill smoke created story", "--kind", "story", "--criterion", "It is created", "--criterion", "It is listed", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:1", "--json"],
+      "reads": ["value.key"],
+      "types": { "value.key": "string" }
+    },
+    {
+      "row": "`reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story|bug|chore] --json`",
+      "bind": "untriaged",
+      "argv": ["story", "edit", "{{untriaged.key}}", "--version", "{{untriaged.version}}", "--epic", "{{epic.key}}", "--kind", "story", "--json"],
+      "reads": ["value.version"],
+      "types": { "value.version": "number" }
+    },
+    {
+      "row": "`reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json`",
+      "argv": ["decision", "require", "--on", "{{epic.key}}", "--title", "Skill smoke required decision", "--decider", "{{email}}", "--due", "2027-01-15", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:2", "--json"],
+      "reads": ["value.id"],
+      "types": { "value.id": "number" }
+    },
+    {
+      "row": "`reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json`",
+      "argv": ["decision", "link", "{{decision.id}}", "--record", "{{record.id}}", "--repo", "{{repo}}", "--path", "{{record.path}}", "--pr", "https://github.com/example/kb/pull/1", "--household", "{{household}}", "--json"],
+      "reads": ["value.check.kind"],
+      "types": { "value.check.kind": "string" },
+      "expect": { "value.check.kind": "accepted" }
+    },
+    {
+      "row": "`reeve comment add --decision <id> --body <text> --idempotency-key <key> --json` (or `--story <KEY>`)",
+      "argv": ["comment", "add", "--decision", "{{decision.id}}", "--body", "Linked by the skill smoke.", "--idempotency-key", "recording-decisions:{{decision.id}}:{{run_id}}:1", "--json"],
+      "alternates": [["comment", "add", "--story", "{{story.key}}", "--body", "Read by the skill smoke.", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:3", "--json"]],
+      "reads": ["value[].id", "value[].body"],
+      "types": { "value[].id": "number", "value[].body": "string" }
+    },
+    {
+      "row": "`reeve decision ls --on <KEY> --json`",
+      "argv": ["decision", "ls", "--on", "{{epic.key}}", "--json"],
+      "reads": ["value[].id", "value[].on", "value[].title", "value[].decider", "value[].due", "value[].record", "value[].pr_url", "value[].check.kind", "value[].closed"],
+      "types": { "value[].id": "number", "value[].on": "string", "value[].title": "string", "value[].decider": "string", "value[].due": "string|null", "value[].record": "object|null", "value[].pr_url": "string|null", "value[].check.kind": "string", "value[].closed": "object|null" },
+      "unread": {
+        "value[].closed.at": "the Commands table has no close command and the skills never close a decision; value[].closed is read",
+        "value[].closed.by": "the Commands table has no close command and the skills never close a decision; value[].closed is read",
+        "value[].closed.reason": "the Commands table has no close command and the skills never close a decision; value[].closed is read"
+      }
+    },
+    {
+      "row": "`reeve decision show <id> --json`",
+      "argv": ["decision", "show", "{{decision.id}}", "--json"],
+      "reads": ["value.id", "value.on", "value.title", "value.decider", "value.due", "value.record", "value.pr_url", "value.check.kind", "value.closed"],
+      "types": { "value.id": "number", "value.on": "string", "value.title": "string", "value.decider": "string", "value.due": "string|null", "value.record": "object|null", "value.pr_url": "string|null", "value.check.kind": "string", "value.closed": "object|null" }
+    },
+    {
+      "row": "`reeve story context <KEY> --json`",
+      "argv": ["story", "context", "{{story.key}}", "--json"],
+      "reads": ["value.story", "value.epic", "value.initiative", "value.required_decisions[]", "value.blockers[]", "value.comments[]", "value.readiness", "value.readiness.ready"],
+      "types": { "value.story": "object", "value.epic": "object|null", "value.initiative": "object|null", "value.required_decisions[]": "object", "value.blockers[]": "object", "value.comments[]": "object", "value.readiness": "object", "value.readiness.ready": "boolean" },
+      "may_be_empty": ["value.blockers[]"]
+    }
+  ]
+}

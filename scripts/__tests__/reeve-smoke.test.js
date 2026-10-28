@@ -26,7 +26,7 @@ test('commandRows reads the Commands table only and reads \\| inside a cell as |
 });
 test('commandRows finds the rows of the reference, each with its Read cell', () => {
   const rows = s.commandRows(fs.readFileSync(path.join(__dirname, '..', '..', 'references', 'reeve-cli.md'), 'utf8'));
-  assert.equal(rows.length, 19);
+  assert.equal(rows.length, 24);
   for (const r of rows) {
     assert.match(r.row, /^`reeve [a-z]+ [a-z]+[ `]/, r.row);
     assert.match(r.read, /`value/, r.row);
@@ -48,6 +48,9 @@ test('readPaths: the field paths of a Read cell, with nesting and relative field
   assert.deepEqual(s.readPaths('`value[]`: `id`, `record` (null = no record), `check.kind`, `closed` (null, or `{at, by}`); closed ones too'),
     ['value[]', 'value[].id', 'value[].record', 'value[].check.kind', 'value[].closed', 'value[].closed.at', 'value[].closed.by']);
   assert.deepEqual(s.readPaths('`value.key`; a bucket the planner does not have is a `validation` error'), ['value.key']);
+  // a member beside value is a path from the envelope, never one under value
+  assert.deepEqual(s.readPaths('`value.check.kind`, `immediate_check.outcome`'), ['value.check.kind', 'immediate_check.outcome']);
+  assert.deepEqual(s.readPaths('`value[]`: `id`, `immediate.outcome`'), ['value[]', 'value[].id', 'value[].immediate.outcome']);
 });
 
 const ROW = '`reeve epic ls [--initiative <KEY>] --json`';
@@ -104,12 +107,14 @@ test('coverageProblems names each defect', () => {
   }
 });
 
+const of0 = (rows, prefix) => s.readPaths(rows.find((x) => x.row.startsWith(prefix)).read);
 test('readPaths throws on a span it cannot classify and pins the real reference', () => {
   assert.throws(() => s.readPaths('`value.a`, see `mystery` here'), /cannot classify `mystery`/);
   assert.throws(() => s.readPaths('`.x`'), /no field to follow/);
   assert.deepEqual(s.readPaths('`value[]`, `.x`'), ['value[]', 'value[].x']); // a path without a dot is its own parent
   const rows = s.commandRows(fs.readFileSync(path.join(__dirname, '..', '..', 'references', 'reeve-cli.md'), 'utf8'));
-  for (const x of rows) assert.ok(s.readPaths(x.read).every((p) => p.startsWith('value')), x.row);
+  for (const x of rows) assert.ok(s.readPaths(x.read).every((p) => /^(value|immediate_check)\b/.test(p)), x.row);
+  assert.ok(of0(rows, '`reeve decision link').includes('immediate_check.outcome'));
   const of = (prefix) => s.readPaths(rows.find((x) => x.row.startsWith(prefix)).read);
   assert.deepEqual(of('`reeve story context'), ['value', 'value.story', 'value.epic', 'value.initiative', 'value.required_decisions[]', 'value.blockers[]', 'value.comments[]', 'value.readiness']);
   assert.ok(of('`reeve decision ls').includes('value[].closed.reason'));

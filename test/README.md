@@ -129,13 +129,22 @@ set. Answers use the planner's wire shapes:
 - stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
   in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-47` (`story ls --untriaged` lists
   stories of kind `story` with no epic, as the real planner does);
-- creates, edits and decision links persist for the run: every show and list (`decision ls`,
+- creates, edits, decision links, edits, closes and checks, and story blocks persist for the run:
+  every show and list (`decision ls`,
   `decision show`, `epic ls`, `initiative ls`, `story ls`, `story context`) sees what the run
   wrote; `story context` bundles the open decisions on the story's initiative, its epic and
   the story, in that order, as the planner does; and readiness is derived for every story in the planner's order (untriaged; its epic's
   discovery not complete and the epic's open decisions, each by its check: no record, unchecked,
   proposed with the PR open, record not found, not accepted; the same for the epic's initiative;
-  the story's own; no criteria);
+  the story's own; no criteria; then `blocked_by` for each blocker not done, as `story block`
+  recorded it; `story unblock` removes it, and unblocking what is not blocked succeeds);
+- `decision edit` changes an open decision's title, decider and due date (`--no-due` clears it)
+  under its `--version` (stale: `conflict`; closed: `validation`; an edit that changes nothing keeps
+  the version), and `decision close` sets `closed` (blank reason or already closed: `validation`);
+  a closed decision cannot be linked;
+- `decision check` checks the open decisions with a record (`--only <id>` naming any other is
+  `not_found`, exit 1), each `stored` with the check `decision link` would give, and answers the
+  CLI's summary and exit status;
 - `initiative create` checks `--horizon` against the buckets `Now`, `Next`, `Later`, `Won't do`
   (anything else is a `validation` error, exit 1);
 - a write naming an epic or initiative that does not exist is `not_found` and is not logged, so a
@@ -167,7 +176,9 @@ names a directory for every answer.
 `REEVE_FAKE_REFUSE=<text>` makes every command whose name contains `<text>` (e.g. `story create`)
 answer `{"outcome":"refused","reasons":[{"reason":"no_criteria"}]}` with exit 2, so a scenario can
 check that a skill shows the reasons and stops that step. `decision link` never reports
-`accepted`/`not_accepted`: its check is `not_found`, or `proposed_pr_open` when `--pr` is passed.
+`accepted`/`not_accepted`: its check is `not_found`, or `proposed_pr_open` when `--pr` is passed,
+and its answer carries `immediate_check` (`{id, outcome, check?, error?}`) beside `value`, as the
+CLI's does.
 
 `REEVE_FAKE_SIGNIN=expired` makes every call but `auth status` answer an `unauthenticated` error
 with exit 2, as the real CLI does for an expired or revoked token.
@@ -175,6 +186,13 @@ with exit 2, as the real CLI does for an expired or revoked token.
 `REEVE_FAKE_LINK_CHECK=unreadable` makes `decision link` behave like a link whose immediate
 check could not run: exit 1 with an `ok` envelope (the decision, check `unchecked`) and a
 `decision <id>: cannot read …` line on stderr; the link is stored all the same.
+`REEVE_FAKE_LINK_CHECK=held` makes it behave like a member's link of an accepted record: exit 0,
+`immediate_check.outcome` `held`, `check` still `unchecked`, and the CLI's `decision <id>: held: …`
+line on stderr.
+
+`REEVE_FAKE_CHECK=held|skipped|unreadable` gives every decision `decision check` checks that
+outcome: `held` exits 0 (1 with `--strict`, an `internal` error envelope carrying the summary),
+`skipped` exits 0 even with `--strict`, `unreadable` exits 1.
 
 ```bash
 bb test/run-tests.clj --with reeve-fake --filter reeve-   # the planner scenarios

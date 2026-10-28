@@ -175,8 +175,9 @@ test('decision link persists: show, ls --on, story context and readiness see the
     return { status: r.status, ...JSON.parse(r.stdout) };
   };
   const link = ['decision', 'link', '7', '--record', 'kb/ADR-0002', '--repo', 'lore', '--path', 'knowledge/adrs/0002-x.md', '--household', '/work', '--json'];
+  // The link moves the version, and the immediate check storing a new result moves it again, as on the planner.
   const linked = call([...link, '--pr', 'https://github.com/example/lore/pull/9']);
-  assert.deepEqual([linked.status, linked.value.check.kind, linked.value.version], [0, 'proposed_pr_open', 2]);
+  assert.deepEqual([linked.status, linked.value.check.kind, linked.value.version], [0, 'proposed_pr_open', 3]);
   const shown = call(['decision', 'show', '7', '--json']).value;
   assert.deepEqual([shown.record, shown.pr_url, shown.check.kind], [{ repo: 'lore', path: 'knowledge/adrs/0002-x.md', record_id: 'kb/ADR-0002' }, 'https://github.com/example/lore/pull/9', 'proposed_pr_open']);
   assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-20', '--json']).value.map((d) => [d.id, d.record && d.record.record_id]), [[7, 'kb/ADR-0002'], [8, null]]);
@@ -185,7 +186,7 @@ test('decision link persists: show, ls --on, story context and readiness see the
   assert.deepEqual(ctx.readiness.reasons.map((r) => r.reason), ['ancestor_discovery_incomplete', 'decision_proposed_pr_open', 'ancestor_discovery_incomplete']);
   // A link whose immediate check cannot run is stored too (exit 1, ok envelope), unchecked with a record.
   const unread = call([...link, '--pr', 'https://github.com/example/lore/pull/10'], { REEVE_FAKE_LINK_CHECK: 'unreadable' });
-  assert.deepEqual([unread.status, unread.outcome, unread.value.check.kind, unread.value.version], [1, 'ok', 'unchecked', 3]);
+  assert.deepEqual([unread.status, unread.outcome, unread.value.check.kind, unread.value.version], [1, 'ok', 'unchecked', 4]);
   const after = call(['decision', 'show', '7', '--json']).value;
   assert.deepEqual([after.pr_url, after.check.kind], ['https://github.com/example/lore/pull/10', 'unchecked']);
   assert.ok(call(['story', 'ls', '--epic', 'GRA-20', '--json']).value[0].readiness.reasons.some((r) => r.reason === 'decision_unchecked' && r.decision_id === 7));
@@ -211,4 +212,102 @@ test('story context of a created story bundles its created initiative and the op
 test('story context leaves a closed decision out of the bundle', () => {
   const { value } = run(['story', 'context', 'GRA-31', '--json']).envelope;
   assert.deepEqual(value.required_decisions.map((d) => d.id), [7]); // #8 on GRA-20 is closed
+});
+
+// One run's state shared by every call, the status kept beside the envelope.
+function session() {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  return (args, env = {}) => {
+    const r = spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log, ...env } });
+    return { status: r.status, stderr: r.stderr, stdout: r.stdout, ...(r.stdout.trim() ? JSON.parse(r.stdout) : {}) };
+  };
+}
+const LINK7 = ['decision', 'link', '7', '--record', 'kb/ADR-0002', '--repo', 'lore', '--path', 'knowledge/adrs/0002-x.md', '--household', '/work', '--json'];
+test('decision link answers its immediate check beside the decision, as the planner does', () => {
+  const call = session();
+  const r = call([...LINK7, '--pr', 'https://github.com/example/lore/pull/9']);
+  assert.deepEqual([r.status, r.immediate_check.id, r.immediate_check.outcome, r.immediate_check.check.kind], [0, 7, 'stored', 'proposed_pr_open']);
+  const u = call(LINK7, { REEVE_FAKE_LINK_CHECK: 'unreadable' });
+  assert.deepEqual([u.status, u.immediate_check.outcome, 'check' in u.immediate_check, typeof u.immediate_check.error], [1, 'unreadable', false, 'string']);
+});
+test('REEVE_FAKE_LINK_CHECK=held: a member linked an accepted record, exit 0, nothing stored, the held line on stderr', () => {
+  const call = session();
+  const r = call(LINK7, { REEVE_FAKE_LINK_CHECK: 'held' });
+  assert.deepEqual([r.status, r.outcome, r.value.check.kind, r.value.checked_at, r.immediate_check.outcome, r.immediate_check.check.kind], [0, 'ok', 'unchecked', null, 'held', 'accepted']);
+  assert.match(r.stderr, /^decision 7: held: accepted on the default branch; stored by the next scheduled check run by an admin$/m);
+  assert.equal(call(['decision', 'show', '7', '--json']).value.check.kind, 'unchecked');
+});
+test('decision edit changes the planner-side fields under the version; a stale version conflicts, a closed decision is refused', () => {
+  const call = session();
+  const d = call(['decision', 'require', '--on', 'GRA-20', '--title', 'T', '--decider', 'dan@example.com', '--due', '2027-01-15', '--idempotency-key', KEY, '--json']).value;
+  const e = call(['decision', 'edit', String(d.id), '--version', String(d.version), '--title', 'T2', '--decider', 'sam@example.com', '--json']);
+  assert.deepEqual([e.status, e.value.title, e.value.decider, e.value.due, e.value.version], [0, 'T2', 'sam@example.com', '2027-01-15', d.version + 1]);
+  assert.equal(call(['decision', 'edit', String(d.id), '--version', String(d.version), '--no-due', '--json']).code, 'conflict');
+  const cleared = call(['decision', 'edit', String(d.id), '--version', String(d.version + 1), '--no-due', '--json']).value;
+  assert.deepEqual([cleared.due, cleared.version], [null, d.version + 2]);
+  // an edit that changes nothing writes nothing and keeps the version
+  assert.equal(call(['decision', 'edit', String(d.id), '--version', String(d.version + 2), '--title', 'T2', '--json']).value.version, d.version + 2);
+  assert.equal(call(['decision', 'show', String(d.id), '--json']).value.title, 'T2');
+  const closed = call(['decision', 'edit', '8', '--version', '2', '--title', 'X', '--json']);
+  assert.deepEqual([closed.status, closed.code], [1, 'validation']);
+});
+test('decision edit needs a change, and --due with --no-due is a usage error', () => {
+  for (const args of [['decision', 'edit', '7', '--version', '1', '--json'], ['decision', 'edit', '7', '--version', '1', '--due', '2027-01-15', '--no-due', '--json']]) {
+    const r = run(args);
+    assert.deepEqual([r.status, r.stdout, r.log], [1, '', ''], args.join(' '));
+  }
+});
+test('decision close closes with the reason; a closed decision is listed, never a readiness reason, and cannot close again', () => {
+  const call = session();
+  const c = call(['decision', 'close', '7', '--reason', 'the queue was dropped', '--json']);
+  assert.deepEqual([c.status, c.value.closed.reason, c.value.closed.by, typeof c.value.closed.at, c.value.version], [0, 'the queue was dropped', 'dan@example.com', 'string', 2]);
+  assert.deepEqual(call(['decision', 'ls', '--on', 'GRA-20', '--json']).value.map((d) => [d.id, d.closed !== null]), [[7, true], [8, true]]);
+  assert.ok(!call(['story', 'ls', '--epic', 'GRA-20', '--json']).value[0].readiness.reasons.some((r) => r.decision_id === 7));
+  assert.deepEqual(call(['story', 'context', 'GRA-31', '--json']).value.required_decisions, []);
+  const again = call(['decision', 'close', '7', '--reason', 'x', '--json']);
+  assert.deepEqual([again.status, again.code], [1, 'validation']);
+  assert.equal(call(['decision', 'close', '7', '--reason', ' ', '--json']).code, 'validation');
+  assert.equal(call(['decision', 'link', ...LINK7.slice(2)]).code, 'validation'); // a closed decision cannot be linked
+});
+test('decision check checks the open decisions with a record; the outcome sets the exit status as the CLI does', () => {
+  const call = session();
+  const none = call(['decision', 'check', '--only', '7', '--json']);
+  assert.deepEqual([none.status, none.outcome, none.code], [1, 'error', 'not_found']); // #7 has no record yet
+  call([...LINK7, '--pr', 'https://github.com/example/lore/pull/9']);
+  const ok = call(['decision', 'check', '--household', '/work', '--json']);
+  assert.deepEqual([ok.status, ok.outcome, ok.value.checked, ok.value.held, ok.value.skipped, ok.value.unreadable, ok.value.failed], [0, 'ok', 1, 0, 0, 0, 0]);
+  assert.deepEqual(ok.value.results.map((e) => [e.id, e.outcome, e.check.kind]), [[7, 'stored', 'proposed_pr_open']]);
+  const held = call(['decision', 'check', '--only', '7', '--json'], { REEVE_FAKE_CHECK: 'held' });
+  assert.deepEqual([held.status, held.outcome, held.value.held], [0, 'ok', 1]);
+  assert.match(held.stderr, /^decision 7: held: /m);
+  const strict = call(['decision', 'check', '--only', '7', '--strict', '--json'], { REEVE_FAKE_CHECK: 'held' });
+  assert.deepEqual([strict.status, strict.outcome, strict.code, strict.value.held], [1, 'error', 'internal', 1]);
+  const skipped = call(['decision', 'check', '--only', '7', '--strict', '--json'], { REEVE_FAKE_CHECK: 'skipped' });
+  assert.deepEqual([skipped.status, skipped.outcome, skipped.value.skipped], [0, 'ok', 1]);
+  assert.match(skipped.value.results[0].error, /skipped: .* the next run checks it$/);
+  const unreadable = call(['decision', 'check', '--only', '7', '--json'], { REEVE_FAKE_CHECK: 'unreadable' });
+  assert.deepEqual([unreadable.status, unreadable.outcome, unreadable.value.unreadable, 'check' in unreadable.value.results[0]], [1, 'error', 1, false]);
+  call(['decision', 'close', '7', '--reason', 'dropped', '--json']);
+  assert.deepEqual(call(['decision', 'check', '--json']).value.results, []); // closed: not checked
+  assert.equal(call(['decision', 'check', '--only', '7', '--json']).code, 'not_found');
+});
+test('story block and unblock persist: blocked_by, the readiness reason last, the context blockers; unblocking nothing succeeds', () => {
+  const call = session();
+  const b = call(['story', 'block', 'GRA-31', '--by', 'GRA-32', '--json']);
+  assert.deepEqual([b.status, b.value], [0, {}]);
+  const listed = call(['story', 'ls', '--epic', 'GRA-20', '--json']).value[0];
+  assert.deepEqual(listed.story.blocked_by, ['GRA-32']);
+  assert.deepEqual(listed.readiness.reasons.at(-1), { reason: 'blocked_by', story: 'GRA-32' });
+  const ctx = call(['story', 'context', 'GRA-31', '--json']).value;
+  assert.deepEqual([ctx.story.blocked_by, ctx.blockers.map((s) => s.key)], [['GRA-32'], ['GRA-32']]);
+  // a done blocker blocks no more, but the edge stays
+  call(['story', 'mv', 'GRA-32', 'done', '--resolution', 'done', '--json']);
+  const done = call(['story', 'ls', '--epic', 'GRA-20', '--json']).value[0];
+  assert.deepEqual([done.story.blocked_by, done.readiness.reasons.some((r) => r.reason === 'blocked_by')], [['GRA-32'], false]);
+  assert.deepEqual(call(['story', 'unblock', 'GRA-31', '--by', 'GRA-32', '--json']).value, {});
+  assert.deepEqual(call(['story', 'context', 'GRA-31', '--json']).value.blockers, []);
+  assert.deepEqual([call(['story', 'unblock', 'GRA-31', '--by', 'GRA-32', '--json']).status], [0]);
+  assert.equal(call(['story', 'block', 'GRA-31', '--by', 'GRA-31', '--json']).code, 'validation');
+  assert.equal(call(['story', 'block', 'GRA-31', '--by', 'GRA-199', '--json']).code, 'not_found');
+  assert.equal(call(['story', 'unblock', 'GRA-199', '--by', 'GRA-31', '--json']).code, 'not_found');
 });

@@ -32,8 +32,8 @@ argument.
    `reeve auth login`. Any other refused or failed write skips that one item (that decision,
    comment or epic): show the reasons or the message, go on with the next item, and list what was
    skipped in the report.
-4. **The user decides.** Deciders, due dates, applying a record and the discovery mark come from
-   the user, never from you.
+4. **The user decides.** Deciders, due dates, applying a record, closing a decision and the
+   discovery mark come from the user, never from you.
 5. **Build on what is there.** The planner may already hold a brief, decisions and epics for this
    initiative (an earlier run, a teammate). Reuse them; create only what the user's answers add.
    Whether an existing item covers what the user asked for is your judgment in the conversation,
@@ -69,6 +69,14 @@ argument.
    epic the user's answers call for, whether an existing one already covers it (say which key or
    id). Steps 6 and 7 create only the ones that are not covered. A re-run on an initiative that
    already has them creates nothing unless the user asks for something new.
+   Changes to an existing decision come from the user: a new decider, due date or title for an
+   open one is
+   `reeve decision edit <id> --version <v> [--title <title>] [--decider <email>] [--due YYYY-MM-DD] --json`
+   (only the flags for what changes, `--no-due` in place of `--due` to remove the date; `<v>` is
+   the decision's `version` from step 1's `decision ls`), and a decision the user says is no longer needed is closed
+   with the user's reason, `reeve decision close <id> --reason <reason> --json`. In a session that
+   cannot ask, close one only when the request names the decision and the reason; never close a
+   decision to tidy up, and never one a record is still expected to answer.
 6. **Required decisions.** For each open question that is a consequential choice blocking work
    (not a clarification) and has no decision yet: ask who decides and by when (the due date is
    optional: with none given, leave `--due` out), show and run
@@ -106,7 +114,7 @@ argument.
    session shows only this report, not the announcement). Then every key written and every
    existing key reused, and every proposal left unwritten; each required decision from the re-read
    with its decider, due date and state worded by the reference ("no record", "proposed, PR open",
-   "closed: …"), plus the comment pointer when the record is only drafted; each epic from the
+   "closed: …"), each decision this run edited or closed, plus the comment pointer when the record is only drafted; each epic from the
    re-read. End with the next step: "refine an epic with refining-epic".
 
 `<n>` is one counter for the whole run, from 1, shared by decisions, comments and epics: every

@@ -69,12 +69,20 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
    record write):
    `reeve decision link <id> --record <front-matter id> --repo <repo> --path <path> --pr <url> --household <household> --json`
 4. **Report** the answer with the reference's *decision link* table: give the table's sentence
-   for the result verbatim, on its own line, read from `value.check.kind` (never from your own
-   reading of the record). Exit 0 has one row per `check.kind` (`proposed_pr_open`, `accepted`,
-   `not_accepted`, `not_found`; `not_found` carries its remedy, check the repository name and
-   path). Exit 1 with an `ok` envelope is "Linked; the check could not run here: <stderr line>;
-   it runs on the next scheduled check." (the link succeeded: do not call it a failure and do
-   not run it again). A `refused` envelope, or an `error` other than `internal`, shows the reasons
+   for the result verbatim, on its own line, read from `immediate_check.outcome` and
+   `value.check.kind` (never from your own reading of the record). Exit 0 with
+   `immediate_check.outcome` `held` is the held sentence: the record is accepted, but only an
+   admin's check stores that, so `value.check.kind` stays `unchecked` until the scheduled check
+   (not a failure, and nothing to run again). Otherwise exit 0 has one row per `check.kind`
+   (`proposed_pr_open`, `accepted`, `not_accepted`, `not_found`; `not_found` carries its remedy,
+   check the repository name and path). Exit 1 with an `ok` envelope means the link succeeded: do
+   not call it a failure and do not link again. With a `refresh_error` the check ran and only the
+   read back failed: give the sentence for `immediate_check.outcome`, then the table's read-back
+   line, and run `reeve decision show <id> --json`. Without one it is "Linked; the check could
+   not run here: <stderr line>; it runs on the next scheduled check."; when the user fixes the
+   cause (a missing or stale checkout), the check can run again here with
+   `reeve decision check --household <household> --only <id> --json`, reported with the
+   reference's *decision check* table. A `refused` envelope, or an `error` other than `internal`, shows the reasons
    or the message and says nothing was linked (`unauthenticated` or `forbidden`: also tell the
    user to run `reeve auth login`). An `internal` error may come after the link was stored: run
    `reeve decision show <id> --json` first, and when its `record` names this record, report it as

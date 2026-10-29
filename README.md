@@ -535,7 +535,7 @@ These skills trigger automatically when relevant:
 | `stack` | Opening 2+ dependent PRs, stacked PRs, merge order, coordinated changes across repos |
 | `subagent-driven-development` | Independent tasks from a plan (same session) |
 | `dispatching-parallel-agents` | Multiple independent problems |
-| `cultivate` / `cultivate-discovery` | Domain cultivation via `/lore:cultivate` |
+| `cultivating-domains` / `cultivate-discovery` | Domain cultivation via `/lore:cultivate` |
 
 **Reeve planner.** Optional. When a `reeve` CLI on the path reports `reeve-planner` and you are signed in (`reeve auth login`), the two skills above write into the planner, brainstorming reads a named story's context first, and `/lore:adr link` links a record to a required decision. Without it every skill behaves as before, and the session's skill router does not list the two planner skills.
 

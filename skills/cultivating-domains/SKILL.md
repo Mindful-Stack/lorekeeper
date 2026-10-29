@@ -1,5 +1,5 @@
 ---
-name: cultivate
+name: cultivating-domains
 description: Cultivate a SPECIFIC, NAMED bounded-context domain node — bootstrap a new one from a codebase scan, refine an existing one with missing canonical DDD sections, or audit a mature one for drift. Use ONLY when the user has named a specific domain (e.g. /lore:cultivate <name>, "work on the payments domain", "flesh out grant-matching"). For exploring what domains exist or finding new ones, use cultivate-discovery instead.
 ---
 

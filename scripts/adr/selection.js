@@ -3,16 +3,45 @@
 // Candidate selection shared by `adr-lint select` and `adr-lint verdict`, so the records a
 // review must cover are computed once, the same way, by both.
 
+const fs = require('fs');
 const path = require('path');
 const { asList, isEmpty } = require('./frontmatter');
 const R = require('./records');
 const B = require('./behaviour');
 const H = require('./homes');
 const G = require('./git');
-const { matchesGlob } = require('./glob');
+const { matchesGlob, toPosix } = require('./glob');
 const { parsePatchPaths, parseCitedIds, select } = require('./select');
 
 class SelectionError extends Error {}
+
+// The doc files the diff touches, from each behaviour home inside this repo's checkout. A
+// doc-named path that is gone at head (deleted, or moved or renamed out of being a doc) throws:
+// its rules would silently stop binding the PR that removes them.
+function touchedDocs(homes, repo, dirs, paths) {
+    const repoDir = homes.mode === 'single' ? homes.root : path.join(homes.root, repo);
+    const out = new Set();
+    for (const dir of dirs) {
+        const rel = toPosix(path.relative(repoDir, dir));
+        if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) continue;
+        for (const p of paths) {
+            const name = p.startsWith(`${rel}/`) ? p.slice(rel.length + 1) : null;
+            if (!name || name.includes('/') || !B.isDocName(name)) continue;
+            const file = path.join(dir, name);
+            let present = true;
+            try {
+                fs.lstatSync(file);
+            } catch (e) {
+                present = false;
+            }
+            if (!present) {
+                throw new SelectionError(`behaviour doc ${p} is in the diff but not at head (deleted, moved or renamed); review cannot judge rules it no longer sees. Retiring a doc needs the admin bypass`);
+            }
+            out.add(file);
+        }
+    }
+    return out;
+}
 
 function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
     const homes = H.resolveHomes(cwd);
@@ -38,6 +67,9 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
     const unusable = [];
     const addDocs = (dir, kind, prefix) => {
         for (const d of B.loadBehaviourHome(dir).docs) {
+            // Its scope cannot be read, so whether it binds this diff cannot be told.
+            const why = B.unreadable(d);
+            if (why) throw new SelectionError(`${d.file}: ${why}; review cannot tell what it binds. Fix it (adr-lint check) before review`);
             const id = B.docId(d, prefix);
             const scope = asList(d.fm.scope);
             if (!id) {
@@ -47,17 +79,22 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
             candidates.push({ id, kind, doc: 'behaviour', status: '-', file: d.file, scope, fm: d.fm, text: d.text });
         }
     };
+    const docHomes = [local.behaviourDir];
     addDocs(local.behaviourDir, 'local', repo);
-    if (homes.sharedBehaviourHome && !local.behaviourCoinciding) addDocs(homes.sharedBehaviourHome, 'shared', 'kb');
+    if (homes.sharedBehaviourHome && !local.behaviourCoinciding) {
+        docHomes.push(homes.sharedBehaviourHome);
+        addDocs(homes.sharedBehaviourHome, 'shared', 'kb');
+    }
     const paths = given || parsePatchPaths(diffText);
+    const touched = touchedDocs(homes, repo, docHomes, paths);
     // A doc with no id cannot be reviewed; letting it drop out would pass a diff in its scope.
     for (const u of unusable) {
         const globs = u.kind === 'local' ? u.scope : u.scope.filter((s) => s.startsWith(`${repo}:`)).map((s) => s.slice(repo.length + 1));
-        if (paths.some((p) => globs.some((g) => matchesGlob(p, g)))) {
+        if (touched.has(u.file) || paths.some((p) => globs.some((g) => matchesGlob(p, g)))) {
             throw new SelectionError(`${u.file} has no usable prefix; fix it (adr-lint check) before review`);
         }
     }
-    const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody || '') });
+    const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody || ''), touched });
     // Two docs under one id would share one attestation and one file lookup; that only matters
     // when one of them is selected.
     const files = new Map();

@@ -162,9 +162,10 @@ function parseCitedIds(prBody) {
     return [...new Set([...adrs, ...rules])];
 }
 
-// candidates: [{ id, kind: 'local'|'shared', status, file, scope: string[] }]
-// Returns [{ id, home: 'local'|'shared'|null, doc: 'adr'|'behaviour', status, file, reasons: ['scope'|'cited'] }], sorted by id.
-function select({ candidates, repo, paths, cited }) {
+// candidates: [{ id, kind: 'local'|'shared', status, file, scope: string[] }]; touched: the doc
+// files the diff edits (a Set, optional).
+// Returns [{ id, home: 'local'|'shared'|null, doc: 'adr'|'behaviour', status, file, reasons: ['scope'|'cited'|'touched'] }], sorted by id.
+function select({ candidates, repo, paths, cited, touched = new Set() }) {
     const out = [];
     for (const c of candidates) {
         const reasons = [];
@@ -175,6 +176,7 @@ function select({ candidates, repo, paths, cited }) {
                 .map((s) => s.slice(repo.length + 1));
         if (paths.some((p) => globs.some((g) => matchesGlob(p, g)))) reasons.push('scope');
         if (cited.includes(c.id)) reasons.push('cited');
+        if (c.doc === 'behaviour' && touched.has(c.file)) reasons.push('touched');
         if (reasons.length) out.push({ id: c.id, home: c.kind, doc: c.doc || 'adr', status: c.status, file: c.file, reasons });
     }
     // A cited id that resolves nowhere is reported, not dropped: the reviewer must see it.

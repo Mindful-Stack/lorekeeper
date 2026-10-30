@@ -46,7 +46,7 @@ function parseDoc(file, text) {
     }
     for (const h of headings) h.body = h.body.join('\n');
     return {
-        file, name: path.basename(file), text, found: parsed.found, fm: parsed.fm, errors: parsed.errors,
+        file, name: path.basename(file), text, found: parsed.found, fm: parsed.fm, errors: parsed.errors, errorKeys: parsed.errorKeys,
         sections, headings, deviations, nearSources,
     };
 }
@@ -62,16 +62,39 @@ function ruleNumbers(text) {
     return parseDoc('', text).headings.filter((h) => h.id).map((h) => h.n);
 }
 
-// Every behaviour doc in a home: `.md` files other than `_`-prefixed ones and a README.
+// A file in a behaviour home that is read as a doc: `.md`, not `_`-prefixed, not a README.
+const isDocName = (name) => name.endsWith('.md') && !name.startsWith('_') && name.toLowerCase() !== 'readme.md';
+
+// An entry in a behaviour home that cannot be read; the CLI turns it into exit 2.
+class HomeReadError extends Error {}
+
+// Every behaviour doc in a home: the doc-named files directly in it. A directory is skipped;
+// a doc-named entry that cannot be read (a dangling symlink, no permission) throws, since
+// dropping it would drop its rules.
 function loadBehaviourHome(dir) {
     const docs = [];
     if (!fs.existsSync(dir)) return { docs };
     for (const name of fs.readdirSync(dir).sort()) {
-        if (name.startsWith('_') || !name.endsWith('.md') || name.toLowerCase() === 'readme.md') continue;
+        if (!isDocName(name)) continue;
         const file = path.join(dir, name);
-        docs.push(parseDoc(file, fs.readFileSync(file, 'utf8')));
+        let text;
+        try {
+            if (fs.statSync(file).isDirectory()) continue;
+            text = fs.readFileSync(file, 'utf8');
+        } catch (e) {
+            throw new HomeReadError(`cannot read behaviour doc ${file}: ${e.code || e.message}`);
+        }
+        docs.push(parseDoc(file, text));
     }
     return { docs };
+}
+
+// Why a doc's scope or prefix cannot be read, or null: no or unclosed frontmatter, or an
+// error on either key. Review cannot tell what such a doc binds.
+function unreadable(doc) {
+    if (!doc.found) return `${doc.errors[0]}${doc.text.startsWith('\uFEFF') ? ' (the file starts with a byte-order mark)' : ''}`;
+    const i = doc.errorKeys.findIndex((k) => k === 'scope' || k === 'prefix');
+    return i === -1 ? null : doc.errors[i];
 }
 
 // Rule ids of an ADR, as coverage.ruleIds reads them (kept here to avoid a require cycle).
@@ -175,5 +198,6 @@ function checkDoc(ctx, d, byPrefix, err, warn) {
 }
 
 module.exports = {
-    PREFIX_RE, DOC_ID_RE, RULE_HEAD, docId, parseDoc, ruleNumbers, loadBehaviourHome, checkBehaviourHome, adrRuleIds,
+    PREFIX_RE, DOC_ID_RE, RULE_HEAD, docId, parseDoc, ruleNumbers, isDocName, HomeReadError, loadBehaviourHome, unreadable,
+    checkBehaviourHome, adrRuleIds,
 };

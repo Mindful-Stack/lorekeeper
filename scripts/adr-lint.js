@@ -483,7 +483,8 @@ function main(argv) {
         if (cmd === 'next') return cmdNext(flags, positional);
         return cmdBackfill(flags, positional);
     } catch (e) {
-        if (!(e instanceof UsageError)) throw e;
+        // An unreadable behaviour-home entry is an environment error: exit 2, not a stack.
+        if (!(e instanceof UsageError) && !(e instanceof B.HomeReadError)) throw e;
         console.error(`adr-lint: ${e.message}\n\n${USAGE}`);
         return 2;
     }

@@ -1119,3 +1119,123 @@ test('a duplicate behaviour id blocks only when one of the duplicates is selecte
     assert.equal(bad.code, 2, bad.stdout + bad.stderr);
     assert.match(bad.stderr, /both have id kb\/device/);
 });
+
+// A patch touching each path once (a one-line edit), for diffs that touch behaviour docs.
+function touchPatch(...paths) {
+    return paths.map((p) => `diff --git a/${p} b/${p}\n--- a/${p}\n+++ b/${p}\n@@ -1 +1 @@\n-a\n+b\n`).join('');
+}
+
+function selectAndVerdict(w, patchText, checked = []) {
+    const patch = path.join(w.root, 'p.patch');
+    write(patch, patchText);
+    const f = path.join(w.root, 'f.json');
+    write(f, JSON.stringify({ coverage: { checked, notReviewed: [] }, findings: [] }));
+    return {
+        sel: runCli(w.root, w.env, 'select', '--diff', patch, '--repo', 'api'),
+        ver: runCli(w.root, w.env, 'verdict', '--findings', f, '--diff', patch, '--repo', 'api'),
+    };
+}
+
+test('D1: a doc whose own file the diff touches is selected, reason touched, whatever its scope', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api', fm: { scope: ['src/Other/**'] } }));
+    const { sel, ver } = selectAndVerdict(w, touchPatch('docs/behaviour/device-status.md'));
+    assert.equal(sel.code, 0, sel.stdout + sel.stderr);
+    assert.match(sel.stdout, /^api\/device\t-\t\S+device-status\.md\ttouched/m);
+    assert.equal(ver.code, 2, ver.stdout + ver.stderr);
+    assert.match(ver.stderr, /not checked: .*api\/device/);
+    // In scope as well: both reasons.
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    const both = selectAndVerdict(w, PATCH + touchPatch('docs/behaviour/device-status.md')).sel;
+    assert.match(both.stdout, /^api\/device\t.*\tscope,touched$/m);
+});
+
+test('D1: a behaviour doc path in the diff that is gone at head exits 2 for select and verdict', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const dir = path.join(w.api, 'docs', 'behaviour');
+    const moves = {
+        deleted: null,
+        underscore: '_device-status.md',
+        readme: 'README.md',
+        upper: 'device-status.MD',
+        subdir: 'devices/device-status.md',
+    };
+    for (const [label, to] of Object.entries(moves)) {
+        fs.rmSync(dir, { recursive: true, force: true });
+        if (to) write(path.join(dir, to), makeBehaviourDoc({ prefix: 'api' }));
+        const paths = ['docs/behaviour/device-status.md', ...(to ? [`docs/behaviour/${to}`] : [])];
+        const { sel, ver } = selectAndVerdict(w, PATCH + touchPatch(...paths));
+        assert.equal(sel.code, 2, `${label}: ${sel.stdout}${sel.stderr}`);
+        assert.match(sel.stderr, /docs\/behaviour\/device-status\.md is in the diff but not at head/, label);
+        assert.equal(ver.code, 2, `${label}: ${ver.stdout}${ver.stderr}`);
+        assert.match(ver.stderr, /docs\/behaviour\/device-status\.md is in the diff but not at head/, label);
+    }
+});
+
+test('D1: a non-doc file in a behaviour home that the diff touches and that exists is not a doc', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'README.md'), '# Behaviour docs\n');
+    write(path.join(w.api, 'docs', 'behaviour', '_template.md'), '# Template\n');
+    const { sel } = selectAndVerdict(w, touchPatch('docs/behaviour/README.md', 'docs/behaviour/_template.md'));
+    assert.equal(sel.code, 0, sel.stdout + sel.stderr);
+    assert.equal(sel.stdout, '');
+});
+
+test('D1: a touched doc with no usable prefix exits 2 even out of scope', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api', fm: { prefix: 'Device', scope: ['src/Other/**'] } }));
+    const { sel } = selectAndVerdict(w, touchPatch('docs/behaviour/device-status.md'));
+    assert.equal(sel.code, 2, sel.stdout + sel.stderr);
+    assert.match(sel.stderr, /device-status\.md has no usable prefix/);
+});
+
+test('1: a doc whose scope or prefix cannot be read exits 2 for select and verdict, touched or not', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const file = path.join(w.api, 'docs', 'behaviour', 'device-status.md');
+    const good = makeBehaviourDoc({ prefix: 'api' });
+    const broken = {
+        unclosed: good.replace(/\n---\n/, '\n\n'),
+        none: good.replace(/^---\n[\s\S]*?\n---\n/, ''),
+        bom: `﻿${good}`,
+        'block scope': good.replace(/^scope: .*$/m, 'scope:\n  - src/Devices/**'),
+        'duplicate prefix': good.replace(/^prefix: .*$/m, 'prefix: device\nprefix: dev'),
+    };
+    for (const [label, text] of Object.entries(broken)) {
+        write(file, text);
+        const { sel, ver } = selectAndVerdict(w, PATCH);
+        assert.equal(sel.code, 2, `${label}: ${sel.stdout}${sel.stderr}`);
+        assert.match(sel.stderr, /device-status\.md: .*cannot tell what it binds/, label);
+        assert.equal(ver.code, 2, `${label}: ${ver.stdout}${ver.stderr}`);
+    }
+    assert.match(selectAndVerdict(w, PATCH).sel.stderr, /prefix/);
+    write(file, broken.bom);
+    assert.match(selectAndVerdict(w, PATCH).sel.stderr, /byte-order mark/);
+    // A shared-home doc blocks every repo's review the same way.
+    write(file, good);
+    write(path.join(w.kb, 'knowledge', 'behaviour', 'x.md'), makeBehaviourDoc({ fm: { scope: ['web:src/**'] } }).replace(/\n---\n/, '\n\n'));
+    assert.equal(selectAndVerdict(w, PATCH).sel.code, 2);
+});
+
+test('2: a directory named like a doc is skipped; a dangling symlink exits 2 for select and check', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const dir = path.join(w.api, 'docs', 'behaviour');
+    fs.mkdirSync(path.join(dir, 'archive.md'), { recursive: true });
+    write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    const ok = selectAndVerdict(w, PATCH, ['api/device']);
+    assert.equal(ok.sel.code, 0, ok.sel.stdout + ok.sel.stderr);
+    assert.equal(ok.ver.code, 0, ok.ver.stdout + ok.ver.stderr);
+    const chk = runCli(w.root, w.env, 'check', dir);
+    assert.notEqual(chk.code, 2, chk.stdout + chk.stderr);
+    fs.symlinkSync(path.join(w.root, 'nowhere.md'), path.join(dir, 'gone.md'));
+    for (const r of [selectAndVerdict(w, PATCH).sel, selectAndVerdict(w, PATCH).ver, runCli(w.root, w.env, 'check', dir), runCli(w.root, w.env, 'index')]) {
+        assert.equal(r.code, 2, r.stdout + r.stderr);
+        assert.match(r.stderr, /gone\.md/);
+        assert.doesNotMatch(r.stderr, /\n\s+at /);
+    }
+});

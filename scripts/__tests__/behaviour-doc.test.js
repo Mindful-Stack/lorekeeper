@@ -35,3 +35,16 @@ test('DOC_ID_RE takes behaviour ids and refuses ADR ids', () => {
     assert.ok(DOC_ID_RE.test('kb/org-roles'));
     assert.ok(!DOC_ID_RE.test('kb/ADR-0001'));
 });
+
+test('a ### indented up to three spaces is a heading; its Source line is its own', () => {
+    const rules = '### device.R1 One\nSHALL x\n   ### Group label\n- Source: kb/ADR-0002';
+    const d = parseDoc('/x/a.md', makeBehaviourDoc({ sections: { Rules: rules } }));
+    assert.deepEqual(d.headings.map((h) => h.id), ['device.R1', null]);
+    assert.deepEqual(d.headings[0].sources, []);
+});
+
+test('only unindented list items in Known deviations name rules', () => {
+    const dev = '- device.R1: archived (SCRUM-1)\n  - note: see thread';
+    const d = parseDoc('/x/a.md', makeBehaviourDoc({ sections: { 'Known deviations': dev } }));
+    assert.deepEqual(d.deviations, ['device.R1']);
+});

@@ -1,5 +1,7 @@
 'use strict';
 
+const { walk } = require('./markdown');
+
 // Deterministic checks on a reviewer's findings document, against the candidates `select`
 // computes and the records themselves. `coverage.checked` is the reviewer's attestation; this
 // cannot prove the records were read, only that every selected record was attested and that no
@@ -10,8 +12,6 @@ function fail(message) {
     e.invalidFindings = true;
     return e;
 }
-
-const { walk } = require('./markdown');
 
 // Ids opening a list item in one `## heading` section, skipping fenced examples.
 function idsIn(text, heading, re) {

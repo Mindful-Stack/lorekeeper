@@ -18,5 +18,5 @@ test('a backtick opener whose info string holds a backtick is not a fence', () =
 });
 
 test('CRLF input reads the same as LF', () => {
-    assert.deepEqual(walk('## S\r\nx').lines.map((l) => l.text), ['x']);
+    assert.deepEqual(walk('## S\r\n```\r\n- **R9**\r\n```\r\n- **R1** x').lines.map((l) => l.text), ['- **R1** x']);
 });

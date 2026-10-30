@@ -22,9 +22,8 @@ function parseDoc(file, text) {
     const deviations = [];
     let cur = null;
     for (const { section, text: line } of lines) {
-        if (section !== 'Rules') cur = null;
         if (section === 'Rules') {
-            const h = /^###\s+(.*?)\s*$/.exec(line);
+            const h = /^ {0,3}###\s+(.*?)\s*$/.exec(line);
             if (h) {
                 const m = RULE_HEAD.exec(h[1]);
                 const ok = m && m[1] === prefix;
@@ -37,8 +36,9 @@ function parseDoc(file, text) {
                 if (s) cur.sources.push(...s[1].split(',').map((x) => x.trim()).filter(Boolean));
                 cur.body.push(line);
             }
-        } else if (section === 'Known deviations') {
-            const d = /^\s*[-*]\s+([^:]+):/.exec(line);
+        } else {
+            cur = null;
+            const d = section === 'Known deviations' && /^[-*]\s+([^:]+):/.exec(line);
             if (d) deviations.push(...d[1].split(',').map((x) => x.trim()).filter(Boolean));
         }
     }

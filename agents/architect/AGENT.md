@@ -232,15 +232,17 @@ requirement somebody once had.
    breaks as `behaviour-rule`. The exemptions are keyed to the break, not the rule:
    - A *Known deviations* entry exempts only the behaviour it describes, while the code still
      shows it.
-   - Code that already broke a rule at a place the diff does not change is not a finding: note
-     it under *Context*.
-   - A new or wider break of the same rule is a finding.
+   - A break the base code already had (visible in the removed lines or in code the diff does
+     not change) is not a finding, even when the diff moves or reformats it: note it under
+     *Context*. A new or wider break is a finding.
 
    A shared-home rule changes in its own KB PR, which merges first. Until it merges, the rule
-   binds as it stands on the KB's default branch: a code PR that breaks it is a `behaviour-rule`
-   finding, whatever the PR description says. A rule the PR description cites (the `- Rules:`
-   line under `## Decisions`, `references/pr-decisions.md`) in a doc not yet on the default
-   branch resolves as `missing`: report it under *Dangling citations*.
+   binds as it stands on the KB's default branch (the review reads the KB as checked out and
+   assumes it is on that branch): a code PR that breaks it is a `behaviour-rule` finding,
+   whatever the PR description says. A rule the PR description cites (the `- Rules:` line under
+   `## Decisions`, `references/pr-decisions.md`) in a doc not yet on the default branch resolves
+   as `missing`: report it under *Dangling citations*, with `ids` the candidate's id (the doc id
+   `kb/contract`, not `kb/contract.R3`).
 
    When a rule's `Source:` is an accepted record the diff contradicts, report the record's
    `contradiction` (naming only the record's ids), not a `behaviour-rule`. A test the diff edits
@@ -280,14 +282,14 @@ requirement somebody once had.
 
 ## Dangling citations
 - The PR description cites kb/ADR-0009, which resolves nowhere (renumbered, deleted, or a typo).
-- The PR description cites kb/contract.R3; kb/contract is not on the KB's default branch yet.
+- The PR description cites kb/contract (through kb/contract.R3), which is not on the KB's
+  default branch yet.
 [or: none]
 
 ## Context
 - Already ruled out in this area: kb/ADR-0005 (rejected) — <title>.
 - In flight: <pair>.
-- Already broken where the diff does not change it: <doc id>.R<n> at `<path>:<line-range>` —
-  <what the code does>.
+- Already broken in the base code: <doc id>.R<n> — <what the code did before this diff>.
 - Records not checked out: <repo> (its local records could not be read).
 [omit the section if empty]
 ```
@@ -320,8 +322,9 @@ block holding your own findings (when you read the whole patch).
 - `coverage.notReviewed` lists areas you could not assess, such as a binary file or one you did
   not read. Write `[]` when there are none. It is reported, never judged.
 - `ids` name one record: the record, its rules (`.R<n>`) or its facts (`.F<n>`). Use `[]` for an
-  uncovered choice, and the cited id for a dangling citation. A contradiction cites the rule it
-  breaks whenever the record has numbered rules. A `behaviour-rule` names one doc: the rules
+  uncovered choice, and the `missing` candidate's id for a dangling citation (for a behaviour
+  citation, the doc id, never a rule id). A contradiction cites the rule it breaks whenever the
+  record has numbered rules. A `behaviour-rule` names one doc: the rules
   broken, at least one, each the candidate's `id` plus `.R<n>` (`backend/device.R2`), optionally
   with the doc id. Use `behaviour-rule` only for a candidate of kind `behaviour`; the ADR classes
   never name a behaviour doc.

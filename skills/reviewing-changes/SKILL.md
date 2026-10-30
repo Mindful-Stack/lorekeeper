@@ -210,8 +210,8 @@ Exit 0: nothing blocks. Exit 1: blocking findings remain. Exit 2: the verdict co
 causes include a missing, invalid, duplicate, or unterminated `adr-findings` block, an unknown
 finding class, missing or malformed `coverage`, a selected record or behaviour doc not listed
 as checked, an id that resolves to no record, behaviour doc, rule or fact, a located finding
-without `where`, a repo that cannot be determined, two behaviour docs with one id or one in scope
-with no usable prefix, or an unreadable input, record or behaviour doc. Report its stderr, print
+without `where`, a repo that cannot be determined, a selected behaviour doc that shares its id
+with another doc or one in scope with no usable prefix, or an unreadable input, record or behaviour doc. Report its stderr, print
 `**ADR check:** could not run (verdict exit 2: <stderr>)`, and count it as one blocking finding:
 the check failed closed.
 

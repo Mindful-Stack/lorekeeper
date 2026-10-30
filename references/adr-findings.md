@@ -70,7 +70,7 @@ constrains only the output.
 | Field | Content |
 |---|---|
 | `class` | `contradiction`, `trigger`, `stale-fact`, `uncovered`, `dangling` or `behaviour-rule` |
-| `ids` | names one record: the record itself, its rules (`<id>.R<n>`) or its facts (`<id>.F<n>`). `[]` for `uncovered`; the cited id for `dangling`; for `behaviour-rule`, one doc: the rules broken, at least one, optionally with the doc id. A behaviour rule is the candidate's `id` plus `.R<n>` (`backend/device.R2`), never the doc-local `device.R2` its heading shows |
+| `ids` | names one record: the record itself, its rules (`<id>.R<n>`) or its facts (`<id>.F<n>`). `[]` for `uncovered`; for `dangling`, the `missing` candidate's id (for a cited behaviour rule, the doc id `kb/contract`, not `kb/contract.R3`, or `verdict` adds a second one); for `behaviour-rule`, one doc: the rules broken, at least one, optionally with the doc id. A behaviour rule is the candidate's `id` plus `.R<n>` (`backend/device.R2`), never the doc-local `device.R2` its heading shows |
 | `where` | `path:line-range` of the change; line ranges refer to the patched (new) file. Required for every class except `dangling`, where it is `null`. Always write the key |
 | `summary` | one line. A `trigger` names the trigger and what in the change fires it. An `uncovered` choice says what reversing it later would take. A `behaviour-rule` names the rule and what in the change breaks it |
 
@@ -122,9 +122,10 @@ Exit 2 means the check failed closed. Causes:
 - `--findings` or `--diff` is missing, or an input cannot be read; more than one input is `-`.
 - The repo cannot be determined (pass `--repo`), or is not in `household.json`.
 - A selected behaviour doc shares its id with any other behaviour doc (`behaviour docs <a> and
-  <b> both have id <id>; give one a different prefix (adr-lint check)`), or a behaviour doc whose scope matches the diff has no
-  usable `prefix`: missing, a list, not `^[a-z][a-z0-9-]*$`, or `adr` (`<file> has no usable
-  prefix; fix it (adr-lint check) before review`). `select` fails the same way.
+  <b> both have id <id>; give one a different prefix (adr-lint check)`), or a behaviour doc
+  whose scope matches the diff has no usable `prefix`: missing, a list, not
+  `^[a-z][a-z0-9-]*$`, or `adr` (`<file> has no usable prefix; fix it (adr-lint check) before
+  review`). `select` fails the same way.
 - The findings are not valid JSON; there is no `adr-findings` block, more than one, or one that
   is not terminated; there is no `findings` array.
 - A finding has an unknown `class`, ids that are not strings, an empty `summary`, a non-string
@@ -156,8 +157,8 @@ and `coverage` with `checked`, `extra` (checked ids that were not selected) and 
 
 `verdict` cannot prove the reviewer read the records and behaviour docs. What it guarantees is
 that an empty `findings` list means every selected record or behaviour doc was attested, and
-that no finding can block on a record, doc, rule or fact that does not exist. `coverage.notReviewed` is reported in the output and
-never fails the check.
+that no finding can block on a record, doc, rule or fact that does not exist.
+`coverage.notReviewed` is reported in the output and never fails the check.
 
 ## The contract for an external reviewer
 
@@ -195,10 +196,12 @@ its full record).
 5. Report a behaviour rule the diff breaks as `behaviour-rule`, only for a candidate of kind
    `behaviour`. Cite the rule as the candidate's `id` plus `.R<n>` (`backend/device.R2`), never
    the `device.R2` its heading shows. The behaviour a *Known deviations* entry describes, while
-   the code still shows it, is not a finding; neither is code that already broke the rule where
-   the diff does not change it. A new or wider break of the same rule is a finding.
+   the code still shows it, is not a finding. A break the base code already had (visible in the
+   removed lines or in code the diff does not change) is not a finding, even when the diff
+   moves or reformats it; a new or wider break is.
 6. When a behaviour rule's `Source:` is an accepted record the diff contradicts, report only the
-   record's `contradiction`, naming only the record's ids.
+   record's `contradiction`, naming only the record's ids (when that record is among the
+   candidates; otherwise report the `behaviour-rule`).
 7. List every candidate whose status is not `missing` in `coverage.checked`, behaviour docs
    included, whether or not you report on them. List areas you could not assess in
    `coverage.notReviewed`.

@@ -58,9 +58,9 @@ exits 2 — then ask which repo. Pass the printed JSON inline (never a file redi
 
 The architect's *Binding decisions* fill the plan's *Governing decisions* header (see *Plan
 Document Header*), rules quoted verbatim, and its *Binding behaviour rules* fill the header's
-`- **Behaviour:**` entries, one per doc, rules quoted verbatim. **Write that header as soon as `bind` returns**, even
-when a rule plainly contradicts what the spec asks for — the header records what binds; it is not
-a verdict on whether the plan may proceed. Print it before saying anything else about a conflict.
+`- **Behaviour:**` entries, one per doc, rules quoted verbatim. **Write that header as soon as
+`bind` returns**, even when a rule plainly contradicts what the spec asks for — the header
+records what binds; it is not a verdict on whether the plan may proceed. Print it before saying anything else about a conflict.
 
 **Stop condition.** Stop before writing any task when the architect's report contains either:
 - a line carrying both literal tokens `[high tier]` and `[depends: yes]` (under *Not binding*); or

@@ -169,13 +169,15 @@ warnings alone exit 0.
 candidate with `kind: "behaviour"` and status `-`. The architect judges each rule in the form
 the diff leaves it: a rule the PR adds or edits binds as edited, a rule the PR removes no longer
 binds, and editing one rule never exempts the others. A rule the diff breaks is a
-`behaviour-rule` finding, which `adr-lint verdict` marks critical and blocking. Code that
-already broke the rule where the diff does not change it, and the behaviour a *Known deviations*
-entry describes, are not findings; a new or wider break of the same rule is.
+`behaviour-rule` finding, which `adr-lint verdict` marks critical and blocking. The behaviour a
+*Known deviations* entry describes is not a finding while the code still shows it. A break the
+base code already had (visible in the removed lines or in code the diff does not change) is not
+a finding, even when the diff moves or reformats it; a new or wider break is.
 
 To change a rule, edit it in the same PR as the code (local home). A shared-home rule changes in
 its own KB PR, which merges first: until then, a code PR that breaks the rule as it stands on
-the KB's default branch is blocked. List the rule edits on the PR's `- Rules:` line
+the KB's default branch is blocked (the review reads the KB as checked out and assumes it is on
+that branch). List the rule edits on the PR's `- Rules:` line
 (`references/pr-decisions.md`). The only override is the repository's admin bypass of the
 required check. The finding's fields, the checks on its ids and the exit codes are in
 `references/adr-findings.md`.

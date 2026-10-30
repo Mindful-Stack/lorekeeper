@@ -31,7 +31,27 @@ const recordOf = (id) => id.replace(/\.[RF]\d+$/, '');
 const DOC_CLASSES = { contradiction: 'adr', trigger: 'adr', 'stale-fact': 'adr', 'behaviour-rule': 'behaviour' };
 const strings = (x) => Array.isArray(x) && x.every((y) => typeof y === 'string');
 
+// A behaviour rule written doc-local (`device.R2`), as its heading shows it.
+const LOCAL_RULE = /^([a-z][a-z0-9-]*)\.R\d+$/;
+
+// Rewrites each doc-local rule id in a finding to the qualified id of the one selected doc with
+// that prefix, in place. No such doc, or several, cannot be told apart: exit 2.
+function qualifyRuleIds(findings, picked) {
+    const docs = picked.filter((p) => p.doc === 'behaviour' && p.status !== 'missing').map((p) => p.id);
+    for (const f of findings) {
+        f.ids = f.ids.map((id) => {
+            const m = LOCAL_RULE.exec(id);
+            if (!m) return id;
+            const hits = docs.filter((d) => d.slice(d.indexOf('/') + 1) === m[1]);
+            if (hits.length === 1) return `${hits[0]}${id.slice(m[1].length)}`;
+            const which = hits.length ? `selected behaviour docs ${hits.join(', ')} all have prefix ${m[1]}` : `no selected behaviour doc has prefix ${m[1]}`;
+            throw fail(`${f.class}: ${id} is a doc-local rule id and ${which}; write the qualified id, e.g. ${hits[0] || `<home>/${m[1]}`}${id.slice(m[1].length)}`);
+        });
+    }
+}
+
 // doc: { coverage, findings }; picked: select output; recordText(id) → text or null;
+// doc-local rule ids in findings are qualified in place (qualifyRuleIds);
 // kindOf(id) → 'adr' | 'behaviour' | null (the catalogue's view). Selected ids win, then
 // kindOf, then the id's shape.
 function validate({ doc, picked, recordText, kindOf }) {
@@ -41,6 +61,10 @@ function validate({ doc, picked, recordText, kindOf }) {
     if (!cov || typeof cov !== 'object' || !strings(cov.checked) || !strings(cov.notReviewed)) {
         throw fail('findings document needs "coverage": {"checked": [ids], "notReviewed": [strings]}');
     }
+    for (const id of cov.checked) {
+        if (/\.R\d+$/.test(id)) throw fail(`coverage: checked ${id} is a rule id; checked takes record and doc ids, not rule ids (${recordOf(id)})`);
+    }
+    qualifyRuleIds(doc.findings, picked);
     // A selected id that resolves nowhere is reported as dangling below, so attesting it is fine.
     const missing = new Set(picked.filter((p) => p.status === 'missing').map((p) => p.id));
     for (const id of cov.checked) {
@@ -90,4 +114,4 @@ function validate({ doc, picked, recordText, kindOf }) {
     };
 }
 
-module.exports = { ruleIds, factIds, recordOf, validate };
+module.exports = { ruleIds, factIds, recordOf, qualifyRuleIds, validate };

@@ -1288,3 +1288,45 @@ test('D3: a Source record in another repo\'s home is read from there, not report
     assert.deepEqual(c.reasons, ['source']);
     assert.match(c.record, /## Decision/);
 });
+
+function verdictOn(w, findings, checked) {
+    const patch = path.join(w.root, 'p.patch');
+    write(patch, PATCH);
+    const f = path.join(w.root, 'f.json');
+    write(f, JSON.stringify({ coverage: { checked, notReviewed: [] }, findings }));
+    return runCli(w.root, w.env, 'verdict', '--findings', f, '--diff', patch, '--repo', 'api');
+}
+const BREAK_R2 = (id) => [{ class: 'behaviour-rule', ids: [id], where: 'src/Devices/Status.cs:1', summary: 'lists other projects\' devices' }];
+
+test('D5: a doc-local rule id is qualified when exactly one selected doc has its prefix', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    const v = verdictOn(w, BREAK_R2('device.R2'), ['api/device', 'kb/ADR-0001']);
+    assert.equal(v.code, 1, v.stdout + v.stderr);
+    assert.deepEqual(JSON.parse(v.stdout).findings[0].ids, ['api/device.R2']);
+});
+
+test('D5: a doc-local rule id with no or several selected docs of that prefix exits 2', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    const none = verdictOn(w, BREAK_R2('status.R2'), ['api/device', 'kb/ADR-0001']);
+    assert.equal(none.code, 2, none.stdout + none.stderr);
+    assert.match(none.stderr, /status\.R2 .*no selected behaviour doc has prefix status; write the qualified id/);
+    write(path.join(w.kb, 'knowledge', 'behaviour', 'device-status.md'), makeBehaviourDoc());
+    const two = verdictOn(w, BREAK_R2('device.R2'), ['api/device', 'kb/device', 'kb/ADR-0001']);
+    assert.equal(two.code, 2, two.stdout + two.stderr);
+    assert.match(two.stderr, /device\.R2 .*api\/device, kb\/device.*write the qualified id, e\.g\. api\/device\.R2/);
+});
+
+test('D5: a rule id in coverage.checked exits 2: checked takes doc ids, not rule ids', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    for (const id of ['api/device.R2', 'device.R2', 'kb/ADR-0001.R1']) {
+        const v = verdictOn(w, [], ['api/device', 'kb/ADR-0001', id]);
+        assert.equal(v.code, 2, v.stdout + v.stderr);
+        assert.match(v.stderr, new RegExp(`checked ${id.replace(/[./]/g, '\\$&')} is a rule id; checked takes record and doc ids, not rule ids`));
+    }
+});

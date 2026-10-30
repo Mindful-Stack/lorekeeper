@@ -8,6 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const { parseRecord } = require('./frontmatter');
 const { walk } = require('./markdown');
+const { isEmpty, asList } = require('./frontmatter');
+const { matchesGlob } = require('./glob');
+const { SHARED_SCOPE, PREFIXED } = require('./rules');
 
 const PREFIX_RE = /^[a-z][a-z0-9-]*$/;
 // `<home>/<prefix>`; a prefix is lowercase, so an ADR id (`kb/ADR-0001`) never matches.
@@ -66,4 +69,100 @@ function loadBehaviourHome(dir) {
     return { docs };
 }
 
-module.exports = { PREFIX_RE, DOC_ID_RE, RULE_HEAD, parseDoc, ruleNumbers, loadBehaviourHome };
+// Rule ids of an ADR, as coverage.ruleIds reads them (kept here to avoid a require cycle).
+const adrRuleIds = (text) => [...new Set(walk(text).lines
+    .filter((l) => l.section === 'Decision')
+    .map((l) => /^\s*[-*]\s+\*\*(R\d+)\*\*/.exec(l.text))
+    .filter(Boolean)
+    .map((m) => m[1]))];
+
+const SOURCE_RE = /^([A-Za-z0-9._-]+\/ADR-\d{4})(?:\.(R\d+))?$/;
+
+// ctx: { home: {kind, prefix}, docs, resolveRef(qualifiedAdrId), repoFiles(repo|null) }.
+// Returns [{ file, rule, level, message }], the shape checkHome returns.
+function checkBehaviourHome(ctx) {
+    const out = [];
+    const err = (file, rule, message) => out.push({ file, rule, level: 'error', message });
+    const warn = (file, rule, message) => out.push({ file, rule, level: 'warning', message });
+    const byPrefix = new Map();
+    for (const d of ctx.docs) {
+        const p = d.fm.prefix;
+        if (typeof p === 'string' && p) {
+            if (!byPrefix.has(p)) byPrefix.set(p, []);
+            byPrefix.get(p).push(d);
+        }
+    }
+    for (const d of ctx.docs) checkDoc(ctx, d, byPrefix, err, warn);
+    return out;
+}
+
+function checkRef(ctx, d, ref, key, allowRule, err, warn) {
+    const m = SOURCE_RE.exec(ref);
+    if (!m || (m[2] && !allowRule)) return err(d.file, 'relations', `${key} ${ref} is not a qualified ADR id (<home>/ADR-NNNN${allowRule ? '[.R<n>]' : ''})`);
+    const found = ctx.resolveRef ? ctx.resolveRef(m[1]) : { state: 'unavailable' };
+    if (found.state === 'missing') return err(d.file, 'relations', `${key} ${m[1]} does not exist`);
+    if (found.state === 'unavailable') return warn(d.file, 'relations', `${key} ${ref}: its home is not on disk, so it was not checked`);
+    if (m[2] && found.text) {
+        const rules = adrRuleIds(found.text);
+        if (rules.length && !rules.includes(m[2])) err(d.file, 'relations', `${key} ${ref}: ${m[1]} has no ${m[2]}`);
+    }
+    if (found.fm && found.fm.status === 'superseded') warn(d.file, 'relations', `${key} ${m[1]} is superseded; update the rule to its successor`);
+    return undefined;
+}
+
+function checkDoc(ctx, d, byPrefix, err, warn) {
+    const { home } = ctx;
+    const fm = d.fm;
+    for (const e of d.errors) err(d.file, 'schema', e);
+    if (!d.found) return;
+    for (const key of ['title', 'description', 'tags', 'prefix', 'scope']) {
+        if (isEmpty(fm[key])) err(d.file, 'schema', `${key} is required`);
+    }
+    for (const key of ['tags', 'scope', 'related']) {
+        if (!isEmpty(fm[key]) && !Array.isArray(fm[key])) err(d.file, 'schema', `${key} must be an inline list ([a, b])`);
+    }
+    const listPrefix = Array.isArray(fm.prefix);
+    const prefix = typeof fm.prefix === 'string' ? fm.prefix : '';
+    if (listPrefix) err(d.file, 'prefix', 'prefix must be a single value');
+    else if (prefix && (!PREFIX_RE.test(prefix) || prefix === 'adr')) {
+        err(d.file, 'prefix', `prefix ${prefix} must match ^[a-z][a-z0-9-]*$ and may not be adr`);
+    }
+    const others = (byPrefix.get(prefix) || []).filter((x) => x !== d);
+    if (prefix && others.length) err(d.file, 'prefix', `prefix ${prefix} is also used by ${others.map((x) => x.name).join(', ')}`);
+    if (!d.sections.includes('Rules')) err(d.file, 'sections', 'needs a ## Rules section');
+    if (!d.sections.includes('Not yet decided')) err(d.file, 'sections', 'needs a ## Not yet decided section (it may say "none")');
+    const seen = new Set();
+    for (const h of d.headings) {
+        if (!h.id) {
+            // A list prefix is already reported once; every heading would repeat it.
+            if (!listPrefix) err(d.file, 'rules', `"### ${h.raw}" is not a rule heading (### ${prefix || '<prefix>'}.R<n> <name>); a group is a bold label line`);
+            continue;
+        }
+        if (seen.has(h.id)) err(d.file, 'rules', `duplicate rule id ${h.id}`);
+        seen.add(h.id);
+        if (!/\b(SHALL|MUST)\b/.test(h.body)) warn(d.file, 'rules', `${h.id} has no SHALL or MUST`);
+        if (!/^\s*[-*]\s+Example:/m.test(h.body)) warn(d.file, 'rules', `${h.id} has no Example line`);
+        for (const s of h.sources) checkRef(ctx, d, s, 'Source', true, err, warn);
+    }
+    for (const r of asList(fm.related)) checkRef(ctx, d, r, 'related', false, err, warn);
+    for (const id of d.deviations) {
+        if (!seen.has(id)) warn(d.file, 'deviations', `${id} is not a rule in this doc`);
+    }
+    for (const s of Array.isArray(fm.scope) ? fm.scope : []) {
+        if (home.kind === 'shared' && !SHARED_SCOPE.test(s)) {
+            err(d.file, 'scope', `shared-home scope entries are <repo>:<glob>, got ${s}`);
+            continue;
+        }
+        if (home.kind === 'local' && PREFIXED.test(s)) {
+            err(d.file, 'scope', `local-home scope entries are globs relative to the repo root, got ${s}`);
+            continue;
+        }
+        const [repo, glob] = home.kind === 'shared' ? [s.slice(0, s.indexOf(':')), s.slice(s.indexOf(':') + 1)] : [null, s];
+        const files = ctx.repoFiles ? ctx.repoFiles(repo) : null;
+        if (files && !files.some((f) => matchesGlob(f, glob))) warn(d.file, 'scope', `${s} matches no tracked file`);
+    }
+}
+
+module.exports = {
+    PREFIX_RE, DOC_ID_RE, RULE_HEAD, parseDoc, ruleNumbers, loadBehaviourHome, checkBehaviourHome, adrRuleIds,
+};

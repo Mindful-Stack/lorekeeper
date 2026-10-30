@@ -29,7 +29,7 @@ process or "RFC or ADR" node); where it says otherwise, it wins. Without one, us
 | Product policy (who may do or see what, consent, invitations, billing access) that is not also hard-to-reverse architecture | a rule in the capability's **behaviour doc** |
 | A reversible convention | a **standard node** in the knowledge base |
 | A choice no code depends on (a tool, a vendor with no integration, a process) | the **RFC outcome**, where the household keeps RFCs; a household without them records it as recording-decisions' triage says |
-| A small choice inside one epic or initiative | a **dated line** under *Decided* in that item's brief (`2026-10-30: <choice> (<who>)`) |
+| A small choice inside one epic or initiative | a **dated line** under *Decisions* in that item's brief (`2026-10-30: <choice> (<who>)`) |
 
 Specs are not decision records. A spec lists the decisions it makes and is kept as dated history;
 a hard-to-reverse decision in a spec becomes a proposed ADR first. The same holds for a wiki page,
@@ -51,7 +51,7 @@ the request names is written and the rest is listed as proposals in the report):
   yes, as the skill's required-decision steps say); a behaviour doc rule, a standard node or an
   RFC outcome through **knowledge-update** (a reviewed PR to that doc or node, or the outcome
   linked where the household keeps RFCs); a dated line in the brief edit of the same run. Then
-  add its line under *Decided* in the brief, naming the record, and point the known known at it.
+  add its line under *Decisions* in the brief, naming the record, and point the known known at it.
 - **Require a decision** (still open, consequential, blocking work): the skill's
   `reeve decision require` step, with a decider from the user.
 - **Close a required decision with a reason**: when an open required decision in the planner is

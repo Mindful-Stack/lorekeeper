@@ -74,7 +74,7 @@ section says.
    Say what you looked up and what it answered in one line, `Researched: <topics and findings>`,
    or `Researched: nothing — no open question is answerable by research`.
 4. **Brief.** Start from the existing `value.brief`: keep what still holds, fold in the answers,
-   and show what changes; decisions already taken go under a *Decided* heading, one line each
+   and show what changes; decisions already taken go under a *Decisions* heading, one line each
    naming its record, as `<plugin-root>/skills/planning-initiative/reference/brief-template.md`
    lays it out. Write it only on a yes for this brief (rule 1):
    `reeve epic edit <EPIC> --brief <md> --version <version> --json`; keep the new `value.version`.
@@ -86,7 +86,7 @@ section says.
    step 1. Show each candidate with its source and proposed outcome (a kind of record by the
    household's ADR process, a required decision, closing an open required decision with a
    reason, or leaving it) before anything is written, and carry out the outcomes the user
-   confirms as that reference says; each recorded decision gets its line under *Decided* in the
+   confirms as that reference says; each recorded decision gets its line under *Decisions* in the
    epic's brief (fold it into the step 4 brief, or edit the brief once more with the new
    `version`). For each open question that is a consequential choice blocking work (not a
    clarification) and has no decision yet, propose a required decision, as planning-initiative

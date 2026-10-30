@@ -83,7 +83,7 @@ argument.
    record; use its output here). Show each candidate with its source and proposed outcome (a kind
    of record by the household's ADR process, a required decision, closing an open required
    decision with a reason, or leaving it) before anything is written, then carry out the outcomes
-   the user confirms as that reference says; each recorded decision gets its line under *Decided*
+   the user confirms as that reference says; each recorded decision gets its line under *Decisions*
    in the brief (fold it into the step 4 brief, or edit the brief once more with the new
    `version`). The rest of this step is the required-decision outcome.
 

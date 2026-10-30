@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { makeRecord, tmpDir, write, gitEnv, git, initRepo, commitAll, runCli } = require('./helpers/adr-fixtures');
+const { makeRecord, makeBehaviourDoc, tmpDir, write, gitEnv, git, initRepo, commitAll, runCli } = require('./helpers/adr-fixtures');
 
 // A household with a team KB (`lore`, its own git repo) and one code repo (`api`).
 function workspace(t) {
@@ -831,4 +831,57 @@ test('select --json gives a missing candidate empty reviewer context', (t) => {
     assert.equal(c.description, '');
     assert.deepEqual(c.scope, []);
     assert.equal(c.record, '');
+});
+
+test('check validates a local behaviour home the household names', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'src', 'Devices', 'Status.cs'), 'class S {}\n');
+    commitAll(w.api, w.env, 'code');
+    const dir = path.join(w.api, 'docs', 'behaviour');
+    write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    const ok = runCli(w.root, w.env, 'check', dir);
+    assert.equal(ok.code, 0, ok.stdout + ok.stderr);
+    assert.equal(ok.stdout, '');
+    write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ prefix: 'api', sections: { 'Not yet decided': undefined } }));
+    const bad = runCli(w.root, w.env, 'check', dir);
+    assert.equal(bad.code, 1);
+    assert.match(bad.stdout, /device-status\.md: sections: needs a ## Not yet decided section/);
+});
+
+test('check --home shared recognises a dir named like the shared behaviour dir', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    const dir = path.join(root, 'knowledge', 'behaviour');
+    write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ fm: { related: ['kb/ADR-0001'] }, sections: { Rules: '### device.R1 One\nSHALL a.\n- Example: b', 'Known deviations': undefined } }));
+    const r = runCli(root, env, 'check', '--home', 'shared', '--ci', '--base', 'main', dir);
+    // Without a household, kb/ resolves to no checked-out home: unavailable, a warning.
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /warning: related kb\/ADR-0001: its home is not on disk/);
+});
+
+test('an ADR dir checked with --home is still read as ADRs', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const r = runCli(w.root, w.env, 'check', '--home', 'shared', w.shared);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+});
+
+test('a sibling that is not its own checkout skips the dead-glob warning', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    write(path.join(root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore', repos: [{ name: 'ws' }, { name: 'lore' }, { name: 'api' }],
+    }));
+    write(path.join(root, 'api', 'src', 'Devices', 'Status.cs'), 'class S {}\n');
+    initRepo(root, env);
+    commitAll(root, env, 'meta repo tracks api by accident');
+    const dir = path.join(root, 'lore', 'knowledge', 'behaviour');
+    write(path.join(dir, 'device-status.md'), makeBehaviourDoc({
+        fm: { scope: ['api:src/Nope/**'] },
+        sections: { Rules: '### device.R1 One\nSHALL a.\n- Example: b', 'Known deviations': undefined },
+    }));
+    const r = runCli(root, env, 'check', dir);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /scope:/);
 });

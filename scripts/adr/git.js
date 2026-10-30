@@ -52,6 +52,12 @@ function changedFiles(root, ref) {
     return [...new Set([...tracked, ...untracked])];
 }
 
+// Every tracked file under `root`, repo-relative; null when `root` is not a git checkout.
+function trackedFiles(root) {
+    const out = git(root, ['ls-files']);
+    return out === null ? null : lines(out);
+}
+
 function originUrl(root) {
     const out = git(root, ['remote', 'get-url', 'origin']);
     return out === null ? null : out.trim();
@@ -83,5 +89,5 @@ function defaultBranch(root) {
 }
 
 module.exports = {
-    gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, originUrl, repoName, defaultBranch,
+    gitRoot, revExists, mergeBase, showFile, listDir, changedFiles, trackedFiles, originUrl, repoName, defaultBranch,
 };

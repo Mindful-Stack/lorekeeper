@@ -1151,27 +1151,103 @@ test('D1: a doc whose own file the diff touches is selected, reason touched, wha
     assert.match(both.stdout, /^api\/device\t.*\tscope,touched$/m);
 });
 
-test('D1: a behaviour doc path in the diff that is gone at head exits 2 for select and verdict', (t) => {
+// File-level patches as git writes them: a deletion, an addition (with the doc's prefix line in
+// the hunk) and a -M rename.
+const delPatch = (p, prefix = 'device') => `diff --git a/${p} b/${p}\ndeleted file mode 100644\n--- a/${p}\n+++ /dev/null\n@@ -1,2 +0,0 @@\n----\n-prefix: ${prefix}\n`;
+const addPatch = (p, prefix = 'device') => `diff --git a/${p} b/${p}\nnew file mode 100644\n--- /dev/null\n+++ b/${p}\n@@ -0,0 +1,2 @@\n+---\n+prefix: ${prefix}\n`;
+const renamePatch = (from, to) => `diff --git a/${from} b/${to}\nsimilarity index 100%\nrename from ${from}\nrename to ${to}\n`;
+const GONE = /docs\/behaviour\/device-status\.md is (deleted by the diff|moved by the diff to \S+, which is not a doc in its home)/;
+
+test('I1: a doc the patch deletes or moves out of being a doc exits 2, whatever the working tree holds', (t) => {
     const w = workspace(t);
     write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
     const dir = path.join(w.api, 'docs', 'behaviour');
-    const moves = {
-        deleted: null,
-        underscore: '_device-status.md',
-        readme: 'README.md',
-        upper: 'device-status.MD',
-        subdir: 'devices/device-status.md',
+    const from = 'docs/behaviour/device-status.md';
+    const cases = {
+        deleted: delPatch(from),
+        'deleted, the working tree still on the base': delPatch(from),
+        underscore: renamePatch(from, 'docs/behaviour/_device-status.md'),
+        readme: renamePatch(from, 'docs/behaviour/README.md'),
+        upper: renamePatch(from, 'docs/behaviour/device-status.MD'),
+        subdir: renamePatch(from, 'docs/behaviour/devices/device-status.md'),
+        'out of the home': renamePatch(from, 'docs/old/device-status.md'),
+        'no -M, re-added under _': delPatch(from) + addPatch('docs/behaviour/_device-status.md'),
     };
-    for (const [label, to] of Object.entries(moves)) {
+    for (const [label, patch] of Object.entries(cases)) {
         fs.rmSync(dir, { recursive: true, force: true });
-        if (to) write(path.join(dir, to), makeBehaviourDoc({ prefix: 'api' }));
-        const paths = ['docs/behaviour/device-status.md', ...(to ? [`docs/behaviour/${to}`] : [])];
-        const { sel, ver } = selectAndVerdict(w, PATCH + touchPatch(...paths));
+        if (label.includes('working tree')) write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+        const { sel, ver } = selectAndVerdict(w, PATCH + patch);
         assert.equal(sel.code, 2, `${label}: ${sel.stdout}${sel.stderr}`);
-        assert.match(sel.stderr, /docs\/behaviour\/device-status\.md is in the diff but not at head/, label);
+        assert.match(sel.stderr, GONE, label);
         assert.equal(ver.code, 2, `${label}: ${ver.stdout}${ver.stderr}`);
-        assert.match(ver.stderr, /docs\/behaviour\/device-status\.md is in the diff but not at head/, label);
+        assert.match(ver.stderr, GONE, label);
     }
+});
+
+test('I1: a rename to another doc name in the same home selects the doc under its new path', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const dir = path.join(w.api, 'docs', 'behaviour');
+    write(path.join(dir, 'device-statuses.md'), makeBehaviourDoc({ prefix: 'api', fm: { scope: ['src/Other/**'] } }));
+    const from = 'docs/behaviour/device-status.md';
+    const to = 'docs/behaviour/device-statuses.md';
+    for (const [label, patch] of Object.entries({ '-M': renamePatch(from, to), 'no -M': delPatch(from) + addPatch(to) })) {
+        const { sel } = selectAndVerdict(w, patch);
+        assert.equal(sel.code, 0, `${label}: ${sel.stdout}${sel.stderr}`);
+        assert.match(sel.stdout, /^api\/device\t-\t\S+device-statuses\.md\ttouched$/m, label);
+    }
+    // Without -M, a deleted doc whose prefix no added doc carries is still gone.
+    const other = selectAndVerdict(w, delPatch(from) + addPatch(to, 'status'));
+    assert.equal(other.sel.code, 2, other.sel.stdout + other.sel.stderr);
+});
+
+test('I1: an added doc missing from the working tree, and planned --paths, do not exit 2', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    // An off-branch review of a PR that adds a doc: the doc is not on disk.
+    const off = selectAndVerdict(w, PATCH + addPatch('docs/behaviour/events.md', 'events'), ['api/device', 'kb/ADR-0001']);
+    assert.equal(off.sel.code, 0, off.sel.stdout + off.sel.stderr);
+    assert.equal(off.ver.code, 0, off.ver.stdout + off.ver.stderr);
+    // A plan names a doc it will create.
+    const plan = runCli(w.root, w.env, 'select', '--paths', 'src/Devices/Status.cs,docs/behaviour/events.md', '--repo', 'api');
+    assert.equal(plan.code, 0, plan.stdout + plan.stderr);
+    assert.match(plan.stdout, /^api\/device\t/m);
+});
+
+test('I2b: a file in a behaviour home with no frontmatter is not a doc, unless the diff touches it', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const notes = path.join(w.api, 'docs', 'behaviour', 'notes.md');
+    write(notes, '# notes\n');
+    const ok = selectAndVerdict(w, PATCH, ['kb/ADR-0001']);
+    assert.equal(ok.sel.code, 0, ok.sel.stdout + ok.sel.stderr);
+    assert.equal(ok.ver.code, 0, ok.ver.stdout + ok.ver.stderr);
+    // Touched, it is a doc the PR left unreadable.
+    const touched = selectAndVerdict(w, touchPatch('docs/behaviour/notes.md'));
+    assert.equal(touched.sel.code, 2, touched.sel.stdout + touched.sel.stderr);
+    assert.match(touched.sel.stderr, /notes\.md: no frontmatter.*behaviour\.localDir \/ repos\[\]\.behaviourDir/);
+    // Starting with --- (a BOM before it included) it is a doc that fails to parse: exit 2.
+    write(notes, '﻿---\ntitle: x\n');
+    const bom = selectAndVerdict(w, PATCH);
+    assert.equal(bom.sel.code, 2, bom.sel.stdout + bom.sel.stderr);
+    assert.match(bom.sel.stderr, /behaviour\.localDir \/ repos\[\]\.behaviourDir/);
+});
+
+test('M2: a Source record whose home is not on disk is neither selected nor missing', (t) => {
+    const w = workspace(t);
+    const hh = JSON.parse(fs.readFileSync(path.join(w.root, 'household.json'), 'utf8'));
+    hh.repos.push({ name: 'web' });
+    write(path.join(w.root, 'household.json'), JSON.stringify(hh));
+    // web is declared but not checked out; the KB's adrs dir does not exist either.
+    fs.rmSync(w.shared, { recursive: true, force: true });
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api',
+        sections: { Rules: '### device.R1 One\nA read SHALL a.\n- Example: b\n- Source: web/ADR-0003, kb/ADR-0001.R1', 'Known deviations': undefined } }));
+    const { sel, ver } = selectAndVerdict(w, PATCH, ['api/device']);
+    assert.equal(sel.code, 0, sel.stdout + sel.stderr);
+    assert.doesNotMatch(sel.stdout, /ADR-/);
+    assert.equal(ver.code, 0, ver.stdout + ver.stderr);
+    assert.deepEqual(JSON.parse(ver.stdout).findings, []);
 });
 
 test('D1: a non-doc file in a behaviour home that the diff touches and that exists is not a doc', (t) => {
@@ -1200,7 +1276,6 @@ test('1: a doc whose scope or prefix cannot be read exits 2 for select and verdi
     const good = makeBehaviourDoc({ prefix: 'api' });
     const broken = {
         unclosed: good.replace(/\n---\n/, '\n\n'),
-        none: good.replace(/^---\n[\s\S]*?\n---\n/, ''),
         bom: `﻿${good}`,
         'block scope': good.replace(/^scope: .*$/m, 'scope:\n  - src/Devices/**'),
         'duplicate prefix': good.replace(/^prefix: .*$/m, 'prefix: device\nprefix: dev'),

@@ -238,11 +238,6 @@ requirement somebody once had.
    - A break the base code already had (visible in the removed lines or in code the diff does
      not change) is not a finding, even when the diff moves or reformats it: note it under
      *Context*. A new or wider break is a finding.
-   - An exemption needs evidence in the patch (removed lines, or unchanged context showing the
-     same behaviour); without it, the break is new.
-
-   A product policy recorded as a rule in a behaviour doc is not an uncovered architectural
-   choice.
 
    A shared-home rule changes in its own KB PR, which merges first. Until it merges, the rule
    binds as it stands on the KB's default branch (the review reads the KB as checked out and

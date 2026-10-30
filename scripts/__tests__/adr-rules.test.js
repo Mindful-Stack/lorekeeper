@@ -100,6 +100,11 @@ test('high tier needs a trigger, two options and a scope; low tier does not', ()
     assert.ok(!run([low], { home: LOCAL }).some((v) => v.rule === 'high-tier'));
 });
 
+test('a high-tier record may consider more than three options', () => {
+    const four = '- **A** — a.\n- **B** — b.\n- **C** — c.\n- **D** — d.';
+    assert.ok(!run([rec({ sections: { 'Considered options': four } })]).some((v) => v.rule === 'high-tier'));
+});
+
 test('a rejected high-tier record need not carry the tier extras; the same record proposed does', () => {
     const thin = {
         sections: { 'Assumptions and invalidation triggers': '- Assumes nothing.', 'Considered options': '- **Only one**' },

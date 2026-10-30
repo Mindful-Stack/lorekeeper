@@ -378,13 +378,14 @@ function cmdHomes(flags) {
     };
     const repoDirOf = (h) => (homes.mode === 'single' ? homes.root : path.join(homes.root, h.repo));
     const shared = homes.sharedHome ? place(homes.sharedHome, homes.sharedRoot) : place(null, null);
+    const sharedB = homes.sharedBehaviourHome ? place(homes.sharedBehaviourHome, homes.sharedRoot) : place(null, null);
     console.log(JSON.stringify({
         mode: homes.mode,
         root: homes.root,
         governedRepo: governedRepo(homes, cwd),
         config: homes.config,
         localHomes: homes.localHomes.map((h) => ({
-            ...h, exists: exists(h.dir), ...place(h.dir, h.present ? repoDirOf(h) : null),
+            ...h, exists: exists(h.dir), behaviourExists: exists(h.behaviourDir), ...place(h.dir, h.present ? repoDirOf(h) : null),
         })),
         sharedHome: homes.sharedHome,
         sharedHomeExists: exists(homes.sharedHome),
@@ -392,6 +393,10 @@ function cmdHomes(flags) {
         sharedRepoRoot: shared.repoRoot,
         sharedRelDir: shared.relDir,
         sharedDefaultBranch: shared.defaultBranch,
+        behaviourConfig: homes.behaviourConfig,
+        sharedBehaviourHome: homes.sharedBehaviourHome,
+        sharedBehaviourHomeExists: exists(homes.sharedBehaviourHome),
+        sharedBehaviourRelDir: sharedB.relDir,
         otherKbs: homes.otherKbs.map((k) => ({ ...k, exists: exists(k.dir) })),
     }, null, 2));
     return 0;

@@ -995,3 +995,14 @@ test('verdict blocks on a behaviour-rule finding for a selected doc, and select 
     assert.equal(v.code, 1, v.stdout + v.stderr);
     assert.equal(JSON.parse(v.stdout).findings[0].severity, 'critical');
 });
+
+test('homes reports behaviour dirs, and the shared one with its repo root and default branch', (t) => {
+    const w = workspace(t);
+    commitAll(w.kb, w.env, 'init');
+    fs.mkdirSync(path.join(w.kb, 'knowledge', 'behaviour'), { recursive: true });
+    const out = JSON.parse(runCli(w.root, w.env, 'homes').stdout);
+    assert.equal(out.localHomes.find((h) => h.repo === 'api').behaviourDir, path.join(w.api, 'docs', 'behaviour'));
+    assert.equal(out.sharedBehaviourHome, path.join(w.kb, 'knowledge', 'behaviour'));
+    assert.equal(out.sharedBehaviourHomeExists, true);
+    assert.equal(out.sharedBehaviourRelDir, 'knowledge/behaviour');
+});

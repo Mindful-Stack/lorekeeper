@@ -11,31 +11,13 @@ function fail(message) {
     return e;
 }
 
-const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const { walk } = require('./markdown');
 
-// Ids opening a list item in one `## heading` section, skipping fenced examples. Fences follow
-// CommonMark: a closer uses the opener's character, a run at least as long, and nothing else.
+// Ids opening a list item in one `## heading` section, skipping fenced examples.
 function idsIn(text, heading, re) {
     const out = [];
-    let fence = null;
-    let inSection = false;
-    for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
-        if (fence) {
-            const close = new RegExp(`^ {0,3}${fence.ch}{${fence.len},}[ \\t]*$`);
-            if (close.test(line)) fence = null;
-            continue;
-        }
-        const open = FENCE_OPEN.exec(line);
-        if (open && !(open[1][0] === '`' && open[2].includes('`'))) {
-            fence = { ch: open[1][0], len: open[1].length };
-            continue;
-        }
-        const h = /^## (.+?)\s*$/.exec(line);
-        if (h) {
-            inSection = h[1] === heading;
-            continue;
-        }
-        const m = inSection && re.exec(line);
+    for (const { section, text: line } of walk(text).lines) {
+        const m = section === heading && re.exec(line);
         if (m && !out.includes(m[1])) out.push(m[1]);
     }
     return out;

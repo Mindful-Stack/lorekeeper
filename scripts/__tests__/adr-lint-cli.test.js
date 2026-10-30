@@ -1057,7 +1057,7 @@ test('a behaviour doc with no usable prefix blocks review only when its scope ma
     assert.match(shared.stderr, /x\.md has no usable prefix/);
 });
 
-test('a doc with an uppercase prefix is still a behaviour doc: stale-fact on it is refused', (t) => {
+test('a scoped doc with an uppercase prefix has no usable prefix', (t) => {
     const w = workspace(t);
     write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
     write(path.join(w.api, 'docs', 'behaviour', 'a.md'), makeBehaviourDoc({ prefix: 'api', fm: { prefix: 'Device' }, sections: ONE_RULE }));
@@ -1066,7 +1066,7 @@ test('a doc with an uppercase prefix is still a behaviour doc: stale-fact on it 
     write(f, JSON.stringify({ coverage: { checked: [], notReviewed: [] }, findings: [{ class: 'stale-fact', ids: ['api/Device'], where: 'src/Devices/Status.cs:1', summary: 's' }] }));
     const v = runCli(w.root, w.env, 'verdict', '--findings', f, '--diff', patch, '--repo', 'api');
     assert.equal(v.code, 2, v.stdout + v.stderr);
-    assert.match(v.stderr, /stale-fact names api\/Device, which is a behaviour doc/);
+    assert.match(v.stderr, /a\.md has no usable prefix/);
 });
 
 test('a single repo whose KB lives inside it lists a shared-and-local behaviour dir once', (t) => {
@@ -1085,4 +1085,19 @@ test('a single repo whose KB lives inside it lists a shared-and-local behaviour 
     assert.doesNotMatch(ids[0], /^kb\//);
     const idx = JSON.parse(runCli(root, env, 'index', '--json').stdout);
     assert.deepEqual(idx.behaviour.map((d) => d.id), ids);
+});
+
+test('a duplicate behaviour id blocks only when one of the duplicates is selected', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const dir = path.join(w.kb, 'knowledge', 'behaviour');
+    write(path.join(dir, 'a.md'), makeBehaviourDoc({ fm: { scope: ['web:src/**'] } }));
+    write(path.join(dir, 'b.md'), makeBehaviourDoc({ fm: { scope: ['web:lib/**'] } }));
+    const patch = patchIn(w);
+    const ok = runCli(w.root, w.env, 'select', '--diff', patch, '--repo', 'api');
+    assert.equal(ok.code, 0, ok.stdout + ok.stderr);
+    write(path.join(dir, 'b.md'), makeBehaviourDoc({ fm: { scope: ['api:src/Devices/**'] } }));
+    const bad = runCli(w.root, w.env, 'select', '--diff', patch, '--repo', 'api');
+    assert.equal(bad.code, 2, bad.stdout + bad.stderr);
+    assert.match(bad.stderr, /both have id kb\/device/);
 });

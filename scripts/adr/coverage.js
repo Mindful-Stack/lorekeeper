@@ -32,11 +32,11 @@ const DOC_CLASSES = { contradiction: 'adr', trigger: 'adr', 'stale-fact': 'adr',
 const strings = (x) => Array.isArray(x) && x.every((y) => typeof y === 'string');
 
 // doc: { coverage, findings }; picked: select output; recordText(id) → text or null;
-// kindOf(id) → 'adr' | 'behaviour' | null (callers pass the catalogue's view; without it the
-// selection's kinds are used, then the id's shape).
+// kindOf(id) → 'adr' | 'behaviour' | null (the catalogue's view). Selected ids win, then
+// kindOf, then the id's shape.
 function validate({ doc, picked, recordText, kindOf }) {
     const pickedKind = new Map(picked.filter((p) => p.doc).map((p) => [p.id, p.doc]));
-    const kind = (id) => (kindOf && kindOf(id)) || pickedKind.get(id) || (DOC_ID_RE.test(id) ? 'behaviour' : 'adr');
+    const kind = (id) => pickedKind.get(id) || (kindOf && kindOf(id)) || (DOC_ID_RE.test(id) ? 'behaviour' : 'adr');
     const cov = doc.coverage;
     if (!cov || typeof cov !== 'object' || !strings(cov.checked) || !strings(cov.notReviewed)) {
         throw fail('findings document needs "coverage": {"checked": [ids], "notReviewed": [strings]}');

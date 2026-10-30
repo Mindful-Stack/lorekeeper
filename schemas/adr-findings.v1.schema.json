@@ -23,7 +23,7 @@
         "additionalProperties": false,
         "required": ["class", "ids", "where", "summary"],
         "properties": {
-          "class": { "type": "string", "description": "behaviour-rule for candidates of kind behaviour; contradiction, trigger and stale-fact for kind adr; uncovered and dangling as before.", "enum": ["contradiction", "trigger", "stale-fact", "uncovered", "dangling", "behaviour-rule"] },
+          "class": { "type": "string", "description": "behaviour-rule for candidates of kind behaviour; contradiction, trigger and stale-fact for kind adr; uncovered: a hard-to-reverse choice no record covers; dangling: a cited id that resolves nowhere.", "enum": ["contradiction", "trigger", "stale-fact", "uncovered", "dangling", "behaviour-rule"] },
           "ids": { "type": "array", "items": { "type": "string" }, "description": "One record: its id, its rules (<id>.R<n>) or facts (<id>.F<n>); [] for uncovered; the cited id for dangling; for behaviour-rule, the doc id and the rules the change breaks (<doc>.R<n>)." },
           "where": { "type": ["string", "null"], "description": "path:line-range of the change; null only for dangling." },
           "summary": { "type": "string", "description": "One line. trigger: name the trigger and what fires it. uncovered: what reversing the choice would take. behaviour-rule: name the rule and what in the change breaks it." }

@@ -174,3 +174,7 @@ test('parseCitedIds does not read URLs, longer paths or longer rule numbers as b
     const body = '## Decisions\n- https://github.com/org/repo/blob/main/x.R2\n- path/to/file.R1x\n- docs/a/b.R3-old\n- see (kb/contract.R3).\n';
     assert.deepEqual(parseCitedIds(body), ['kb/contract']);
 });
+
+test('parseCitedIds reads ids wrapped in emphasis or glued to a label', () => {
+    assert.deepEqual(parseCitedIds('## Decisions\n- _kb/contract.R3_\n- Changes:api/org.R7\n').sort(), ['api/org', 'kb/contract']);
+});

@@ -49,12 +49,6 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
     };
     addDocs(local.behaviourDir, 'local', repo);
     if (homes.sharedBehaviourHome && !local.behaviourCoinciding) addDocs(homes.sharedBehaviourHome, 'shared', 'kb');
-    // Two docs under one id would share one attestation and one file lookup.
-    const seen = new Map();
-    for (const c of candidates.filter((x) => x.doc === 'behaviour')) {
-        if (seen.has(c.id)) throw new SelectionError(`behaviour docs ${seen.get(c.id)} and ${c.file} both have id ${c.id}; give one a different prefix (adr-lint check)`);
-        seen.set(c.id, c.file);
-    }
     const paths = given || parsePatchPaths(diffText);
     // A doc with no id cannot be reviewed; letting it drop out would pass a diff in its scope.
     for (const u of unusable) {
@@ -64,6 +58,14 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
         }
     }
     const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody || '') });
+    // Two docs under one id would share one attestation and one file lookup; that only matters
+    // when one of them is selected.
+    const files = new Map();
+    for (const c of candidates.filter((x) => x.doc === 'behaviour')) files.set(c.id, [...(files.get(c.id) || []), c.file]);
+    for (const p of picked) {
+        const dup = files.get(p.id);
+        if (p.doc === 'behaviour' && dup && dup.length > 1) throw new SelectionError(`behaviour docs ${dup.join(' and ')} both have id ${p.id}; give one a different prefix (adr-lint check)`);
+    }
     return { repo, homes, picked, candidates };
 }
 

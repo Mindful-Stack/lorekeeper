@@ -53,7 +53,12 @@ from a sign-in error.
 
 Exceptions: `code: conflict` (the `--version` is stale) — re-read the item, fold what changed into
 your text (a teammate's edit is kept, never overwritten), show it, and retry once with the new
-`version`. `decision link` — see its section. A usage error (an unknown flag, a value starting with
+`version`. `code: rate_limited` (the planner answered HTTP 429; the envelope carries
+`retry_after_secs` when the server sent a Retry-After, and text output says to retry after N
+seconds) — wait that many seconds (a few seconds when none is given), then run the SAME command
+again, with the SAME `--idempotency-key` for a create: a create retried with its key answers the
+same item, never a duplicate. Retry at most twice; then show the code and message and stop that
+step. `decision link` — see its section. A usage error (an unknown flag, a value starting with
 `-`) prints the CLI's usage text on stderr and no envelope (stdout is empty), exit 1: fix the
 command, never retry it as it was.
 

@@ -134,8 +134,10 @@ Exit 2 means the check failed closed. Causes:
   - a doc path in the diff is gone at head: deleted, moved out of the home, or renamed to
     something that is not a doc (`behaviour doc <path> is in the diff but not at head …`);
   - a doc in a home being selected from has no or unclosed frontmatter, a byte-order mark before
-    `---`, or a frontmatter error on `scope` or `prefix` (`<file>: <error>; review cannot tell
-    what it binds …`);
+    `---`, a frontmatter error on `scope` or `prefix`, or an unparseable frontmatter line
+    (`<file>: <error>; review cannot tell what it binds …`);
+  - a selected doc has no `## Rules` section as parsed (`<file> has no ## Rules section; review
+    cannot read its rules …`);
   - an entry in a behaviour home cannot be read, such as a dangling symlink.
 - The findings are not valid JSON; there is no `adr-findings` block, more than one, or one that
   is not terminated; there is no `findings` array.
@@ -209,12 +211,13 @@ its full record).
    record covers, the summary says what reversing it later would take.
 5. Report a behaviour rule the diff breaks as `behaviour-rule`, only for a candidate of kind
    `behaviour`. Cite the rule as the candidate's `id` plus `.R<n>` (`backend/device.R2`), never
-   the `device.R2` its heading shows. The behaviour a *Known deviations* entry describes, while
-   the code still shows it, is not a finding; an entry the diff itself adds does not exempt a
-   break the same diff introduces. A break the base code already had (visible in the removed
-   lines or in code the diff does not change) is not a finding, even when the diff moves or
-   reformats it; a new or wider break is. An exemption needs evidence in the patch (the removed
-   lines, or unchanged context showing the same behaviour); without it, the break is new.
+   the `device.R2` its heading shows. A *Known deviations* entry the diff does not add exempts
+   code, new or existing, that shows exactly the behaviour it describes; a break wider than that
+   behaviour is a finding, and an entry the diff itself adds exempts nothing in that diff. A
+   break the base code already had (visible in the removed lines or in code the diff does not
+   change) is not a finding, even when the diff moves or reformats it; a new or wider break is.
+   That exemption needs evidence in the patch (the removed lines, or unchanged context showing
+   the same behaviour); without it, the break is new.
 6. A broken behaviour rule is always a `behaviour-rule`, and a contradicted record is always a
    `contradiction`. When a rule's `Source:` record is contradicted by the same change, report
    both.

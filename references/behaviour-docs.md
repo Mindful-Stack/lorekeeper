@@ -95,11 +95,10 @@ A status read SHALL list only the devices of the requested project.
   fixed. Review selects every record a selected doc's rules name here (see *In review*).
 - **Known deviations** (optional): `- <rule id>[, <rule id>…]: <what the code does instead>
   (<ticket>)`, unindented, with unqualified rule ids. It records an intended rule the code does
-  not meet yet. In review it exempts only the behaviour it describes, while the code still shows
-  it; any other break of the same rule is still a finding. An entry the diff itself adds does not
-  exempt a break the same diff introduces: a deviation records a break the code already has.
-  The `(<ticket>)` and "while the code still shows it" are conventions; `check` does not enforce
-  them.
+  not meet yet. In review an entry exempts code, new or existing, that shows exactly the
+  behaviour it describes; a break wider than that behaviour, or any other break of the same
+  rule, is still a finding. An entry the diff itself adds exempts nothing in that diff: it binds
+  from the next PR on. The `(<ticket>)` is a convention; `check` does not enforce it.
 - **Not yet decided** is required; it may say "none". It tells agents where not to invent an
   answer.
 - Sections are `## ` headings at the start of a line, named exactly as above (`## Rules`,
@@ -187,7 +186,10 @@ binds:
 - a doc path in the diff is gone at head: the doc was deleted, moved out of the home, or renamed
   to something that is not a doc (`_…`, `README.md`, `.MD`, a subdirectory);
 - a doc in a home being selected from, touched or not, has no frontmatter, unclosed frontmatter,
-  a byte-order mark before `---`, or a frontmatter error on `scope` or `prefix`;
+  a byte-order mark before `---`, a frontmatter error on `scope` or `prefix`, or an
+  unparseable frontmatter line (it may be either);
+- a selected doc has no `## Rules` section as parsed (hidden by an unclosed fence, or a heading
+  in another case), so its rules cannot be read;
 - a doc the diff touches, or whose scope matches it, has no usable `prefix`.
 
 Retiring a doc therefore needs the repository's admin bypass of the required check, as does
@@ -197,11 +199,12 @@ The architect judges each rule in the form the diff leaves it: a rule the PR add
 as edited, a rule the PR removes no longer binds, and editing one rule never exempts the others.
 A rule the diff breaks is a `behaviour-rule` finding, which `adr-lint verdict` marks critical
 and blocking. When the rule has a `Source:` and the diff also contradicts that record, both are
-reported: the `behaviour-rule` on the rule and the `contradiction` on the record. The behaviour a
-*Known deviations* entry describes is not a finding while the code still shows it; an entry the
-same diff adds does not exempt a break that diff introduces. A break the base code already had
-(visible in the removed lines or in code the diff does not change) is not a finding, even when
-the diff moves or reformats it; a new or wider break is.
+reported: the `behaviour-rule` on the rule and the `contradiction` on the record. A *Known
+deviations* entry the diff does not add exempts code, new or existing, that shows exactly the
+behaviour it describes; a wider break is a finding, and an entry the same diff adds exempts
+nothing in it. A break the base code already had (visible in the removed lines or in code the
+diff does not change) is not a finding, even when the diff moves or reformats it; a new or wider
+break is, and without evidence in the patch the break is new.
 
 To fix a broken rule, conform, or edit the rule in the same PR as the code (local home). For a
 rule with a `Source:`, the record wins: conform, or replace the record (`/lore:adr replace …`);

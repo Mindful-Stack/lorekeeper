@@ -233,8 +233,9 @@ requirement somebody once had.
    form the diff leaves the doc: a rule the PR adds or edits is judged as edited; a rule the PR
    removes no longer binds. Editing one rule never exempts the others. Report each rule the diff
    breaks as `behaviour-rule`. The exemptions are keyed to the break, not the rule:
-   - A *Known deviations* entry exempts only the behaviour it describes, while the code still
-     shows it. An entry the diff itself adds does not exempt a break the same diff introduces.
+   - A *Known deviations* entry that the diff does not add exempts code, new or existing, that
+     shows exactly the behaviour it describes. A break wider than that behaviour is a finding.
+     An entry the diff itself adds exempts nothing in that diff.
    - A break the base code already had (visible in the removed lines or in code the diff does
      not change) is not a finding, even when the diff moves or reformats it: note it under
      *Context*. A new or wider break is a finding.

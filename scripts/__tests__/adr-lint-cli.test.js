@@ -1343,3 +1343,34 @@ test('3: check on an unrecognised folder of behaviour docs exits 2 and says how 
     write(path.join(w.local, 'notes.md'), makeBehaviourDoc({ prefix: 'api' }));
     assert.notEqual(runCli(w.root, w.env, 'check', w.local).code, 2);
 });
+
+test('a selected doc with no ## Rules section as parsed exits 2 for select and verdict', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const file = path.join(w.api, 'docs', 'behaviour', 'device-status.md');
+    const good = makeBehaviourDoc({ prefix: 'api' });
+    for (const [label, text] of Object.entries({
+        'unclosed fence': good.replace('## Rules', '```\n## Rules'),
+        lowercase: good.replace('## Rules', '## rules'),
+    })) {
+        write(file, text);
+        const { sel, ver } = selectAndVerdict(w, PATCH, ['api/device', 'kb/ADR-0001']);
+        assert.equal(sel.code, 2, `${label}: ${sel.stdout}${sel.stderr}`);
+        assert.match(sel.stderr, /device-status\.md has no ## Rules section; review cannot read its rules/, label);
+        assert.equal(ver.code, 2, `${label}: ${ver.stdout}${ver.stderr}`);
+    }
+    // Out of scope and untouched, it is not selected and does not block.
+    write(file, good.replace('## Rules', '## rules').replace(/^scope: .*$/m, 'scope: ["src/Other/**"]'));
+    assert.equal(selectAndVerdict(w, PATCH, ['kb/ADR-0001']).sel.code, 0);
+});
+
+test('a keyless frontmatter error (an unparseable line) makes a doc unreadable', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const file = path.join(w.api, 'docs', 'behaviour', 'device-status.md');
+    write(file, makeBehaviourDoc({ prefix: 'api' }).replace(/^scope: (.*)$/m, 'scope:$1'));
+    const { sel, ver } = selectAndVerdict(w, PATCH);
+    assert.equal(sel.code, 2, sel.stdout + sel.stderr);
+    assert.match(sel.stderr, /device-status\.md: unparseable frontmatter line: scope:\[.*review cannot tell what it binds/);
+    assert.equal(ver.code, 2, ver.stdout + ver.stderr);
+});

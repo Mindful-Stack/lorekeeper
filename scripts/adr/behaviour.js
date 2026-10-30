@@ -94,11 +94,11 @@ function loadBehaviourHome(dir) {
     return { docs };
 }
 
-// Why a doc's scope or prefix cannot be read, or null: no or unclosed frontmatter, or an
-// error on either key. Review cannot tell what such a doc binds.
+// Why a doc's scope or prefix cannot be read, or null: no or unclosed frontmatter, an error on
+// either key, or an unparseable line (which may be either). Review cannot tell what it binds.
 function unreadable(doc) {
     if (!doc.found) return `${doc.errors[0]}${doc.text.startsWith('\uFEFF') ? ' (the file starts with a byte-order mark)' : ''}`;
-    const i = doc.errorKeys.findIndex((k) => k === 'scope' || k === 'prefix');
+    const i = doc.errorKeys.findIndex((k) => k === 'scope' || k === 'prefix' || k === null);
     return i === -1 ? null : doc.errors[i];
 }
 

@@ -135,6 +135,13 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
         }
     }
     const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody || ''), touched });
+    // A selected doc whose rules cannot be read (no `## Rules` as parsed) cannot be judged.
+    for (const p of picked.filter((x) => x.doc === 'behaviour' && x.file)) {
+        const c = candidates.find((x) => x.file === p.file);
+        if (!B.parseDoc(p.file, c.text).sections.includes('Rules')) {
+            throw new SelectionError(`${p.file} has no ## Rules section; review cannot read its rules (an unclosed fence, or a heading in another case?). Fix it (adr-lint check) before review`);
+        }
+    }
     addSources({ homes, local, candidates, picked });
     // Two docs under one id would share one attestation and one file lookup; that only matters
     // when one of them is selected.

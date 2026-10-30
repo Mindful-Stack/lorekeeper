@@ -222,10 +222,10 @@ finding class, missing or malformed `coverage`, a selected record or behaviour d
 as checked, an id that resolves to no record, behaviour doc, rule or fact, a located finding
 without `where`, a repo that cannot be determined, a behaviour doc whose binding it cannot tell
 (one that shares its id with another, has no usable prefix, has unreadable frontmatter, scope or
-prefix, or is in the diff but gone at head), a doc-local rule id it cannot qualify, a rule id in
-`coverage.checked`, or an unreadable input, record or behaviour doc. Report its stderr, print
-`**ADR check:** could not run (verdict exit 2: <stderr>)`, and count it as one blocking finding:
-the check failed closed.
+prefix, has no `## Rules` as parsed, or is in the diff but gone at head), a doc-local rule id
+it cannot qualify, a rule id in `coverage.checked`, or an unreadable input, record or behaviour
+doc. Report its stderr, print `**ADR check:** could not run (verdict exit 2: <stderr>)`, and
+count it as one blocking finding: the check failed closed.
 
 The summary line's count comes from the verdict's `blocking` field. Never count it yourself.
 

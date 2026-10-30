@@ -1,5 +1,5 @@
 ## Summary
-Move status mapping into its own class.
+Add a status mapper class.
 
 ## Decisions
 No new decisions.

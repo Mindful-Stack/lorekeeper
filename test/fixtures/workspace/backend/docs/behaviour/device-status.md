@@ -32,7 +32,7 @@ A device that has not reported for five minutes SHALL be shown as offline.
 - Example: WHEN a device last reported six minutes ago THEN it reads as offline.
 
 ## Known deviations
-- device.R3: devices are shown online until their next report (SCRUM-1).
+- device.R3: devices are shown online until their next report (DEV-1).
 
 ## Not yet decided
 - none

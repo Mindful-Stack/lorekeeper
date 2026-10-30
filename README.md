@@ -403,7 +403,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/checkout@v4
-        with: { repository: your-org/lorekeeper, ref: v3.2.0, path: _ci/lorekeeper }   # pin a tag, never main
+        with: { repository: your-org/lorekeeper, ref: v3.4.0, path: _ci/lorekeeper }   # pin a tag, never main
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: echo "LORE=$(realpath "$GITHUB_WORKSPACE/_ci/lorekeeper")" >> "$GITHUB_ENV"
@@ -414,7 +414,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      # check out the plugin (ref: v3.2.0, path: _ci/lorekeeper) as above, and the knowledge
+      # check out the plugin (ref: v3.4.0, path: _ci/lorekeeper) as above, and the knowledge
       # base (path: _ci/kb, i.e. $KNOWLEDGE_BASE_PATH) here
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
@@ -457,7 +457,7 @@ jobs:
 
 `/lore:review` runs the same gate locally.
 
-- **Pin a tag:** check out the plugin at a release tag (`ref: v3.2.0`), never `main`. The schema
+- **Pin a tag:** check out the plugin at a release tag (`ref: v3.4.0`), never `main`. The schema
   and `verdict` change only with the tag. A breaking findings change ships as a new
   `adr-findings.v<N>` schema file.
 - **`codex exec` needs `</dev/null`:** without it, it blocks waiting on stdin.

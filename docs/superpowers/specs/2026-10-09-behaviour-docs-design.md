@@ -182,9 +182,9 @@ rules beside binding ADRs.
    added to the findings schema v1's `class` enum (additive; see `references/adr-findings.md`).
    When the rule's `Source:` is an accepted ADR, it is reported once, through that record's
    finding. Every selected doc is attested in `coverage.checked` whether or not it is reported.
-   For each selected doc, `check` reads the changed files at base and at head, not only the hunks,
-   so it can tell a rule the diff broke from one that was already broken (the architect reads the
-   head file and the patch's removed lines; no tooling). Known deviations and already-broken code
+   For each selected doc, `check` reads each changed file at head and the patch's removed lines,
+   not only the hunks, so it can tell a rule the diff broke from one that was already broken; no
+   separate base read and no tooling. Known deviations and already-broken code
    exempt the specific break they describe, not the rule: a *Known deviations* entry exempts only
    the behaviour it describes, while the code still shows it. A break the base code already had
    (visible in the removed lines or in code the diff does not change) is not a finding, even when
@@ -196,6 +196,8 @@ rules beside binding ADRs.
    the PR description switches a finding off.
 
 ### Until the review check ships
+
+*Superseded by 3.4.0, which ships the review check; kept as the history of the interim process.*
 
 Nothing reads behaviour docs at review time before plan D's review step lands. Until then the
 household runs it as process: a PR that changes a documented behaviour lists the rule edits in its
@@ -235,8 +237,8 @@ local home; a new doc, and any shared-home edit, is `own-pr`.
   --base/--ci` flags, so pre-commit and CI add one line per home kind. Errors: missing
   `title`/`description`/`tags`/`prefix`/`scope`, non-inline values, a bad or duplicate `prefix`,
   a `###` under *Rules* that is not `<prefix>.R<n> <name>`, a duplicate id, an unresolvable
-  `Source:` or `related` (through the ADR resolver; a home not on disk is only warned about, and in a household an unknown home prefix is an error),
-  `scope` syntax wrong for the home (the ADR `SHARED_SCOPE`/`PREFIXED` rules), no *Not yet
+  `Source:` or `related` (through the ADR resolver; a home not on disk is only warned about, and
+  in a household an unknown home prefix is an error), `scope` syntax wrong for the home (the ADR `SHARED_SCOPE`/`PREFIXED` rules), no *Not yet
   decided*. Warnings: a rule without SHALL/MUST or an example, a superseded source,
   a glob matching no file in a checked-out repo, a *Known deviations* id not in the doc.
   `## Rules` is required, and `scope` non-empty. A dir is a behaviour home when it is a resolved
@@ -256,10 +258,11 @@ Two implementation plans:
 - **D. Format, homes and review**: document format, configuration, `homes`/`check`/`select`/
   `index`, the architect's catalogue and finding, the review mapping, the `cultivate` domain
   template's *Behaviour docs* link list, tests. It lands after ADR Plan C, which left two hooks:
-  `select --json`'s `kind` field, so consumers parse `select` output with a `kind` column; and
+  `select --json`'s `kind` field, so consumers tell the kinds apart by `select --json`'s `kind`
+  (the tab-separated output is unchanged); and
   the `SEVERITY` table in `scripts/adr/verdict.js`, keyed by finding class, so this finding is
-  one row. Reading changed files at base and head is Plan D's to add if `check` needs it.
-  Delivered in 3.4.0.
+  one row. `check` reads each changed file at head and the patch's removed lines, with no
+  separate base read. Delivered in 3.4.0.
 - **E. The skill**: `documenting-behaviour` with `derive` (draft only), `edit` and `list`, the
   aliases, the knowledge-updater Type and the brainstorming question.
 

@@ -12,7 +12,9 @@ function resolveRef(id) {
     if (id.startsWith('gone/')) return { state: 'unavailable' };
     return { state: 'missing' };
 }
-function run(texts, { kind = 'shared', repoFiles = () => ['src/Devices/Status.cs'] } = {}) {
+// Files only for the repo a scope entry names, so a wrong repo/glob split shows up.
+const filesFor = (kind) => (repo) => ((kind === 'shared' ? repo === 'api' : repo === null) ? ['src/Devices/Status.cs'] : null);
+function run(texts, { kind = 'shared', repoFiles = filesFor(kind) } = {}) {
     const docs = texts.map((t, i) => parseDoc(`/h/doc${i}.md`, t));
     const home = { kind, prefix: kind === 'shared' ? 'kb' : 'api' };
     return checkBehaviourHome({ home, docs, resolveRef, repoFiles });
@@ -74,4 +76,22 @@ test('a rule with no SHALL/MUST or no example warns; a deviation naming no rule 
     assert.ok(out.includes('warning rules: device.R1 has no SHALL or MUST'), out.join('\n'));
     assert.ok(out.includes('warning rules: device.R1 has no Example line'), out.join('\n'));
     assert.ok(out.includes('warning deviations: device.R9 is not a rule in this doc'), out.join('\n'));
+});
+
+test('near-miss Source lines and an empty Rules section warn', () => {
+    const doc = (src) => makeBehaviourDoc({ sections: { Rules: `### device.R1 One\nSHALL a.\n- Example: b\n${src}`, 'Known deviations': undefined } });
+    for (const src of ['- source: kb/ADR-0001', '- **Source:** kb/ADR-0001', 'Source: kb/ADR-0001']) {
+        const out = msgs(run([doc(src)]));
+        assert.ok(out.some((m) => /^warning rules: ".*" looks like a Source line but is not read; write "- Source: <id>"$/.test(m)), `${src}: ${out.join('\n')}`);
+    }
+    const before = msgs(run([makeBehaviourDoc({ sections: { Rules: '- Source: kb/ADR-0001\n### device.R1 One\nSHALL a.\n- Example: b', 'Known deviations': undefined } })]));
+    assert.ok(before.some((m) => /looks like a Source line/.test(m)), before.join('\n'));
+    const empty = msgs(run([makeBehaviourDoc({ sections: { Rules: 'none yet', 'Known deviations': undefined } })]));
+    assert.ok(empty.includes('warning rules: ## Rules has no rules'), empty.join('\n'));
+});
+
+test('a missing prefix reports once, not once per heading', () => {
+    const out = msgs(run([makeBehaviourDoc({ fm: { prefix: undefined } })]));
+    assert.deepEqual(out.filter((m) => /is not a rule heading/.test(m)), [], out.join('\n'));
+    assert.ok(out.includes('error schema: prefix is required'), out.join('\n'));
 });

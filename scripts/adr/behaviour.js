@@ -6,10 +6,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { parseRecord } = require('./frontmatter');
 const { walk } = require('./markdown');
-const { isEmpty, asList } = require('./frontmatter');
-const { matchesGlob } = require('./glob');
+const { parseRecord, isEmpty, asList } = require('./frontmatter');
+const { globToRegExp, toPosix } = require('./glob');
 const { SHARED_SCOPE, PREFIXED } = require('./rules');
 
 const PREFIX_RE = /^[a-z][a-z0-9-]*$/;
@@ -23,6 +22,7 @@ function parseDoc(file, text) {
     const { sections, lines } = walk(parsed.body);
     const headings = [];
     const deviations = [];
+    const nearSources = [];
     let cur = null;
     for (const { section, text: line } of lines) {
         if (section === 'Rules') {
@@ -34,11 +34,10 @@ function parseDoc(file, text) {
                 headings.push(cur);
                 continue;
             }
-            if (cur) {
-                const s = /^\s*[-*]\s+Source:\s*(.+?)\s*$/.exec(line);
-                if (s) cur.sources.push(...s[1].split(',').map((x) => x.trim()).filter(Boolean));
-                cur.body.push(line);
-            }
+            const s = cur && /^\s*[-*]\s+Source:\s*(.+?)\s*$/.exec(line);
+            if (s) cur.sources.push(...s[1].split(',').map((x) => x.trim()).filter(Boolean));
+            else if (/^\s*[-*]?\s*\**source\**\s*:/i.test(line)) nearSources.push(line.trim());
+            if (cur) cur.body.push(line);
         } else {
             cur = null;
             const d = section === 'Known deviations' && /^[-*]\s+([^:]+):/.exec(line);
@@ -48,7 +47,7 @@ function parseDoc(file, text) {
     for (const h of headings) h.body = h.body.join('\n');
     return {
         file, name: path.basename(file), text, found: parsed.found, fm: parsed.fm, errors: parsed.errors,
-        sections, headings, deviations,
+        sections, headings, deviations, nearSources,
     };
 }
 
@@ -130,12 +129,16 @@ function checkDoc(ctx, d, byPrefix, err, warn) {
     const others = (byPrefix.get(prefix) || []).filter((x) => x !== d);
     if (prefix && others.length) err(d.file, 'prefix', `prefix ${prefix} is also used by ${others.map((x) => x.name).join(', ')}`);
     if (!d.sections.includes('Rules')) err(d.file, 'sections', 'needs a ## Rules section');
+    if (d.sections.includes('Rules') && !d.headings.length) warn(d.file, 'rules', '## Rules has no rules');
+    for (const line of d.nearSources) {
+        warn(d.file, 'rules', `"${line}" looks like a Source line but is not read; write "- Source: <id>"`);
+    }
     if (!d.sections.includes('Not yet decided')) err(d.file, 'sections', 'needs a ## Not yet decided section (it may say "none")');
     const seen = new Set();
     for (const h of d.headings) {
         if (!h.id) {
-            // A list prefix is already reported once; every heading would repeat it.
-            if (!listPrefix) err(d.file, 'rules', `"### ${h.raw}" is not a rule heading (### ${prefix || '<prefix>'}.R<n> <name>); a group is a bold label line`);
+            // A list or missing prefix is already reported once; every heading would repeat it.
+            if (!listPrefix && prefix) err(d.file, 'rules', `"### ${h.raw}" is not a rule heading (### ${prefix || '<prefix>'}.R<n> <name>); a group is a bold label line`);
             continue;
         }
         if (seen.has(h.id)) err(d.file, 'rules', `duplicate rule id ${h.id}`);
@@ -159,7 +162,8 @@ function checkDoc(ctx, d, byPrefix, err, warn) {
         }
         const [repo, glob] = home.kind === 'shared' ? [s.slice(0, s.indexOf(':')), s.slice(s.indexOf(':') + 1)] : [null, s];
         const files = ctx.repoFiles ? ctx.repoFiles(repo) : null;
-        if (files && !files.some((f) => matchesGlob(f, glob))) warn(d.file, 'scope', `${s} matches no tracked file`);
+        const re = files && globToRegExp(glob);
+        if (files && !files.some((f) => re.test(toPosix(f)))) warn(d.file, 'scope', `${s} matches no tracked file`);
     }
 }
 

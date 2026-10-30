@@ -852,12 +852,91 @@ test('check validates a local behaviour home the household names', (t) => {
 test('check --home shared recognises a dir named like the shared behaviour dir', (t) => {
     const root = tmpDir(t);
     const env = gitEnv(root);
+    // The own-home rule: kb/ refs resolve against the sibling adrs dir (here it holds ADR-0001).
+    write(path.join(root, 'knowledge', 'adrs', '0001-session-storage.md'), makeRecord());
     const dir = path.join(root, 'knowledge', 'behaviour');
     write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ fm: { related: ['kb/ADR-0001'] }, sections: { Rules: '### device.R1 One\nSHALL a.\n- Example: b', 'Known deviations': undefined } }));
     const r = runCli(root, env, 'check', '--home', 'shared', '--ci', '--base', 'main', dir);
-    // Without a household, kb/ resolves to no checked-out home: unavailable, a warning.
     assert.equal(r.code, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /warning: related kb\/ADR-0001: its home is not on disk/);
+    assert.equal(r.stdout, '');
+});
+
+test('a KB repo checking its own behaviour dir: a dangling kb/ ref is an error', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    write(path.join(root, 'knowledge', 'adrs', '0001-session-storage.md'), makeRecord());
+    const dir = path.join(root, 'knowledge', 'behaviour');
+    const doc = (src) => makeBehaviourDoc({ sections: { Rules: `### device.R1 One\nSHALL a.\n- Example: b\n- Source: ${src}`, 'Known deviations': undefined } });
+    write(path.join(dir, 'device-status.md'), doc('kb/ADR-0042'));
+    const bad = runCli(root, env, 'check', '--ci', '--home', 'shared', '--base', 'main', dir);
+    assert.equal(bad.code, 1, bad.stdout + bad.stderr);
+    assert.match(bad.stdout, /Source kb\/ADR-0042 does not exist/);
+    write(path.join(dir, 'device-status.md'), doc('kb/ADR-0001.R1'));
+    const ok = runCli(root, env, 'check', '--ci', '--home', 'shared', '--base', 'main', dir);
+    assert.equal(ok.code, 0, ok.stdout + ok.stderr);
+});
+
+test('--repo names the own local home: a dangling <repo>/ADR ref is an error', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    write(path.join(root, 'docs', 'adr', '0001-session-storage.md'), makeRecord({ prefix: 'portal' }));
+    write(path.join(root, 'src', 'Devices', 'Status.cs'), 'x');
+    const dir = path.join(root, 'docs', 'behaviour');
+    const doc = (src) => makeBehaviourDoc({ prefix: 'api', sections: { Rules: `### device.R1 One\nSHALL a.\n- Example: b\n- Source: ${src}`, 'Known deviations': undefined } });
+    write(path.join(dir, 'device-status.md'), doc('portal/ADR-0042'));
+    const bad = runCli(root, env, 'check', '--home', 'local', '--repo', 'portal', dir);
+    assert.equal(bad.code, 1, bad.stdout + bad.stderr);
+    assert.match(bad.stdout, /Source portal\/ADR-0042 does not exist/);
+    write(path.join(dir, 'device-status.md'), doc('portal/ADR-0001.R1'));
+    const ok = runCli(root, env, 'check', '--home', 'local', '--repo', 'portal', dir);
+    assert.equal(ok.code, 0, ok.stdout + ok.stderr);
+});
+
+test('a dir configured as both an ADR home and a behaviour home is a usage error', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    write(path.join(root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore',
+        repos: [{ name: 'ws' }, { name: 'lore' }, { name: 'api', behaviourDir: 'docs/adr' }],
+    }));
+    fs.mkdirSync(path.join(root, 'api', 'docs', 'adr'), { recursive: true });
+    const r = runCli(root, env, 'check', path.join(root, 'api', 'docs', 'adr'));
+    assert.equal(r.code, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /is configured as both an ADR home and a behaviour home/);
+});
+
+test('a dead shared-home glob warns against a real sibling checkout', (t) => {
+    const w = workspace(t);
+    write(path.join(w.api, 'src', 'Devices', 'Status.cs'), 'class S {}\n');
+    commitAll(w.api, w.env, 'code');
+    const dir = path.join(w.kb, 'knowledge', 'behaviour');
+    const rules = { Rules: '### device.R1 One\nSHALL a.\n- Example: b', 'Known deviations': undefined };
+    write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ fm: { scope: ['api:src/Nope/**'] }, sections: rules }));
+    const r = runCli(w.root, w.env, 'check', dir);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /scope: warning: api:src\/Nope\/\*\* matches no tracked file/);
+    write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ sections: rules }));
+    assert.equal(runCli(w.root, w.env, 'check', dir).stdout, '');
+});
+
+test('a --repo override on a household local home reads that checkout, not the meta repo', (t) => {
+    const w = workspace(t);
+    write(path.join(w.api, 'src', 'Devices', 'Status.cs'), 'class S {}\n');
+    commitAll(w.api, w.env, 'code');
+    const dir = path.join(w.api, 'docs', 'behaviour');
+    write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ prefix: 'api', fm: { scope: ['src/Nope/**'] }, sections: { Rules: '### device.R1 One\nSHALL a.\n- Example: b', 'Known deviations': undefined } }));
+    const r = runCli(w.root, w.env, 'check', '--repo', 'other', dir);
+    assert.match(r.stdout, /scope: warning: src\/Nope\/\*\* matches no tracked file/);
+});
+
+test('trackedFiles returns names with quotes, backslashes and tabs unquoted', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    const names = ['a"b.txt', 'c\\d.txt', 'e\tf.txt'];
+    for (const n of names) write(path.join(root, n), 'x');
+    initRepo(root, env);
+    commitAll(root, env, 'odd names');
+    assert.deepEqual(require('../adr/git').trackedFiles(root).filter((n) => names.includes(n)).sort(), [...names].sort());
 });
 
 test('an ADR dir checked with --home is still read as ADRs', (t) => {

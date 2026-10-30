@@ -54,8 +54,9 @@ function changedFiles(root, ref) {
 
 // Every tracked file under `root`, repo-relative; null when `root` is not a git checkout.
 function trackedFiles(root) {
-    const out = git(root, ['ls-files']);
-    return out === null ? null : lines(out);
+    // -z: without it git C-quotes names holding a quote, backslash or tab.
+    const out = git(root, ['ls-files', '-z']);
+    return out === null ? null : out.split('\0').filter((l) => l !== '');
 }
 
 function originUrl(root) {

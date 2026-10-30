@@ -93,7 +93,8 @@ A status read SHALL list only the devices of the requested project.
   fixed.
 - **Known deviations** (optional): `- <rule id>[, <rule id>…]: <what the code does instead>
   (<ticket>)`, unindented, with unqualified rule ids. It records an intended rule the code does
-  not meet yet; the review does not report it while the code still shows the deviation.
+  not meet yet. In review it exempts only the behaviour it describes, while the code still shows
+  it; any other break of the same rule is still a finding.
 - **Not yet decided** is required; it may say "none". It tells agents where not to invent an
   answer.
 - Sections are `## ` headings at the start of a line, named exactly as above (`## Rules`,
@@ -121,7 +122,7 @@ warnings alone exit 0.
 
 | Level | Rule | When |
 |---|---|---|
-| error | `schema` | the frontmatter is missing, unclosed, unparseable, has a duplicate key, or a block value (no other check runs on a doc without frontmatter) |
+| error | `schema` | the frontmatter is missing or unclosed (no other check runs on that doc), or has an unparseable line, a duplicate key, or a block value |
 | error | `schema` | `title`, `description`, `tags`, `prefix` or `scope` is missing or empty |
 | error | `schema` | `tags`, `scope` or `related` is not an inline list |
 | error | `prefix` | `prefix` is a list ("prefix must be a single value") |
@@ -149,22 +150,32 @@ warnings alone exit 0.
 
 - A doc is `<home>/<prefix>`: `backend/device` in a repo's home, `kb/contract` in the team KB.
   A prefix is lowercase and never `adr`, so a doc id never looks like an ADR id.
-- A rule is `<doc id>.R<n>` outside the doc (`backend/device.R2`) and `<prefix>.R<n>` inside it
-  (`device.R2`, in headings and *Known deviations*).
+- A rule is `<prefix>.R<n>` inside the doc (`device.R2`, in headings and *Known deviations*).
+  Everywhere else (PR descriptions, findings, plans) it is the doc id plus `.R<n>`
+  (`backend/device.R2`), never the bare `device.R2`.
 - Numbers only grow: a new rule takes a number above the highest the doc has ever had (its git
   history says what a removed id meant). When two PRs claim the same id, the later-merging one
   renumbers.
 - A rule id under a PR's `## Decisions` heading (`kb/contract.R3`) cites its doc, the way an ADR
-  id cites its record; a bare doc id, or a rule id inside a URL or a longer path, does not. A
-  cited doc that resolves nowhere is a `dangling` finding.
+  id cites its record; a bare doc id, or a rule id inside a URL or a longer path, does not. The
+  PR's rule edits go on the `- Rules: added …; changed …; removed …` line of that section
+  (`references/pr-decisions.md`). A cited doc that resolves nowhere, including a shared-home doc
+  not yet on the KB's default branch, is `missing`, and `verdict` adds a `dangling` finding
+  (important, does not block).
 
 ## In review
 
 `adr-lint select` returns each doc whose `scope` matches the diff, from both homes, as a
-candidate with `kind: "behaviour"` and status `-`. The architect reports a rule the diff breaks
-while leaving its doc untouched as a `behaviour-rule` finding, which `adr-lint verdict` marks
-critical and blocking: conform, or edit the rule in the same PR (for a shared-home doc, in its
-own KB PR, named in the code PR's description as `Changes: kb/contract.R3 (<PR>)`). A doc the
-diff edits is the new
-truth for that PR. The finding's fields, the checks on its ids and the exit codes are in
+candidate with `kind: "behaviour"` and status `-`. The architect judges each rule in the form
+the diff leaves it: a rule the PR adds or edits binds as edited, a rule the PR removes no longer
+binds, and editing one rule never exempts the others. A rule the diff breaks is a
+`behaviour-rule` finding, which `adr-lint verdict` marks critical and blocking. Code that
+already broke the rule where the diff does not change it, and the behaviour a *Known deviations*
+entry describes, are not findings; a new or wider break of the same rule is.
+
+To change a rule, edit it in the same PR as the code (local home). A shared-home rule changes in
+its own KB PR, which merges first: until then, a code PR that breaks the rule as it stands on
+the KB's default branch is blocked. List the rule edits on the PR's `- Rules:` line
+(`references/pr-decisions.md`). The only override is the repository's admin bypass of the
+required check. The finding's fields, the checks on its ids and the exit codes are in
 `references/adr-findings.md`.

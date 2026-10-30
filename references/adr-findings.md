@@ -19,7 +19,8 @@ The major version is in the file name. A breaking change adds a `v2` file, and `
 both until v1 is retired. Pin the schema through the plugin tag you check out.
 
 Version 3.4.0 added `behaviour-rule` to v1's `class` enum. Adding a class is not a breaking
-change: a reviewer on the older file never emits it.
+change: a reviewer on the older file never emits it. Update your prompt before adding behaviour
+docs, though: a pre-3.4.0 prompt attests a selected doc without checking its rules.
 
 ```json
 {"coverage": {"checked": ["kb/ADR-0001"], "notReviewed": []},
@@ -56,7 +57,7 @@ prints `{ repo, candidates: [...] }`. Each candidate:
 
 A `missing` candidate has empty `title`, `description`, `scope` and `record`.
 
-`select` exits 2 when two behaviour docs selected for the diff share one id, or when a behaviour
+`select` exits 2 when a selected behaviour doc shares its id with another doc, or when a behaviour
 doc whose scope matches the diff has no usable `prefix` (see *`verdict`*, exit 2). The TSV output
 (without `--json`) is unchanged: `id`, `status`, `path`, `reasons`; a behaviour doc's status is
 `-`.
@@ -69,7 +70,7 @@ constrains only the output.
 | Field | Content |
 |---|---|
 | `class` | `contradiction`, `trigger`, `stale-fact`, `uncovered`, `dangling` or `behaviour-rule` |
-| `ids` | names one record: the record itself, its rules (`<id>.R<n>`) or its facts (`<id>.F<n>`). `[]` for `uncovered`; the cited id for `dangling`; for `behaviour-rule`, one doc's rules (`<doc>.R<n>`), at least one, optionally with the doc id itself |
+| `ids` | names one record: the record itself, its rules (`<id>.R<n>`) or its facts (`<id>.F<n>`). `[]` for `uncovered`; the cited id for `dangling`; for `behaviour-rule`, one doc: the rules broken, at least one, optionally with the doc id. A behaviour rule is the candidate's `id` plus `.R<n>` (`backend/device.R2`), never the doc-local `device.R2` its heading shows |
 | `where` | `path:line-range` of the change; line ranges refer to the patched (new) file. Required for every class except `dangling`, where it is `null`. Always write the key |
 | `summary` | one line. A `trigger` names the trigger and what in the change fires it. An `uncovered` choice says what reversing it later would take. A `behaviour-rule` names the rule and what in the change breaks it |
 
@@ -89,8 +90,11 @@ from the record's `## Decision` and `## Facts relied on` sections, ignoring fenc
 | `dangling` | important | no |
 | `stale-fact` | minor | no |
 
-A `behaviour-rule` finding is a diff that breaks a rule while leaving its doc untouched. Rules
-are read from `### <prefix>.R<n> <name>` headings under the doc's `## Rules`, ignoring fenced
+A `behaviour-rule` finding is a diff that breaks a rule of a selected behaviour doc, judged in
+the form the diff leaves the doc: a rule the PR adds or edits binds as edited, a rule it removes
+no longer binds, and editing one rule never exempts the others. A shared-home rule changes in its
+own KB PR, which merges first; until then the rule on the KB's default branch binds. Rules are
+read from `### <prefix>.R<n> <name>` headings under the doc's `## Rules`, ignoring fenced
 examples. The format is in `references/behaviour-docs.md`.
 
 ## `verdict`
@@ -117,8 +121,8 @@ Exit 2 means the check failed closed. Causes:
 
 - `--findings` or `--diff` is missing, or an input cannot be read; more than one input is `-`.
 - The repo cannot be determined (pass `--repo`), or is not in `household.json`.
-- Two behaviour docs selected for the diff share one id (`behaviour docs <a> and <b> both have id
-  <id>; give one a different prefix`), or a behaviour doc whose scope matches the diff has no
+- A selected behaviour doc shares its id with any other behaviour doc (`behaviour docs <a> and
+  <b> both have id <id>; give one a different prefix (adr-lint check)`), or a behaviour doc whose scope matches the diff has no
   usable `prefix`: missing, a list, not `^[a-z][a-z0-9-]*$`, or `adr` (`<file> has no usable
   prefix; fix it (adr-lint check) before review`). `select` fails the same way.
 - The findings are not valid JSON; there is no `adr-findings` block, more than one, or one that
@@ -126,7 +130,7 @@ Exit 2 means the check failed closed. Causes:
 - A finding has an unknown `class`, ids that are not strings, an empty `summary`, a non-string
   `where`, or no `where` when its class needs one.
 - `coverage` is missing or malformed (`checked` and `notReviewed` must be arrays of strings).
-- A `checked` id resolves to no record (other than a selected `missing` id).
+- A `checked` id resolves to no record or behaviour doc (other than a selected `missing` id).
 - A selected record or doc that is not `missing` is neither in `checked` nor named by a
   finding. Only a `contradiction`, `trigger`, `stale-fact` or `behaviour-rule` finding counts as
   having checked its record or doc; `uncovered` and `dangling` findings do not.
@@ -150,9 +154,9 @@ and `coverage` with `checked`, `extra` (checked ids that were not selected) and 
 
 ### `coverage.checked` is an attestation
 
-`verdict` cannot prove the reviewer read the records. What it guarantees is that an empty
-`findings` list means every selected record was attested, and that no finding can block on a
-record, rule or fact that does not exist. `coverage.notReviewed` is reported in the output and
+`verdict` cannot prove the reviewer read the records and behaviour docs. What it guarantees is
+that an empty `findings` list means every selected record or behaviour doc was attested, and
+that no finding can block on a record, doc, rule or fact that does not exist. `coverage.notReviewed` is reported in the output and
 never fails the check.
 
 ## The contract for an external reviewer
@@ -179,17 +183,25 @@ bind it.
 Inputs: the diff at <diff>, and the output of `adr-lint select --json` (each candidate carries
 its full record).
 
-1. Read every candidate's `record` in full (ADRs and behaviour docs).
+1. Read every candidate's `record` in full, of kind `adr` and of kind `behaviour`.
 2. Compare the diff with each numbered rule, each fact relied on, each invalidation trigger, and
-   each behaviour rule.
+   each rule of each behaviour doc in the form the diff leaves it: a rule the diff adds or edits
+   is judged as edited, a rule it removes no longer binds, and editing one rule never exempts
+   the others.
 3. Report only what you can locate in the diff, with `where` as path:line-range. Do not infer
    problems from code the diff does not touch.
 4. For a trigger, the summary names the trigger and what in the change fires it. For a choice no
    record covers, the summary says what reversing it later would take.
-5. Report a behaviour rule the diff breaks as `behaviour-rule` only when the diff leaves its doc
-   untouched and the rule is not under the doc's *Known deviations*.
-6. List every candidate whose status is not `missing` in `coverage.checked`. List areas you could
-   not assess in `coverage.notReviewed`.
+5. Report a behaviour rule the diff breaks as `behaviour-rule`, only for a candidate of kind
+   `behaviour`. Cite the rule as the candidate's `id` plus `.R<n>` (`backend/device.R2`), never
+   the `device.R2` its heading shows. The behaviour a *Known deviations* entry describes, while
+   the code still shows it, is not a finding; neither is code that already broke the rule where
+   the diff does not change it. A new or wider break of the same rule is a finding.
+6. When a behaviour rule's `Source:` is an accepted record the diff contradicts, report only the
+   record's `contradiction`, naming only the record's ids.
+7. List every candidate whose status is not `missing` in `coverage.checked`, behaviour docs
+   included, whether or not you report on them. List areas you could not assess in
+   `coverage.notReviewed`.
 
 Answer with one JSON document matching the schema, and nothing else.
 ```

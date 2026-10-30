@@ -57,8 +57,8 @@ exits 2 — then ask which repo. Pass the printed JSON inline (never a file redi
 **architect** agent, dispatched in `bind` mode with the spec and the planned paths.
 
 The architect's *Binding decisions* fill the plan's *Governing decisions* header (see *Plan
-Document Header*), rules quoted verbatim, and its *Binding behaviour rules* fill a *Behaviour
-rules* list under it, quoted verbatim. **Write that header as soon as `bind` returns**, even
+Document Header*), rules quoted verbatim, and its *Binding behaviour rules* fill the header's
+`- **Behaviour:**` entries, one per doc, rules quoted verbatim. **Write that header as soon as `bind` returns**, even
 when a rule plainly contradicts what the spec asks for — the header records what binds; it is not
 a verdict on whether the plan may proceed. Print it before saying anything else about a conflict.
 
@@ -125,12 +125,13 @@ writes one per draft, both tiers stored the same way. Handle each by its tier:
 - **<id> — <title>** (accepted <date>): <description>
   - <id>.R1 — "<rule, verbatim>"
 [one entry per binding record, rules quoted exactly as the architect returned them]
-[or: "None. No accepted record binds this work." — say so explicitly]
+[or, when no record binds: "No accepted record binds this work." — say so explicitly]
 - Proposed (low tier, applied in Task N): <id-to-be> — <title>
 [one entry per low-tier draft copied from the spec's `## Decisions` section; omit if none]
 - **Behaviour:** <doc id> — <title>
   - <doc id>.R<n> — "<rule, verbatim>"
-[omit if none bind]
+[one entry per behaviour doc whose rules bind, rules quoted exactly as the architect returned
+them; omit if none bind]
 
 ---
 ```
@@ -304,7 +305,7 @@ not just the plan — otherwise the next reader reconciles a conflict that no
 longer exists, and the two documents drift. One source of truth per fact.
 
 **6. Governing decisions:** Does any task's code or approach contradict a rule quoted in the
-header? Is every record the architect returned quoted, with rules verbatim? Fix the task, or stop
+header? Is every record and behaviour rule the architect returned quoted, verbatim? Fix the task, or stop
 and raise a superseding record.
 
 If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.

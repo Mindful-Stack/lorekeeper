@@ -22,11 +22,16 @@ No new decisions.
 Use qualified ids (`<repo>/ADR-NNNN`, `kb/ADR-NNNN`). Cited ids are selected for review even
 when their scope does not match the diff. *Accepts* is a ratification — a previously proposed
 record this PR moves to accepted, with no new text; *Adds* is a new record. *Rules* lists
-behaviour-doc rule edits, when the project keeps behaviour docs. An id inside an HTML comment
+behaviour-doc rule edits, when the project keeps behaviour docs, each as the doc id plus `.R<n>`
+(`app/org.R7`, never `org.R7`), so the line also cites the doc for review. A rule in a
+shared-home doc changes in its own KB PR, which merges first: until it does, the code PR is judged
+against the rule on the KB's default branch, and a cited doc not there yet is a dangling
+citation. An id inside an HTML comment
 (`<!-- ... -->`) is not a citation, so a template can show real-looking example ids there without
 every PR appearing to cite them.
 
-When the ADR check blocks: conform, or replace the record (`/lore:adr replace …`). For an
+When the ADR check blocks: conform, or replace the record (`/lore:adr replace …`), or, for a
+broken behaviour rule, edit the rule (in this PR, or in a KB PR that merges first). For an
 uncovered choice: low tier, add the record and have it accepted in this PR before merge; high
 tier, open its own ADR PR and wait until it is accepted. To merge anyway, a member of the
 repository's bypass group overrides the required check.

@@ -19,10 +19,12 @@ another team's KB — and numbered rules in its Decision (`R1`, `R2`, …), cite
 **Behaviour docs** live beside the records: `<repo>/docs/behaviour/` (or `repos[].behaviourDir` /
 `behaviour.localDir`) and `<team-knowledge-path>/behaviour/` (or `behaviour.sharedDir`). A doc
 is `<home>/<prefix>` (`backend/device`); its rules are `### <prefix>.R<n> <name>` headings under
-`## Rules`, cited qualified (`backend/device.R2`). A rule states what must stay true; a
-`- Source:` line names the record (or record rule) it follows from. Every rule in a doc on the
-default branch binds. A doc the diff itself adds or edits is the new truth for that PR: judge the
-diff against the edited doc. Other teams' KBs contribute no behaviour docs. The format is in
+`## Rules`. Cite a rule as the doc's id plus `.R<n>` (`backend/device.R2`): never the doc-local
+`device.R2` the heading shows, and never with the candidate's `home` value (`local/…`). A rule
+states what must stay true; a `- Source:` line names the record (or record rule) it follows
+from. Every rule in a doc on the default branch binds. Judge each rule in the form the diff
+leaves it: a rule the PR adds or edits binds as edited; a rule the PR removes no longer binds.
+Other teams' KBs contribute no behaviour docs. The format is in
 `references/behaviour-docs.md`.
 
 ## Inputs the caller may pass
@@ -224,15 +226,26 @@ requirement somebody once had.
 4. **Records the change adds.** A record the diff itself adds (in any home, proposed or
    accepted) covers the choice it records: do not report that choice as uncovered. Whether it is
    accepted before merge is the validator's job, not yours.
-5. **Behaviour rules.** Report a rule the diff breaks only when the diff leaves the doc
-   untouched. When the rule's `Source:` is an accepted record the diff also contradicts, report
-   it once, through that record's `contradiction`. A rule listed under the doc's *Known
-   deviations* is not reported while the code still shows the deviation. A rule already broken
-   before the diff (visible in the removed lines or untouched code) is not a finding: note it
-   under *Context*. When the PR description lists the rule as changed in another PR
-   (`Changes: kb/contract.R3 (knowledge-base#12)`), report "edit in flight in <PR>" under
-   *Context*, not a finding. A test the diff edits or deletes whose name carries a rule id
-   (`device.R2`) is a strong signal; read it.
+5. **Behaviour rules.** Compare the diff with each rule of each behaviour doc candidate, in the
+   form the diff leaves the doc: a rule the PR adds or edits is judged as edited; a rule the PR
+   removes no longer binds. Editing one rule never exempts the others. Report each rule the diff
+   breaks as `behaviour-rule`. The exemptions are keyed to the break, not the rule:
+   - A *Known deviations* entry exempts only the behaviour it describes, while the code still
+     shows it.
+   - Code that already broke a rule at a place the diff does not change is not a finding: note
+     it under *Context*.
+   - A new or wider break of the same rule is a finding.
+
+   A shared-home rule changes in its own KB PR, which merges first. Until it merges, the rule
+   binds as it stands on the KB's default branch: a code PR that breaks it is a `behaviour-rule`
+   finding, whatever the PR description says. A rule the PR description cites (the `- Rules:`
+   line under `## Decisions`, `references/pr-decisions.md`) in a doc not yet on the default
+   branch resolves as `missing`: report it under *Dangling citations*.
+
+   When a rule's `Source:` is an accepted record the diff contradicts, report the record's
+   `contradiction` (naming only the record's ids), not a `behaviour-rule`. A test the diff edits
+   or deletes whose name carries a rule id (`device.R2`) is a strong signal; read it. Every
+   behaviour doc candidate goes in `coverage.checked`, whether or not you report on it.
 6. Report findings in six classes (the five below plus dangling citations). Cite code by
    `path:line-range` from the diff, rules by id, facts by `F#`, and records by id and section.
 
@@ -244,8 +257,9 @@ requirement somebody once had.
 
 ## Behaviour rules broken
 - `src/Devices/StatusQuery.cs:12-20` drops the project filter; **backend/device.R2** ("A
-  status read SHALL list only the devices of the requested project") forbids it, and the doc
-  is untouched. Either conform, or edit the rule in this PR.
+  status read SHALL list only the devices of the requested project") forbids it. Either
+  conform, or edit the rule (in this PR for a local doc; in a KB PR that merges first for a
+  shared one).
 [or: none]
 
 ## Triggers fired
@@ -266,13 +280,14 @@ requirement somebody once had.
 
 ## Dangling citations
 - The PR description cites kb/ADR-0009, which resolves nowhere (renumbered, deleted, or a typo).
+- The PR description cites kb/contract.R3; kb/contract is not on the KB's default branch yet.
 [or: none]
 
 ## Context
 - Already ruled out in this area: kb/ADR-0005 (rejected) — <title>.
 - In flight: <pair>.
-- Edit in flight in <PR>: <doc>.R<n>.
-- Already broken before this diff: <doc>.R<n> — <what the untouched code does>.
+- Already broken where the diff does not change it: <doc id>.R<n> at `<path>:<line-range>` —
+  <what the code does>.
 - Records not checked out: <repo> (its local records could not be read).
 [omit the section if empty]
 ```
@@ -306,9 +321,10 @@ block holding your own findings (when you read the whole patch).
   not read. Write `[]` when there are none. It is reported, never judged.
 - `ids` name one record: the record, its rules (`.R<n>`) or its facts (`.F<n>`). Use `[]` for an
   uncovered choice, and the cited id for a dangling citation. A contradiction cites the rule it
-  breaks whenever the record has numbered rules. A `behaviour-rule` names one doc and the rules
-  broken (`<doc>.R<n>`), at least one. The ADR classes never name a behaviour doc, and
-  `behaviour-rule` never names a record.
+  breaks whenever the record has numbered rules. A `behaviour-rule` names one doc: the rules
+  broken, at least one, each the candidate's `id` plus `.R<n>` (`backend/device.R2`), optionally
+  with the doc id. Use `behaviour-rule` only for a candidate of kind `behaviour`; the ADR classes
+  never name a behaviour doc.
 - `where` is `path:line-range` for every class except `dangling`, which uses `null`. Always write
   the key, even when it is `null`.
 - `summary` is one line. A trigger's summary names the trigger and what in the change fires it.
@@ -328,8 +344,9 @@ on whether the PR may merge.
    which every time. An accepted record that a *proposed* record `supersedes` is still binding;
    name the pending replacement.
 3. **Cite by qualified id**, rules as `<id>.R<n>`, facts as `<id>.F<n>`, behaviour rules as
-   `<home>/<prefix>.R<n>`, records also by section and path; code by line range. Section names survive edits; line numbers in records do not. In
-   the `adr-findings` block, ids are the same qualified ids.
+   the doc's candidate `id` plus `.R<n>` (`backend/device.R2`, never `device.R2`), records also
+   by section and path; code by line range. Section names survive edits; line numbers in records
+   do not. In the `adr-findings` block, ids are the same qualified ids.
 4. **Be honest about absence.** An empty home is a finding, not a failure; a home that is not
    checked out is a gap in what you could see. Do not infer decisions from silence in `bind` or
    `check`; only `survey` reconstructs.

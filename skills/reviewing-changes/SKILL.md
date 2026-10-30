@@ -208,10 +208,12 @@ the summary that `findings-out` could not be written — CI will fail closed on 
 
 Exit 0: nothing blocks. Exit 1: blocking findings remain. Exit 2: the verdict could not run —
 causes include a missing, invalid, duplicate, or unterminated `adr-findings` block, an unknown
-finding class, missing or malformed `coverage`, a selected record not listed as checked, an id
-that resolves to no record, rule or fact, a located finding without `where`, a repo that cannot
-be determined, or an unreadable input or record. Report its stderr, print `**ADR check:** could not run (verdict exit 2:
-<stderr>)`, and count it as one blocking finding: the check failed closed.
+finding class, missing or malformed `coverage`, a selected record or behaviour doc not listed
+as checked, an id that resolves to no record, behaviour doc, rule or fact, a located finding
+without `where`, a repo that cannot be determined, two behaviour docs with one id or one in scope
+with no usable prefix, or an unreadable input, record or behaviour doc. Report its stderr, print
+`**ADR check:** could not run (verdict exit 2: <stderr>)`, and count it as one blocking finding:
+the check failed closed.
 
 The summary line's count comes from the verdict's `blocking` field. Never count it yourself.
 
@@ -229,8 +231,9 @@ a rule — so CI logs and readers can search for them:
   tier: open its own ADR PR (`/lore:adr <the decision>`) and wait until it is accepted;
 - fired trigger → note the change on the record; the decision goes back to its deciders;
 - stale fact → include the observation the architect drafted;
-- broken behaviour rule → conform, or edit the rule in this PR (in the shared home, in its own
-  KB PR named in the PR description);
+- broken behaviour rule → conform, or edit the rule: in this PR for a local doc; for a
+  shared-home doc, in its own KB PR, which must merge first. List rule edits on the `- Rules:`
+  line of `## Decisions` (`references/pr-decisions.md`);
 - dangling citation → fix the id in the PR description or code.
 
 When there is a PR description, Read it: if it has no `## Decisions` heading (one inside an HTML

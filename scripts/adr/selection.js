@@ -5,7 +5,9 @@
 
 const path = require('path');
 const { asList, isEmpty } = require('./frontmatter');
+const fs = require('fs');
 const R = require('./records');
+const B = require('./behaviour');
 const H = require('./homes');
 const G = require('./git');
 const { parsePatchPaths, parseCitedIds, select } = require('./select');
@@ -27,12 +29,27 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
         for (const r of R.loadHome(dir).records) {
             candidates.push({
                 id: isEmpty(r.fm.id) ? R.impliedId(prefix, r.number) : r.fm.id,
-                kind, status: r.fm.status || '', file: r.file, scope: asList(r.fm.scope), fm: r.fm, text: r.text,
+                kind, doc: 'adr', status: r.fm.status || '', file: r.file, scope: asList(r.fm.scope), fm: r.fm, text: r.text,
             });
         }
     };
     add(local.dir, 'local', repo);
     if (homes.sharedHome && !local.coinciding) add(homes.sharedHome, 'shared', 'kb');
+    const addDocs = (dir, kind, prefix) => {
+        for (const d of B.loadBehaviourHome(dir).docs) {
+            // No usable prefix, no id; `check` already errors on it.
+            if (typeof d.fm.prefix !== 'string' || !d.fm.prefix) continue;
+            candidates.push({
+                id: `${prefix}/${d.fm.prefix}`, kind, doc: 'behaviour', status: '-', file: d.file,
+                scope: asList(d.fm.scope), fm: d.fm, text: d.text,
+            });
+        }
+    };
+    addDocs(local.behaviourDir, 'local', repo);
+    const sameDir = (a, b) => !!a && !!b && fs.existsSync(a) && fs.existsSync(b) && fs.realpathSync(a) === fs.realpathSync(b);
+    if (homes.sharedBehaviourHome && !sameDir(local.behaviourDir, homes.sharedBehaviourHome)) {
+        addDocs(homes.sharedBehaviourHome, 'shared', 'kb');
+    }
     const paths = given || parsePatchPaths(diffText);
     const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody || '') });
     return { repo, homes, picked, candidates };

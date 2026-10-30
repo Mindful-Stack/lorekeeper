@@ -12,7 +12,7 @@
       "additionalProperties": false,
       "required": ["checked", "notReviewed"],
       "properties": {
-        "checked": { "type": "array", "items": { "type": "string" }, "description": "Every record id you read in full against the diff; must include every selected candidate whose status is not `missing`." },
+        "checked": { "type": "array", "items": { "type": "string" }, "description": "Every record or behaviour doc id you read in full against the diff; must include every selected candidate whose status is not `missing`." },
         "notReviewed": { "type": "array", "items": { "type": "string" }, "description": "Areas of the diff you could not assess, and why. Reported, not judged." }
       }
     },
@@ -23,8 +23,8 @@
         "additionalProperties": false,
         "required": ["class", "ids", "where", "summary"],
         "properties": {
-          "class": { "type": "string", "enum": ["contradiction", "trigger", "stale-fact", "uncovered", "dangling"] },
-          "ids": { "type": "array", "items": { "type": "string" }, "description": "One record: its id, its rules (<id>.R<n>) or facts (<id>.F<n>); [] for uncovered; the cited id for dangling." },
+          "class": { "type": "string", "enum": ["contradiction", "trigger", "stale-fact", "uncovered", "dangling", "behaviour-rule"] },
+          "ids": { "type": "array", "items": { "type": "string" }, "description": "One record: its id, its rules (<id>.R<n>) or facts (<id>.F<n>); [] for uncovered; the cited id for dangling; for behaviour-rule, the doc's rules (<doc>.R<n>)." },
           "where": { "type": ["string", "null"], "description": "path:line-range of the change; null only for dangling." },
           "summary": { "type": "string", "description": "One line. trigger: name the trigger and what fires it. uncovered: what reversing the choice would take." }
         }

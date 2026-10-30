@@ -1,6 +1,7 @@
 'use strict';
 
 const { walk } = require('./markdown');
+const { DOC_ID_RE, ruleNumbers } = require('./behaviour');
 
 // Deterministic checks on a reviewer's findings document, against the candidates `select`
 // computes and the records themselves. `coverage.checked` is the reviewer's attestation; this
@@ -26,7 +27,8 @@ const ruleIds = (text) => idsIn(text, 'Decision', /^\s*[-*]\s+\*\*(R\d+)\*\*/);
 const factIds = (text) => idsIn(text, 'Facts relied on', /^\s*[-*]\s+(F\d+)\b/);
 const recordOf = (id) => id.replace(/\.[RF]\d+$/, '');
 
-const RECORD_CLASSES = new Set(['contradiction', 'trigger', 'stale-fact']);
+// Which kind of document each finding class must name.
+const DOC_CLASSES = { contradiction: 'adr', trigger: 'adr', 'stale-fact': 'adr', 'behaviour-rule': 'behaviour' };
 const strings = (x) => Array.isArray(x) && x.every((y) => typeof y === 'string');
 
 // doc: { coverage, findings }; picked: select output; recordText(id) → text or null.
@@ -42,20 +44,34 @@ function validate({ doc, picked, recordText }) {
     }
     const attested = new Set(cov.checked);
     for (const f of doc.findings) {
-        if (!RECORD_CLASSES.has(f.class)) continue;
+        const want = DOC_CLASSES[f.class];
+        if (!want) continue;
+        const noun = want === 'adr' ? 'record' : 'behaviour doc';
         const records = [...new Set(f.ids.map(recordOf))];
-        if (records.length !== 1) throw fail(`${f.class}: ids must name exactly one record, got ${records.length ? 'more than one record' : 'none'}`);
+        if (records.length !== 1) throw fail(`${f.class}: ids must name exactly one ${noun}, got ${records.length ? `more than one ${noun}` : 'none'}`);
         const [rec] = records;
+        const isDoc = DOC_ID_RE.test(rec);
+        if (want === 'adr' && isDoc) throw fail(`${f.class} names ${rec}, which is a behaviour doc; use behaviour-rule`);
+        if (want === 'behaviour' && !isDoc) throw fail(`behaviour-rule names ${rec}, which is not a behaviour doc`);
         const text = recordText(rec);
-        if (!text) throw fail(`${f.class}: ${rec} does not resolve to a record`);
-        const rules = ruleIds(text);
-        const facts = factIds(text);
-        for (const id of f.ids.filter((x) => x !== rec)) {
-            const n = id.slice(rec.length + 1);
-            if (!(n[0] === 'R' ? rules : facts).includes(n)) throw fail(`${f.class}: ${id} names no ${n} in ${rec}`);
-        }
-        if (f.class === 'contradiction' && rules.length && !f.ids.some((id) => /\.R\d+$/.test(id))) {
-            throw fail(`contradiction on ${rec} must cite a rule id (${rules.join(', ')})`);
+        if (!text) throw fail(`${f.class}: ${rec} does not resolve to a ${noun}`);
+        if (want === 'behaviour') {
+            const rules = ruleNumbers(text);
+            for (const id of f.ids.filter((x) => x !== rec)) {
+                const n = id.slice(rec.length + 1);
+                if (!rules.includes(n)) throw fail(`behaviour-rule: ${id} names no ${n} in ${rec}`);
+            }
+            if (!f.ids.some((id) => /\.R\d+$/.test(id))) throw fail(`behaviour-rule on ${rec} must cite a rule id (${rules.join(', ')})`);
+        } else {
+            const rules = ruleIds(text);
+            const facts = factIds(text);
+            for (const id of f.ids.filter((x) => x !== rec)) {
+                const n = id.slice(rec.length + 1);
+                if (!(n[0] === 'R' ? rules : facts).includes(n)) throw fail(`${f.class}: ${id} names no ${n} in ${rec}`);
+            }
+            if (f.class === 'contradiction' && rules.length && !f.ids.some((id) => /\.R\d+$/.test(id))) {
+                throw fail(`contradiction on ${rec} must cite a rule id (${rules.join(', ')})`);
+            }
         }
         attested.add(rec);
     }

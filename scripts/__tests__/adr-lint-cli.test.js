@@ -975,3 +975,23 @@ test('an absent own-home ADR dir makes a Source missing', (t) => {
     assert.equal(r.code, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /Source kb\/ADR-0042 does not exist/);
 });
+
+test('verdict blocks on a behaviour-rule finding for a selected doc, and select --json says kind behaviour', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    const patch = path.join(w.root, 'p.patch');
+    write(patch, 'diff --git a/src/Devices/Status.cs b/src/Devices/Status.cs\n--- a/src/Devices/Status.cs\n+++ b/src/Devices/Status.cs\n@@ -1 +1 @@\n-a\n+b\n');
+    const sel = runCli(w.root, w.env, 'select', '--json', '--diff', patch, '--repo', 'api');
+    assert.equal(sel.code, 0, sel.stderr);
+    const c = JSON.parse(sel.stdout).candidates.find((x) => x.id === 'api/device');
+    assert.equal(c.kind, 'behaviour');
+    assert.equal(c.status, '-');
+    assert.match(c.record, /### device\.R2 Project scoped/);
+    const findings = path.join(w.root, 'f.json');
+    write(findings, JSON.stringify({ coverage: { checked: ['api/device'], notReviewed: [] },
+        findings: [{ class: 'behaviour-rule', ids: ['api/device.R2'], where: 'src/Devices/Status.cs:1', summary: 'lists other projects\' devices' }] }));
+    const v = runCli(w.root, w.env, 'verdict', '--findings', findings, '--diff', patch, '--repo', 'api');
+    assert.equal(v.code, 1, v.stdout + v.stderr);
+    assert.equal(JSON.parse(v.stdout).findings[0].severity, 'critical');
+});

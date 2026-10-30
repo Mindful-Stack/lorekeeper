@@ -5,9 +5,9 @@ const { SEVERITY, parseFindings, verdict } = require('../adr/verdict');
 
 const f = (cls, ids) => ({ class: cls, ids, summary: `${cls} finding` });
 
-test('severity table: the three blocking classes are critical; stale facts minor; dangling important', () => {
+test('severity table: the four blocking classes are critical; stale facts minor; dangling important', () => {
     assert.deepEqual(SEVERITY, {
-        contradiction: 'critical', uncovered: 'critical', trigger: 'critical', 'stale-fact': 'minor', dangling: 'important',
+        contradiction: 'critical', uncovered: 'critical', trigger: 'critical', 'behaviour-rule': 'critical', 'stale-fact': 'minor', dangling: 'important',
     });
 });
 
@@ -24,7 +24,7 @@ test('a contradiction blocks; a stale fact does not', () => {
 });
 
 test('parseFindings rejects an unknown class, a missing summary and a non-array ids', () => {
-    assert.throws(() => parseFindings('{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"behaviour-rule","ids":[],"summary":"x","where":"a:1"}]}'), /unknown class behaviour-rule/);
+    assert.throws(() => parseFindings('{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"not-a-class","ids":[],"summary":"x","where":"a:1"}]}'), /unknown class not-a-class/);
     assert.throws(() => parseFindings('{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"trigger","ids":[],"where":"a:1"}]}'), /summary/);
     assert.throws(() => parseFindings('{"coverage":{"checked":[],"notReviewed":[]},"findings":[{"class":"trigger","ids":"kb/ADR-0001","summary":"x","where":"a:1"}]}'), /ids/);
     assert.throws(() => parseFindings('not json'), /JSON/);
@@ -166,4 +166,15 @@ test('parseFindings returns {coverage, findings}; located classes need where; nu
 test('parseFindings reads a CRLF markdown report', () => {
     const md = ['Report', '', '```adr-findings', JSON.stringify({ coverage: cov, findings: [] }), '```', ''].join('\r\n');
     assert.deepEqual(parseFindings(md).findings, []);
+});
+
+test('behaviour-rule is critical and blocks', () => {
+    const v = verdict({ findings: [{ class: 'behaviour-rule', ids: ['api/device.R1'], where: 'x:1', summary: 's' }] });
+    assert.equal(v.findings[0].severity, 'critical');
+    assert.equal(v.blocking, 1);
+});
+
+test('parseFindings needs where on a behaviour-rule finding', () => {
+    const doc = { coverage: { checked: [], notReviewed: [] }, findings: [{ class: 'behaviour-rule', ids: ['api/device.R1'], where: null, summary: 's' }] };
+    assert.throws(() => parseFindings(JSON.stringify(doc)), /behaviour-rule needs "where"/);
 });

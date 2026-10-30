@@ -301,13 +301,12 @@ function cmdSelect(flags) {
     const { repo, picked, candidates } = sel;
     if (flags.json) {
         const byId = new Map(candidates.map((c) => [c.id, c]));
-        // `kind` is the document kind; behaviour docs (a later plan) add `behaviour` rows.
         console.log(JSON.stringify({
             repo,
             candidates: picked.map((p) => {
                 const c = byId.get(p.id);
                 return {
-                    id: p.id, kind: 'adr', home: p.home, status: p.status, file: p.file ? display(p.file) : null, reasons: p.reasons,
+                    id: p.id, kind: p.doc, home: p.home, status: p.status, file: p.file ? display(p.file) : null, reasons: p.reasons,
                     title: c ? c.fm.title || '' : '', description: c ? c.fm.description || '' : '',
                     scope: c ? c.scope : [], record: c ? c.text : '',
                 };
@@ -439,9 +438,10 @@ function cmdVerdict(flags) {
     const cwd = path.resolve(flags.cwd || process.cwd());
     try {
         const doc = V.parseFindings(readInput(flags.findings, 'findings'));
-        const { homes, picked } = S.selectFor({ cwd, repo: flags.repo, diffText, prBody });
+        const { homes, picked, candidates } = S.selectFor({ cwd, repo: flags.repo, diffText, prBody });
         // Selected candidates first: their ids come from --repo, which the catalogue may not share.
         const files = new Map(C.buildCatalogue(homes).records.map((r) => [r.id, r.file]));
+        for (const c of candidates) if (c.doc === 'behaviour') files.set(c.id, c.file);
         for (const p of picked) if (p.file) files.set(p.id, p.file);
         const texts = new Map();
         const recordText = (id) => {

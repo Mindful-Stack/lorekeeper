@@ -57,24 +57,27 @@ const DISCOVERY = { pos: 1, val: ['version'], bool: ['complete', 'reopen'], req:
 const SPEC = {
   'auth status': { pos: 0 },
   'story context': { pos: 1 },
-  'story ls': { pos: 0, val: ['epic'], bool: ['untriaged'] },
-  'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
+  'story ls': { pos: 0, val: ['epic', 'owner', 'delivery', 'label'], bool: ['untriaged', 'ready', 'mine'] },
+  'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
   'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
-  'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank'], bool: ['no-epic'], rep: ['criterion'], req: ['version'] },
+  'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank', 'external-ref', 'description'], bool: ['no-epic'], rep: ['criterion', 'add-label', 'remove-label'], req: ['version'] },
   'initiative show': { pos: 1 },
   'initiative ls': { pos: 0 },
-  'initiative create': { pos: 0, val: ['idempotency-key', 'title', 'horizon', 'brief', 'target-month', 'owner'], req: ['idempotency-key', 'title', 'horizon'] },
-  'initiative edit': { pos: 1, val: ['version', 'title', 'brief', 'horizon', 'target-month', 'owner'], req: ['version'] },
+  'initiative create': { pos: 0, val: ['idempotency-key', 'title', 'horizon', 'brief', 'target-month', 'owner', 'external-ref'], req: ['idempotency-key', 'title', 'horizon'] },
+  'initiative edit': { pos: 1, val: ['version', 'title', 'brief', 'horizon', 'target-month', 'owner', 'external-ref'], req: ['version'] },
   'initiative discovery': DISCOVERY,
+  'initiative findings': { pos: 1 },
   'epic show': { pos: 1 },
   'epic ls': { pos: 0, val: ['initiative'] },
-  'epic create': { pos: 0, val: ['idempotency-key', 'title', 'initiative', 'brief'], req: ['idempotency-key', 'title'] },
-  'epic edit': { pos: 1, val: ['version', 'title', 'brief', 'initiative'], bool: ['no-initiative'], req: ['version'] },
+  'epic create': { pos: 0, val: ['idempotency-key', 'title', 'initiative', 'brief', 'external-ref'], req: ['idempotency-key', 'title'] },
+  'epic edit': { pos: 1, val: ['version', 'title', 'brief', 'initiative', 'external-ref'], bool: ['no-initiative'], req: ['version'] },
   'epic discovery': DISCOVERY,
+  'epic findings': { pos: 1 },
   'decision ls': { pos: 0, val: ['on'], bool: ['mine'] },
   'decision show': { pos: 1 },
   'decision require': { pos: 0, val: ['idempotency-key', 'on', 'title', 'decider', 'due'], req: ['idempotency-key', 'on', 'title', 'decider'] },
   'decision link': { pos: 1, val: ['record', 'repo', 'path', 'pr', 'household'], req: ['record', 'repo', 'path'] },
+  'decision close': { pos: 1, val: ['reason'], req: ['reason'] },
   'comment add': { pos: 0, val: ['idempotency-key', 'story', 'decision', 'body'], req: ['idempotency-key', 'body'] },
 };
 const cmd = words.slice(0, 2).join(' ');
@@ -135,7 +138,16 @@ const stories = {
 // the last write), and the creates by idempotency key.
 const state = withState((st) => st);
 const itemsOf = () => state.items || {};
-const find = (table, key) => itemsOf()[key] || table[key] || error('not_found', `no item ${key}`);
+// An item is found by its key, or by the external reference it was migrated from (`show PIB-30`).
+const find = (table, key) => itemsOf()[key] || table[key]
+  || Object.values({ ...table, ...itemsOf() }).find((x) => x.external_ref === key && (x.key in table || kindOf(x) === kindOf(Object.values(table)[0])))
+  || error('not_found', `no item ${key}`);
+// --external-ref is set once: the same value again is a no-op, another value is refused.
+const refOf = (item) => {
+  if (f['external-ref'] === undefined) return item.external_ref ?? null;
+  if (item.external_ref && item.external_ref !== f['external-ref']) emit({ outcome: 'refused', reasons: [{ reason: 'external_ref_already_set' }] }, 2);
+  return f['external-ref'];
+};
 const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`));
 const [p0] = pos;
 // Items created in this run, by kind, in creation order (lists show them like the real planner).
@@ -174,6 +186,25 @@ const readinessOf = (s) => {
   return { ready: !reasons.length, reasons };
 };
 
+// The planner's advisory findings (reeve-planning domain/findings.rs): computed on read, never blocking.
+const findingsOf = (item, ancestors, storyCount) => {
+  const out = [];
+  const own = allDecisions().filter((d) => d.on === item.key);
+  if (!item.brief.trim()) out.push({ finding: 'empty_brief' });
+  const lower = item.brief.toLowerCase();
+  const words = lower.split(/[^\p{L}\p{N}]+/u);
+  const cites = [];
+  if (words.includes('jira') || lower.includes('atlassian.net/browse/')) cites.push('Jira');
+  if (words.includes('confluence') || lower.includes('atlassian.net/wiki')) cites.push('Confluence');
+  if (words.includes('decided')) cites.push('decided');
+  const ancestorHas = allDecisions().some((d) => ancestors.includes(d.on));
+  if (cites.length && !own.length && !ancestorHas) out.push({ finding: 'brief_cites_without_decision', cites });
+  if (item.discovery_complete) {
+    for (const d of own) if (!d.closed && d.check.kind !== 'accepted') out.push({ finding: 'discovery_complete_with_open_decision', decision_id: d.id, title: d.title });
+    if (!storyCount) out.push({ finding: 'discovery_complete_without_stories' });
+  }
+  return out;
+};
 // A write that names an epic or initiative nobody created is not_found, and not logged: a guessed
 // key never satisfies a log expectation.
 if (['story create', 'story edit', 'epic create', 'epic edit'].includes(cmd)) {
@@ -195,19 +226,25 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
     const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
     ok({ story: s, epic: e, initiative: i, required_decisions: required, blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
   },
-  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readinessOf(s) }))),
-  'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })) }))),
+  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic))
+    .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery) && (!f.label || s.labels.includes(f.label)))
+    .map((s) => ({ story: s, readiness: readinessOf(s) })).filter((x) => !f.ready || (x.readiness.ready && x.story.delivery === 'todo'))),
+  'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], external_ref: f['external-ref'] || null }))),
   'story mv': () => { const s = find(stories, p0); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1] })); }, // exists so a delivery change is logged; no skill may call it
-  'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic })); },
+  'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic, external_ref: refOf(s), description: f.description ?? s.description,
+    criteria: f.criterion ? f.criterion.map((text, i) => ({ text, done: !!(s.criteria[i] && s.criteria[i].text === text && s.criteria[i].done) })) : s.criteria,
+    labels: [...new Set([...s.labels, ...(f['add-label'] || [])])].filter((l) => !(f['remove-label'] || []).includes(l)) })); },
   'initiative show': () => ok(find(initiatives, p0)),
+  'initiative findings': () => { const i = find(initiatives, p0); const own = all(epics, 'epic').filter((e) => e.initiative === i.key).map((e) => e.key); ok(findingsOf(i, [], all(stories, 'story').filter((x) => own.includes(x.epic)).length)); },
   'initiative ls': () => ok(all(initiatives, 'initiative')),
-  'initiative create': () => ok(mint((id) => initiative(`GRA-${id}`, f.title, { brief: f.brief || '', horizon: f.horizon, owner: f.owner || null }))),
-  'initiative edit': () => { const i = find(initiatives, p0); ok(save({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon })); },
+  'initiative create': () => ok(mint((id) => initiative(`GRA-${id}`, f.title, { brief: f.brief || '', horizon: f.horizon, owner: f.owner || null, target_month: f['target-month'] || null, external_ref: f['external-ref'] || null }))),
+  'initiative edit': () => { const i = find(initiatives, p0); ok(save({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon, owner: f.owner ?? i.owner, target_month: f['target-month'] ?? i.target_month, external_ref: refOf(i) })); },
   'initiative discovery': () => ok(save({ ...bump(find(initiatives, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
   'epic show': () => ok(find(epics, p0)),
+  'epic findings': () => { const e = find(epics, p0); ok(findingsOf(e, [e.initiative], all(stories, 'story').filter((x) => x.epic === e.key).length)); },
   'epic ls': () => ok(all(epics, 'epic').filter((e) => !f.initiative || e.initiative === f.initiative)),
-  'epic create': () => ok(mint((id) => epic(`GRA-${id}`, f.title, { brief: f.brief || '', initiative: f.initiative || null }))),
-  'epic edit': () => { const e = find(epics, p0); ok(save({ ...bump(e), brief: f.brief ?? e.brief, title: f.title ?? e.title })); },
+  'epic create': () => ok(mint((id) => epic(`GRA-${id}`, f.title, { brief: f.brief || '', initiative: f.initiative || null, external_ref: f['external-ref'] || null }))),
+  'epic edit': () => { const e = find(epics, p0); ok(save({ ...bump(e), brief: f.brief ?? e.brief, title: f.title ?? e.title, initiative: f['no-initiative'] ? null : f.initiative ?? e.initiative, external_ref: refOf(e) })); },
   'epic discovery': () => ok(save({ ...bump(find(epics, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
   'decision ls': () => ok(allDecisions().filter((d) => !f.on || d.on === f.on)),
   'decision show': () => ok(allDecisions().find((d) => String(d.id) === p0) || error('not_found', `no decision ${p0}`)),
@@ -224,6 +261,14 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
       process.stderr.write(`decision ${p0}: cannot read ${f.path}: ${f.household || '.'}/${f.repo} is not a git checkout\n`);
       emit({ outcome: 'ok', value }, 1);
     }
+    ok(value);
+  },
+  'decision close': () => {
+    if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
+    const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);
+    if (d.closed) emit({ outcome: 'refused', reasons: [{ reason: 'decision_closed' }] }, 2);
+    const value = { ...d, closed: { at: NOW, by: 'dan@example.com', reason: f.reason }, version: d.version + 1 };
+    withState((st) => { (st.decisions ||= {})[d.id] = value; });
     ok(value);
   },
   'comment add': () => {

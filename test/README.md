@@ -118,7 +118,17 @@ What the real CLI's parser rejects (an unknown command or flag, a missing value,
 with `-` except `comment add --body`) is a usage error as there: the text on stderr, nothing on
 stdout, exit 1. `scripts/__tests__/reeve-reference.test.js` runs every `reeve … --json` command of
 the reference and the skills through the fake, and through the real CLI when `REEVE_REAL_BIN` is
-set. Answers use the planner's wire shapes:
+set. With `REEVE_REAL_BIN` set it also checks the reverse direction: for every command
+`references/reeve-cli.md` documents, each flag the real CLI's `--help` lists must be mentioned by
+the reference (in one of that command's spans, or on the same line as one); `HELP_ONLY` in the test
+lists the flags left out on purpose (`--help`, the global `--json`). No server is needed; the Reeve
+repository's CI runs it against the binary it builds:
+
+```bash
+REEVE_REAL_BIN=/path/to/reeve node --test scripts/__tests__/reeve-reference.test.js
+```
+
+Answers use the planner's wire shapes:
 
 - initiatives `GRA-12` "Faster mentor matching" (version 3) and `GRA-13` "Mentor onboarding";
 - epics `GRA-20` "Matching queue" (in GRA-12, version 2), `GRA-21` "Mentor profiles" (in GRA-13)

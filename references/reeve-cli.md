@@ -1,8 +1,9 @@
 # The Reeve planner CLI — what skills may call
 
 Skills copy commands from this file, never from memory. Every flag below exists in the
-`reeve-planner` CLI (`scripts/__tests__/reeve-reference.test.js` parses every command here with the
-real binary when `REEVE_REAL_BIN` is set).
+`reeve-planner` CLI: `scripts/__tests__/reeve-reference.test.js` parses every command here with the
+real binary when `REEVE_REAL_BIN` is set, and fails when that binary's `--help` lists a flag this
+file does not mention for a command it documents.
 
 ## Detection and the binary
 
@@ -18,7 +19,8 @@ stands for it.
 ## Arguments
 
 Put `--json` on every command, as the last argument (the real CLI takes it anywhere; these
-examples end with it). Pass Markdown (a brief) or any text with spaces as one single-quoted
+examples end with it). The CLI's other global flag, `--ascii`, only changes text output (each key's
+level glyph, such as `◆` for an initiative, becomes `[I]`), so the skills never pass it. Pass Markdown (a brief) or any text with spaces as one single-quoted
 argument with real newlines, `'\''` for an apostrophe, and no line whose first non-blank
 character is `#` (an indented `#` is refused too): write a heading in setext form, its title
 underlined with `---`. No value starts with `-` (the real CLI reads it as a flag; only
@@ -53,7 +55,12 @@ from a sign-in error.
 
 Exceptions: `code: conflict` (the `--version` is stale) — re-read the item, fold what changed into
 your text (a teammate's edit is kept, never overwritten), show it, and retry once with the new
-`version`. `decision link` — see its section. A usage error (an unknown flag, a value starting with
+`version`. `code: rate_limited` (the planner answered HTTP 429; the envelope carries
+`retry_after_secs` when the server sent a Retry-After, and text output says to retry after N
+seconds) — wait that many seconds (a few seconds when none is given), then run the SAME command
+again, with the SAME `--idempotency-key` for a create: a create retried with its key answers the
+same item, never a duplicate. Retry at most twice; then show the code and message and stop that
+step. `decision link` — see its section. A usage error (an unknown flag, a value starting with
 `-`) prints the CLI's usage text on stderr and no envelope (stdout is empty), exit 1: fix the
 command, never retry it as it was.
 
@@ -87,16 +94,17 @@ items; never derive a key from a title. Print the run id in the report.
 
 | Command | Read |
 |---|---|
-| `reeve initiative show <KEY> --json` | `value.brief`, `.horizon`, `.owner`, `.discovery_complete` (null = not complete), `.version` |
+| `reeve initiative show <KEY> --json` | `value.brief`, `.horizon`, `.owner` (null = none), `.target_month` (a month such as 2027-03, null = none), `.external_ref` (null = none), `.discovery_complete` (null = not complete), `.version` |
 | `reeve initiative ls --json` | `value[]`: `key`, `title`, `horizon` |
-| `reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key <key> --json` | `value.key`, `value.version`; a bucket the planner does not have is a `validation` error |
-| `reeve initiative edit <KEY> --brief <md> --version <n> --json` | `value.version` |
+| `reeve initiative create --title <title> --horizon <bucket> --brief <md> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json` | `value.key`, `value.version`; a bucket the planner does not have is a `validation` error |
+| `reeve initiative edit <KEY> [--brief <md>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json` | `value.version` |
 | `reeve initiative discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
 | `reeve epic show <KEY> --json` | `value.brief`, `.initiative`, `.discovery_complete`, `.version` |
 | `reeve epic ls [--initiative <KEY>] --json` | `value[]`: `key`, `title`, `initiative` |
 | `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key <key> --json` | `value.key`, `value.version` |
 | `reeve epic edit <KEY> --brief <md> --version <n> --json` | `value.version` |
 | `reeve epic discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
+| `reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json` | `value[]`, `.finding`; empty when there are none (see *Findings*) |
 | `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version`. Untriaged: kind `story` with no epic (a bug or chore without one is not listed) |
 | `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] --idempotency-key <key> --json` | `value.key` |
 | `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] --json` | `value.version` |
@@ -105,10 +113,66 @@ items; never derive a key from a title. Print the run id in the report.
 | `reeve decision show <id> --json` | `value`: one decision, the same fields |
 | `reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json` | `value.id` |
 | `reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json` | `value.check.kind` |
+| `reeve decision close <id> --reason <text> --json` | `value.closed.reason`, `value.closed.at`, `value.closed.by` |
 | `reeve comment add --decision <id> --body <text> --idempotency-key <key> --json` (or `--story <KEY>`) | `value[]`, the thread |
+
+An initiative's owner is an email and its target month is `YYYY-MM` (`2027-03`); pass either on
+create or edit only with a value the user gave (rule *The user decides* in each skill), and leave a
+flag out to keep what is there.
 
 No command lists the planner's configured repositories or horizon buckets (they are in
 `GET /api/v1/config`, which the CLI does not expose): ask for them, or take them from the request.
+
+## Other flags
+
+The commands above are what the skills run. The real CLI takes these flags too; use one only when
+the user asks for what it does, with the command written as shown.
+
+| Command | What it does |
+|---|---|
+| `reeve initiative edit <KEY> --version <n> [--title <title>] [--horizon <bucket>] --json` | renames the initiative or moves it to another horizon bucket (a bucket the planner does not have is a `validation` error) |
+| `reeve initiative discovery <KEY> --reopen --version <n> --json` / `reeve epic discovery <KEY> --reopen --version <n> --json` | reopens discovery that was marked complete |
+| `reeve epic edit <KEY> --version <n> [--title <title>] [--initiative <KEY>] --json` | renames the epic or moves it to another initiative; `--no-initiative` in place of `--initiative` detaches it (a standalone epic) |
+| `reeve story ls [--owner <email>] [--delivery <delivery>] [--label <label>] [--ready] [--mine] --json` | filters the list: owner, delivery state (`todo`, `in-progress`, `in-review`, `testing`, `done`), label, `--ready` (ready stories still in todo), `--mine` (owned by the signed-in user) |
+| `reeve story create --epic <KEY> --title <title> --kind story --description <text> --label <label> --criterion <text> --idempotency-key <key> --json` | a story with a longer description and labels (`--label` repeats, one per label) |
+| `reeve story edit <KEY> --version <n> [--title <title>] [--criterion <text> …] [--rank <n>] --json` | renames the story, replaces ALL its criteria (one `--criterion` each; a criterion unchanged at the same position keeps its done flag) or sets its rank; `--no-epic` in place of `--epic` detaches it (it becomes untriaged) |
+| `reeve story edit <KEY> --version <n> [--description <text>] [--add-label <label> …] [--remove-label <label> …] --json` | replaces the whole description, or adds and removes labels (each repeats; a label the story already has is kept once) |
+| `reeve decision ls --mine --json` | the decisions the signed-in user is the decider of |
+
+## Findings
+
+`initiative findings` and `epic findings` answer the planner's advisory findings on that item:
+computed on every read, never stored, and they never block a move. Each element has a `finding`:
+
+| `finding` | Words | What the skills do |
+|---|---|---|
+| `empty_brief` | the brief is empty | write the brief (the skill's brief step) |
+| `brief_cites_without_decision` (with `cites`, e.g. `["Jira", "decided"]`) | the brief cites <cites> but no required decision is on it | each cited choice is a triage candidate (`<plugin-root>/references/decision-triage.md`): record it and link the line to its record, or require a decision |
+| `discovery_complete_with_open_decision` (with `decision_id`, `title`) | discovery is complete but decision #<decision_id> <title> is open | show it; reopening discovery or settling the decision is the user's call |
+| `discovery_complete_without_stories` | discovery is complete but there are no stories | show it |
+
+Any other `finding` is shown verbatim. Text-mode `show` lists the findings too.
+
+## Migrated items: --external-ref
+
+An item moved by hand from another tracker records the key it came from (a Jira key such as
+`PIB-30`), so a later `reeve import jira` finds that item instead of creating a duplicate.
+
+- On create: `reeve initiative create --title <title> --horizon <bucket> --brief <md> --external-ref <ref> --idempotency-key <key> --json`,
+  `reeve epic create --initiative <KEY> --title <title> --brief <md> --external-ref <ref> --idempotency-key <key> --json`,
+  `reeve story create --epic <KEY> --title <title> --kind story --criterion <text> --external-ref <ref> --idempotency-key <key> --json`.
+- Set once on an item that has none: `reeve initiative edit <KEY> --version <v> --external-ref <ref> --json`,
+  `reeve epic edit <KEY> --version <v> --external-ref <ref> --json`,
+  `reeve story edit <KEY> --version <v> --external-ref <ref> --json`. The same value again is a
+  no-op; a different one is refused: the reference cannot be changed once set.
+- A reference names at most one item across initiatives, epics and stories, must look like a key
+  (`PIB-30`) and must not be in this planner's own key space (a `GRA-` key on a `GRA` planner is
+  refused). Show the refusal's reasons; never retry with another value.
+- `show` prints it (`value.external_ref`; text output `from: <ref>`), and an item can be read by it:
+  `reeve initiative show <ref> --json` answers the item migrated from `<ref>`.
+
+Before creating an item for something migrated, read by the reference first: an `ok` answer is
+the item, already there.
 
 ## decision link
 

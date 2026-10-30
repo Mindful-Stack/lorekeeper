@@ -12,8 +12,8 @@
       "row": "`reeve initiative show <KEY> --json`",
       "bind": "initiative",
       "argv": ["initiative", "show", "{{initiative.key}}", "--json"],
-      "reads": ["value.brief", "value.horizon", "value.owner", "value.discovery_complete", "value.version"],
-      "types": { "value.brief": "string", "value.horizon": "string", "value.owner": "string|null", "value.discovery_complete": "object|null", "value.version": "number" }
+      "reads": ["value.brief", "value.horizon", "value.owner", "value.target_month", "value.external_ref", "value.discovery_complete", "value.version"],
+      "types": { "value.brief": "string", "value.horizon": "string", "value.owner": "string|null", "value.target_month": "string|null", "value.external_ref": "string|null", "value.discovery_complete": "object|null", "value.version": "number" }
     },
     {
       "row": "`reeve initiative ls --json`",
@@ -22,13 +22,13 @@
       "types": { "value[].key": "string", "value[].title": "string", "value[].horizon": "string" }
     },
     {
-      "row": "`reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key <key> --json`",
-      "argv": ["initiative", "create", "--title", "Skill smoke second initiative", "--horizon", "Now", "--brief", "Created by the skill smoke.", "--idempotency-key", "planning-initiative:{{initiative.key}}:{{run_id}}:1", "--json"],
+      "row": "`reeve initiative create --title <title> --horizon <bucket> --brief <md> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json`",
+      "argv": ["initiative", "create", "--title", "Skill smoke second initiative", "--horizon", "Now", "--brief", "Created by the skill smoke.", "--owner", "{{email}}", "--target-month", "2027-03", "--idempotency-key", "planning-initiative:{{initiative.key}}:{{run_id}}:1", "--json"],
       "reads": ["value.key", "value.version"],
       "types": { "value.key": "string", "value.version": "number" }
     },
     {
-      "row": "`reeve initiative edit <KEY> --brief <md> --version <n> --json`",
+      "row": "`reeve initiative edit <KEY> [--brief <md>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json`",
       "bind": "initiative",
       "argv": ["initiative", "edit", "{{initiative.key}}", "--brief", "Edited by the skill smoke.", "--version", "{{initiative.version}}", "--json"],
       "reads": ["value.version"],
@@ -75,6 +75,14 @@
       "types": { "value.discovery_complete": "object" }
     },
     {
+      "row": "`reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json`",
+      "argv": ["initiative", "findings", "{{initiative.key}}", "--json"],
+      "alternates": [["epic", "findings", "{{epic.key}}", "--json"]],
+      "reads": ["value[].finding"],
+      "types": { "value[].finding": "string" },
+      "may_be_empty": ["value[]"]
+    },
+    {
       "row": "`reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json`",
       "argv": ["story", "ls", "--epic", "{{epic.key}}", "--json"],
       "alternates": [["story", "ls", "--untriaged", "--json"]],
@@ -96,6 +104,7 @@
     },
     {
       "row": "`reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json`",
+      "bind": "required",
       "argv": ["decision", "require", "--on", "{{epic.key}}", "--title", "Skill smoke required decision", "--decider", "{{email}}", "--due", "2027-01-15", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:2", "--json"],
       "reads": ["value.id"],
       "types": { "value.id": "number" }
@@ -106,6 +115,12 @@
       "reads": ["value.check.kind"],
       "types": { "value.check.kind": "string" },
       "expect": { "value.check.kind": "accepted" }
+    },
+    {
+      "row": "`reeve decision close <id> --reason <text> --json`",
+      "argv": ["decision", "close", "{{required.id}}", "--reason", "Closed by the skill smoke: settled without a record.", "--json"],
+      "reads": ["value.closed.reason", "value.closed.at", "value.closed.by"],
+      "types": { "value.closed.reason": "string", "value.closed.at": "string", "value.closed.by": "string" }
     },
     {
       "row": "`reeve comment add --decision <id> --body <text> --idempotency-key <key> --json` (or `--story <KEY>`)",
@@ -120,9 +135,9 @@
       "reads": ["value[].id", "value[].on", "value[].title", "value[].decider", "value[].due", "value[].record", "value[].pr_url", "value[].check.kind", "value[].closed"],
       "types": { "value[].id": "number", "value[].on": "string", "value[].title": "string", "value[].decider": "string", "value[].due": "string|null", "value[].record": "object|null", "value[].pr_url": "string|null", "value[].check.kind": "string", "value[].closed": "object|null" },
       "unread": {
-        "value[].closed.at": "the Commands table has no close command and the skills never close a decision; value[].closed is read",
-        "value[].closed.by": "the Commands table has no close command and the skills never close a decision; value[].closed is read",
-        "value[].closed.reason": "the Commands table has no close command and the skills never close a decision; value[].closed is read"
+        "value[].closed.at": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here",
+        "value[].closed.by": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here",
+        "value[].closed.reason": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here"
       }
     },
     {

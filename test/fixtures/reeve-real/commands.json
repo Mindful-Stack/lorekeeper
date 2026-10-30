@@ -75,6 +75,14 @@
       "types": { "value.discovery_complete": "object" }
     },
     {
+      "row": "`reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json`",
+      "argv": ["initiative", "findings", "{{initiative.key}}", "--json"],
+      "alternates": [["epic", "findings", "{{epic.key}}", "--json"]],
+      "reads": ["value[].finding"],
+      "types": { "value[].finding": "string" },
+      "may_be_empty": ["value[]"]
+    },
+    {
       "row": "`reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json`",
       "argv": ["story", "ls", "--epic", "{{epic.key}}", "--json"],
       "alternates": [["story", "ls", "--untriaged", "--json"]],

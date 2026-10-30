@@ -57,13 +57,14 @@ section says.
    answers. In a session that cannot ask, end with `Stopped: missing the epic key.` Never pick an
    epic yourself.
 1. **Read.** `reeve epic show <EPIC> --json` (keep `value.brief`, `value.version` and
-   `value.initiative`), then `reeve initiative show <INITIATIVE> --json` only when
-   `value.initiative` is not null (a standalone epic has no initiative: skip that read and go on
+   `value.initiative`), `reeve epic findings <EPIC> --json`, then
+   `reeve initiative show <INITIATIVE> --json` only when `value.initiative` is not null (a standalone epic has no initiative: skip that read and go on
    with the epic's own context), `reeve decision ls --on <EPIC> --json`,
    `reeve story ls --epic <EPIC> --json`, `reeve story ls --untriaged --json`,
-   `reeve epic ls --json` and `reeve initiative ls --json`. If any of them does not answer `ok`,
-   stop the run: for `not_found` say "The planner has no epic <EPIC>." (or the item it names);
-   for `unauthenticated` or `forbidden` say it and tell the user to run `reeve auth login`;
+   `reeve epic ls --json` and `reeve initiative ls --json`. Quote the findings to the user in the
+   reference's *Findings* words (or "Findings: none"); they are advisory, so a failed findings read
+   is said and the run goes on. If any other read does not answer `ok`, stop the run: for
+   `not_found` say "The planner has no epic <EPIC>." (or the item it names); for `unauthenticated` or `forbidden` say it and tell the user to run `reeve auth login`;
    otherwise show the code and message. In parallel, dispatch the **knowledge-reader** with the
    epic's title and "Prioritise domain context and architecture patterns.", and the **architect**
    in `survey` mode on the repositories the brief or the user names.
@@ -82,8 +83,8 @@ section says.
    ones (as its *Wording the planner's answers* section defines them; a closed decision never is)
    go into the report. Then triage by `<plugin-root>/references/decision-triage.md` (read it
    now), as planning-initiative's step 6 does: the open questions from step 2, the epic's known
-   facts that are choices rather than facts, and every finding of the architect's survey from
-   step 1. Show each candidate with its source and proposed outcome (a kind of record by the
+   facts that are choices rather than facts, each choice behind a `brief_cites_without_decision`
+   finding from step 1, and every finding of the architect's survey from step 1. Show each candidate with its source and proposed outcome (a kind of record by the
    household's ADR process, a required decision, closing an open required decision with a
    reason, or leaving it) before anything is written, and carry out the outcomes the user
    confirms as that reference says; each recorded decision gets its line under *Decisions* in the
@@ -154,6 +155,7 @@ section says.
    - each placement on one line: the story's key, its title and its branch, named `bug`,
      `chore`, `this epic`, `another epic <KEY>`, `new epic under <INITIATIVE>`,
      `new initiative`, `won't do` or `left untriaged` (with the proposed home, when there is one);
+   - the findings step 1 quoted;
    - each triaged candidate from step 5 with its outcome and record, or "proposed, not written";
    - the open required decisions from the re-read, worded by the reference;
    - each story of the epic from the re-read on one line: its key, its title, and "ready" or

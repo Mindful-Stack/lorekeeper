@@ -103,6 +103,7 @@ items; never derive a key from a title. Print the run id in the report.
 | `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key <key> --json` | `value.key`, `value.version` |
 | `reeve epic edit <KEY> --brief <md> --version <n> --json` | `value.version` |
 | `reeve epic discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
+| `reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json` | `value[]`, `.finding`; empty when there are none (see *Findings*) |
 | `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version`. Untriaged: kind `story` with no epic (a bug or chore without one is not listed) |
 | `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] --idempotency-key <key> --json` | `value.key` |
 | `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] --json` | `value.version` |
@@ -133,8 +134,23 @@ the user asks for what it does, with the command written as shown.
 | `reeve epic edit <KEY> --version <n> [--title <title>] [--initiative <KEY>] --json` | renames the epic or moves it to another initiative; `--no-initiative` in place of `--initiative` detaches it (a standalone epic) |
 | `reeve story ls [--owner <email>] [--delivery <delivery>] [--label <label>] [--ready] [--mine] --json` | filters the list: owner, delivery state (`todo`, `in-progress`, `in-review`, `testing`, `done`), label, `--ready` (ready stories still in todo), `--mine` (owned by the signed-in user) |
 | `reeve story create --epic <KEY> --title <title> --kind story --description <text> --label <label> --criterion <text> --idempotency-key <key> --json` | a story with a longer description and labels (`--label` repeats, one per label) |
-| `reeve story edit <KEY> --version <n> [--title <title>] [--criterion <text> …] [--rank <n>] --json` | renames the story, replaces ALL its criteria (one `--criterion` each; a criterion unchanged at the same position keeps its done flag) or sets its rank; `--no-epic` in place of `--epic` detaches it (it becomes untriaged). Newer CLIs also take `--description <text>`, `--add-label <label>` and `--remove-label <label>` here |
+| `reeve story edit <KEY> --version <n> [--title <title>] [--criterion <text> …] [--rank <n>] --json` | renames the story, replaces ALL its criteria (one `--criterion` each; a criterion unchanged at the same position keeps its done flag) or sets its rank; `--no-epic` in place of `--epic` detaches it (it becomes untriaged) |
+| `reeve story edit <KEY> --version <n> [--description <text>] [--add-label <label> …] [--remove-label <label> …] --json` | replaces the whole description, or adds and removes labels (each repeats; a label the story already has is kept once) |
 | `reeve decision ls --mine --json` | the decisions the signed-in user is the decider of |
+
+## Findings
+
+`initiative findings` and `epic findings` answer the planner's advisory findings on that item:
+computed on every read, never stored, and they never block a move. Each element has a `finding`:
+
+| `finding` | Words | What the skills do |
+|---|---|---|
+| `empty_brief` | the brief is empty | write the brief (the skill's brief step) |
+| `brief_cites_without_decision` (with `cites`, e.g. `["Jira", "decided"]`) | the brief cites <cites> but no required decision is on it | each cited choice is a triage candidate (`<plugin-root>/references/decision-triage.md`): record it and link the line to its record, or require a decision |
+| `discovery_complete_with_open_decision` (with `decision_id`, `title`) | discovery is complete but decision #<decision_id> <title> is open | show it; reopening discovery or settling the decision is the user's call |
+| `discovery_complete_without_stories` | discovery is complete but there are no stories | show it |
+
+Any other `finding` is shown verbatim. Text-mode `show` lists the findings too.
 
 ## Migrated items: --external-ref
 

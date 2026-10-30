@@ -46,9 +46,11 @@ argument.
    `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this
    session: <reason>." and stop; this skill has no fallback. Keep `bin` and `run_id`.
 1. **Read.** `reeve initiative show <KEY> --json` (keep `value.brief`, `value.owner`,
-   `value.target_month` and `value.version`),
-   `reeve decision ls --on <KEY> --json` and `reeve epic ls --initiative <KEY> --json`. If any of
-   them does not answer `ok`, stop the run: for `not_found` say "The planner has no initiative
+   `value.target_month` and `value.version`), `reeve initiative findings <KEY> --json`,
+   `reeve decision ls --on <KEY> --json` and `reeve epic ls --initiative <KEY> --json`. Quote the
+   findings to the user in the reference's *Findings* words (or "Findings: none"); they are
+   advisory, so a failed findings read is said and the run goes on. If any other read does not
+   answer `ok`, stop the run: for `not_found` say "The planner has no initiative
    <KEY>."; for `unauthenticated` or `forbidden` say it and tell the user to run `reeve auth login`;
    otherwise show the code and message. In parallel, dispatch the **knowledge-reader** with the
    initiative's title and "Prioritise domain context and architecture patterns.", and the
@@ -78,7 +80,8 @@ argument.
    id). Steps 6 and 7 create only the ones that are not covered. A re-run on an initiative that
    already has them creates nothing unless the user asks for something new.
 6. **Decisions.** Triage by `<plugin-root>/references/decision-triage.md` (read it now): the
-   open questions from step 2, the Known knowns that are choices rather than facts, and every
+   open questions from step 2, the Known knowns that are choices rather than facts, each choice
+   behind a `brief_cites_without_decision` finding from step 1, and every
    finding of the architect's survey from step 1 (it finds the decisions already taken without a
    record; use its output here). Show each candidate with its source and proposed outcome (a kind
    of record by the household's ADR process, a required decision, closing an open required
@@ -122,7 +125,8 @@ argument.
 10. **Report.** Open with the step 0 sentence, then the plain lines `Run id: <run_id>` and the
    `Researched:` line, all unformatted (no bold, so they can be searched for; a non-interactive
    session shows only this report, not the announcement). Then every key written and every
-   existing key reused, and every proposal left unwritten; the initiative's owner and target month
+   existing key reused, and every proposal left unwritten; the findings step 1 quoted; the
+   initiative's owner and target month
    (or "no owner", "no target month"); each required decision from the re-read
    with its decider, due date and state worded by the reference ("no record", "proposed, PR open",
    "closed: …"), plus the comment pointer when the record is only drafted; each triaged candidate

@@ -35,7 +35,10 @@ invalidation triggers* (`*Assumes X.* Trigger: <event> ⇒ supersede.`); *Later 
 in Y" bundles), plain sentences, and never mention chat sessions or AI authorship.
 
 Numbers are four digits, per home, never reused: `adr-lint next --base origin/<default> <home-dir>`
-(drop `--base` when that ref does not exist). The slug names the problem, never the answer.
+(drop `--base` when that ref does not exist). It also skips numbers that open pull requests in the
+home's repository already claim, read with `gh`; when it cannot read them it says so on stderr
+(`open pull requests not checked (<why>)`): pass that line on to the user, since the number may
+collide with an open PR's record. The slug names the problem, never the answer.
 
 ## Self-check
 

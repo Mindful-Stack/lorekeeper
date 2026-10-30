@@ -16,6 +16,7 @@ const C = require('./adr/catalogue');
 const V = require('./adr/verdict');
 const S = require('./adr/selection');
 const Cov = require('./adr/coverage');
+const P = require('./adr/prs');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
@@ -25,7 +26,7 @@ const USAGE = `usage:
   adr-lint backfill [--home local|shared] [--repo <name>] [--dry-run] <dir>
   adr-lint homes [--cwd <dir>]                      (JSON)
   adr-lint index [--cwd <dir>] [--status <status>] [--json]
-  adr-lint next [--base <ref>] <dir>
+  adr-lint next [--base <ref>] [--no-prs] <dir>
   adr-lint verdict --findings <file|-> --diff <patch-file> [--repo <name>] [--pr-body <file>]
                    [--cwd <dir>]                    (JSON)
 
@@ -33,14 +34,14 @@ exit codes: 0 ok (warnings allowed), 1 violations or blocking findings, 2 usage 
 
 class UsageError extends Error {}
 
-const BOOLEAN_FLAGS = new Set(['strict', 'single-home', 'dry-run', 'json', 'ci']);
+const BOOLEAN_FLAGS = new Set(['strict', 'single-home', 'dry-run', 'json', 'ci', 'no-prs']);
 const FLAGS = {
     check: ['home', 'repo', 'single-home', 'base', 'strict', 'ci'],
     select: ['diff', 'paths', 'repo', 'pr-body', 'cwd', 'json'],
     backfill: ['home', 'repo', 'dry-run'],
     homes: ['cwd'],
     index: ['cwd', 'status', 'json'],
-    next: ['base'],
+    next: ['base', 'no-prs'],
     verdict: ['findings', 'diff', 'repo', 'pr-body', 'cwd'],
 };
 
@@ -318,15 +319,42 @@ function cmdNext(flags, positional) {
     if (positional.length !== 1) throw new UsageError('next takes exactly one directory');
     const dir = path.resolve(positional[0]);
     let extra = [];
+    const root = G.gitRoot(dir);
+    const rel = root ? toPosix(path.relative(fs.realpathSync(root), realpathLoose(dir))) : null;
     if (flags.base) {
-        const root = G.gitRoot(dir);
         if (!root) throw new UsageError(`--base needs ${display(dir)} to be inside a git repository`);
         if (!G.revExists(root, flags.base)) throw new UsageError(`base ref ${flags.base} not found; fetch it first`);
-        const rel = toPosix(path.relative(fs.realpathSync(root), realpathLoose(dir)));
         extra = G.listDir(root, flags.base, rel);
     }
-    console.log(C.nextNumber(dir, extra));
+    const without = C.nextNumber(dir, extra);
+    const claimed = claimedByOpenPrs(root, rel, flags['no-prs']);
+    const next = C.nextNumber(dir, [...extra, ...claimed.map((c) => c.name)]);
+    if (next !== without) {
+        const prs = [...new Set(claimed.map((c) => `#${c.pr}`))].join(', ');
+        const last = String(Number(next) - 1).padStart(4, '0');
+        console.error(`adr-lint next: skipped ${without === last ? last : `${without}–${last}`}, claimed by open pull requests ${prs}`);
+    }
+    console.log(next);
     return 0;
+}
+
+// Record names that open PRs add under the home (`rel`, repo-relative). Whenever they cannot be
+// read, say so on stderr: a number printed without them may collide with an open PR's record.
+function claimedByOpenPrs(root, rel, skip) {
+    const warn = (why) => console.error(`adr-lint next: open pull requests not checked (${why}); the number may collide with an open PR's record`);
+    if (skip) return warn('--no-prs'), [];
+    if (!root) return warn('not inside a git repository'), [];
+    if (!G.originUrl(root)) return warn('the repository has no origin remote'), [];
+    const r = P.openPrFiles(root);
+    if (r.error) return warn(r.error), [];
+    if (r.truncated) console.error(`adr-lint next: read only the first ${P.LIMIT} open pull requests`);
+    const prefix = rel === '' ? '' : `${rel}/`;
+    const names = [];
+    for (const { pr, path: p } of r.paths) {
+        if (!p.startsWith(prefix) || p.slice(prefix.length).includes('/')) continue;
+        if (R.FILE_RE.test(path.posix.basename(p))) names.push({ name: p.slice(prefix.length), pr });
+    }
+    return names;
 }
 
 function cmdVerdict(flags) {

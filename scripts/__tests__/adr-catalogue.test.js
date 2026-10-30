@@ -146,6 +146,71 @@ test('CLI next counts records on the base tip that this checkout lacks', (t) => 
     assert.equal(runCli(root, env, 'next', '--base', 'main', adr).stdout.trim(), '0003');
 });
 
+// A fake `gh` first on PATH: it logs its argv and answers `pr list` with `prs` (or fails).
+function fakeGh(t, env, prs, { fail = false } = {}) {
+    const bin = tmpDir(t);
+    const log = path.join(bin, 'gh.log');
+    const out = path.join(bin, 'prs.json');
+    fs.writeFileSync(out, JSON.stringify(prs));
+    const script = fail
+        ? `#!/bin/sh\necho "$@" >> '${log}'\necho 'HTTP 401: Bad credentials' >&2\nexit 1\n`
+        : `#!/bin/sh\necho "$@" >> '${log}'\ncat '${out}'\n`;
+    fs.writeFileSync(path.join(bin, 'gh'), script, { mode: 0o755 });
+    return { env: { ...env, PATH: `${bin}${path.delimiter}${env.PATH}` }, log };
+}
+
+function repoWithOrigin(t) {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    initRepo(root, env);
+    git(root, env, 'remote', 'add', 'origin', 'https://github.com/example/kb.git');
+    const adr = path.join(root, 'knowledge', 'adrs');
+    write(path.join(adr, '0001-a.md'), makeRecord({ prefix: 'kb' }));
+    commitAll(root, env, 'one');
+    return { root, env, adr };
+}
+
+test('CLI next skips numbers that open pull requests claim in the same home', { skip: process.platform === 'win32' }, (t) => {
+    const { root, env: base, adr } = repoWithOrigin(t);
+    const { env, log } = fakeGh(t, base, [
+        { number: 31, files: [{ path: 'knowledge/adrs/0002-x.md' }, { path: 'README.md' }] },
+        { number: 32, files: [{ path: 'knowledge/adrs/0003-y.md' }] },
+        { number: 33, files: [{ path: 'docs/adr/0009-elsewhere.md' }, { path: 'knowledge/adrs/sub/0010-nested.md' }] },
+    ]);
+    const r = runCli(root, env, 'next', '--base', 'main', adr);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout.trim(), '0004');
+    assert.match(r.stderr, /skipped 0002–0003, claimed by open pull requests #31, #32/);
+    assert.match(fs.readFileSync(log, 'utf8'), /^pr list --state open .*--json number,files/m);
+});
+
+test('CLI next says so when open pull requests cannot be read, and still prints a number', { skip: process.platform === 'win32' }, (t) => {
+    const { root, env: base, adr } = repoWithOrigin(t);
+    const { env } = fakeGh(t, base, [], { fail: true });
+    const r = runCli(root, env, 'next', adr);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout.trim(), '0002');
+    assert.match(r.stderr, /open pull requests not checked \(gh pr list failed: HTTP 401: Bad credentials\)/);
+});
+
+test('CLI next --no-prs never calls gh, and says the open PRs were not checked', { skip: process.platform === 'win32' }, (t) => {
+    const { root, env: base, adr } = repoWithOrigin(t);
+    const { env, log } = fakeGh(t, base, [{ number: 31, files: [{ path: 'knowledge/adrs/0002-x.md' }] }]);
+    const r = runCli(root, env, 'next', '--no-prs', adr);
+    assert.equal(r.stdout.trim(), '0002');
+    assert.match(r.stderr, /open pull requests not checked \(--no-prs\)/);
+    assert.equal(fs.existsSync(log), false);
+});
+
+test('CLI next without an origin remote says the open PRs were not checked', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    initRepo(root, env);
+    const r = runCli(root, env, 'next', path.join(root, 'docs', 'adr'));
+    assert.equal(r.stdout.trim(), '0001');
+    assert.match(r.stderr, /open pull requests not checked \(the repository has no origin remote\)/);
+});
+
 test('CLI select --paths matches scopes without a patch, and needs exactly one input', (t) => {
     const h = household(t);
     write(path.join(h.shared, '0001-session-storage.md'), makeRecord());

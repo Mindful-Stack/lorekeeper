@@ -2,7 +2,10 @@
 // Every `reeve … --json` command the reference and the skills write, with its placeholders filled,
 // must parse: against the fake always, and against the real CLI when REEVE_REAL_BIN names a
 // reeve-planner binary (with an empty config it answers a JSON `internal` "no server url" envelope
-// when clap accepted the command, and nothing on stdout when clap refused it).
+// when clap accepted the command, and nothing on stdout when clap refused it). With REEVE_REAL_BIN
+// set it also checks the other direction: every flag the real CLI's `--help` lists for a command the
+// reference documents is mentioned by the reference. Run it against a build with:
+//   REEVE_REAL_BIN=/path/to/reeve node --test scripts/__tests__/reeve-reference.test.js
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -19,7 +22,7 @@ const PLACEHOLDERS = {
   KEY: 'GRA-12', EPIC: 'GRA-20', INITIATIVE: 'GRA-12', 'COVERING-EPIC': 'GRA-20', 'COVERING-INITIATIVE': 'GRA-12',
   'new epic': 'GRA-20', id: '7', 'id-to-be': 'kb/ADR-0002', n: '1', v: '1', version: '1', 'latest version': '1',
   run_id: '0a1b2c3d', key: 'planning-initiative:GRA-12:0a1b2c3d:1', prefix: 'recording-decisions:7', title: 'Title',
-  md: 'Brief', text: 'Criterion', email: 'dan@example.com', 'YYYY-MM': '2027-03', ref: 'PIB-30', bucket: 'Later', 'qualified id': 'kb/ADR-0002', 'front-matter id': 'kb/ADR-0002',
+  md: 'Brief', text: 'Criterion', email: 'dan@example.com', 'YYYY-MM': '2027-03', ref: 'PIB-30', delivery: 'todo', label: 'migrated', bucket: 'Later', 'qualified id': 'kb/ADR-0002', 'front-matter id': 'kb/ADR-0002',
   repo: 'lore', 'path in repo': 'knowledge/adrs/0002-x.md', path: 'knowledge/adrs/0002-x.md', url: 'https://github.com/example/w/pull/9',
   household: '.', dir: '.', branch: 'feat/x', 'the new epic or initiative, its title and where it goes': 'new epic under GRA-13',
 };
@@ -76,4 +79,39 @@ test('every command parses in the real reeve CLI (REEVE_REAL_BIN)', { skip: !pro
     const r = run(bin, argvOf(cmd));
     assert.ok(envelopeOf(r), `${file}: the real CLI refused \`${cmd}\`: ${r.stderr.trim().split('\n')[0]}`);
   }
+});
+
+// The reverse direction. A command the reference documents is `reeve <group> <verb>` from any of its
+// `reeve … --json` spans; the reference mentions a flag for it when the flag appears in one of those
+// spans or on the same line as one (a table row's Read cell, an "(or `--story <KEY>`)" note).
+// HELP_ONLY lists flags the reference leaves out on purpose.
+const HELP_ONLY = new Set(['--help', '--json']);
+const flagsIn = (text) => text.match(/--[a-z][a-z0-9-]*/g) || [];
+function referenceMentions() {
+  const file = 'references/reeve-cli.md';
+  const text = fs.readFileSync(path.join(root, file), 'utf8');
+  const mentions = new Map();
+  const add = (words, flags) => { if (!mentions.has(words)) mentions.set(words, new Set()); for (const x of flags) mentions.get(words).add(x); };
+  const wordsOf = (cmd) => cmd.split(/\s+/).slice(1, 3).join(' ');
+  for (const { cmd } of all.filter((c) => c.file === file)) add(wordsOf(cmd), flagsIn(cmd));
+  for (const line of text.split('\n')) {
+    for (const m of line.matchAll(/`(reeve [^`]*?--json)`/g)) add(wordsOf(m[1]), flagsIn(line));
+  }
+  return mentions;
+}
+// The long flags `reeve <words> --help` lists under Options.
+function helpFlags(bin, words) {
+  const r = run(bin, [...words.split(' '), '--help']);
+  assert.equal(r.status, 0, `reeve ${words} --help failed: ${r.stderr.trim()}`);
+  return [...r.stdout.matchAll(/^\s+(?:-[A-Za-z], )?(--[a-z][a-z0-9-]*)/gm)].map((m) => m[1]);
+}
+test('the reference mentions every flag the real CLI lists for the commands it documents (REEVE_REAL_BIN)', { skip: !process.env.REEVE_REAL_BIN && 'REEVE_REAL_BIN is not set' }, () => {
+  const bin = process.env.REEVE_REAL_BIN;
+  const mentions = referenceMentions();
+  assert.ok(mentions.size >= 15, `found ${mentions.size} documented commands`);
+  const missing = [];
+  for (const [words, mentioned] of mentions) {
+    for (const flag of helpFlags(bin, words)) if (!HELP_ONLY.has(flag) && !mentioned.has(flag)) missing.push(`reeve ${words} ${flag}`);
+  }
+  assert.deepEqual(missing, [], 'flags the real CLI takes that references/reeve-cli.md does not mention (document them, or add them to HELP_ONLY with a reason)');
 });

@@ -57,7 +57,7 @@ const DISCOVERY = { pos: 1, val: ['version'], bool: ['complete', 'reopen'], req:
 const SPEC = {
   'auth status': { pos: 0 },
   'story context': { pos: 1 },
-  'story ls': { pos: 0, val: ['epic'], bool: ['untriaged'] },
+  'story ls': { pos: 0, val: ['epic', 'owner', 'delivery', 'label'], bool: ['untriaged', 'ready', 'mine'] },
   'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
   'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
   'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank', 'external-ref'], bool: ['no-epic'], rep: ['criterion'], req: ['version'] },
@@ -204,8 +204,10 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
     const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
     ok({ story: s, epic: e, initiative: i, required_decisions: required, blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
   },
-  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic)).map((s) => ({ story: s, readiness: readinessOf(s) }))),
-  'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), external_ref: f['external-ref'] || null }))),
+  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic))
+    .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery) && (!f.label || s.labels.includes(f.label)))
+    .map((s) => ({ story: s, readiness: readinessOf(s) })).filter((x) => !f.ready || (x.readiness.ready && x.story.delivery === 'todo'))),
+  'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], external_ref: f['external-ref'] || null }))),
   'story mv': () => { const s = find(stories, p0); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1] })); }, // exists so a delivery change is logged; no skill may call it
   'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic, external_ref: refOf(s) })); },
   'initiative show': () => ok(find(initiatives, p0)),

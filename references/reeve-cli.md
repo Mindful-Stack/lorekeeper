@@ -1,8 +1,9 @@
 # The Reeve planner CLI — what skills may call
 
 Skills copy commands from this file, never from memory. Every flag below exists in the
-`reeve-planner` CLI (`scripts/__tests__/reeve-reference.test.js` parses every command here with the
-real binary when `REEVE_REAL_BIN` is set).
+`reeve-planner` CLI: `scripts/__tests__/reeve-reference.test.js` parses every command here with the
+real binary when `REEVE_REAL_BIN` is set, and fails when that binary's `--help` lists a flag this
+file does not mention for a command it documents.
 
 ## Detection and the binary
 
@@ -118,6 +119,21 @@ flag out to keep what is there.
 
 No command lists the planner's configured repositories or horizon buckets (they are in
 `GET /api/v1/config`, which the CLI does not expose): ask for them, or take them from the request.
+
+## Other flags
+
+The commands above are what the skills run. The real CLI takes these flags too; use one only when
+the user asks for what it does, with the command written as shown.
+
+| Command | What it does |
+|---|---|
+| `reeve initiative edit <KEY> --version <n> [--title <title>] [--horizon <bucket>] --json` | renames the initiative or moves it to another horizon bucket (a bucket the planner does not have is a `validation` error) |
+| `reeve initiative discovery <KEY> --reopen --version <n> --json` / `reeve epic discovery <KEY> --reopen --version <n> --json` | reopens discovery that was marked complete |
+| `reeve epic edit <KEY> --version <n> [--title <title>] [--initiative <KEY>] --json` | renames the epic or moves it to another initiative; `--no-initiative` in place of `--initiative` detaches it (a standalone epic) |
+| `reeve story ls [--owner <email>] [--delivery <delivery>] [--label <label>] [--ready] [--mine] --json` | filters the list: owner, delivery state (`todo`, `in-progress`, `in-review`, `testing`, `done`), label, `--ready` (ready stories still in todo), `--mine` (owned by the signed-in user) |
+| `reeve story create --epic <KEY> --title <title> --kind story --description <text> --label <label> --criterion <text> --idempotency-key <key> --json` | a story with a longer description and labels (`--label` repeats, one per label) |
+| `reeve story edit <KEY> --version <n> [--title <title>] [--criterion <text> …] [--rank <n>] --json` | renames the story, replaces ALL its criteria (one `--criterion` each; a criterion unchanged at the same position keeps its done flag) or sets its rank; `--no-epic` in place of `--epic` detaches it (it becomes untriaged). Newer CLIs also take `--description <text>`, `--add-label <label>` and `--remove-label <label>` here |
+| `reeve decision ls --mine --json` | the decisions the signed-in user is the decider of |
 
 ## Migrated items: --external-ref
 

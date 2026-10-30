@@ -964,3 +964,14 @@ test('a sibling that is not its own checkout skips the dead-glob warning', (t) =
     assert.equal(r.code, 0, r.stdout + r.stderr);
     assert.doesNotMatch(r.stdout, /scope:/);
 });
+
+test('an absent own-home ADR dir makes a Source missing', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    // No knowledge/adrs at all: absent means missing, not unavailable.
+    const dir = path.join(root, 'knowledge', 'behaviour');
+    write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ sections: { Rules: '### device.R1 One\nSHALL a.\n- Example: b\n- Source: kb/ADR-0042', 'Known deviations': undefined } }));
+    const r = runCli(root, env, 'check', '--ci', '--home', 'shared', '--base', 'main', dir);
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /Source kb\/ADR-0042 does not exist/);
+});

@@ -458,7 +458,12 @@ function cmdVerdict(flags) {
         const kinds = new Map([...cat.records.map((r) => [r.id, 'adr']), ...cat.behaviour.map((d) => [d.id, 'behaviour'])]);
         const cov = Cov.validate({ doc, picked, recordText, kindOf: (id) => kinds.get(id) });
         const added = cov.dangling.map((id) => ({
-            class: 'dangling', ids: [id], where: null, summary: `${id} is cited in the PR description but resolves nowhere`,
+            class: 'dangling',
+            ids: [id],
+            where: null,
+            summary: picked.find((p) => p.id === id).reasons.includes('cited')
+                ? `${id} is cited in the PR description but resolves nowhere`
+                : `${id} is named in a behaviour rule's Source: line but resolves nowhere`,
         }));
         const v = V.verdict({ findings: [...doc.findings, ...added] });
         console.log(JSON.stringify({ ...v, coverage: { checked: doc.coverage.checked, extra: cov.extra, notReviewed: cov.notReviewed } }, null, 2));

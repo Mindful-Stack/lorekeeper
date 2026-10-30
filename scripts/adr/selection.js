@@ -43,6 +43,46 @@ function touchedDocs(homes, repo, dirs, paths) {
     return out;
 }
 
+// The records a selected doc's rules name in `Source:` bind the same diff: each is selected
+// (reason `source`) so the reviewer reads it and must attest it. A record in a home select does
+// not load (another repo's) is read from there; one that resolves nowhere is `missing`.
+function addSources({ homes, local, candidates, picked }) {
+    const ids = new Set();
+    for (const p of picked.filter((x) => x.doc === 'behaviour' && x.file)) {
+        for (const h of B.parseDoc(p.file, candidates.find((c) => c.file === p.file).text).headings) {
+            for (const s of h.sources) {
+                const m = /^([A-Za-z0-9._-]+\/ADR-\d{4})(?:\.R\d+)?$/.exec(s);
+                if (m) ids.add(m[1]);
+            }
+        }
+    }
+    for (const id of ids) {
+        const hit = picked.find((p) => p.id === id);
+        if (hit) {
+            if (!hit.reasons.includes('source')) hit.reasons.push('source');
+            continue;
+        }
+        let c = candidates.find((x) => x.id === id && x.doc === 'adr');
+        if (!c) c = loadElsewhere(homes, local, id);
+        if (c) candidates.push(c);
+        picked.push(c
+            ? { id, home: c.kind, doc: 'adr', status: c.status, file: c.file, reasons: ['source'] }
+            : { id, home: null, doc: 'adr', status: 'missing', file: '', reasons: ['source'] });
+    }
+    picked.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+// A record in a home other than this repo's and the team KB's, as a candidate, or null.
+function loadElsewhere(homes, local, id) {
+    const m = R.ID_RE.exec(id);
+    const dir = m && H.dirForPrefix(homes, m[1]);
+    if (!dir || dir === local.dir || dir === homes.sharedHome) return null;
+    const r = R.loadHome(dir).records.find((x) => x.number === m[2]);
+    if (!r) return null;
+    const kind = homes.localHomes.some((h) => h.repo === m[1]) ? 'local' : 'shared';
+    return { id, kind, doc: 'adr', status: r.fm.status || '', file: r.file, scope: asList(r.fm.scope), fm: r.fm, text: r.text };
+}
+
 function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
     const homes = H.resolveHomes(cwd);
     const root = G.gitRoot(cwd);
@@ -95,6 +135,7 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
         }
     }
     const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody || ''), touched });
+    addSources({ homes, local, candidates, picked });
     // Two docs under one id would share one attestation and one file lookup; that only matters
     // when one of them is selected.
     const files = new Map();

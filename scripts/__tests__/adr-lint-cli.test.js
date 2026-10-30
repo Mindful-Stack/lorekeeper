@@ -1007,7 +1007,7 @@ test('verdict blocks on a behaviour-rule finding for a selected doc, and select 
     assert.equal(c.status, '-');
     assert.match(c.record, /### device\.R2 Project scoped/);
     const findings = path.join(w.root, 'f.json');
-    write(findings, JSON.stringify({ coverage: { checked: ['api/device'], notReviewed: [] },
+    write(findings, JSON.stringify({ coverage: { checked: ['api/device', 'kb/ADR-0001'], notReviewed: [] },
         findings: [{ class: 'behaviour-rule', ids: ['api/device.R2'], where: 'src/Devices/Status.cs:1', summary: 'lists other projects\' devices' }] }));
     const v = runCli(w.root, w.env, 'verdict', '--findings', findings, '--diff', patch, '--repo', 'api');
     assert.equal(v.code, 1, v.stdout + v.stderr);
@@ -1097,7 +1097,7 @@ test('a single repo whose KB lives inside it lists a shared-and-local behaviour 
     write(patch, PATCH);
     const sel = runCli(root, env, 'select', '--json', '--diff', patch);
     assert.equal(sel.code, 0, sel.stdout + sel.stderr);
-    const ids = JSON.parse(sel.stdout).candidates.map((c) => c.id);
+    const ids = JSON.parse(sel.stdout).candidates.filter((c) => c.kind === 'behaviour').map((c) => c.id);
     assert.equal(ids.length, 1);
     assert.match(ids[0], /\/device$/);
     assert.doesNotMatch(ids[0], /^kb\//);
@@ -1227,7 +1227,7 @@ test('2: a directory named like a doc is skipped; a dangling symlink exits 2 for
     const dir = path.join(w.api, 'docs', 'behaviour');
     fs.mkdirSync(path.join(dir, 'archive.md'), { recursive: true });
     write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
-    const ok = selectAndVerdict(w, PATCH, ['api/device']);
+    const ok = selectAndVerdict(w, PATCH, ['api/device', 'kb/ADR-0001']);
     assert.equal(ok.sel.code, 0, ok.sel.stdout + ok.sel.stderr);
     assert.equal(ok.ver.code, 0, ok.ver.stdout + ok.ver.stderr);
     const chk = runCli(w.root, w.env, 'check', dir);
@@ -1238,4 +1238,53 @@ test('2: a directory named like a doc is skipped; a dangling symlink exits 2 for
         assert.match(r.stderr, /gone\.md/);
         assert.doesNotMatch(r.stderr, /\n\s+at /);
     }
+});
+
+test('D3: select adds the records a selected doc\'s rules name in Source:, reason source', (t) => {
+    const w = workspace(t);
+    // kb/ADR-0001's scope is api:src/Sessions/**, which the patch does not touch.
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    const { sel, ver } = selectAndVerdict(w, PATCH, ['api/device']);
+    assert.equal(sel.code, 0, sel.stdout + sel.stderr);
+    assert.match(sel.stdout, /^kb\/ADR-0001\taccepted\t\S+\tsource$/m);
+    // It must be attested like any selected record.
+    assert.equal(ver.code, 2, ver.stdout + ver.stderr);
+    assert.match(ver.stderr, /not checked: kb\/ADR-0001/);
+    assert.equal(selectAndVerdict(w, PATCH, ['api/device', 'kb/ADR-0001']).ver.code, 0);
+    // Already selected by scope: one entry with both reasons.
+    const both = selectAndVerdict(w, PATCH + touchPatch('src/Sessions/Store.cs')).sel;
+    assert.match(both.stdout, /^kb\/ADR-0001\t.*\tscope,source$/m);
+    assert.equal(both.stdout.match(/^kb\/ADR-0001\t/gm).length, 1);
+});
+
+test('D3: a Source record that resolves nowhere is missing and becomes a dangling finding', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api',
+        sections: { Rules: '### device.R1 One\nA read SHALL a.\n- Example: b\n- Source: kb/ADR-0042.R1', 'Known deviations': undefined } }));
+    const { sel, ver } = selectAndVerdict(w, PATCH, ['api/device']);
+    assert.match(sel.stdout, /^kb\/ADR-0042\tmissing\t-\tsource$/m);
+    assert.equal(ver.code, 0, ver.stdout + ver.stderr);
+    const d = JSON.parse(ver.stdout).findings.find((x) => x.class === 'dangling');
+    assert.deepEqual(d.ids, ['kb/ADR-0042']);
+    assert.match(d.summary, /Source/);
+});
+
+test('D3: a Source record in another repo\'s home is read from there, not reported missing', (t) => {
+    const w = workspace(t);
+    const hh = JSON.parse(fs.readFileSync(path.join(w.root, 'household.json'), 'utf8'));
+    hh.repos.push({ name: 'web' });
+    write(path.join(w.root, 'household.json'), JSON.stringify(hh));
+    write(path.join(w.root, 'web', 'docs', 'adr', '0003-session-storage.md'), makeRecord({ prefix: 'web', number: '0003' }));
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api',
+        sections: { Rules: '### device.R1 One\nA read SHALL a.\n- Example: b\n- Source: web/ADR-0003', 'Known deviations': undefined } }));
+    const patch = path.join(w.root, 'p.patch');
+    write(patch, PATCH);
+    const sel = runCli(w.root, w.env, 'select', '--json', '--diff', patch, '--repo', 'api');
+    assert.equal(sel.code, 0, sel.stdout + sel.stderr);
+    const c = JSON.parse(sel.stdout).candidates.find((x) => x.id === 'web/ADR-0003');
+    assert.equal(c.status, 'accepted');
+    assert.deepEqual(c.reasons, ['source']);
+    assert.match(c.record, /## Decision/);
 });

@@ -405,7 +405,7 @@ function cmdIndex(flags) {
     }
     if (flags.json) {
         const records = cat.records.filter((e) => !flags.status || e.status === flags.status);
-        console.log(JSON.stringify({ homes: cat.homes, records }, null, 2));
+        console.log(JSON.stringify({ homes: cat.homes, records, behaviour: cat.behaviour }, null, 2));
     } else {
         console.log(C.renderMarkdown(cat, flags.status));
     }
@@ -438,10 +438,10 @@ function cmdVerdict(flags) {
     const cwd = path.resolve(flags.cwd || process.cwd());
     try {
         const doc = V.parseFindings(readInput(flags.findings, 'findings'));
-        const { homes, picked, candidates } = S.selectFor({ cwd, repo: flags.repo, diffText, prBody });
+        const { homes, picked } = S.selectFor({ cwd, repo: flags.repo, diffText, prBody });
         // Selected candidates first: their ids come from --repo, which the catalogue may not share.
-        const files = new Map(C.buildCatalogue(homes).records.map((r) => [r.id, r.file]));
-        for (const c of candidates) if (c.doc === 'behaviour') files.set(c.id, c.file);
+        const cat = C.buildCatalogue(homes);
+        const files = new Map([...cat.records, ...cat.behaviour].map((r) => [r.id, r.file]));
         for (const p of picked) if (p.file) files.set(p.id, p.file);
         const texts = new Map();
         const recordText = (id) => {

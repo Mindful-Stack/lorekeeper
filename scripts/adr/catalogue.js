@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { isEmpty, asList } = require('./frontmatter');
 const R = require('./records');
+const B = require('./behaviour');
 
 // Every home in reading order: local homes, the team KB, then other teams' KBs (read-only).
 // A coinciding local home is listed once, under its local prefix.
@@ -24,6 +25,15 @@ function listHomes(homes) {
         out.push({ kind: 'other', prefix: k.name, dir: k.dir, present: fs.existsSync(k.dir) });
     }
     return out;
+}
+
+// Behaviour homes: each local home's behaviour dir, then the team KB's (once, when it coincides).
+function listBehaviourHomes(homes) {
+    const out = homes.localHomes.map((h) => ({ kind: 'local', prefix: h.repo, dir: h.behaviourDir }));
+    const real = (p) => (p && fs.existsSync(p) ? fs.realpathSync(p) : null);
+    const shared = homes.sharedBehaviourHome;
+    if (shared && !out.some((h) => real(h.dir) && real(h.dir) === real(shared))) out.push({ kind: 'shared', prefix: 'kb', dir: shared });
+    return out.map((h) => ({ ...h, present: fs.existsSync(h.dir) }));
 }
 
 function entry(home, r) {
@@ -55,6 +65,7 @@ function entry(home, r) {
         related: refs('related'),
         relatedFrom: [],
         dependedOnBy: [],
+        implementedBy: [],
     };
 }
 
@@ -70,18 +81,40 @@ function buildCatalogue(homes) {
             h.count++;
         }
     }
+    const behaviour = [];
+    for (const h of listBehaviourHomes(homes)) {
+        if (!h.present) continue;
+        for (const d of B.loadBehaviourHome(h.dir).docs) {
+            if (typeof d.fm.prefix !== 'string' || !d.fm.prefix) continue;
+            const id = `${h.prefix}/${d.fm.prefix}`;
+            const rules = d.headings.filter((x) => x.id).map((x) => ({ id: `${h.prefix}/${x.id}`, sources: x.sources }));
+            behaviour.push({ id, home: h.prefix, kind: h.kind, file: d.file, title: d.fm.title || '', scope: asList(d.fm.scope), rules: rules.map((r) => r.id), sourced: rules });
+        }
+    }
     const byId = new Map(records.map((e) => [e.id, e]));
     for (const e of records) {
         for (const id of e.related) if (byId.has(id)) byId.get(id).relatedFrom.push(e.id);
         for (const id of e.dependsOn) if (byId.has(id)) byId.get(id).dependedOnBy.push(e.id);
+    }
+    // `kb/ADR-0001.R1` cites the record `kb/ADR-0001`; a rule with no Source implements nothing.
+    for (const d of behaviour) {
+        for (const r of d.sourced) {
+            for (const s of r.sources) {
+                const target = byId.get(s.replace(/\.R\d+$/, ''));
+                if (target && !target.implementedBy.includes(r.id)) target.implementedBy.push(r.id);
+            }
+        }
+        delete d.sourced;
     }
     const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
     records.sort((a, b) => order(a.id, b.id));
     for (const e of records) {
         e.relatedFrom.sort(order);
         e.dependedOnBy.sort(order);
+        e.implementedBy.sort(order);
     }
-    return { homes: listed, records };
+    behaviour.sort((a, b) => order(a.id, b.id));
+    return { homes: listed, records, behaviour };
 }
 
 // The next free number in a home: one more than the highest used in the directory or in
@@ -110,7 +143,7 @@ function renderMarkdown(cat, statusFilter) {
         lines.push(`| ${e.id} | ${e.home} | ${title} | ${cell(e.description)} | ${e.status} | ${e.date} |`);
     }
     const rel = rows.filter((e) => e.supersedes.length || e.supersededBy || e.dependsOn.length
-        || e.related.length || e.relatedFrom.length || e.dependedOnBy.length);
+        || e.related.length || e.relatedFrom.length || e.dependedOnBy.length || e.implementedBy.length);
     if (rel.length) {
         lines.push('', '### Relations', '');
         for (const e of rel) {
@@ -121,6 +154,7 @@ function renderMarkdown(cat, statusFilter) {
             if (e.dependedOnBy.length) parts.push(`depended on by ${e.dependedOnBy.join(', ')}`);
             if (e.related.length) parts.push(`related to ${e.related.join(', ')}`);
             if (e.relatedFrom.length) parts.push(`related from ${e.relatedFrom.join(', ')}`);
+            if (e.implementedBy.length) parts.push(`implemented by ${e.implementedBy.join(', ')}`);
             lines.push(`- **${e.id}**: ${parts.join('; ')}`);
         }
     }

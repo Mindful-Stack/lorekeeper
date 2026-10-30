@@ -15,6 +15,9 @@ prints its result. This is not advice to weigh: the ADR check is a merge gate, a
 yourself, and writing a correct review from them, does **not** replace any step below; a review
 without the verdict's line is an incomplete review, whatever else it says.
 
+Behaviour docs ride the same check: `select` returns them as `kind: "behaviour"` candidates and
+the architect reports a broken rule as `behaviour-rule`, which the verdict marks critical.
+
 You MUST complete each of these items, in order (as tasks, if you track tasks):
 
 1. **Patch** — get the diff into a file (Step 3).
@@ -226,6 +229,8 @@ a rule — so CI logs and readers can search for them:
   tier: open its own ADR PR (`/lore:adr <the decision>`) and wait until it is accepted;
 - fired trigger → note the change on the record; the decision goes back to its deciders;
 - stale fact → include the observation the architect drafted;
+- broken behaviour rule → conform, or edit the rule in this PR (in the shared home, in its own
+  KB PR named in the PR description);
 - dangling citation → fix the id in the PR description or code.
 
 When there is a PR description, Read it: if it has no `## Decisions` heading (one inside an HTML

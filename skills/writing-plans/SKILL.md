@@ -57,7 +57,8 @@ exits 2 — then ask which repo. Pass the printed JSON inline (never a file redi
 **architect** agent, dispatched in `bind` mode with the spec and the planned paths.
 
 The architect's *Binding decisions* fill the plan's *Governing decisions* header (see *Plan
-Document Header*), rules quoted verbatim. **Write that header as soon as `bind` returns**, even
+Document Header*), rules quoted verbatim, and its *Binding behaviour rules* fill a *Behaviour
+rules* list under it, quoted verbatim. **Write that header as soon as `bind` returns**, even
 when a rule plainly contradicts what the spec asks for — the header records what binds; it is not
 a verdict on whether the plan may proceed. Print it before saying anything else about a conflict.
 
@@ -127,6 +128,9 @@ writes one per draft, both tiers stored the same way. Handle each by its tier:
 [or: "None. No accepted record binds this work." — say so explicitly]
 - Proposed (low tier, applied in Task N): <id-to-be> — <title>
 [one entry per low-tier draft copied from the spec's `## Decisions` section; omit if none]
+- **Behaviour:** <doc id> — <title>
+  - <doc id>.R<n> — "<rule, verbatim>"
+[omit if none bind]
 
 ---
 ```

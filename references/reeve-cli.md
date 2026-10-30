@@ -111,6 +111,7 @@ items; never derive a key from a title. Print the run id in the report.
 | `reeve decision show <id> --json` | `value`: one decision, the same fields |
 | `reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json` | `value.id` |
 | `reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json` | `value.check.kind` |
+| `reeve decision close <id> --reason <text> --json` | `value.closed.reason`, `value.closed.at`, `value.closed.by` |
 | `reeve comment add --decision <id> --body <text> --idempotency-key <key> --json` (or `--story <KEY>`) | `value[]`, the thread |
 
 An initiative's owner is an email and its target month is `YYYY-MM` (`2027-03`); pass either on

@@ -5,7 +5,8 @@ description: Use when the user asks to refine an epic in the Reeve planner or to
 
 # Refining an epic
 
-Epic-level discovery in the Reeve planner, its required decisions, stories that one person or one
+Epic-level discovery in the Reeve planner, the decisions already taken turned into records, its
+required decisions, stories that one person or one
 agent session can finish (kb/ADR-0002 R1) with acceptance criteria, and a home for every untriaged
 story. Everything goes into the planner through the `reeve` CLI. This skill writes no spec and no
 plan (kb/ADR-0005 R4).
@@ -73,12 +74,23 @@ section says.
    Say what you looked up and what it answered in one line, `Researched: <topics and findings>`,
    or `Researched: nothing — no open question is answerable by research`.
 4. **Brief.** Start from the existing `value.brief`: keep what still holds, fold in the answers,
-   and show what changes. Write it only on a yes for this brief (rule 1):
+   and show what changes; decisions already taken go under a *Decided* heading, one line each
+   naming its record, as `<plugin-root>/skills/planning-initiative/reference/brief-template.md`
+   lays it out. Write it only on a yes for this brief (rule 1):
    `reeve epic edit <EPIC> --brief <md> --version <version> --json`; keep the new `value.version`.
-5. **Required decisions.** Show the decisions step 1 found, worded by the reference; the open
+5. **Decisions.** Show the decisions step 1 found, worded by the reference; the open
    ones (as its *Wording the planner's answers* section defines them; a closed decision never is)
-   go into the report. Only for a consequential choice the user names that blocks work and has no
-   decision yet: ask who decides and by when (the due date is optional: with none given, leave
+   go into the report. Then triage by `<plugin-root>/references/decision-triage.md` (read it
+   now), as planning-initiative's step 6 does: the open questions from step 2, the epic's known
+   facts that are choices rather than facts, and every finding of the architect's survey from
+   step 1. Show each candidate with its source and proposed outcome (a kind of record by the
+   household's ADR process, a required decision, closing an open required decision with a
+   reason, or leaving it) before anything is written, and carry out the outcomes the user
+   confirms as that reference says; each recorded decision gets its line under *Decided* in the
+   epic's brief (fold it into the step 4 brief, or edit the brief once more with the new
+   `version`). For each open question that is a consequential choice blocking work (not a
+   clarification) and has no decision yet, propose a required decision, as planning-initiative
+   does: ask who decides and by when (the due date is optional: with none given, leave
    `--due` out), show and run
    `reeve decision require --on <EPIC> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
    Then ask once: "Draft the record now, or leave it for <decider>?"; draft at once when the
@@ -89,7 +101,8 @@ section says.
    (recording-decisions applies it with `Required decision: #<id>`, this run's `bin` and `run_id`,
    the key prefix `refining-epic:<EPIC>` and the next `<n>`); otherwise run
    `reeve comment add --decision <id> --body 'Draft <id-to-be>: <title> — apply and link with /lore:adr link <id-to-be> to decision <id>' --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
-   When the user says there are no new required decisions, create none.
+   When the user says there are no new required decisions, create none; a decision the user
+   says is not needed is never required.
 6. **Stories.** Propose stories, each finishable by one person or one agent session, each with
    2–6 acceptance criteria written as observable outcomes, leaving out what an existing story
    from step 1 already covers (say which key). Show them, and write the ones confirmed as rule 1
@@ -141,6 +154,7 @@ section says.
    - each placement on one line: the story's key, its title and its branch, named `bug`,
      `chore`, `this epic`, `another epic <KEY>`, `new epic under <INITIATIVE>`,
      `new initiative`, `won't do` or `left untriaged` (with the proposed home, when there is one);
+   - each triaged candidate from step 5 with its outcome and record, or "proposed, not written";
    - the open required decisions from the re-read, worded by the reference;
    - each story of the epic from the re-read on one line: its key, its title, and "ready" or
      "blocked:" followed by every one of the planner's reasons, worded by the reference's table.

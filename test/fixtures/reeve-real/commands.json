@@ -96,6 +96,7 @@
     },
     {
       "row": "`reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json`",
+      "bind": "required",
       "argv": ["decision", "require", "--on", "{{epic.key}}", "--title", "Skill smoke required decision", "--decider", "{{email}}", "--due", "2027-01-15", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:2", "--json"],
       "reads": ["value.id"],
       "types": { "value.id": "number" }
@@ -106,6 +107,12 @@
       "reads": ["value.check.kind"],
       "types": { "value.check.kind": "string" },
       "expect": { "value.check.kind": "accepted" }
+    },
+    {
+      "row": "`reeve decision close <id> --reason <text> --json`",
+      "argv": ["decision", "close", "{{required.id}}", "--reason", "Closed by the skill smoke: settled without a record.", "--json"],
+      "reads": ["value.closed.reason", "value.closed.at", "value.closed.by"],
+      "types": { "value.closed.reason": "string", "value.closed.at": "string", "value.closed.by": "string" }
     },
     {
       "row": "`reeve comment add --decision <id> --body <text> --idempotency-key <key> --json` (or `--story <KEY>`)",
@@ -120,9 +127,9 @@
       "reads": ["value[].id", "value[].on", "value[].title", "value[].decider", "value[].due", "value[].record", "value[].pr_url", "value[].check.kind", "value[].closed"],
       "types": { "value[].id": "number", "value[].on": "string", "value[].title": "string", "value[].decider": "string", "value[].due": "string|null", "value[].record": "object|null", "value[].pr_url": "string|null", "value[].check.kind": "string", "value[].closed": "object|null" },
       "unread": {
-        "value[].closed.at": "the Commands table has no close command and the skills never close a decision; value[].closed is read",
-        "value[].closed.by": "the Commands table has no close command and the skills never close a decision; value[].closed is read",
-        "value[].closed.reason": "the Commands table has no close command and the skills never close a decision; value[].closed is read"
+        "value[].closed.at": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here",
+        "value[].closed.by": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here",
+        "value[].closed.reason": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here"
       }
     },
     {

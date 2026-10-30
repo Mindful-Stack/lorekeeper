@@ -75,6 +75,7 @@ const SPEC = {
   'decision show': { pos: 1 },
   'decision require': { pos: 0, val: ['idempotency-key', 'on', 'title', 'decider', 'due'], req: ['idempotency-key', 'on', 'title', 'decider'] },
   'decision link': { pos: 1, val: ['record', 'repo', 'path', 'pr', 'household'], req: ['record', 'repo', 'path'] },
+  'decision close': { pos: 1, val: ['reason'], req: ['reason'] },
   'comment add': { pos: 0, val: ['idempotency-key', 'story', 'decision', 'body'], req: ['idempotency-key', 'body'] },
 };
 const cmd = words.slice(0, 2).join(' ');
@@ -235,6 +236,14 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
       process.stderr.write(`decision ${p0}: cannot read ${f.path}: ${f.household || '.'}/${f.repo} is not a git checkout\n`);
       emit({ outcome: 'ok', value }, 1);
     }
+    ok(value);
+  },
+  'decision close': () => {
+    if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
+    const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);
+    if (d.closed) emit({ outcome: 'refused', reasons: [{ reason: 'decision_closed' }] }, 2);
+    const value = { ...d, closed: { at: NOW, by: 'dan@example.com', reason: f.reason }, version: d.version + 1 };
+    withState((st) => { (st.decisions ||= {})[d.id] = value; });
     ok(value);
   },
   'comment add': () => {

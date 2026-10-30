@@ -5,8 +5,8 @@ description: Use when the user asks to plan an initiative in the Reeve planner, 
 
 # Planning an initiative
 
-Discovery for one initiative in the Reeve planner: its brief, the required decisions with their
-deciders and drafted records, and its epics. Everything goes into the planner through the `reeve`
+Discovery for one initiative in the Reeve planner: its brief, the decisions already taken turned
+into records, the required decisions with their deciders and drafted records, and its epics. Everything goes into the planner through the `reeve`
 CLI. This skill writes no spec and no plan (kb/ADR-0005 R4).
 
 The plugin root is `${CLAUDE_PLUGIN_ROOT}`; below it is `<plugin-root>`, written out as an absolute
@@ -54,7 +54,8 @@ argument.
    initiative's title and "Prioritise domain context and architecture patterns.", and the
    **architect** in `survey` mode on the repositories the brief or the user names.
 2. **Discovery conversation**, following `<plugin-root>/skills/planning-initiative/reference/brief-template.md`:
-   the outcome, who it is for, what is known, what is open. When the initiative has no owner or no
+   the outcome, who it is for, what is known (and what of it is a decision already taken), what is
+   open. When the initiative has no owner or no
    target month, ask for each one that is missing: who owns it (an email) and which month it
    targets (`YYYY-MM`). They come from the user (rule 4); an initiative may stay without either
    when the user says so. In a session that cannot ask, take them from the request, or leave them
@@ -76,7 +77,17 @@ argument.
    epic the user's answers call for, whether an existing one already covers it (say which key or
    id). Steps 6 and 7 create only the ones that are not covered. A re-run on an initiative that
    already has them creates nothing unless the user asks for something new.
-6. **Required decisions.** For each open question that is a consequential choice blocking work
+6. **Decisions.** Triage by `<plugin-root>/references/decision-triage.md` (read it now): the
+   open questions from step 2, the Known knowns that are choices rather than facts, and every
+   finding of the architect's survey from step 1 (it finds the decisions already taken without a
+   record; use its output here). Show each candidate with its source and proposed outcome (a kind
+   of record by the household's ADR process, a required decision, closing an open required
+   decision with a reason, or leaving it) before anything is written, then carry out the outcomes
+   the user confirms as that reference says; each recorded decision gets its line under *Decided*
+   in the brief (fold it into the step 4 brief, or edit the brief once more with the new
+   `version`). The rest of this step is the required-decision outcome.
+
+   For each open question that is a consequential choice blocking work
    (not a clarification) and has no decision yet: ask who decides and by when (the due date is
    optional: with none given, leave `--due` out), show and run
    `reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`,
@@ -114,8 +125,10 @@ argument.
    existing key reused, and every proposal left unwritten; the initiative's owner and target month
    (or "no owner", "no target month"); each required decision from the re-read
    with its decider, due date and state worded by the reference ("no record", "proposed, PR open",
-   "closed: …"), plus the comment pointer when the record is only drafted; each epic from the
+   "closed: …"), plus the comment pointer when the record is only drafted; each triaged candidate
+   from step 6 with its outcome and record, or "proposed, not written"; each epic from the
    re-read. End with the next step: "refine an epic with refining-epic".
 
-`<n>` is one counter for the whole run, from 1, shared by decisions, comments and epics: every
+`<n>` is one counter for the whole run, from 1, shared by decisions, comments and epics (and the
+creates recording-decisions runs for this skill): every
 create takes the next number, and a retry of the same create reuses its number.

@@ -98,6 +98,13 @@ An optional `adr` key overrides where ADR records live — every field optional,
 `"adrDir"`. `sharedDir` is the shared KB's ADR directory, under its `knowledge/`.
 `.lorekeeper/config.json` takes the same keys under `adr` for single-repo setups.
 
+Behaviour docs sit beside the records, configured the same way under a `behaviour` key (a
+`repos[]` entry overrides `localDir` with `"behaviourDir"`):
+
+```json
+{ "behaviour": { "localDir": "docs/behaviour", "sharedDir": "behaviour" } }
+```
+
 Setting the env var globally:
 
 **Windows (System Environment Variables) — recommended:**
@@ -359,6 +366,7 @@ the code against them, and asks `adr-lint verdict` whether anything blocks:
 | fires a record's invalidation trigger | Critical (blocks) |
 | makes a *Facts relied on* entry false | Minor (draft an observation) |
 | cites an id that resolves nowhere | Important |
+| breaks a behaviour doc's rule | Critical (blocks) |
 
 When a Critical finding blocks: conform, or replace the record (`/lore:adr replace …`). For an
 uncovered choice: low tier, add the record and have it accepted in this PR before merge; high
@@ -400,6 +408,7 @@ jobs:
         with: { node-version: 22 }
       - run: echo "LORE=$(realpath "$GITHUB_WORKSPACE/_ci/lorekeeper")" >> "$GITHUB_ENV"
       - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} "$ADR_DIR"
+      - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} docs/behaviour
   adr-judgment:                     # required check 2: the reviewer, then the verdict
     runs-on: ubuntu-latest
     steps:
@@ -468,6 +477,9 @@ jobs:
   needs history, not just the PR's tip commit.
 - **Fails closed:** a missing or invalid findings file, or a selected record the reviewer did not
   attest to, exits 2.
+- **Behaviour docs:** the second `check` line validates the repo's behaviour home with the same
+  flags (they change nothing for it); drop it in a repo that has none. A knowledge-base repo
+  runs `check --home shared` on `knowledge/behaviour` the same way.
 - **Required checks:** make both jobs required status checks. The repository's admin bypass, used
   by its bypass group, is the only override.
 
@@ -481,6 +493,32 @@ fact, or makes an unrecorded hard-to-reverse choice is reviewed as such. Discove
 runs the agent's `survey` mode and drafts every pick as a proposal in one batch per home; each is
 then accepted by a named human. The `recording-decisions` skill is the gate: record it as proposed
 before building on it.
+
+### Behaviour docs
+
+A behaviour doc states the rules a capability must keep, what must stay true now, where an ADR
+records why a hard-to-reverse choice was made: it is living, edited in the same PR as the change
+that alters the behaviour, and a rule that follows from a decision names it in a `Source:` line.
+`/lore:review` selects the docs whose `scope` a diff touches, and a rule the diff breaks is a
+`behaviour-rule` finding, critical and blocking like a contradicted record.
+
+A doc lives in the same two homes as ADRs: `docs/behaviour/<capability>.md` in the repo that
+implements it (`backend/device`), or `behaviour/<capability>.md` in the team knowledge base for a
+capability that spans repos (`kb/contract`). Its rules are cited as the doc id plus `.R<n>`
+(`backend/device.R2`). The dirs are set by the `behaviour` config block (see
+[ADR homes](#adr-homes)). A shared-home rule changes in its own knowledge-base PR, which merges
+first; until it does, a code PR that breaks the rule is blocked.
+
+`adr-lint check` validates a behaviour dir as it does an ADR dir, so pre-commit and CI run one
+line per home kind:
+
+```bash
+node scripts/adr-lint.js check --home local docs/behaviour              # a code repo
+node scripts/adr-lint.js check --home shared knowledge/behaviour        # the knowledge base
+```
+
+The format, the checks and how review judges a rule are in
+[`references/behaviour-docs.md`](references/behaviour-docs.md).
 
 ### Cultivate
 
@@ -741,4 +779,4 @@ Follows [semantic versioning](https://semver.org/). **Every PR that changes plug
 - **MINOR** — new commands/skills/agents, additive options
 - **MAJOR** — renamed/removed commands, config or manifest schema changes
 
-Keep the version in sync across `.claude-plugin/plugin.json`, `package.json`, and the lorekeeper entry in the [Witan marketplace](https://github.com/Mindful-Stack/witan) manifest (the one the updater actually compares — needs a companion PR there).
+Keep the version in sync across `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `package.json` (a test checks these three agree), and the lorekeeper entry in the [Witan marketplace](https://github.com/Mindful-Stack/witan) manifest (the one the updater actually compares — needs a companion PR there).

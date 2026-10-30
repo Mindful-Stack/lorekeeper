@@ -57,7 +57,7 @@ function sameDir(a, b) {
 
 // Resolves every ADR home visible from `start`. Shape:
 //   { mode, root, config, behaviourConfig, repos,
-//     localHomes: [{ repo, dir, behaviourDir, present, coinciding }], sharedHome,
+//     localHomes: [{ repo, dir, behaviourDir, present, coinciding, behaviourCoinciding }], sharedHome,
 //     sharedBehaviourHome, sharedRoot, otherKbs }
 // `sharedRoot` is the team KB's root (the directory holding knowledge/), or null.
 // A local home `coinciding` is the only home: the shared home is the same directory, or
@@ -74,6 +74,7 @@ function resolveHomes(start, env = process.env) {
         // The manifest declares the team KB, so its home is known even when it is not checked
         // out; references into it then resolve as unavailable (a warning), not missing.
         const sharedHome = path.join(household, kbName, 'knowledge', config.sharedDir);
+        const sharedBehaviourHome = path.join(household, kbName, 'knowledge', bconfig.sharedDir);
         const localHomes = (m.repos || [])
             .filter((r) => r && r.name && !skip.has(r.name))
             .map((r) => ({
@@ -82,7 +83,7 @@ function resolveHomes(start, env = process.env) {
                 behaviourDir: path.join(household, r.name, r.behaviourDir || bconfig.localDir),
                 present: isDir(path.join(household, r.name)),
             }))
-            .map((h) => ({ ...h, coinciding: sameDir(h.dir, sharedHome) }));
+            .map((h) => ({ ...h, coinciding: sameDir(h.dir, sharedHome), behaviourCoinciding: sameDir(h.behaviourDir, sharedBehaviourHome) }));
         const otherKbs = shared.map((name) => ({
             name,
             dir: path.join(household, name, 'knowledge', config.sharedDir),
@@ -95,7 +96,7 @@ function resolveHomes(start, env = process.env) {
             repos: m.repos || [],
             localHomes,
             sharedHome,
-            sharedBehaviourHome: path.join(household, kbName, 'knowledge', bconfig.sharedDir),
+            sharedBehaviourHome,
             sharedRoot: path.join(household, kbName),
             otherKbs,
         };
@@ -120,6 +121,7 @@ function resolveHomes(start, env = process.env) {
         behaviourDir: path.join(root, bconfig.localDir),
         present: true,
         coinciding,
+        behaviourCoinciding: sameDir(path.join(root, bconfig.localDir), team ? path.join(team, bconfig.sharedDir) : null),
     };
     return {
         mode: 'single',

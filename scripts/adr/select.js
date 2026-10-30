@@ -157,8 +157,8 @@ function parseCitedIds(prBody) {
     const text = (stop === -1 ? rest : rest.slice(0, stop)).join('\n');
     const adrs = text.match(/[A-Za-z0-9._-]+\/ADR-\d{4}/g) || [];
     // A behaviour rule id (`kb/contract.R3`) cites its doc. A prefix is lowercase, so an ADR
-    // rule id never matches here.
-    const rules = (text.match(/[A-Za-z0-9._-]+\/[a-z][a-z0-9-]*\.R\d+/g) || []).map((id) => id.replace(/\.R\d+$/, ''));
+    // rule id never matches here. Boundaries keep URLs and longer paths from citing.
+    const rules = (text.match(/(?<![\w./:-])[A-Za-z0-9._-]+\/[a-z][a-z0-9-]*\.R\d+(?![\w-])/g) || []).map((id) => id.replace(/\.R\d+$/, ''));
     return [...new Set([...adrs, ...rules])];
 }
 

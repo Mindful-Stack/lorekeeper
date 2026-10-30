@@ -30,9 +30,8 @@ function listHomes(homes) {
 // Behaviour homes: each local home's behaviour dir, then the team KB's (once, when it coincides).
 function listBehaviourHomes(homes) {
     const out = homes.localHomes.map((h) => ({ kind: 'local', prefix: h.repo, dir: h.behaviourDir }));
-    const real = (p) => (p && fs.existsSync(p) ? fs.realpathSync(p) : null);
-    const shared = homes.sharedBehaviourHome;
-    if (shared && !out.some((h) => real(h.dir) && real(h.dir) === real(shared))) out.push({ kind: 'shared', prefix: 'kb', dir: shared });
+    const coincides = homes.localHomes.some((h) => h.behaviourCoinciding);
+    if (homes.sharedBehaviourHome && !coincides) out.push({ kind: 'shared', prefix: 'kb', dir: homes.sharedBehaviourHome });
     return out.map((h) => ({ ...h, present: fs.existsSync(h.dir) }));
 }
 
@@ -85,8 +84,8 @@ function buildCatalogue(homes) {
     for (const h of listBehaviourHomes(homes)) {
         if (!h.present) continue;
         for (const d of B.loadBehaviourHome(h.dir).docs) {
-            if (typeof d.fm.prefix !== 'string' || !d.fm.prefix) continue;
-            const id = `${h.prefix}/${d.fm.prefix}`;
+            const id = B.docId(d, h.prefix);
+            if (!id) continue;
             const rules = d.headings.filter((x) => x.id).map((x) => ({ id: `${h.prefix}/${x.id}`, sources: x.sources }));
             behaviour.push({ id, home: h.prefix, kind: h.kind, file: d.file, title: d.fm.title || '', scope: asList(d.fm.scope), rules: rules.map((r) => r.id), sourced: rules });
         }

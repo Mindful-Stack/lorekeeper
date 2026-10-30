@@ -996,13 +996,93 @@ test('verdict blocks on a behaviour-rule finding for a selected doc, and select 
     assert.equal(JSON.parse(v.stdout).findings[0].severity, 'critical');
 });
 
-test('homes reports behaviour dirs, and the shared one with its repo root and default branch', (t) => {
+const PATCH = 'diff --git a/src/Devices/Status.cs b/src/Devices/Status.cs\n--- a/src/Devices/Status.cs\n+++ b/src/Devices/Status.cs\n@@ -1 +1 @@\n-a\n+b\n';
+const ONE_RULE = { Rules: '### device.R1 One\nSHALL a.\n- Example: b', 'Known deviations': undefined };
+
+test('homes reports behaviour dirs and the shared one relative to the KB repo root', (t) => {
     const w = workspace(t);
     commitAll(w.kb, w.env, 'init');
     fs.mkdirSync(path.join(w.kb, 'knowledge', 'behaviour'), { recursive: true });
+    fs.mkdirSync(path.join(w.api, 'docs', 'behaviour'), { recursive: true });
     const out = JSON.parse(runCli(w.root, w.env, 'homes').stdout);
-    assert.equal(out.localHomes.find((h) => h.repo === 'api').behaviourDir, path.join(w.api, 'docs', 'behaviour'));
+    const api = out.localHomes.find((h) => h.repo === 'api');
+    assert.equal(api.behaviourDir, path.join(w.api, 'docs', 'behaviour'));
+    assert.equal(api.behaviourExists, true);
     assert.equal(out.sharedBehaviourHome, path.join(w.kb, 'knowledge', 'behaviour'));
     assert.equal(out.sharedBehaviourHomeExists, true);
     assert.equal(out.sharedBehaviourRelDir, 'knowledge/behaviour');
+});
+
+function patchIn(w) {
+    const patch = path.join(w.root, 'p.patch');
+    write(patch, PATCH);
+    return patch;
+}
+
+test('two behaviour docs with one id are a selection error for select and verdict', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const dir = path.join(w.api, 'docs', 'behaviour');
+    write(path.join(dir, 'a-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    write(path.join(dir, 'b-other.md'), makeBehaviourDoc({ prefix: 'api', sections: { Rules: '### device.R3 Third\nSHALL x.\n- Example: y', 'Known deviations': undefined } }));
+    const patch = patchIn(w);
+    const sel = runCli(w.root, w.env, 'select', '--json', '--diff', patch, '--repo', 'api');
+    assert.equal(sel.code, 2, sel.stdout + sel.stderr);
+    assert.match(sel.stderr, /a-status\.md and .*b-other\.md both have id api\/device/);
+    const f = path.join(w.root, 'f.json');
+    write(f, JSON.stringify({ coverage: { checked: ['api/device'], notReviewed: [] }, findings: [] }));
+    const v = runCli(w.root, w.env, 'verdict', '--findings', f, '--diff', patch, '--repo', 'api');
+    assert.equal(v.code, 2, v.stdout + v.stderr);
+});
+
+test('a behaviour doc with no usable prefix blocks review only when its scope matches the diff', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const dir = path.join(w.api, 'docs', 'behaviour');
+    const patch = patchIn(w);
+    for (const prefix of [['device', 'dev'], undefined]) {
+        write(path.join(dir, 'a.md'), makeBehaviourDoc({ prefix: 'api', fm: { prefix } }));
+        const r = runCli(w.root, w.env, 'select', '--diff', patch, '--repo', 'api');
+        assert.equal(r.code, 2, r.stdout + r.stderr);
+        assert.match(r.stderr, /a\.md has no usable prefix; fix it \(adr-lint check\) before review/);
+    }
+    write(path.join(dir, 'a.md'), makeBehaviourDoc({ prefix: 'api', fm: { prefix: undefined, scope: ['src/Other/**'] } }));
+    const ok = runCli(w.root, w.env, 'select', '--diff', patch, '--repo', 'api');
+    assert.equal(ok.code, 0, ok.stdout + ok.stderr);
+    // A shared doc is matched through its `api:` scope.
+    fs.rmSync(path.join(dir, 'a.md'));
+    write(path.join(w.kb, 'knowledge', 'behaviour', 'x.md'), makeBehaviourDoc({ fm: { prefix: undefined } }));
+    const shared = runCli(w.root, w.env, 'select', '--diff', patch, '--repo', 'api');
+    assert.equal(shared.code, 2, shared.stdout + shared.stderr);
+    assert.match(shared.stderr, /x\.md has no usable prefix/);
+});
+
+test('a doc with an uppercase prefix is still a behaviour doc: stale-fact on it is refused', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'a.md'), makeBehaviourDoc({ prefix: 'api', fm: { prefix: 'Device' }, sections: ONE_RULE }));
+    const patch = patchIn(w);
+    const f = path.join(w.root, 'f.json');
+    write(f, JSON.stringify({ coverage: { checked: [], notReviewed: [] }, findings: [{ class: 'stale-fact', ids: ['api/Device'], where: 'src/Devices/Status.cs:1', summary: 's' }] }));
+    const v = runCli(w.root, w.env, 'verdict', '--findings', f, '--diff', patch, '--repo', 'api');
+    assert.equal(v.code, 2, v.stdout + v.stderr);
+    assert.match(v.stderr, /stale-fact names api\/Device, which is a behaviour doc/);
+});
+
+test('a single repo whose KB lives inside it lists a shared-and-local behaviour dir once', (t) => {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    write(path.join(root, '.lorekeeper', 'config.json'), JSON.stringify({ knowledgeBasePath: '.', behaviour: { localDir: 'knowledge/behaviour' } }));
+    write(path.join(root, 'knowledge', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    initRepo(root, env);
+    const patch = path.join(root, 'p.patch');
+    write(patch, PATCH);
+    const sel = runCli(root, env, 'select', '--json', '--diff', patch);
+    assert.equal(sel.code, 0, sel.stdout + sel.stderr);
+    const ids = JSON.parse(sel.stdout).candidates.map((c) => c.id);
+    assert.equal(ids.length, 1);
+    assert.match(ids[0], /\/device$/);
+    assert.doesNotMatch(ids[0], /^kb\//);
+    const idx = JSON.parse(runCli(root, env, 'index', '--json').stdout);
+    assert.deepEqual(idx.behaviour.map((d) => d.id), ids);
 });

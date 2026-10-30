@@ -454,7 +454,8 @@ function cmdVerdict(flags) {
             if (!texts.has(id)) texts.set(id, fs.readFileSync(files.get(id), 'utf8'));
             return texts.get(id);
         };
-        const cov = Cov.validate({ doc, picked, recordText });
+        const kinds = new Map([...cat.records.map((r) => [r.id, 'adr']), ...cat.behaviour.map((d) => [d.id, 'behaviour'])]);
+        const cov = Cov.validate({ doc, picked, recordText, kindOf: (id) => kinds.get(id) });
         const added = cov.dangling.map((id) => ({
             class: 'dangling', ids: [id], where: null, summary: `${id} is cited in the PR description but resolves nowhere`,
         }));

@@ -31,8 +31,12 @@ const recordOf = (id) => id.replace(/\.[RF]\d+$/, '');
 const DOC_CLASSES = { contradiction: 'adr', trigger: 'adr', 'stale-fact': 'adr', 'behaviour-rule': 'behaviour' };
 const strings = (x) => Array.isArray(x) && x.every((y) => typeof y === 'string');
 
-// doc: { coverage, findings }; picked: select output; recordText(id) → text or null.
-function validate({ doc, picked, recordText }) {
+// doc: { coverage, findings }; picked: select output; recordText(id) → text or null;
+// kindOf(id) → 'adr' | 'behaviour' | null (callers pass the catalogue's view; without it the
+// selection's kinds are used, then the id's shape).
+function validate({ doc, picked, recordText, kindOf }) {
+    const pickedKind = new Map(picked.filter((p) => p.doc).map((p) => [p.id, p.doc]));
+    const kind = (id) => (kindOf && kindOf(id)) || pickedKind.get(id) || (DOC_ID_RE.test(id) ? 'behaviour' : 'adr');
     const cov = doc.coverage;
     if (!cov || typeof cov !== 'object' || !strings(cov.checked) || !strings(cov.notReviewed)) {
         throw fail('findings document needs "coverage": {"checked": [ids], "notReviewed": [strings]}');
@@ -50,7 +54,7 @@ function validate({ doc, picked, recordText }) {
         const records = [...new Set(f.ids.map(recordOf))];
         if (records.length !== 1) throw fail(`${f.class}: ids must name exactly one ${noun}, got ${records.length ? `more than one ${noun}` : 'none'}`);
         const [rec] = records;
-        const isDoc = DOC_ID_RE.test(rec);
+        const isDoc = kind(rec) === 'behaviour';
         if (want === 'adr' && isDoc) throw fail(`${f.class} names ${rec}, which is a behaviour doc; use behaviour-rule`);
         if (want === 'behaviour' && !isDoc) throw fail(`behaviour-rule names ${rec}, which is not a behaviour doc`);
         const text = recordText(rec);

@@ -312,3 +312,16 @@ test('the catalogue lists behaviour docs and the rules implementing each record'
     assert.deepEqual(cat.records.find((e) => e.id === 'kb/ADR-0001').implementedBy, ['kb/device.R1']);
     assert.match(renderMarkdown(cat), /\*\*kb\/ADR-0001\*\*: implemented by kb\/device\.R1/);
 });
+
+test('implementedBy crosses homes, ignores duplicate sources, and is sorted', (t) => {
+    const root = tmpDir(t);
+    write(path.join(root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore', repos: [{ name: 'ws' }, { name: 'lore' }, { name: 'api' }],
+    }));
+    write(path.join(root, 'lore', 'knowledge', 'adrs', '0001-session-storage.md'), makeRecord());
+    const rules = '### zeta.R1 One\nSHALL a.\n- Example: b\n- Source: kb/ADR-0001.R1, kb/ADR-0001.R2\n\n### zeta.R2 Two\nSHALL c.\n- Example: d\n- Source: kb/ADR-0001';
+    write(path.join(root, 'api', 'docs', 'behaviour', 'z.md'), makeBehaviourDoc({ prefix: 'api', fm: { prefix: 'zeta' }, sections: { Rules: rules, 'Known deviations': undefined } }));
+    write(path.join(root, 'lore', 'knowledge', 'behaviour', 'a.md'), makeBehaviourDoc({ fm: { prefix: 'alpha' }, sections: { Rules: '### alpha.R1 One\nSHALL a.\n- Example: b\n- Source: kb/ADR-0001', 'Known deviations': undefined } }));
+    const cat = buildCatalogue(resolveHomes(root, {}));
+    assert.deepEqual(cat.records.find((e) => e.id === 'kb/ADR-0001').implementedBy, ['api/zeta.R1', 'api/zeta.R2', 'kb/alpha.R1']);
+});

@@ -51,6 +51,12 @@ function parseDoc(file, text) {
     };
 }
 
+// A loaded doc's id under a home prefix, or null when its `prefix:` is unusable (missing, a list).
+function docId(doc, homePrefix) {
+    const p = doc.fm.prefix;
+    return typeof p === 'string' && p ? `${homePrefix}/${p}` : null;
+}
+
 // The R<n> of every well-formed rule in a doc's text, for checking finding ids.
 function ruleNumbers(text) {
     return parseDoc('', text).headings.filter((h) => h.id).map((h) => h.n);
@@ -168,5 +174,5 @@ function checkDoc(ctx, d, byPrefix, err, warn) {
 }
 
 module.exports = {
-    PREFIX_RE, DOC_ID_RE, RULE_HEAD, parseDoc, ruleNumbers, loadBehaviourHome, checkBehaviourHome, adrRuleIds,
+    PREFIX_RE, DOC_ID_RE, RULE_HEAD, docId, parseDoc, ruleNumbers, loadBehaviourHome, checkBehaviourHome, adrRuleIds,
 };

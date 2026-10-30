@@ -118,3 +118,12 @@ test('coverage and the behaviour validator read ADR rule ids identically', () =>
         assert.deepEqual(C.ruleIds(text), ['R1', 'R2']);
     }
 });
+
+test('the document kind comes from kindOf, not from the id\'s shape', () => {
+    const upper = (id) => (id === 'api/Device' ? DOC.replace(/device/g, 'Device') : null);
+    const kindOf = (id) => (id === 'api/Device' ? 'behaviour' : 'adr');
+    const f = (cls, ids) => ({ class: cls, ids, where: 'src/x.cs:1', summary: 's' });
+    assert.throws(() => validate({ doc: docOf([f('stale-fact', ['api/Device'])]), picked: [], recordText: upper, kindOf }), /stale-fact names api\/Device, which is a behaviour doc/);
+    // Past the kind check, so the failure is about rules, not "not a behaviour doc".
+    assert.throws(() => validate({ doc: docOf([f('behaviour-rule', ['api/Device.R1'])]), picked: [], recordText: upper, kindOf }), /names no R1/);
+});

@@ -169,3 +169,8 @@ test('select carries each candidate\'s doc kind, and a missing cited doc is beha
         ['api/ADR-0001', 'adr', 'accepted'], ['api/device', 'behaviour', '-'], ['kb/contract', 'behaviour', 'missing'],
     ]);
 });
+
+test('parseCitedIds does not read URLs, longer paths or longer rule numbers as behaviour rule ids', () => {
+    const body = '## Decisions\n- https://github.com/org/repo/blob/main/x.R2\n- path/to/file.R1x\n- docs/a/b.R3-old\n- see (kb/contract.R3).\n';
+    assert.deepEqual(parseCitedIds(body), ['kb/contract']);
+});

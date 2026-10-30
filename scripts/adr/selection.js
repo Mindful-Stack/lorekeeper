@@ -5,11 +5,11 @@
 
 const path = require('path');
 const { asList, isEmpty } = require('./frontmatter');
-const fs = require('fs');
 const R = require('./records');
 const B = require('./behaviour');
 const H = require('./homes');
 const G = require('./git');
+const { matchesGlob } = require('./glob');
 const { parsePatchPaths, parseCitedIds, select } = require('./select');
 
 class SelectionError extends Error {}
@@ -35,22 +35,34 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
     };
     add(local.dir, 'local', repo);
     if (homes.sharedHome && !local.coinciding) add(homes.sharedHome, 'shared', 'kb');
+    const unusable = [];
     const addDocs = (dir, kind, prefix) => {
         for (const d of B.loadBehaviourHome(dir).docs) {
-            // No usable prefix, no id; `check` already errors on it.
-            if (typeof d.fm.prefix !== 'string' || !d.fm.prefix) continue;
-            candidates.push({
-                id: `${prefix}/${d.fm.prefix}`, kind, doc: 'behaviour', status: '-', file: d.file,
-                scope: asList(d.fm.scope), fm: d.fm, text: d.text,
-            });
+            const id = B.docId(d, prefix);
+            const scope = asList(d.fm.scope);
+            if (!id) {
+                unusable.push({ file: d.file, kind, scope });
+                continue;
+            }
+            candidates.push({ id, kind, doc: 'behaviour', status: '-', file: d.file, scope, fm: d.fm, text: d.text });
         }
     };
     addDocs(local.behaviourDir, 'local', repo);
-    const sameDir = (a, b) => !!a && !!b && fs.existsSync(a) && fs.existsSync(b) && fs.realpathSync(a) === fs.realpathSync(b);
-    if (homes.sharedBehaviourHome && !sameDir(local.behaviourDir, homes.sharedBehaviourHome)) {
-        addDocs(homes.sharedBehaviourHome, 'shared', 'kb');
+    if (homes.sharedBehaviourHome && !local.behaviourCoinciding) addDocs(homes.sharedBehaviourHome, 'shared', 'kb');
+    // Two docs under one id would share one attestation and one file lookup.
+    const seen = new Map();
+    for (const c of candidates.filter((x) => x.doc === 'behaviour')) {
+        if (seen.has(c.id)) throw new SelectionError(`behaviour docs ${seen.get(c.id)} and ${c.file} both have id ${c.id}; give one a different prefix (adr-lint check)`);
+        seen.set(c.id, c.file);
     }
     const paths = given || parsePatchPaths(diffText);
+    // A doc with no id cannot be reviewed; letting it drop out would pass a diff in its scope.
+    for (const u of unusable) {
+        const globs = u.kind === 'local' ? u.scope : u.scope.filter((s) => s.startsWith(`${repo}:`)).map((s) => s.slice(repo.length + 1));
+        if (paths.some((p) => globs.some((g) => matchesGlob(p, g)))) {
+            throw new SelectionError(`${u.file} has no usable prefix; fix it (adr-lint check) before review`);
+        }
+    }
     const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody || '') });
     return { repo, homes, picked, candidates };
 }

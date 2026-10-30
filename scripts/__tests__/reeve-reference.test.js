@@ -85,8 +85,9 @@ test('every command parses in the real reeve CLI (REEVE_REAL_BIN)', { skip: !pro
 // The reverse direction. A command the reference documents is `reeve <group> <verb>` from any of its
 // `reeve … --json` spans; the reference mentions a flag for it when the flag appears in one of those
 // spans or on the same line as one (a table row's Read cell, an "(or `--story <KEY>`)" note).
-// HELP_ONLY lists flags the reference leaves out on purpose.
-const HELP_ONLY = new Set(['--help', '--json']);
+// HELP_ONLY lists flags the reference leaves out on purpose: --help, and the global --json and --ascii
+// (text output only), which every subcommand's --help lists.
+const HELP_ONLY = new Set(['--help', '--json', '--ascii']);
 const flagsIn = (text) => text.match(/--[a-z][a-z0-9-]*/g) || [];
 function referenceMentions() {
   const file = 'references/reeve-cli.md';

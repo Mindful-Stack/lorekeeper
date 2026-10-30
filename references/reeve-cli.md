@@ -19,7 +19,8 @@ stands for it.
 ## Arguments
 
 Put `--json` on every command, as the last argument (the real CLI takes it anywhere; these
-examples end with it). Pass Markdown (a brief) or any text with spaces as one single-quoted
+examples end with it). The CLI's other global flag, `--ascii`, only changes text output (each key's
+level glyph, such as `◆` for an initiative, becomes `[I]`), so the skills never pass it. Pass Markdown (a brief) or any text with spaces as one single-quoted
 argument with real newlines, `'\''` for an apostrophe, and no line whose first non-blank
 character is `#` (an indented `#` is refused too): write a heading in setext form, its title
 underlined with `---`. No value starts with `-` (the real CLI reads it as a flag; only

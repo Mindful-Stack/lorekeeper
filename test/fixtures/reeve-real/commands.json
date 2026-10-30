@@ -12,8 +12,8 @@
       "row": "`reeve initiative show <KEY> --json`",
       "bind": "initiative",
       "argv": ["initiative", "show", "{{initiative.key}}", "--json"],
-      "reads": ["value.brief", "value.horizon", "value.owner", "value.discovery_complete", "value.version"],
-      "types": { "value.brief": "string", "value.horizon": "string", "value.owner": "string|null", "value.discovery_complete": "object|null", "value.version": "number" }
+      "reads": ["value.brief", "value.horizon", "value.owner", "value.target_month", "value.external_ref", "value.discovery_complete", "value.version"],
+      "types": { "value.brief": "string", "value.horizon": "string", "value.owner": "string|null", "value.target_month": "string|null", "value.external_ref": "string|null", "value.discovery_complete": "object|null", "value.version": "number" }
     },
     {
       "row": "`reeve initiative ls --json`",
@@ -22,13 +22,13 @@
       "types": { "value[].key": "string", "value[].title": "string", "value[].horizon": "string" }
     },
     {
-      "row": "`reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key <key> --json`",
-      "argv": ["initiative", "create", "--title", "Skill smoke second initiative", "--horizon", "Now", "--brief", "Created by the skill smoke.", "--idempotency-key", "planning-initiative:{{initiative.key}}:{{run_id}}:1", "--json"],
+      "row": "`reeve initiative create --title <title> --horizon <bucket> --brief <md> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json`",
+      "argv": ["initiative", "create", "--title", "Skill smoke second initiative", "--horizon", "Now", "--brief", "Created by the skill smoke.", "--owner", "{{email}}", "--target-month", "2027-03", "--idempotency-key", "planning-initiative:{{initiative.key}}:{{run_id}}:1", "--json"],
       "reads": ["value.key", "value.version"],
       "types": { "value.key": "string", "value.version": "number" }
     },
     {
-      "row": "`reeve initiative edit <KEY> --brief <md> --version <n> --json`",
+      "row": "`reeve initiative edit <KEY> [--brief <md>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json`",
       "bind": "initiative",
       "argv": ["initiative", "edit", "{{initiative.key}}", "--brief", "Edited by the skill smoke.", "--version", "{{initiative.version}}", "--json"],
       "reads": ["value.version"],

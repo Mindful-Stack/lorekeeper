@@ -87,10 +87,10 @@ items; never derive a key from a title. Print the run id in the report.
 
 | Command | Read |
 |---|---|
-| `reeve initiative show <KEY> --json` | `value.brief`, `.horizon`, `.owner`, `.discovery_complete` (null = not complete), `.version` |
+| `reeve initiative show <KEY> --json` | `value.brief`, `.horizon`, `.owner` (null = none), `.target_month` (a month such as 2027-03, null = none), `.external_ref` (null = none), `.discovery_complete` (null = not complete), `.version` |
 | `reeve initiative ls --json` | `value[]`: `key`, `title`, `horizon` |
-| `reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key <key> --json` | `value.key`, `value.version`; a bucket the planner does not have is a `validation` error |
-| `reeve initiative edit <KEY> --brief <md> --version <n> --json` | `value.version` |
+| `reeve initiative create --title <title> --horizon <bucket> --brief <md> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json` | `value.key`, `value.version`; a bucket the planner does not have is a `validation` error |
+| `reeve initiative edit <KEY> [--brief <md>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json` | `value.version` |
 | `reeve initiative discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
 | `reeve epic show <KEY> --json` | `value.brief`, `.initiative`, `.discovery_complete`, `.version` |
 | `reeve epic ls [--initiative <KEY>] --json` | `value[]`: `key`, `title`, `initiative` |
@@ -107,8 +107,33 @@ items; never derive a key from a title. Print the run id in the report.
 | `reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json` | `value.check.kind` |
 | `reeve comment add --decision <id> --body <text> --idempotency-key <key> --json` (or `--story <KEY>`) | `value[]`, the thread |
 
+An initiative's owner is an email and its target month is `YYYY-MM` (`2027-03`); pass either on
+create or edit only with a value the user gave (rule *The user decides* in each skill), and leave a
+flag out to keep what is there.
+
 No command lists the planner's configured repositories or horizon buckets (they are in
 `GET /api/v1/config`, which the CLI does not expose): ask for them, or take them from the request.
+
+## Migrated items: --external-ref
+
+An item moved by hand from another tracker records the key it came from (a Jira key such as
+`PIB-30`), so a later `reeve import jira` finds that item instead of creating a duplicate.
+
+- On create: `reeve initiative create --title <title> --horizon <bucket> --brief <md> --external-ref <ref> --idempotency-key <key> --json`,
+  `reeve epic create --initiative <KEY> --title <title> --brief <md> --external-ref <ref> --idempotency-key <key> --json`,
+  `reeve story create --epic <KEY> --title <title> --kind story --criterion <text> --external-ref <ref> --idempotency-key <key> --json`.
+- Set once on an item that has none: `reeve initiative edit <KEY> --version <v> --external-ref <ref> --json`,
+  `reeve epic edit <KEY> --version <v> --external-ref <ref> --json`,
+  `reeve story edit <KEY> --version <v> --external-ref <ref> --json`. The same value again is a
+  no-op; a different one is refused: the reference cannot be changed once set.
+- A reference names at most one item across initiatives, epics and stories, must look like a key
+  (`PIB-30`) and must not be in this planner's own key space (a `GRA-` key on a `GRA` planner is
+  refused). Show the refusal's reasons; never retry with another value.
+- `show` prints it (`value.external_ref`; text output `from: <ref>`), and an item can be read by it:
+  `reeve initiative show <ref> --json` answers the item migrated from `<ref>`.
+
+Before creating an item for something migrated, read by the reference first: an `ok` answer is
+the item, already there.
 
 ## decision link
 

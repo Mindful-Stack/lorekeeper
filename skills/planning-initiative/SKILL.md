@@ -45,7 +45,8 @@ argument.
    the Reeve planner." Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints
    `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this
    session: <reason>." and stop; this skill has no fallback. Keep `bin` and `run_id`.
-1. **Read.** `reeve initiative show <KEY> --json` (keep `value.brief` and `value.version`),
+1. **Read.** `reeve initiative show <KEY> --json` (keep `value.brief`, `value.owner`,
+   `value.target_month` and `value.version`),
    `reeve decision ls --on <KEY> --json` and `reeve epic ls --initiative <KEY> --json`. If any of
    them does not answer `ok`, stop the run: for `not_found` say "The planner has no initiative
    <KEY>."; for `unauthenticated` or `forbidden` say it and tell the user to run `reeve auth login`;
@@ -53,7 +54,11 @@ argument.
    initiative's title and "Prioritise domain context and architecture patterns.", and the
    **architect** in `survey` mode on the repositories the brief or the user names.
 2. **Discovery conversation**, following `<plugin-root>/skills/planning-initiative/reference/brief-template.md`:
-   the outcome, who it is for, what is known, what is open.
+   the outcome, who it is for, what is known, what is open. When the initiative has no owner or no
+   target month, ask for each one that is missing: who owns it (an email) and which month it
+   targets (`YYYY-MM`). They come from the user (rule 4); an initiative may stay without either
+   when the user says so. In a session that cannot ask, take them from the request, or leave them
+   unset and say so in the report (not a stop).
 3. **Research.** For each open question from step 2 that research can answer (a library's limits,
    a vendor's API, how others solve the same problem), look it up: web search or documentation
    when the session has them, otherwise the knowledge base and the code. Say what you looked up
@@ -61,9 +66,11 @@ argument.
    `Researched: nothing — no open question is answerable by research`.
 4. **Brief.** Start from the existing `value.brief`: keep what still holds, fold in the answers,
    lay it out by the template, and show what changes. Write it only on a yes for this brief (rule
-   1): `reeve initiative edit <KEY> --brief <md> --version <version> --json`, the Markdown quoted as
-   the reference's Arguments section says (single quotes, real newlines, setext headings); keep the
-   new `value.version`.
+   1): `reeve initiative edit <KEY> [--brief <md>] [--owner <email>] [--target-month <YYYY-MM>] --version <version> --json`,
+   with `--owner` and `--target-month` only for a value step 2 gave (the user's answer is its
+   confirmation), and the Markdown quoted as the reference's Arguments section says (single
+   quotes, real newlines, setext headings); keep the new `value.version`. An owner or target month
+   with no brief change is the same command without `--brief`.
 5. **What already exists.** Show the decisions and epics step 1 found, each decision worded by the
    reference (open or closed, as its *Wording the planner's answers* section defines them) and, for each decision and
    epic the user's answers call for, whether an existing one already covers it (say which key or
@@ -104,7 +111,8 @@ argument.
 10. **Report.** Open with the step 0 sentence, then the plain lines `Run id: <run_id>` and the
    `Researched:` line, all unformatted (no bold, so they can be searched for; a non-interactive
    session shows only this report, not the announcement). Then every key written and every
-   existing key reused, and every proposal left unwritten; each required decision from the re-read
+   existing key reused, and every proposal left unwritten; the initiative's owner and target month
+   (or "no owner", "no target month"); each required decision from the re-read
    with its decider, due date and state worded by the reference ("no record", "proposed, PR open",
    "closed: …"), plus the comment pointer when the record is only drafted; each epic from the
    re-read. End with the next step: "refine an epic with refining-epic".

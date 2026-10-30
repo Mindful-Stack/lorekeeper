@@ -114,9 +114,12 @@ section says.
         `reeve epic create --initiative <COVERING-INITIATIVE> --title <title> --brief <md> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
         then `reeve story edit <KEY> --version <v> --epic <new epic> --json`;
      3. else a new initiative, proposed in the last horizon bucket before "Won't do":
-        `reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
+        `reeve initiative create --title <title> --horizon <bucket> --brief <md> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
         an epic under it as in 2, then the `story edit`. The CLI does not list the buckets: ask for
-        them (offering the horizons seen in `initiative ls`), or take them from the request.
+        them (offering the horizons seen in `initiative ls`), or take them from the request. Ask
+        who owns the new initiative (an email) and which month it targets (`YYYY-MM`), or take
+        them from the request; pass only the ones given (never guess an owner), and name the
+        missing ones in the report.
 
      For 2 and 3, show the proposed title, brief (and horizon) and create them only on a
      confirmation for that story; in a session that cannot ask, only when the request names that

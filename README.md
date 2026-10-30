@@ -395,6 +395,7 @@ concurrency:
 env:
   KNOWLEDGE_BASE_PATH: ${{ github.workspace }}/_ci/kb # the team KB (shared ADR home)
   ADR_DIR: docs/adr                                    # this repo's local ADR home
+  BEHAVIOUR_DIR: docs/behaviour                        # this repo's local behaviour home
   OUT: ${{ github.workspace }}/.adr-review             # inside the workspace, wiped first
 jobs:
   adr-lint:                         # required check 1: deterministic
@@ -408,7 +409,7 @@ jobs:
         with: { node-version: 22 }
       - run: echo "LORE=$(realpath "$GITHUB_WORKSPACE/_ci/lorekeeper")" >> "$GITHUB_ENV"
       - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} "$ADR_DIR"
-      - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} docs/behaviour
+      - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} "$BEHAVIOUR_DIR"
   adr-judgment:                     # required check 2: the reviewer, then the verdict
     runs-on: ubuntu-latest
     steps:
@@ -420,12 +421,14 @@ jobs:
         with: { node-version: 22 }
       - name: Resolve $LORE once, absolute and free of `..`
         run: echo "LORE=$(realpath "$GITHUB_WORKSPACE/_ci/lorekeeper")" >> "$GITHUB_ENV"
-      - name: ADR homes are the trusted ones, local and shared
+      - name: ADR and behaviour homes are the trusted ones, local and shared
         run: |
           node "$LORE/scripts/adr-lint.js" homes | node -e '
             const fs = require("fs"), path = require("path");
             const h = JSON.parse(fs.readFileSync(0, "utf8"));
             const real = (p) => { try { return fs.realpathSync(p); } catch (e) { return null; } };
+            // A behaviour home may not exist yet: resolve its nearest existing ancestor instead.
+            const loose = (p) => (!p ? null : real(p) || (path.dirname(p) === p ? p : path.join(loose(path.dirname(p)), path.basename(p))));
             const trusted = real(path.join(process.env.KNOWLEDGE_BASE_PATH, "knowledge", "adrs"));
             const home = real(h.sharedHome);
             if (h.sharedHomeExists !== true || !trusted || home !== trusted) {
@@ -436,6 +439,16 @@ jobs:
             const local = h.localHomes[0] && real(h.localHomes[0].dir);
             if (!localTrusted || local !== localTrusted) {
               console.error(`local ADR home ${h.localHomes[0] && h.localHomes[0].dir} is not the trusted GITHUB_WORKSPACE/ADR_DIR (${localTrusted})`);
+              process.exit(1);
+            }
+            const sharedB = loose(path.join(process.env.KNOWLEDGE_BASE_PATH, "knowledge", "behaviour"));
+            if (loose(h.sharedBehaviourHome) !== sharedB) {
+              console.error(`shared behaviour home ${h.sharedBehaviourHome} is not the trusted KNOWLEDGE_BASE_PATH/knowledge/behaviour (${sharedB})`);
+              process.exit(1);
+            }
+            const localB = loose(path.join(process.env.GITHUB_WORKSPACE, process.env.BEHAVIOUR_DIR));
+            if (loose(h.localHomes[0] && h.localHomes[0].behaviourDir) !== localB) {
+              console.error(`local behaviour home ${h.localHomes[0] && h.localHomes[0].behaviourDir} is not the trusted GITHUB_WORKSPACE/BEHAVIOUR_DIR (${localB})`);
               process.exit(1);
             }'
       - name: Fetch the diff and body
@@ -466,8 +479,11 @@ jobs:
   it wrote itself (for example `adr.sharedDir` set to `..`, or `adr.localDir` set to an empty
   directory). The step fails unless the shared home's realpath is **exactly**
   `$KNOWLEDGE_BASE_PATH/knowledge/adrs` and the local home's is exactly
-  `$GITHUB_WORKSPACE/$ADR_DIR`. `ADR_DIR` is defined once and used by both the preflight and the
-  `check` step.
+  `$GITHUB_WORKSPACE/$ADR_DIR`. The behaviour homes are pinned the same way, to
+  `$KNOWLEDGE_BASE_PATH/knowledge/behaviour` and `$GITHUB_WORKSPACE/$BEHAVIOUR_DIR` (they may not
+  exist yet), so a PR cannot set `behaviour.sharedDir` to an empty directory and drop every shared
+  rule. `ADR_DIR` and `BEHAVIOUR_DIR` are each defined once and used by both the preflight and
+  the `check` steps.
 - **Checkouts under the workspace:** `actions/checkout` only accepts a `path` inside
   `$GITHUB_WORKSPACE`, so the plugin and the KB go under `_ci/`. Nothing there is part of the diff.
 - **`$LORE` is resolved once:** absolute and free of `..`, so every later step reads the same path.
@@ -477,9 +493,12 @@ jobs:
   needs history, not just the PR's tip commit.
 - **Fails closed:** a missing or invalid findings file, or a selected record the reviewer did not
   attest to, exits 2.
-- **Behaviour docs:** the second `check` line validates the repo's behaviour home with the same
-  flags (they change nothing for it); drop it in a repo that has none. A knowledge-base repo
-  runs `check --home shared` on `knowledge/behaviour` the same way.
+- **Behaviour docs:** update the reviewer prompt first (see the starter prompt in
+  `references/adr-findings.md`): a prompt written before 3.4.0 attests a selected doc without
+  checking its rules, which passes silently rather than exiting 2. The second `check` line
+  validates the repo's behaviour home with the same flags (they change nothing for it); drop it
+  in a repo that has none. A knowledge-base repo runs `check --home shared` on
+  `knowledge/behaviour` the same way.
 - **Required checks:** make both jobs required status checks. The repository's admin bypass, used
   by its bypass group, is the only override.
 

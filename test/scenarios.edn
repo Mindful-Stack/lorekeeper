@@ -200,11 +200,10 @@ git commit -m \"feat: add DeviceStatusDto\"
   :workdir "."
   :expects ["\\*\\*ADR check:\\*\\* [1-9]\\d* blocking \\(verdict exit 1\\)" "backend/device\\.R2"]}
 
- {:name "review-adr-sourced-rule-reported-once"
+ {:name "review-adr-sourced-rule"
   :prompt "/lore:review patch .review/device-cache.patch body .review/device-cache.body.md repo backend"
   :workdir "."
-  :expects ["\\*\\*ADR check:\\*\\* 1 blocking \\(verdict exit 1\\)" "backend/ADR-0001\\.R1"]
-  :rejects ["(?i)critical[^\\n]*backend/device\\.R1|backend/device\\.R1[^\\n]*critical"]}
+  :expects ["\\*\\*ADR check:\\*\\* [1-9]\\d* blocking \\(verdict exit 1\\)" "backend/ADR-0001\\.R1" "backend/device\\.R1"]}
 
  {:name "review-known-deviation-not-reported"
   :prompt "/lore:review patch .review/device-rename.patch body .review/device-rename.body.md repo backend"

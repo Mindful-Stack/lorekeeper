@@ -1,7 +1,7 @@
 # Behaviour docs — design
 
 **Date:** 2026-10-09, amended 2026-10-13 to fit what shipped in 3.0.0 (#28) and the pilot doc,
-and 2026-10-30 with what Plan D settled (3.4.0)
+and 2026-10-30 with what Plan D settled (3.4.0) and the PR review's fail-closed decisions
 **Status:** approved design; Plan D is implemented in 3.4.0, Plan E (the skill) remains
 **Builds on:** `2026-10-07-adr-centred-workflow-design.md` (homes, `select`, the review check)
 **Touches:** `scripts/adr-lint.js` + `scripts/adr/` (`homes`, `check`, `select`, `index`),
@@ -76,7 +76,6 @@ tags: [behaviour, organizations]
 prefix: org
 scope: ["src/server/Endpoints/Orgs/**", "src/server/Endpoints/Invites/**", "src/client/src/lib/authz/**"]
 related: [app/ADR-0008, app/ADR-0009]
-domain: tenancy-and-membership
 ---
 
 # Organizations, roles and invitations
@@ -107,8 +106,8 @@ Whoever creates an organization SHALL become its Owner in the same step.
   `/lore:doctor` and the knowledge-reader see (local docs carry them too). Values are inline. The
   filename and title name the capability; there is no `capability:` key. `prefix` matches
   `^[a-z][a-z0-9-]*$`, is unique per home, and may not be `adr`. `related` holds qualified ADR
-  ids, resolved like an ADR's `related`. `domain` is a domain node's slug as plain text (never a
-  wikilink: a local home cannot resolve one). `related` and `domain` are optional.
+  ids, resolved like an ADR's `related`, and is optional. There is no `domain` key: the domain
+  node links to the doc, not the other way round.
 - **Ids.** A rule is `<prefix>.R<n>`, qualified by home outside it (`app/org.R7`,
   `kb/contract.R3`); the doc itself is `<home>/<prefix>` (`app/org`). Numbers only grow, by
   convention: the skill picks one above the highest number the doc has ever had (its git history
@@ -133,7 +132,9 @@ Whoever creates an organization SHALL become its Owner in the same step.
   named group to approve changes to a sensitive doc adds a CODEOWNERS line for it.
 - **Known deviations** (optional): `- <rule id>[, <rule id>…]: <what the code does instead>
   (<ticket>)`, for intended rules the code does not meet yet. It is how a derived doc records a
-  bug without dropping the rule it breaks.
+  bug without dropping the rule it breaks. An entry records a break the code already has: one
+  the diff adds does not exempt a break the same diff introduces, and the PR lists it on its
+  `- Rules:` line (`deviation added app/org.R7`).
 - **Not yet decided** is required (it may say "none"). It tells agents where not to invent an
   answer.
 - **Scope** is doc-level only; split a doc rather than narrowing per rule. Globs follow the home's
@@ -174,26 +175,38 @@ edited, a shared doc on an unmerged KB PR branch does not bind yet, and `bind` r
 rules beside binding ADRs.
 
 1. **Candidate selection (deterministic):** `adr-lint.js select` returns behaviour docs whose
-   `scope` matches the diff, from both homes, next to the ADRs.
+   `scope` matches the diff, and every doc whose own file the diff touches (reason `touched`),
+   from both homes, next to the ADRs. It adds every record a selected doc's rules name in
+   `Source:` (the record, reason `source`), which the reviewer attests like any selected
+   record; one that resolves nowhere is `missing` and becomes a dangling finding. Selection
+   fails closed (exit 2, naming the path) when it cannot tell what a doc binds: a doc path in
+   the diff that is gone at head (deleted, moved out, renamed to something that is not a doc), a
+   doc in a home being selected from with no or unclosed frontmatter or a frontmatter error on
+   `scope` or `prefix`, or an unreadable entry. Retiring a doc therefore needs the admin bypass.
 2. **Judgment:** the architect's `check` mode reports one more finding class, `behaviour-rule`:
    **the diff breaks rule `<id>` as the diff leaves it** (a rule the PR edits is judged in its
    edited form; a rule it removes no longer binds; editing one rule never exempts the others),
    which `adr-lint verdict` marks **critical**, the same as contradicting an accepted ADR. It is
    added to the findings schema v1's `class` enum (additive; see `references/adr-findings.md`).
-   When the rule's `Source:` is an accepted ADR, it is reported once, through that record's
-   finding. Every selected doc is attested in `coverage.checked` whether or not it is reported.
+   A broken rule is always a `behaviour-rule` and a contradicted record always a
+   `contradiction`: when a rule's `Source:` record is contradicted by the same change, both are
+   reported. Every selected doc is attested in `coverage.checked` (doc ids, not rule ids)
+   whether or not it is reported. `verdict` qualifies a doc-local rule id (`device.R2`) when
+   exactly one selected doc has that prefix, and exits 2 otherwise.
    For each selected doc, `check` reads each changed file at head and the patch's removed lines,
    not only the hunks, so it can tell a rule the diff broke from one that was already broken; no
    separate base read and no tooling. Known deviations and already-broken code
    exempt the specific break they describe, not the rule: a *Known deviations* entry exempts only
-   the behaviour it describes, while the code still shows it. A break the base code already had
+   the behaviour it describes, while the code still shows it, and never a break the same diff
+   introduces when the diff also adds the entry. A break the base code already had
    (visible in the removed lines or in code the diff does not change) is not a finding, even when
    the diff moves or reformats it; a new or wider break is. Rule-tagged tests the diff edits or
    deletes are a strong signal.
 3. **Override:** every Critical finding blocks, as for ADRs: conform, edit the rule (in the same
    PR for a local doc; in a KB PR that merges first for a shared one), or merge through the
-   repository's admin bypass of the required check, used by the team's bypass group. Nothing in
-   the PR description switches a finding off.
+   repository's admin bypass of the required check, used by the team's bypass group. For a rule
+   with a `Source:`, the record wins: conform, or replace the record; editing the rule alone is
+   not a fix. Nothing in the PR description switches a finding off.
 
 ### Until the review check ships
 
@@ -243,12 +256,16 @@ local home; a new doc, and any shared-home edit, is `own-pr`.
   a glob matching no file in a checked-out repo, a *Known deviations* id not in the doc.
   `## Rules` is required, and `scope` non-empty. A dir is a behaviour home when it is a resolved
   one, or, with `--home`, when its path ends in that kind's configured behaviour dir. `--base`,
-  `--ci` and `--strict` change nothing for it.
+  `--ci` and `--strict` change nothing for it. A dir checked as an ADR home that holds no
+  records but a `.md` with a `prefix:` key exits 2: it looks like a behaviour home `check` does
+  not recognise. `check` also warns on a rule heading inside fenced code under *Rules* and on a
+  `####` heading there, and names a section heading that differs only in case.
 - **`select`**: `select --json`'s `kind` is `adr` or `behaviour`; a behaviour doc's status is `-`
   and its id is `<home>/<prefix>`. The tab-separated output is unchanged. A behaviour rule id
   under the PR's `## Decisions` cites its doc. `select` and `verdict` exit 2 when a selected
-  behaviour doc shares its id with another doc, or when a doc in the diff's scope has no usable
-  prefix (so a malformed doc fails closed even where CI does not run `check` on behaviour dirs).
+  behaviour doc shares its id with another doc, when a doc in the diff's scope or touched by it
+  has no usable prefix, and in the fail-closed cases under *Enforcement in review* (so a
+  malformed doc fails closed even where CI does not run `check` on behaviour dirs).
 - **`index`** lists, per record, the rules that cite it in `Source:` ("implemented by").
 
 ## Delivery
@@ -272,8 +289,8 @@ Two implementation plans:
   rules, a whole-record `Source:` on a legacy ADR; plus a non-rule `###`, prefix `adr`, a dead
   scope glob, a superseded source, a KB-home doc without `tags`.
 - Babashka scenarios: `select` by scope with `kind`; the review blocking on a broken rule
-  (critical), an ADR-sourced rule through the ADR contradiction, a known deviation not reported,
-  a shared rule broken by a code PR blocks.
+  (critical), an ADR-sourced rule broken together with its record (both findings), a known
+  deviation not reported, a shared rule broken by a code PR blocks.
 
 ## Open items
 

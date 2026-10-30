@@ -5,7 +5,6 @@ tags: [behaviour, device]
 prefix: device
 scope: ["src/Application/Devices/**"]
 related: [backend/ADR-0001]
-domain: device-context
 ---
 
 # Device status

@@ -22,8 +22,9 @@ is `<home>/<prefix>` (`backend/device`); its rules are `### <prefix>.R<n> <name>
 `## Rules`. Cite a rule as the doc's id plus `.R<n>` (`backend/device.R2`): never the doc-local
 `device.R2` the heading shows, and never with the candidate's `home` value (`local/…`). A rule
 states what must stay true; a `- Source:` line names the record (or record rule) it follows
-from. Every rule in a doc on the default branch binds. Judge each rule in the form the diff
-leaves it: a rule the PR adds or edits binds as edited; a rule the PR removes no longer binds.
+from. A local doc's rules bind as the diff leaves them: a rule the PR adds or edits binds as
+edited; a rule the PR removes no longer binds. A shared doc's rules bind as they stand on the
+KB's default branch, since a shared rule changes only in its own KB PR, which merges first.
 Other teams' KBs contribute no behaviour docs. The format is in
 `references/behaviour-docs.md`.
 
@@ -39,9 +40,10 @@ Other teams' KBs contribute no behaviour docs. The format is in
   status, file, reasons, title, description, scope, record }] }`. `record` is the record's full
   text, so no separate Read is needed. `kind` is `adr` or `behaviour`; a behaviour doc's `status`
   is `-` and `record` is the doc's full text. `reasons` holds `scope` when the record's scope
-  matches a changed or planned path and `cited` when the PR cites it (a rule id such as
-  `kb/contract.R3` under `## Decisions` cites its doc). Status `missing` means a cited id that
-  resolves nowhere.
+  matches a changed or planned path, `cited` when the PR cites it (a rule id such as
+  `kb/contract.R3` under `## Decisions` cites its doc), `touched` when the diff edits the
+  behaviour doc's own file, and `source` when a selected doc's rule names the record in
+  `Source:`. Status `missing` means a cited or sourced id that resolves nowhere.
   Older callers may pass the tab-separated form (`id`, `status`, `path`, `reasons`); read it the
   same way.
 - The mode and its context (below).
@@ -74,7 +76,7 @@ If the caller passed the catalogue path, Read it and use it. Otherwise build it 
 
    And one Grep per existing behaviour home:
    ```
-   Grep  pattern: ^(title|description|tags|prefix|scope|related|domain):
+   Grep  pattern: ^(title|description|tags|prefix|scope|related):
          path: <behaviour-dir>   glob: *.md   output_mode: content   -n: true
    ```
    Ignore `_`-prefixed files and `README.md`. A doc's id is the home's prefix plus its `prefix`
@@ -218,11 +220,12 @@ requirement somebody once had.
    nowhere: report it under *Dangling citations*.
 3. Read every candidate in full (proposed included) and compare the diff with each rule, each fact relied
    on, and each trigger. Ruled-out candidates are read too: a diff that brings back a rejected option
-   contradicts the rejection's reasoning. Read every behaviour doc candidate in full, and for
-   each changed file in its scope read the file at head (Read) and its removed lines in the
-   patch, so you can tell a rule the diff breaks from one that was already broken. When the file
-   is not on disk (the review runs outside a checkout), use the patch's context and removed lines
-   alone.
+   contradicts the rejection's reasoning. A record with reason `source` is one a selected doc's
+   rule names in `Source:`; read it like any other. Read every behaviour doc candidate in full,
+   and for each changed file in its scope read the file at head (Read) and its removed lines in
+   the patch, so you can tell a rule the diff breaks from one that was already broken. The
+   working tree is head only when it is checked out at the PR's head (the caller says so); when
+   it is not, or the file is not on disk, use the patch's context and removed lines alone.
 4. **Records the change adds.** A record the diff itself adds (in any home, proposed or
    accepted) covers the choice it records: do not report that choice as uncovered. Whether it is
    accepted before merge is the validator's job, not yours.
@@ -231,10 +234,15 @@ requirement somebody once had.
    removes no longer binds. Editing one rule never exempts the others. Report each rule the diff
    breaks as `behaviour-rule`. The exemptions are keyed to the break, not the rule:
    - A *Known deviations* entry exempts only the behaviour it describes, while the code still
-     shows it.
+     shows it. An entry the diff itself adds does not exempt a break the same diff introduces.
    - A break the base code already had (visible in the removed lines or in code the diff does
      not change) is not a finding, even when the diff moves or reformats it: note it under
      *Context*. A new or wider break is a finding.
+   - An exemption needs evidence in the patch (removed lines, or unchanged context showing the
+     same behaviour); without it, the break is new.
+
+   A product policy recorded as a rule in a behaviour doc is not an uncovered architectural
+   choice.
 
    A shared-home rule changes in its own KB PR, which merges first. Until it merges, the rule
    binds as it stands on the KB's default branch (the review reads the KB as checked out and
@@ -244,9 +252,9 @@ requirement somebody once had.
    as `missing`: report it under *Dangling citations*, with `ids` the candidate's id (the doc id
    `kb/contract`, not `kb/contract.R3`).
 
-   When a rule's `Source:` is an accepted record the diff contradicts, report the break once: as
-   the record's `contradiction` (naming only the record's ids) when you can read the record,
-   otherwise as the `behaviour-rule`; never both. A test the diff edits or deletes whose name
+   A broken rule is always a `behaviour-rule`, and a contradicted record is always a
+   `contradiction`: when a rule's `Source:` record is contradicted by the same change, report
+   both. A test the diff edits or deletes whose name
    carries a rule id (`device.R2`) is a strong signal; read it. Every
    behaviour doc candidate goes in `coverage.checked`, whether or not you report on it.
 6. Report findings in six classes (the five below plus dangling citations). Cite code by
@@ -262,7 +270,8 @@ requirement somebody once had.
 - `src/Devices/StatusQuery.cs:12-20` drops the project filter; **backend/device.R2** ("A
   status read SHALL list only the devices of the requested project") forbids it. Either
   conform, or edit the rule (in this PR for a local doc; in a KB PR that merges first for a
-  shared one).
+  shared one). For a rule with a `Source:`, the record wins: conform, or replace the record;
+  editing the rule alone is not a fix.
 [or: none]
 
 ## Triggers fired
@@ -318,8 +327,8 @@ block holding your own findings (when you read the whole patch).
 - `class`: `contradiction` · `trigger` · `stale-fact` · `uncovered` · `dangling` ·
   `behaviour-rule`.
 - `coverage.checked` lists **every** candidate from the select output except `missing` ones,
-  records and behaviour docs alike, plus any record you found by expansion and read in full. A
-  selected candidate left out makes the check fail.
+  records and behaviour docs alike, plus any record you found by expansion and read in full:
+  record and doc ids, never rule ids. A selected candidate left out makes the check fail.
 - `coverage.notReviewed` lists areas you could not assess, such as a binary file or one you did
   not read. Write `[]` when there are none. It is reported, never judged.
 - `ids` name one record: the record, its rules (`.R<n>`) or its facts (`.F<n>`). Use `[]` for an

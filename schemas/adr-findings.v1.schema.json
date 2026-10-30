@@ -12,7 +12,7 @@
       "additionalProperties": false,
       "required": ["checked", "notReviewed"],
       "properties": {
-        "checked": { "type": "array", "items": { "type": "string" }, "description": "Every record or behaviour doc id you read in full against the diff; must include every selected candidate whose status is not `missing`." },
+        "checked": { "type": "array", "items": { "type": "string" }, "description": "Every record or behaviour doc id you read in full against the diff (record and doc ids, not rule ids); must include every selected candidate whose status is not `missing`." },
         "notReviewed": { "type": "array", "items": { "type": "string" }, "description": "Areas of the diff you could not assess, and why. Reported, not judged." }
       }
     },

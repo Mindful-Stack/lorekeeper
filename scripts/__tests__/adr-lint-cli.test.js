@@ -929,6 +929,24 @@ test('a --repo override on a household local home reads that checkout, not the m
     assert.match(r.stdout, /scope: warning: src\/Nope\/\*\* matches no tracked file/);
 });
 
+test('a household inside another git repo does not answer a local glob with that repo\'s files', (t) => {
+    const outer = tmpDir(t);
+    const env = gitEnv(outer);
+    write(path.join(outer, 'README.md'), 'outer\n');
+    initRepo(outer, env);
+    commitAll(outer, env, 'outer');
+    const root = path.join(outer, 'nested');
+    write(path.join(root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore',
+        repos: [{ name: 'ws' }, { name: 'lore' }, { name: 'api' }],
+    }));
+    const dir = path.join(root, 'api', 'docs', 'behaviour');
+    write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ prefix: 'api', fm: { scope: ['src/Nope/**'] }, sections: { Rules: '### device.R1 One\nSHALL a.\n- Example: b', 'Known deviations': undefined } }));
+    const r = runCli(root, env, 'check', dir);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.equal(r.stdout, '', 'api is not a checkout of its own: its globs are not checked');
+});
+
 test('trackedFiles returns names with quotes, backslashes and tabs unquoted', (t) => {
     const root = tmpDir(t);
     const env = gitEnv(root);

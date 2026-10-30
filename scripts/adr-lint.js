@@ -237,7 +237,8 @@ function repoFilesFor(homes, dir, home) {
         let root;
         if (home.kind === 'local') {
             root = G.gitRoot(dir);
-            if (root && homes.mode === 'household' && realpathLoose(root) === realpathLoose(homes.root)) root = null;
+            // The meta repo, or any repo the household sits inside, is not this repo's checkout.
+            if (root && homes.mode === 'household' && !path.relative(realpathLoose(root), realpathLoose(homes.root)).startsWith('..')) root = null;
         } else root = homes.mode === 'single' ? null : own(path.join(homes.root, repo));
         if (!root) return null;
         if (!cache.has(root)) cache.set(root, G.trackedFiles(root));

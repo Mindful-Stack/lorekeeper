@@ -44,7 +44,7 @@ test('a ### indented up to three spaces is a heading; its Source line is its own
 });
 
 test('only unindented list items in Known deviations name rules', () => {
-    const dev = '- device.R1: archived (SCRUM-1)\n  - note: see thread';
+    const dev = '- device.R1: archived (DEV-1)\n  - note: see thread';
     const d = parseDoc('/x/a.md', makeBehaviourDoc({ sections: { 'Known deviations': dev } }));
     assert.deepEqual(d.deviations, ['device.R1']);
 });

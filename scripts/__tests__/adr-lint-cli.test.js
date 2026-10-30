@@ -879,16 +879,16 @@ test('a KB repo checking its own behaviour dir: a dangling kb/ ref is an error',
 test('--repo names the own local home: a dangling <repo>/ADR ref is an error', (t) => {
     const root = tmpDir(t);
     const env = gitEnv(root);
-    write(path.join(root, 'docs', 'adr', '0001-session-storage.md'), makeRecord({ prefix: 'portal' }));
+    write(path.join(root, 'docs', 'adr', '0001-session-storage.md'), makeRecord({ prefix: 'webapp' }));
     write(path.join(root, 'src', 'Devices', 'Status.cs'), 'x');
     const dir = path.join(root, 'docs', 'behaviour');
     const doc = (src) => makeBehaviourDoc({ prefix: 'api', sections: { Rules: `### device.R1 One\nSHALL a.\n- Example: b\n- Source: ${src}`, 'Known deviations': undefined } });
-    write(path.join(dir, 'device-status.md'), doc('portal/ADR-0042'));
-    const bad = runCli(root, env, 'check', '--home', 'local', '--repo', 'portal', dir);
+    write(path.join(dir, 'device-status.md'), doc('webapp/ADR-0042'));
+    const bad = runCli(root, env, 'check', '--home', 'local', '--repo', 'webapp', dir);
     assert.equal(bad.code, 1, bad.stdout + bad.stderr);
-    assert.match(bad.stdout, /Source portal\/ADR-0042 does not exist/);
-    write(path.join(dir, 'device-status.md'), doc('portal/ADR-0001.R1'));
-    const ok = runCli(root, env, 'check', '--home', 'local', '--repo', 'portal', dir);
+    assert.match(bad.stdout, /Source webapp\/ADR-0042 does not exist/);
+    write(path.join(dir, 'device-status.md'), doc('webapp/ADR-0001.R1'));
+    const ok = runCli(root, env, 'check', '--home', 'local', '--repo', 'webapp', dir);
     assert.equal(ok.code, 0, ok.stdout + ok.stderr);
 });
 

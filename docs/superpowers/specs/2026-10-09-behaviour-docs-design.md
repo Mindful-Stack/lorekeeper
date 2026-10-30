@@ -97,7 +97,7 @@ Whoever creates an organization SHALL become its Owner in the same step.
 - Source: app/ADR-0009            (a record, or one of its rules: kb/ADR-0001.R2)
 
 ## Known deviations
-- org.R2: organizations cannot be deleted at all yet (SCRUM-426).
+- org.R2: organizations cannot be deleted at all yet (DEV-426).
 
 ## Not yet decided
 - One line per open question, with the evidence that raised it.

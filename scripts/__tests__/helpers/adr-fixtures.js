@@ -157,7 +157,7 @@ const BEHAVIOUR_SECTIONS = {
         'A status read SHALL list only the devices of the requested project.',
         '- Example: WHEN project A is read THEN no device of project B appears.',
     ].join('\n'),
-    'Known deviations': '- device.R2: archived devices of other projects still appear (SCRUM-1).',
+    'Known deviations': '- device.R2: archived devices of other projects still appear (DEV-1).',
     'Not yet decided': '- none',
 };
 

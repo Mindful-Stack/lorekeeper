@@ -10,6 +10,11 @@ function adrConfig(adr) {
     const a = adr || {};
     return { localDir: a.localDir || DEFAULTS.localDir, sharedDir: a.sharedDir || DEFAULTS.sharedDir };
 }
+const BEHAVIOUR_DEFAULTS = { localDir: 'docs/behaviour', sharedDir: 'behaviour' };
+function behaviourConfig(b) {
+    const c = b || {};
+    return { localDir: c.localDir || BEHAVIOUR_DEFAULTS.localDir, sharedDir: c.sharedDir || BEHAVIOUR_DEFAULTS.sharedDir };
+}
 // Mirrors the SessionStart hook's tier-4 sibling fallback.
 const KB_FALLBACKS = ['lore', 'docs/lore', 'docs/shared-knowledge', 'shared-knowledge', 'knowledge'];
 
@@ -51,8 +56,9 @@ function sameDir(a, b) {
 }
 
 // Resolves every ADR home visible from `start`. Shape:
-//   { mode, root, config, repos, localHomes: [{ repo, dir, present, coinciding }], sharedHome,
-//     sharedRoot, otherKbs }
+//   { mode, root, config, behaviourConfig, repos,
+//     localHomes: [{ repo, dir, behaviourDir, present, coinciding }], sharedHome,
+//     sharedBehaviourHome, sharedRoot, otherKbs }
 // `sharedRoot` is the team KB's root (the directory holding knowledge/), or null.
 // A local home `coinciding` is the only home: the shared home is the same directory, or
 // (single repo) no knowledge base resolves at all.
@@ -61,6 +67,7 @@ function resolveHomes(start, env = process.env) {
     if (household) {
         const m = readJson(path.join(household, 'household.json')) || {};
         const config = adrConfig(m.adr);
+        const bconfig = behaviourConfig(m.behaviour);
         const kbName = m.knowledge_base || 'lore';
         const shared = m.shared_knowledge_bases || [];
         const skip = new Set([m.meta_repo, kbName, ...shared]);
@@ -72,6 +79,7 @@ function resolveHomes(start, env = process.env) {
             .map((r) => ({
                 repo: r.name,
                 dir: path.join(household, r.name, r.adrDir || config.localDir),
+                behaviourDir: path.join(household, r.name, r.behaviourDir || bconfig.localDir),
                 present: isDir(path.join(household, r.name)),
             }))
             .map((h) => ({ ...h, coinciding: sameDir(h.dir, sharedHome) }));
@@ -83,9 +91,11 @@ function resolveHomes(start, env = process.env) {
             mode: 'household',
             root: household,
             config,
+            behaviourConfig: bconfig,
             repos: m.repos || [],
             localHomes,
             sharedHome,
+            sharedBehaviourHome: path.join(household, kbName, 'knowledge', bconfig.sharedDir),
             sharedRoot: path.join(household, kbName),
             otherKbs,
         };
@@ -95,6 +105,7 @@ function resolveHomes(start, env = process.env) {
     const root = top || path.resolve(start);
     const file = readJson(path.join(root, '.lorekeeper', 'config.json')) || {};
     const config = adrConfig(file.adr);
+    const bconfig = behaviourConfig(file.behaviour);
     let kbRoot = null;
     if (file.knowledgeBasePath) kbRoot = path.resolve(root, file.knowledgeBasePath);
     else if (env.KNOWLEDGE_BASE_PATH) kbRoot = path.resolve(root, env.KNOWLEDGE_BASE_PATH);
@@ -103,14 +114,22 @@ function resolveHomes(start, env = process.env) {
     const sharedHome = team ? path.join(team, config.sharedDir) : null;
     const localDir = path.join(root, config.localDir);
     const coinciding = sharedHome === null || sameDir(localDir, sharedHome);
-    const local = { repo: top ? repoName(top) : path.basename(root), dir: localDir, present: true, coinciding };
+    const local = {
+        repo: top ? repoName(top) : path.basename(root),
+        dir: localDir,
+        behaviourDir: path.join(root, bconfig.localDir),
+        present: true,
+        coinciding,
+    };
     return {
         mode: 'single',
         root,
         config,
+        behaviourConfig: bconfig,
         repos: [],
         localHomes: [local],
         sharedHome,
+        sharedBehaviourHome: team ? path.join(team, bconfig.sharedDir) : null,
         sharedRoot: team ? kbRoot : null,
         otherKbs: [],
     };
@@ -123,6 +142,14 @@ function homeOf(homes, dir) {
         return { kind: 'local', repo: local.repo, prefix: local.repo, coinciding: local.coinciding };
     }
     if (sameDir(homes.sharedHome, dir)) return { kind: 'shared', prefix: 'kb', coinciding: false };
+    return null;
+}
+
+// Which behaviour home `dir` is, or null. Local wins when the two coincide.
+function behaviourHomeOf(homes, dir) {
+    const local = homes.localHomes.find((h) => sameDir(h.behaviourDir, dir));
+    if (local) return { kind: 'local', repo: local.repo, prefix: local.repo };
+    if (sameDir(homes.sharedBehaviourHome, dir)) return { kind: 'shared', prefix: 'kb' };
     return null;
 }
 
@@ -154,5 +181,5 @@ function dirForPrefix(homes, prefix) {
 }
 
 module.exports = {
-    DEFAULTS, resolveHomes, homeOf, repoFromRemote, normaliseRemote, dirForPrefix, findHousehold,
+    DEFAULTS, BEHAVIOUR_DEFAULTS, resolveHomes, homeOf, behaviourHomeOf, repoFromRemote, normaliseRemote, dirForPrefix, findHousehold,
 };

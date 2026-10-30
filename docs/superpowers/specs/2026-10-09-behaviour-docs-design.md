@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-09, amended 2026-10-13 to fit what shipped in 3.0.0 (#28) and the pilot doc,
 and 2026-10-30 with what Plan D settled (3.4.0)
-**Status:** approved design, ready for implementation plans (two, see *Delivery*)
+**Status:** approved design; Plan D is implemented in 3.4.0, Plan E (the skill) remains
 **Builds on:** `2026-10-07-adr-centred-workflow-design.md` (homes, `select`, the review check)
 **Touches:** `scripts/adr-lint.js` + `scripts/adr/` (`homes`, `check`, `select`, `index`),
 `agents/architect`, `agents/knowledge-updater`, `skills/reviewing-changes`, `skills/brainstorming`,
@@ -231,8 +231,8 @@ local home; a new doc, and any shared-home edit, is `own-pr`.
 
 `adr-lint` grows rather than forks:
 
-- **`homes`** JSON gains the behaviour dirs (`localHomes[].behaviourDir`, and the shared one with
-  its repo root, relative dir and default branch). The architect greps their frontmatter.
+- **`homes`** JSON gains `behaviourDir` per local home and `sharedBehaviourHome` /
+  `sharedBehaviourRelDir` (the repo root and default branch are the existing shared-home fields). The architect greps their frontmatter.
 - **`check <dir>`** recognises a behaviour dir through the same `--home/--repo/--single-home/
   --base/--ci` flags, so pre-commit and CI add one line per home kind. Errors: missing
   `title`/`description`/`tags`/`prefix`/`scope`, non-inline values, a bad or duplicate `prefix`,

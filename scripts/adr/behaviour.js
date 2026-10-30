@@ -128,8 +128,9 @@ function checkDoc(ctx, d, byPrefix, err, warn) {
     }
     const listPrefix = Array.isArray(fm.prefix);
     const prefix = typeof fm.prefix === 'string' ? fm.prefix : '';
+    const badPrefix = !!prefix && (!PREFIX_RE.test(prefix) || prefix === 'adr');
     if (listPrefix) err(d.file, 'prefix', 'prefix must be a single value');
-    else if (prefix && (!PREFIX_RE.test(prefix) || prefix === 'adr')) {
+    else if (badPrefix) {
         err(d.file, 'prefix', `prefix ${prefix} must match ^[a-z][a-z0-9-]*$ and may not be adr`);
     }
     const others = (byPrefix.get(prefix) || []).filter((x) => x !== d);
@@ -143,8 +144,8 @@ function checkDoc(ctx, d, byPrefix, err, warn) {
     const seen = new Set();
     for (const h of d.headings) {
         if (!h.id) {
-            // A list or missing prefix is already reported once; every heading would repeat it.
-            if (!listPrefix && prefix) err(d.file, 'rules', `"### ${h.raw}" is not a rule heading (### ${prefix || '<prefix>'}.R<n> <name>); a group is a bold label line`);
+            // A list, missing or invalid prefix is already reported once; every heading would repeat it.
+            if (!listPrefix && prefix && !badPrefix) err(d.file, 'rules', `"### ${h.raw}" is not a rule heading (### ${prefix || '<prefix>'}.R<n> <name>); a group is a bold label line`);
             continue;
         }
         if (seen.has(h.id)) err(d.file, 'rules', `duplicate rule id ${h.id}`);
@@ -155,7 +156,7 @@ function checkDoc(ctx, d, byPrefix, err, warn) {
     }
     for (const r of asList(fm.related)) checkRef(ctx, d, r, 'related', false, err, warn);
     for (const id of d.deviations) {
-        if (!seen.has(id)) warn(d.file, 'deviations', `${id} is not a rule in this doc`);
+        if (!badPrefix && !listPrefix && prefix && !seen.has(id)) warn(d.file, 'deviations', `${id} is not a rule in this doc`);
     }
     for (const s of Array.isArray(fm.scope) ? fm.scope : []) {
         if (home.kind === 'shared' && !SHARED_SCOPE.test(s)) {

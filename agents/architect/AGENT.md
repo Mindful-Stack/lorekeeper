@@ -245,7 +245,8 @@ requirement somebody once had.
    `kb/contract`, not `kb/contract.R3`).
 
    When a rule's `Source:` is an accepted record the diff contradicts, report the record's
-   `contradiction` (naming only the record's ids), not a `behaviour-rule`. A test the diff edits
+   `contradiction` (naming only the record's ids; when you can read that record, otherwise report
+   the `behaviour-rule`), not both. A test the diff edits
    or deletes whose name carries a rule id (`device.R2`) is a strong signal; read it. Every
    behaviour doc candidate goes in `coverage.checked`, whether or not you report on it.
 6. Report findings in six classes (the five below plus dangling citations). Cite code by

@@ -95,3 +95,8 @@ test('a missing prefix reports once, not once per heading', () => {
     assert.deepEqual(out.filter((m) => /is not a rule heading/.test(m)), [], out.join('\n'));
     assert.ok(out.includes('error schema: prefix is required'), out.join('\n'));
 });
+
+test('an invalid prefix gives only the prefix error, not heading or deviation noise', () => {
+    assert.deepEqual(msgs(run([makeBehaviourDoc({ fm: { prefix: 'Device' } })])),
+        ['error prefix: prefix Device must match ^[a-z][a-z0-9-]*$ and may not be adr']);
+});

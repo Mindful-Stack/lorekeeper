@@ -108,7 +108,7 @@ test('an ADR class naming a behaviour doc is refused', () => {
 });
 
 test('a selected behaviour doc must be attested like a record', () => {
-    assert.throws(() => validate({ doc: docOf([]), picked: pickedB, recordText: textB }), /selected records not checked: api\/device/);
+    assert.throws(() => validate({ doc: docOf([]), picked: pickedB, recordText: textB }), /selected records or behaviour docs not checked: api\/device/);
     assert.doesNotThrow(() => validate({ doc: docOf([], ['api/device']), picked: pickedB, recordText: textB }));
 });
 

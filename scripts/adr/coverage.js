@@ -44,7 +44,7 @@ function validate({ doc, picked, recordText, kindOf }) {
     // A selected id that resolves nowhere is reported as dangling below, so attesting it is fine.
     const missing = new Set(picked.filter((p) => p.status === 'missing').map((p) => p.id));
     for (const id of cov.checked) {
-        if (!missing.has(id) && !recordText(id)) throw fail(`coverage: checked ${id} does not resolve to a record`);
+        if (!missing.has(id) && !recordText(id)) throw fail(`coverage: checked ${id} does not resolve to a record or behaviour doc`);
     }
     const attested = new Set(cov.checked);
     for (const f of doc.findings) {
@@ -80,7 +80,7 @@ function validate({ doc, picked, recordText, kindOf }) {
         attested.add(rec);
     }
     const unchecked = picked.filter((p) => p.status !== 'missing' && !attested.has(p.id)).map((p) => p.id);
-    if (unchecked.length) throw fail(`selected records not checked: ${unchecked.join(', ')}`);
+    if (unchecked.length) throw fail(`selected records or behaviour docs not checked: ${unchecked.join(', ')}`);
     const reported = new Set(doc.findings.filter((f) => f.class === 'dangling').flatMap((f) => f.ids));
     const selected = new Set(picked.map((p) => p.id));
     return {

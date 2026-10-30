@@ -216,8 +216,9 @@ requirement somebody once had.
    catalogue.
 2. **Candidates first:** every record in the caller's `select` output. Then list the areas the
    diff touches (paths, technologies, boundaries crossed), expand them into search terms as in
-   `bind`, and add the records that match. A `missing` candidate is a cited id that resolves
-   nowhere: report it under *Dangling citations*.
+   `bind`, and add the records that match. A `missing` candidate is an id the PR cites, or a
+   selected doc's rule names in `Source:`, that resolves nowhere: report it under *Dangling
+   citations*.
 3. Read every candidate in full (proposed included) and compare the diff with each rule, each fact relied
    on, and each trigger. Ruled-out candidates are read too: a diff that brings back a rejected option
    contradicts the rejection's reasoning. A record with reason `source` is one a selected doc's
@@ -233,12 +234,17 @@ requirement somebody once had.
    form the diff leaves the doc: a rule the PR adds or edits is judged as edited; a rule the PR
    removes no longer binds. Editing one rule never exempts the others. Report each rule the diff
    breaks as `behaviour-rule`. The exemptions are keyed to the break, not the rule:
-   - A *Known deviations* entry that the diff does not add exempts code, new or existing, that
-     shows exactly the behaviour it describes. A break wider than that behaviour is a finding.
-     An entry the diff itself adds exempts nothing in that diff.
+   - A *Known deviations* entry as it stands on the base branch exempts code, new or existing,
+     that shows exactly the behaviour it describes. A break wider than that behaviour is a
+     finding. An entry the diff adds or edits exempts nothing new in that diff.
    - A break the base code already had (visible in the removed lines or in code the diff does
      not change) is not a finding, even when the diff moves or reformats it: note it under
-     *Context*. A new or wider break is a finding.
+     *Context*. A new or wider break is a finding. This exemption needs evidence in the patch
+     (removed lines, or unchanged context showing the same behaviour); without it, the break is
+     new.
+
+   A product policy recorded as a rule in a behaviour doc (who sees what, who may do what) is not
+   an uncovered architectural choice.
 
    A shared-home rule changes in its own KB PR, which merges first. Until it merges, the rule
    binds as it stands on the KB's default branch (the review reads the KB as checked out and
@@ -290,6 +296,7 @@ requirement somebody once had.
 - The PR description cites kb/ADR-0009, which resolves nowhere (renumbered, deleted, or a typo).
 - The PR description cites kb/contract (through kb/contract.R3), which is not on the KB's
   default branch yet.
+- backend/device.R1's `Source:` names kb/ADR-0012, which resolves nowhere.
 [or: none]
 
 ## Context

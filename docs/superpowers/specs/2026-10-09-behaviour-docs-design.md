@@ -132,9 +132,10 @@ Whoever creates an organization SHALL become its Owner in the same step.
   named group to approve changes to a sensitive doc adds a CODEOWNERS line for it.
 - **Known deviations** (optional): `- <rule id>[, <rule id>…]: <what the code does instead>
   (<ticket>)`, for intended rules the code does not meet yet. It is how a derived doc records a
-  bug without dropping the rule it breaks. An entry exempts code, new or existing, that shows
-  exactly the behaviour it describes, not a wider break. One the diff adds exempts nothing in
-  that diff, and the PR lists it on its `- Rules:` line (`deviation added app/org.R7`).
+  bug without dropping the rule it breaks. An entry as it stands on the base branch exempts
+  code, new or existing, that shows exactly the behaviour it describes, not a wider break. An
+  entry the diff adds or edits exempts nothing new in that diff, and the PR lists an added one
+  on its `- Rules:` line (`deviation added app/org.R7`).
 - **Not yet decided** is required (it may say "none"). It tells agents where not to invent an
   answer.
 - **Scope** is doc-level only; split a doc rather than narrowing per rule. Globs follow the home's
@@ -178,12 +179,14 @@ rules beside binding ADRs.
    `scope` matches the diff, and every doc whose own file the diff touches (reason `touched`),
    from both homes, next to the ADRs. It adds every record a selected doc's rules name in
    `Source:` (the record, reason `source`), which the reviewer attests like any selected
-   record; one that resolves nowhere is `missing` and becomes a dangling finding. Selection
-   fails closed (exit 2, naming the path) when it cannot tell what a doc binds: a doc path in
-   the diff that is gone at head (deleted, moved out, renamed to something that is not a doc), a
-   doc in a home being selected from with no or unclosed frontmatter, a frontmatter error on
-   `scope` or `prefix` or an unparseable frontmatter line, a selected doc with no `## Rules`
-   section as parsed, or an unreadable entry. Retiring a doc therefore needs the admin bypass.
+   record; one its available home lacks is `missing` and becomes a dangling finding, and one
+   whose home is not on disk is not selected. Selection fails closed (exit 2, naming the path)
+   when it cannot tell what a doc binds: the patch deletes a doc or moves it to a path that is
+   not a doc in the same home (read from the patch, not the working tree; a rename within the
+   home, with or without `-M`, keeps the doc), a doc starting with `---` whose frontmatter is
+   unclosed or has an error on `scope`, `prefix` or an unparseable line, a touched doc with no
+   frontmatter, a selected doc with no `## Rules` section as parsed, or an unreadable entry. A
+   file with no frontmatter that the diff does not touch is a note, not a doc. Retiring a doc therefore needs the admin bypass.
 2. **Judgment:** the architect's `check` mode reports one more finding class, `behaviour-rule`:
    **the diff breaks rule `<id>` as the diff leaves it** (a rule the PR edits is judged in its
    edited form; a rule it removes no longer binds; editing one rule never exempts the others),
@@ -197,9 +200,10 @@ rules beside binding ADRs.
    For each selected doc, `check` reads each changed file at head and the patch's removed lines,
    not only the hunks, so it can tell a rule the diff broke from one that was already broken; no
    separate base read and no tooling. Known deviations and already-broken code
-   exempt the specific break they describe, not the rule: a *Known deviations* entry the diff
-   does not add exempts code, new or existing, that shows exactly the behaviour it describes (a
-   wider break is a finding), and an entry the diff adds exempts nothing in it. A break the base
+   exempt the specific break they describe, not the rule: a *Known deviations* entry as it
+   stands on the base branch exempts code, new or existing, that shows exactly the behaviour it
+   describes (a wider break is a finding), and an entry the diff adds or edits exempts nothing
+   new in that diff. A break the base
    code already had (visible in the removed lines or in code the diff does not change) is not a
    finding, even when the diff moves or reformats it; a new or wider break is, and without
    evidence in the patch the break is new. Rule-tagged tests the diff edits or

@@ -25,7 +25,7 @@ record this PR moves to accepted, with no new text; *Adds* is a new record. *Rul
 behaviour-doc rule edits, when the project keeps behaviour docs, each as the doc id plus `.R<n>`
 (`app/org.R7`, never `org.R7`), so the line also cites the doc for review. A *Known deviations*
 entry the PR adds goes on the line too (`deviation added app/org.R2`): the human reviewer
-approves it like a rule edit, and it does not exempt a break the same PR introduces. A rule in a
+approves it like a rule edit, and an entry the PR adds or edits exempts nothing new in that PR. A rule in a
 shared-home doc changes in its own KB PR, which merges first: until it does, the code PR is judged
 against the rule on the KB's default branch, and a cited doc not there yet is a dangling
 citation. The `stack` skill (`skills/stack/SKILL.md`) shows the order of the two PRs. An id

@@ -21,8 +21,10 @@ The same two homes as ADRs, resolved the same way:
 Other teams' knowledge bases contribute no behaviour docs.
 
 Every `.md` file in a behaviour home is a doc, except `_`-prefixed files and `README.md`.
-Subdirectories are not read. A doc that cannot be read (a dangling symlink, no permission) makes
-`select`, `verdict`, `check` and `index` exit 2.
+Subdirectories are not read. In review, a file with no frontmatter at all (it does not start
+with `---`) is a note, not a doc, unless the diff touches it; `check` still reports it. A doc
+that cannot be read (a dangling symlink, no permission) makes `select`, `verdict`, `check` and
+`index` exit 2.
 
 The dirs are configurable beside the `adr` block, in `household.json` or
 `.lorekeeper/config.json`:
@@ -95,10 +97,10 @@ A status read SHALL list only the devices of the requested project.
   fixed. Review selects every record a selected doc's rules name here (see *In review*).
 - **Known deviations** (optional): `- <rule id>[, <rule id>…]: <what the code does instead>
   (<ticket>)`, unindented, with unqualified rule ids. It records an intended rule the code does
-  not meet yet. In review an entry exempts code, new or existing, that shows exactly the
-  behaviour it describes; a break wider than that behaviour, or any other break of the same
-  rule, is still a finding. An entry the diff itself adds exempts nothing in that diff: it binds
-  from the next PR on. The `(<ticket>)` is a convention; `check` does not enforce it.
+  not meet yet. In review an entry as it stands on the base branch exempts code, new or
+  existing, that shows exactly the behaviour it describes; a break wider than that behaviour, or
+  any other break of the same rule, is still a finding. An entry the diff adds or edits exempts
+  nothing new in that diff. The `(<ticket>)` is a convention; `check` does not enforce it.
 - **Not yet decided** is required; it may say "none". It tells agents where not to invent an
   answer.
 - Sections are `## ` headings at the start of a line, named exactly as above (`## Rules`,
@@ -167,9 +169,9 @@ warnings alone exit 0.
 - A rule id under a PR's `## Decisions` heading (`kb/contract.R3`) cites its doc, the way an ADR
   id cites its record; a bare doc id, or a rule id inside a URL or a longer path, does not. The
   PR's rule edits go on the `- Rules: added …; changed …; removed …; deviation added …` line
-  of that section (`references/pr-decisions.md`). A cited doc that resolves nowhere, including a shared-home doc
-  not yet on the KB's default branch, is `missing`, and `verdict` adds a `dangling` finding
-  (important, does not block).
+  of that section (`references/pr-decisions.md`). A cited doc that resolves nowhere, including
+  a shared-home doc not yet on the KB's default branch, is `missing`, and `verdict` adds a
+  `dangling` finding (important, does not block).
 
 ## In review
 
@@ -178,16 +180,22 @@ whose own file the diff touches, as a candidate with `kind: "behaviour"` and sta
 (`reasons` `scope`, `touched`, or both). So a PR that only edits a doc still has that doc
 selected, and its edit is reviewed. `select` also returns every record a selected doc's rules
 name in `Source:` (the record, not the rule), with `reasons` `source`; the reviewer reads and
-attests it like any selected record, and one that resolves nowhere is `missing`.
+attests it like any selected record. One its available home does not have is `missing`; one
+whose home is not on disk (a sibling not checked out) is not selected, as `check` only warns
+about it.
 
 `select` and `verdict` fail closed (exit 2, naming the path) when they cannot tell what a doc
 binds:
 
-- a doc path in the diff is gone at head: the doc was deleted, moved out of the home, or renamed
-  to something that is not a doc (`_…`, `README.md`, `.MD`, a subdirectory);
-- a doc in a home being selected from, touched or not, has no frontmatter, unclosed frontmatter,
-  a byte-order mark before `---`, a frontmatter error on `scope` or `prefix`, or an
-  unparseable frontmatter line (it may be either);
+- the patch deletes a doc, or renames or moves it to a path that is not a doc in the same home
+  (`_…`, `README.md`, `.MD`, a subdirectory, another dir). This is read from the patch, not the
+  working tree, so an off-branch review of a PR that adds a doc passes; a rename to another doc
+  name in the same home selects the doc under its new path, with or without `-M` (without it, a
+  deleted doc re-added with the same `prefix:`). Planned paths (`--paths`) are not checked;
+- a doc in a home being selected from starts with `---` (after any byte-order mark) but its
+  frontmatter is unclosed, has an error on `scope` or `prefix`, or has an unparseable line (it
+  may be either); or a doc the diff touches has no frontmatter. The message names
+  `behaviour.localDir` / `repos[].behaviourDir` for a dir that is not a behaviour home;
 - a selected doc has no `## Rules` section as parsed (hidden by an unclosed fence, or a heading
   in another case), so its rules cannot be read;
 - a doc the diff touches, or whose scope matches it, has no usable `prefix`.
@@ -200,9 +208,9 @@ as edited, a rule the PR removes no longer binds, and editing one rule never exe
 A rule the diff breaks is a `behaviour-rule` finding, which `adr-lint verdict` marks critical
 and blocking. When the rule has a `Source:` and the diff also contradicts that record, both are
 reported: the `behaviour-rule` on the rule and the `contradiction` on the record. A *Known
-deviations* entry the diff does not add exempts code, new or existing, that shows exactly the
-behaviour it describes; a wider break is a finding, and an entry the same diff adds exempts
-nothing in it. A break the base code already had (visible in the removed lines or in code the
+deviations* entry as it stands on the base branch exempts code, new or existing, that shows
+exactly the behaviour it describes; a wider break is a finding, and an entry the diff adds or
+edits exempts nothing new in that diff. A break the base code already had (visible in the removed lines or in code the
 diff does not change) is not a finding, even when the diff moves or reformats it; a new or wider
 break is, and without evidence in the patch the break is new.
 

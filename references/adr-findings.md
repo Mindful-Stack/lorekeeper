@@ -50,7 +50,7 @@ prints `{ repo, candidates: [...] }`. Each candidate:
 | `id` | qualified record id, such as `kb/ADR-0001`, or behaviour doc id, such as `kb/contract` |
 | `kind` | `adr` or `behaviour`. A `missing` id is `adr` when it has the `<home>/ADR-NNNN` shape, else `behaviour` |
 | `home` | `local` (the repo's own records) or `shared` (the team knowledge base); `null` when `missing` |
-| `status` | the record's status (`proposed`, `accepted`, `rejected`, `superseded`), `-` for a behaviour doc, or `missing` for an id the PR cites that resolves nowhere |
+| `status` | the record's status (`proposed`, `accepted`, `rejected`, `superseded`), `-` for a behaviour doc, or `missing` for an id the PR cites, or a selected doc's rule names in `Source:`, that resolves nowhere. A `Source:` record whose home is not on disk (a sibling not checked out; outside a household, another repo) is not selected at all |
 | `file` | the record's path relative to the cwd; `null` when `missing` |
 | `reasons` | `scope` (the diff touches the record's scope), `cited` (the PR description cites it), `touched` (a behaviour doc whose own file the diff edits), `source` (a record a selected behaviour doc's rule names in `Source:`), or several. A PR cites a record only when its id appears under a `## Decisions` heading in the PR body; anywhere else it is not a citation, and ids inside HTML comments never are. A behaviour rule id under `## Decisions` (`kb/contract.R3`) cites its doc; a bare doc id does not, and neither does a rule id inside a URL or a longer path (`https://…/kb/contract.R3`, `docs/kb/contract.R3`) |
 | `title`, `description`, `scope` | from the record's or doc's front matter |
@@ -131,11 +131,15 @@ Exit 2 means the check failed closed. Causes:
   - a behaviour doc that the diff touches, or whose scope matches it, has no usable `prefix`:
     missing, a list, not `^[a-z][a-z0-9-]*$`, or `adr` (`<file> has no usable prefix; fix it
     (adr-lint check) before review`);
-  - a doc path in the diff is gone at head: deleted, moved out of the home, or renamed to
-    something that is not a doc (`behaviour doc <path> is in the diff but not at head …`);
-  - a doc in a home being selected from has no or unclosed frontmatter, a byte-order mark before
-    `---`, a frontmatter error on `scope` or `prefix`, or an unparseable frontmatter line
-    (`<file>: <error>; review cannot tell what it binds …`);
+  - the patch deletes a doc, or renames or moves it to a path that is not a doc in the same
+    home (`behaviour doc <path> is deleted by the diff …` / `is moved by the diff to …`). This is
+    read from the patch, not the working tree; a rename to another doc name in the same home
+    (with or without `-M`: a deleted doc re-added with the same `prefix:`) is not gone;
+  - a doc in a home being selected from starts with `---` (after any byte-order mark) but its
+    frontmatter is unclosed, has an error on `scope` or `prefix`, or has an unparseable line; or
+    a doc the diff touches has no frontmatter (`<file>: <error>; review cannot tell what it
+    binds …`, naming `behaviour.localDir` / `repos[].behaviourDir` for a dir that is not a
+    behaviour home). A file with no frontmatter that the diff does not touch is not a doc;
   - a selected doc has no `## Rules` section as parsed (`<file> has no ## Rules section; review
     cannot read its rules …`);
   - an entry in a behaviour home cannot be read, such as a dangling symlink.
@@ -211,9 +215,10 @@ its full record).
    record covers, the summary says what reversing it later would take.
 5. Report a behaviour rule the diff breaks as `behaviour-rule`, only for a candidate of kind
    `behaviour`. Cite the rule as the candidate's `id` plus `.R<n>` (`backend/device.R2`), never
-   the `device.R2` its heading shows. A *Known deviations* entry the diff does not add exempts
-   code, new or existing, that shows exactly the behaviour it describes; a break wider than that
-   behaviour is a finding, and an entry the diff itself adds exempts nothing in that diff. A
+   the `device.R2` its heading shows. A *Known deviations* entry as it stands on the base branch
+   exempts code, new or existing, that shows exactly the behaviour it describes; a break wider
+   than that behaviour is a finding, and an entry the diff adds or edits exempts nothing new in
+   that diff. A
    break the base code already had (visible in the removed lines or in code the diff does not
    change) is not a finding, even when the diff moves or reformats it; a new or wider break is.
    That exemption needs evidence in the patch (the removed lines, or unchanged context showing

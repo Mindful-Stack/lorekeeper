@@ -143,4 +143,50 @@ function runCli(cwd, env, ...args) {
     return { code: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
-module.exports = { makeRecord, blockYamlLegacy, tmpDir, write, gitEnv, git, initRepo, commitAll, runCli };
+const BEHAVIOUR_SECTIONS = {
+    Purpose: 'Who can see a device\'s status, and how fresh it is.',
+    Rules: [
+        '**Reading status**',
+        '',
+        '### device.R1 Status is current',
+        'A status read SHALL return the latest report the device sent.',
+        '- Example: WHEN a device reports offline THEN the next read shows offline.',
+        '- Source: kb/ADR-0001.R1',
+        '',
+        '### device.R2 Project scoped',
+        'A status read SHALL list only the devices of the requested project.',
+        '- Example: WHEN project A is read THEN no device of project B appears.',
+    ].join('\n'),
+    'Known deviations': '- device.R2: archived devices of other projects still appear (SCRUM-1).',
+    'Not yet decided': '- none',
+};
+
+// opts.prefix 'kb' builds a shared-home doc (scope `api:<glob>`); any other a local one.
+// opts.fm overrides keys (undefined deletes); opts.sections overrides sections (undefined deletes).
+function makeBehaviourDoc(opts = {}) {
+    const shared = (opts.prefix || 'kb') === 'kb';
+    const fm = {
+        title: 'Device status',
+        description: 'Who can read device status and how fresh it is.',
+        tags: ['behaviour', 'devices'],
+        prefix: 'device',
+        scope: shared ? ['api:src/Devices/**'] : ['src/Devices/**'],
+        related: [],
+        ...(opts.fm || {}),
+    };
+    const lines = ['---'];
+    for (const [k, v] of Object.entries(fm)) {
+        if (v === undefined) continue;
+        const s = serialise(v);
+        lines.push(s === '' ? `${k}:` : `${k}: ${s}`);
+    }
+    lines.push('---', '', `# ${fm.title || 'Untitled'}`, '');
+    const sections = { ...BEHAVIOUR_SECTIONS, ...(opts.sections || {}) };
+    for (const [h, body] of Object.entries(sections)) {
+        if (body === undefined) continue;
+        lines.push(`## ${h}`, body, '');
+    }
+    return lines.join('\n');
+}
+
+module.exports = { makeRecord, makeBehaviourDoc, blockYamlLegacy, tmpDir, write, gitEnv, git, initRepo, commitAll, runCli };

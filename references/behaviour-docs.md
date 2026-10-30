@@ -111,7 +111,9 @@ node scripts/adr-lint.js check [--home local|shared] [--repo <name>] <behaviour-
 `check` treats a dir as a behaviour home when it is a resolved behaviour home, or, with
 `--home`, when its path ends in that kind's configured behaviour dir (`docs/behaviour` local,
 `behaviour` shared) and it is not a resolved ADR home. Every other dir is checked as an ADR
-home. A dir configured as both an ADR home and a behaviour home is a usage error (exit 2). For a
+home. A dir configured as both an ADR home and a behaviour home is a usage error (exit 2), and so
+is a dir checked as an ADR home that holds no records but a `.md` with a `prefix:` key: it looks
+like a behaviour home `check` does not recognise, so configure its dir or pass `--home`. For a
 local home the prefix is `--repo`, else the household entry, else the git repo's name (outside
 git, the name of the dir holding the behaviour dir).
 `--base`, `--ci`, `--strict` and `--single-home` are accepted and change nothing, so CI can run
@@ -128,8 +130,8 @@ warnings alone exit 0.
 | error | `prefix` | `prefix` is a list ("prefix must be a single value") |
 | error | `prefix` | `prefix` does not match `^[a-z][a-z0-9-]*$`, or is `adr` |
 | error | `prefix` | another doc in the home has the same `prefix` |
-| error | `sections` | no `## Rules` section |
-| error | `sections` | no `## Not yet decided` section |
+| error | `sections` | no `## Rules` section (naming a heading that differs only in case, such as `## rules`) |
+| error | `sections` | no `## Not yet decided` section (likewise) |
 | error | `rules` | a `###` heading under `## Rules` is not `<prefix>.R<n> <name>` with this doc's prefix (not reported when the prefix is missing or a list) |
 | error | `rules` | a rule id appears twice |
 | error | `relations` | a `Source:` is not `<home>/ADR-NNNN[.R<n>]`, or a `related` entry is not `<home>/ADR-NNNN` |
@@ -139,6 +141,8 @@ warnings alone exit 0.
 | error | `scope` | a local-home entry is prefixed (`<repo>:…`) |
 | warning | `rules` | `## Rules` holds no rule headings |
 | warning | `rules` | a line under `## Rules` looks like a `Source:` line but is not read (bold, no list marker, other case, or before the first rule) |
+| warning | `rules` | a `### <prefix>.R<n>` line under `## Rules` is inside fenced code, so it is not read as a rule |
+| warning | `rules` | a `####` (or deeper) heading under `## Rules`: a group is a bold label line |
 | warning | `rules` | a rule has no SHALL or MUST |
 | warning | `rules` | a rule has no `- Example:` line |
 | warning | `relations` | a ref's home is not on disk (a known sibling not checked out; outside a household, any other home), so it was not checked |

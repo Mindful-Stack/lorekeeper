@@ -17,6 +17,7 @@ const V = require('./adr/verdict');
 const S = require('./adr/selection');
 const Cov = require('./adr/coverage');
 const B = require('./adr/behaviour');
+const { parseRecord } = require('./adr/frontmatter');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
@@ -256,6 +257,14 @@ function report(dir, violations) {
     return violations.some((v) => v.level === 'error') ? 1 : 0;
 }
 
+function looksLikeBehaviourDoc(file) {
+    try {
+        return 'prefix' in parseRecord(fs.readFileSync(file, 'utf8')).fm;
+    } catch (e) {
+        return false;
+    }
+}
+
 function cmdCheck(flags, positional) {
     if (positional.length !== 1) throw new UsageError('check takes exactly one directory');
     // Without a base the merge gate would skip the lock and pass.
@@ -273,6 +282,11 @@ function cmdCheck(flags, positional) {
     }
     const { homes, home } = locateHome(dir, flags, homes0);
     const { records, strays } = R.loadHome(dir);
+    // No records but a doc with a `prefix:`: a behaviour home check does not recognise. Checked
+    // as ADRs it would only warn about file names, and its rules would go unchecked.
+    if (!records.length && strays.some(looksLikeBehaviourDoc)) {
+        throw new UsageError(`${display(dir)} looks like a behaviour home; configure behaviour.localDir / repos[].behaviourDir, or pass --home with the configured name`);
+    }
     const violations = checkHome({
         home,
         records,

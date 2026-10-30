@@ -6,17 +6,20 @@
 
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
-// Returns { sections: [heading, ...], lines: [{ section, text }] }. Heading lines themselves
-// are not in `lines`; text before the first heading has section null.
+// Returns { sections: [heading, ...], lines: [{ section, text }], fenced: [{ section, text }] }.
+// Heading lines themselves are not in `lines`; text before the first heading has section null.
+// `fenced` holds the lines inside fences (not the fence lines), for warnings only.
 function walk(text) {
     const sections = [];
     const lines = [];
+    const fenced = [];
     let fence = null;
     let section = null;
     for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
         if (fence) {
             const close = new RegExp(`^ {0,3}${fence.ch}{${fence.len},}[ \\t]*$`);
             if (close.test(line)) fence = null;
+            else fenced.push({ section, text: line });
             continue;
         }
         const open = FENCE_OPEN.exec(line);
@@ -32,7 +35,7 @@ function walk(text) {
         }
         lines.push({ section, text: line });
     }
-    return { sections, lines };
+    return { sections, lines, fenced };
 }
 
 module.exports = { walk };

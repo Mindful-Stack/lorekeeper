@@ -1330,3 +1330,16 @@ test('D5: a rule id in coverage.checked exits 2: checked takes doc ids, not rule
         assert.match(v.stderr, new RegExp(`checked ${id.replace(/[./]/g, '\\$&')} is a rule id; checked takes record and doc ids, not rule ids`));
     }
 });
+
+test('3: check on an unrecognised folder of behaviour docs exits 2 and says how to configure it', (t) => {
+    const w = workspace(t);
+    const dir = path.join(w.api, 'spec', 'rules');
+    write(path.join(dir, 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    const r = runCli(w.root, w.env, 'check', '--home', 'local', dir);
+    assert.equal(r.code, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /spec\/rules looks like a behaviour home; configure behaviour\.localDir \/ repos\[\]\.behaviourDir, or pass --home with the configured name/);
+    // A real ADR home with a stray note is still checked as one.
+    write(path.join(w.local, '0001-session-storage.md'), makeRecord({ prefix: 'api', fm: { id: 'api/ADR-0001' } }));
+    write(path.join(w.local, 'notes.md'), makeBehaviourDoc({ prefix: 'api' }));
+    assert.notEqual(runCli(w.root, w.env, 'check', w.local).code, 2);
+});

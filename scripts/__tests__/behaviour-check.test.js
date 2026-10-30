@@ -100,3 +100,25 @@ test('an invalid prefix gives only the prefix error, not heading or deviation no
     assert.deepEqual(msgs(run([makeBehaviourDoc({ fm: { prefix: 'Device' } })])),
         ['error prefix: prefix Device must match ^[a-z][a-z0-9-]*$ and may not be adr']);
 });
+
+test('4: a rule heading inside fenced code under ## Rules warns that it is not read', () => {
+    const rules = '### device.R1 One\nSHALL a.\n- Example: b\n```\n### device.R2 Hidden\nSHALL c.\n```';
+    const out = msgs(run([makeBehaviourDoc({ sections: { Rules: rules, 'Known deviations': undefined } })]));
+    assert.ok(out.includes('warning rules: "### device.R2 Hidden" is inside fenced code, so it is not read as a rule'), out.join('\n'));
+    // A fenced example outside ## Rules is fine.
+    const purpose = msgs(run([makeBehaviourDoc({ sections: { Purpose: '```\n### device.R9 Example\n```' } })]));
+    assert.deepEqual(purpose, []);
+});
+
+test('4: a #### heading under ## Rules warns: a group is a bold label line', () => {
+    const rules = '#### Reading status\n\n### device.R1 One\nSHALL a.\n- Example: b';
+    const out = msgs(run([makeBehaviourDoc({ sections: { Rules: rules, 'Known deviations': undefined } })]));
+    assert.ok(out.includes('warning rules: "#### Reading status" is not read; a group is a bold label line'), out.join('\n'));
+});
+
+test('4: a missing section error names a case near-miss', () => {
+    const doc = makeBehaviourDoc().replace('## Not yet decided', '## Not Yet Decided').replace('## Rules', '## rules');
+    const out = msgs(run([doc]));
+    assert.ok(out.includes('error sections: needs a ## Not yet decided section (it may say "none"); found "## Not Yet Decided"; headings are case-sensitive'), out.join('\n'));
+    assert.ok(out.includes('error sections: needs a ## Rules section; found "## rules"; headings are case-sensitive'), out.join('\n'));
+});

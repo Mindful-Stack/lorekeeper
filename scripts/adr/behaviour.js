@@ -19,8 +19,12 @@ const RULE_HEAD = /^([a-z][a-z0-9-]*)\.(R[1-9]\d*)\s+(\S.*?)\s*$/;
 function parseDoc(file, text) {
     const parsed = parseRecord(text);
     const prefix = typeof parsed.fm.prefix === 'string' ? parsed.fm.prefix : '';
-    const { sections, lines } = walk(parsed.body);
+    const { sections, lines, fenced } = walk(parsed.body);
     const headings = [];
+    // Lines that look like rules or groups but are not read: warned on, never rules.
+    const hidden = fenced.filter((l) => l.section === 'Rules' && /^ {0,3}###\s/.test(l.text) && RULE_HEAD.test(l.text.replace(/^ {0,3}###\s+/, '')))
+        .map((l) => l.text.trim());
+    const subHeadings = [];
     const deviations = [];
     const nearSources = [];
     let cur = null;
@@ -34,6 +38,7 @@ function parseDoc(file, text) {
                 headings.push(cur);
                 continue;
             }
+            if (/^ {0,3}#{4,6}\s/.test(line)) subHeadings.push(line.trim());
             const s = cur && /^\s*[-*]\s+Source:\s*(.+?)\s*$/.exec(line);
             if (s) cur.sources.push(...s[1].split(',').map((x) => x.trim()).filter(Boolean));
             else if (/^\s*[-*]?\s*\**source\**\s*:/i.test(line)) nearSources.push(line.trim());
@@ -47,7 +52,7 @@ function parseDoc(file, text) {
     for (const h of headings) h.body = h.body.join('\n');
     return {
         file, name: path.basename(file), text, found: parsed.found, fm: parsed.fm, errors: parsed.errors, errorKeys: parsed.errorKeys,
-        sections, headings, deviations, nearSources,
+        sections, headings, deviations, nearSources, hidden, subHeadings,
     };
 }
 
@@ -158,12 +163,19 @@ function checkDoc(ctx, d, byPrefix, err, warn) {
     }
     const others = (byPrefix.get(prefix) || []).filter((x) => x !== d);
     if (prefix && others.length) err(d.file, 'prefix', `prefix ${prefix} is also used by ${others.map((x) => x.name).join(', ')}`);
-    if (!d.sections.includes('Rules')) err(d.file, 'sections', 'needs a ## Rules section');
+    // A section named in another case is the likeliest reason one is missing.
+    const nearMiss = (name) => {
+        const hit = d.sections.find((s) => s !== name && s.toLowerCase() === name.toLowerCase());
+        return hit ? `; found "## ${hit}"; headings are case-sensitive` : '';
+    };
+    if (!d.sections.includes('Rules')) err(d.file, 'sections', `needs a ## Rules section${nearMiss('Rules')}`);
     if (d.sections.includes('Rules') && !d.headings.length) warn(d.file, 'rules', '## Rules has no rules');
     for (const line of d.nearSources) {
         warn(d.file, 'rules', `"${line}" looks like a Source line but is not read; write "- Source: <id>"`);
     }
-    if (!d.sections.includes('Not yet decided')) err(d.file, 'sections', 'needs a ## Not yet decided section (it may say "none")');
+    for (const line of d.hidden) warn(d.file, 'rules', `"${line}" is inside fenced code, so it is not read as a rule`);
+    for (const line of d.subHeadings) warn(d.file, 'rules', `"${line}" is not read; a group is a bold label line`);
+    if (!d.sections.includes('Not yet decided')) err(d.file, 'sections', `needs a ## Not yet decided section (it may say "none")${nearMiss('Not yet decided')}`);
     const seen = new Set();
     for (const h of d.headings) {
         if (!h.id) {

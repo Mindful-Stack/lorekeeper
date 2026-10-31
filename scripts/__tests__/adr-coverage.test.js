@@ -85,3 +85,45 @@ test('a selected missing id in checked is not an unresolvable error', () => {
     const over = { picked: [...base.picked, { id: 'kb/ADR-0042', status: 'missing' }] };
     assert.deepEqual(v(doc(['kb/ADR-0001', 'kb/ADR-0042']), over).dangling, ['kb/ADR-0042']);
 });
+
+const { validate } = C;
+const { makeBehaviourDoc } = require('./helpers/adr-fixtures');
+const { adrRuleIds } = require('../adr/behaviour');
+const DOC = makeBehaviourDoc({ prefix: 'api' }); // rules device.R1, device.R2
+const pickedB = [{ id: 'api/device', status: '-', doc: 'behaviour' }];
+const textB = (id) => (id === 'api/device' ? DOC : null);
+const docOf = (findings, checked = []) => ({ coverage: { checked, notReviewed: [] }, findings });
+
+test('a behaviour-rule finding attests its doc and must name one of its rules', () => {
+    const f = (ids) => ({ class: 'behaviour-rule', ids, where: 'src/x.cs:1-2', summary: 's' });
+    assert.doesNotThrow(() => validate({ doc: docOf([f(['api/device.R2'])]), picked: pickedB, recordText: textB }));
+    assert.throws(() => validate({ doc: docOf([f(['api/device'])]), picked: pickedB, recordText: textB }), /must cite a rule id/);
+    assert.throws(() => validate({ doc: docOf([f(['api/device.R9'])]), picked: pickedB, recordText: textB }), /names no R9/);
+    assert.throws(() => validate({ doc: docOf([f(['kb/ADR-0001.R1'])]), picked: pickedB, recordText: () => 'x' }), /behaviour-rule names kb\/ADR-0001, which is not a behaviour doc/);
+});
+
+test('an ADR class naming a behaviour doc is refused', () => {
+    const f = { class: 'contradiction', ids: ['api/device.R1'], where: 'src/x.cs:1', summary: 's' };
+    assert.throws(() => validate({ doc: docOf([f]), picked: pickedB, recordText: textB }), /contradiction names api\/device, which is a behaviour doc; use behaviour-rule/);
+});
+
+test('a selected behaviour doc must be attested like a record', () => {
+    assert.throws(() => validate({ doc: docOf([]), picked: pickedB, recordText: textB }), /selected records or behaviour docs not checked: api\/device/);
+    assert.doesNotThrow(() => validate({ doc: docOf([], ['api/device']), picked: pickedB, recordText: textB }));
+});
+
+test('coverage and the behaviour validator read ADR rule ids identically', () => {
+    for (const text of [RECORD, RECORD.replace(/\n/g, '\r\n')]) {
+        assert.deepEqual(adrRuleIds(text), C.ruleIds(text));
+        assert.deepEqual(C.ruleIds(text), ['R1', 'R2']);
+    }
+});
+
+test('the document kind comes from kindOf, not from the id\'s shape', () => {
+    const upper = (id) => (id === 'api/Device' ? DOC.replace(/device/g, 'Device') : null);
+    const kindOf = (id) => (id === 'api/Device' ? 'behaviour' : 'adr');
+    const f = (cls, ids) => ({ class: cls, ids, where: 'src/x.cs:1', summary: 's' });
+    assert.throws(() => validate({ doc: docOf([f('stale-fact', ['api/Device'])]), picked: [], recordText: upper, kindOf }), /stale-fact names api\/Device, which is a behaviour doc/);
+    // Past the kind check, so the failure is about rules, not "not a behaviour doc".
+    assert.throws(() => validate({ doc: docOf([f('behaviour-rule', ['api/Device.R1'])]), picked: [], recordText: upper, kindOf }), /names no R1/);
+});

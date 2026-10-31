@@ -15,6 +15,9 @@ prints its result. This is not advice to weigh: the ADR check is a merge gate, a
 yourself, and writing a correct review from them, does **not** replace any step below; a review
 without the verdict's line is an incomplete review, whatever else it says.
 
+Behaviour docs ride the same check: `select` returns them as `kind: "behaviour"` candidates and
+the architect reports a broken rule as `behaviour-rule`, which the verdict marks critical.
+
 You MUST complete each of these items, in order (as tasks, if you track tasks):
 
 1. **Patch** — get the diff into a file (Step 3).
@@ -151,15 +154,28 @@ the repo (`cannot tell which repo this is`) or that the repo is not in the house
 a failed step: report "ADR check could not run: <stderr>", print `**ADR check:** could not run
 (select exit <n>)`, and never write `findings-out`.
 
+**Knowledge-base branch.** Shared records and behaviour docs are read as the KB is checked out,
+and the review assumes that is its default branch. Run `node <plugin-root>/scripts/adr-lint.js
+homes`; when `sharedRepoRoot` is set, run `git -C <sharedRepoRoot> branch --show-current`. If
+the branch differs from `sharedDefaultBranch`, print one line in the review:
+`Note: the knowledge base is on <branch>, not <sharedDefaultBranch>; shared rules were read from
+that branch.` It does not stop the review.
+
 Then dispatch two agents in parallel (both Task calls in one message):
 
 - the **knowledge-reader** agent with the changed files/areas and hint:
   "Be thorough — include all standards, learnings, and review checklists that apply to these changes.
   Don't filter by relevance ranking, but scope to what was changed."
 - the **architect** agent in `check` mode with: the patch path, the select JSON (inline), the PR
-  description path (if any), the changed-file list, and a one-paragraph summary of the diff. It
-  cites changed lines from the patch and ends with an `adr-findings` block — unless it had no
-  patch to read, in which case it ends with none.
+  description path (if any), the changed-file list, a one-paragraph summary of the diff, and
+  whether the working tree is the PR's head. It is for `changes`, `staged`, `commit`, `last <N>`
+  and `pr` on the checked-out branch; for `pr <number>` on another branch and for `patch <file>`,
+  say it is not, so the architect reads the patch's context and removed lines instead of the
+  files on disk. It cites changed lines from the patch and ends with an `adr-findings` block —
+  unless it had no patch to read, in which case it ends with none.
+
+Run a local review of a PR on the PR's head: `select` reads docs from disk, so off the head a
+doc the PR renames within its home is not there under its new name and is not selected.
 
 Include both outputs in your review context.
 
@@ -205,10 +221,14 @@ the summary that `findings-out` could not be written — CI will fail closed on 
 
 Exit 0: nothing blocks. Exit 1: blocking findings remain. Exit 2: the verdict could not run —
 causes include a missing, invalid, duplicate, or unterminated `adr-findings` block, an unknown
-finding class, missing or malformed `coverage`, a selected record not listed as checked, an id
-that resolves to no record, rule or fact, a located finding without `where`, a repo that cannot
-be determined, or an unreadable input or record. Report its stderr, print `**ADR check:** could not run (verdict exit 2:
-<stderr>)`, and count it as one blocking finding: the check failed closed.
+finding class, missing or malformed `coverage`, a selected record or behaviour doc not listed
+as checked, an id that resolves to no record, behaviour doc, rule or fact, a located finding
+without `where`, a repo that cannot be determined, a behaviour doc whose binding it cannot tell
+(one that shares its id with another, has no usable prefix, has unreadable frontmatter, scope or
+prefix, has no `## Rules` as parsed, or is deleted or moved out by the patch), a doc-local rule id
+it cannot qualify, a rule id in `coverage.checked`, or an unreadable input, record or behaviour
+doc. Report its stderr, print `**ADR check:** could not run (verdict exit 2: <stderr>)`, and
+count it as one blocking finding: the check failed closed.
 
 The summary line's count comes from the verdict's `blocking` field. Never count it yourself.
 
@@ -226,6 +246,10 @@ a rule — so CI logs and readers can search for them:
   tier: open its own ADR PR (`/lore:adr <the decision>`) and wait until it is accepted;
 - fired trigger → note the change on the record; the decision goes back to its deciders;
 - stale fact → include the observation the architect drafted;
+- broken behaviour rule → conform, or edit the rule: in this PR for a local doc; for a
+  shared-home doc, in its own KB PR, which must merge first. For a rule with a `Source:`, the
+  record wins: conform, or replace the record; editing the rule alone is not a fix. List rule
+  edits on the `- Rules:` line of `## Decisions` (`references/pr-decisions.md`);
 - dangling citation → fix the id in the PR description or code.
 
 When there is a PR description, Read it: if it has no `## Decisions` heading (one inside an HTML

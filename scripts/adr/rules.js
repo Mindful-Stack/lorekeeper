@@ -432,4 +432,4 @@ function checkRef(home, r, ref, key, kept = false) {
     return found;
 }
 
-module.exports = { checkHome, grandfathered };
+module.exports = { checkHome, grandfathered, SHARED_SCOPE, PREFIXED };

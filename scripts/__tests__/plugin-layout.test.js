@@ -94,3 +94,9 @@ test('the detector reports no collision once the skill directories are renamed',
         fs.rmSync(tmp, { recursive: true, force: true });
     }
 });
+
+test('the three manifests carry the same version', () => {
+    const v = (p) => JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, p), 'utf8')).version;
+    const versions = ['.claude-plugin/plugin.json', '.codex-plugin/plugin.json', 'package.json'].map(v);
+    assert.equal(new Set(versions).size, 1, versions.join(' / '));
+});

@@ -3,11 +3,12 @@
 // The merge gate for the ADR review: classified findings (from the architect) in, a verdict
 // with a blocking count out. Pure: the CLI does the reading.
 
-// One row per finding class. Behaviour-doc findings (a later plan) add `behaviour-rule`.
+// One row per finding class.
 const SEVERITY = {
     contradiction: 'critical',
     uncovered: 'critical',
     trigger: 'critical',
+    'behaviour-rule': 'critical',
     'stale-fact': 'minor',
     dangling: 'important',
 };

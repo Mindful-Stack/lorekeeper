@@ -86,21 +86,45 @@ function splitGitHeader(rest) {
 // file's headers are read even without `diff` lines. Any `diff ` line ends a hunk. A tab and
 // what follows it (the timestamp `diff -u` writes) is not part of a `---` / `+++` path.
 function parsePatchPaths(patch) {
+    return scanPatch(patch).paths;
+}
+
+// Each file a patch changes, at file level, for telling a deleted or moved file from an edit:
+// [{ from, to, oldFirst }]. `from` is null for an added file (a copy included: its
+// source stays), `to` null for a deleted one; a rename (git's `rename from`/`rename to`) has
+// both, different. `oldFirst` is the old file's first line when a hunk shows it (else
+// undefined).
+function patchFiles(patch) {
+    return scanPatch(patch).files;
+}
+
+function scanPatch(patch) {
     const paths = new Set();
+    const files = [];
+    let file = null;
+    // A `---` line opens a file of its own when the current one already has its `+++` (diff -u).
+    const open = () => {
+        file = { from: undefined, to: undefined, deleted: false, added: false, copy: false, paired: false, oldFirst: undefined };
+        files.push(file);
+    };
     let prefixed = true;
     let oldLeft = 0;
     let newLeft = 0;
+    let oldLine = 0;
     for (const line of patch.replace(/\r\n/g, '\n').split('\n')) {
         if (line.startsWith('diff ')) {
             oldLeft = 0;
             newLeft = 0;
             prefixed = true;
+            open();
             if (line.startsWith('diff --git ')) {
                 const sp = splitGitHeader(line.slice('diff --git '.length));
                 if (sp) {
                     prefixed = sp.prefixed;
                     paths.add(sp.from);
                     paths.add(sp.to);
+                    file.from = sp.from;
+                    file.to = sp.to;
                 } else {
                     const h = /^diff --git ([a-z])\/.* ([a-z])\/.*$/.exec(line);
                     prefixed = !!h && h[1] !== h[2];
@@ -109,6 +133,11 @@ function parsePatchPaths(patch) {
             continue;
         }
         if (oldLeft > 0 || newLeft > 0) {
+            // Old line 1, as context or removed: whether the old file started with frontmatter.
+            if (file && oldLine === 1 && !line.startsWith('+') && !line.startsWith('\\')) {
+                file.oldFirst = line.slice(1);
+            }
+            if (!line.startsWith('+') && !line.startsWith('\\')) oldLine++;
             if (line.startsWith('-')) oldLeft--;
             else if (line.startsWith('+')) newLeft--;
             else if (!line.startsWith('\\')) {
@@ -118,25 +147,46 @@ function parsePatchPaths(patch) {
             continue;
         }
         if (line.startsWith('@@')) {
-            const m = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
+            const m = /^@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
+            oldLine = m ? Number(m[1]) : 0;
             // A malformed hunk header: treat the rest of the file as hunk content.
-            oldLeft = m ? (m[1] === undefined ? 1 : Number(m[1])) : Infinity;
-            newLeft = m ? (m[2] === undefined ? 1 : Number(m[2])) : Infinity;
+            oldLeft = m ? (m[2] === undefined ? 1 : Number(m[2])) : Infinity;
+            newLeft = m ? (m[3] === undefined ? 1 : Number(m[3])) : Infinity;
             continue;
         }
-        const moved = /^(?:rename|copy) (?:from|to) (.+)$/.exec(line);
+        if (file && /^deleted file mode /.test(line)) file.deleted = true;
+        if (file && /^new file mode /.test(line)) file.added = true;
+        const moved = /^(rename|copy) (from|to) (.+)$/.exec(line);
         if (moved) {
-            paths.add(pathToken(moved[1]));
+            const p = pathToken(moved[3]);
+            paths.add(p);
+            if (file && moved[1] === 'rename') file[moved[2] === 'from' ? 'from' : 'to'] = p;
+            if (file && moved[1] === 'copy') file.copy = true;
             continue;
         }
-        const m = /^(?:\+\+\+|---) (.+)$/.exec(line);
+        const m = /^(\+\+\+|---) (.+)$/.exec(line);
         if (!m) continue;
-        const q = readQuoted(m[1]);
-        const file = q ? q.value : m[1].replace(/\t.*$/, '');
-        if (file === '/dev/null') continue;
-        paths.add(prefixed ? file.replace(PREFIX, '') : file);
+        if (!file || (m[1] === '---' && file.paired)) open();
+        if (m[1] === '+++') file.paired = true;
+        const q = readQuoted(m[2]);
+        const raw = q ? q.value : m[2].replace(/\t.*$/, '');
+        if (raw === '/dev/null') {
+            if (m[1] === '---') file.added = true;
+            else file.deleted = true;
+            continue;
+        }
+        const name = prefixed ? raw.replace(PREFIX, '') : raw;
+        paths.add(name);
+        if (file[m[1] === '---' ? 'from' : 'to'] === undefined) file[m[1] === '---' ? 'from' : 'to'] = name;
     }
-    return [...paths];
+    return {
+        paths: [...paths],
+        files: files.map((f) => ({
+            from: f.added || f.copy ? null : (f.from === undefined ? f.to : f.from),
+            to: f.deleted ? null : (f.to === undefined ? f.from : f.to),
+            oldFirst: f.oldFirst,
+        })).filter((f) => f.from || f.to),
+    };
 }
 
 // Strips HTML comments from the whole body first, so a template's example ids inside
@@ -155,12 +205,17 @@ function parseCitedIds(prBody) {
     const rest = lines.slice(start + 1);
     const stop = rest.findIndex((l) => /^#{1,6}\s/.test(l));
     const text = (stop === -1 ? rest : rest.slice(0, stop)).join('\n');
-    return [...new Set(text.match(/[A-Za-z0-9._-]+\/ADR-\d{4}/g) || [])];
+    const adrs = text.match(/[A-Za-z0-9._-]+\/ADR-\d{4}/g) || [];
+    // A behaviour rule id (`kb/contract.R3`) cites its doc. A prefix is lowercase, so an ADR
+    // rule id never matches here. Boundaries keep URLs and longer paths from citing.
+    const rules = (text.match(/(?<![A-Za-z0-9./-])[A-Za-z0-9][A-Za-z0-9._-]*\/[a-z][a-z0-9-]*\.R\d+(?![A-Za-z0-9-])/g) || []).map((id) => id.replace(/\.R\d+$/, ''));
+    return [...new Set([...adrs, ...rules])];
 }
 
-// candidates: [{ id, kind: 'local'|'shared', status, file, scope: string[] }]
-// Returns [{ id, home: 'local'|'shared'|null, status, file, reasons: ['scope'|'cited'] }], sorted by id.
-function select({ candidates, repo, paths, cited }) {
+// candidates: [{ id, kind: 'local'|'shared', status, file, scope: string[] }]; touched: the doc
+// files the diff edits (a Set, optional).
+// Returns [{ id, home: 'local'|'shared'|null, doc: 'adr'|'behaviour', status, file, reasons: ['scope'|'cited'|'touched'] }], sorted by id.
+function select({ candidates, repo, paths, cited, touched = new Set() }) {
     const out = [];
     for (const c of candidates) {
         const reasons = [];
@@ -171,14 +226,15 @@ function select({ candidates, repo, paths, cited }) {
                 .map((s) => s.slice(repo.length + 1));
         if (paths.some((p) => globs.some((g) => matchesGlob(p, g)))) reasons.push('scope');
         if (cited.includes(c.id)) reasons.push('cited');
-        if (reasons.length) out.push({ id: c.id, home: c.kind, status: c.status, file: c.file, reasons });
+        if (c.doc === 'behaviour' && touched.has(c.file)) reasons.push('touched');
+        if (reasons.length) out.push({ id: c.id, home: c.kind, doc: c.doc || 'adr', status: c.status, file: c.file, reasons });
     }
     // A cited id that resolves nowhere is reported, not dropped: the reviewer must see it.
     for (const id of cited) {
-        if (!candidates.some((c) => c.id === id)) out.push({ id, home: null, status: 'missing', file: '', reasons: ['cited'] });
+        if (!candidates.some((c) => c.id === id)) out.push({ id, home: null, doc: /\/ADR-\d{4}$/.test(id) ? 'adr' : 'behaviour', status: 'missing', file: '', reasons: ['cited'] });
     }
     // Codepoint order, not locale order: Plan C parses this output.
     return out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
-module.exports = { parsePatchPaths, parseCitedIds, select };
+module.exports = { parsePatchPaths, patchFiles, parseCitedIds, select };

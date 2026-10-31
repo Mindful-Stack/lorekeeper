@@ -235,3 +235,21 @@ test('a story owner is set on create and edit, cleared by --no-owner, and must b
   assert.deepEqual([refused.status, JSON.parse(refused.stdout).code], [1, 'validation']);
   assert.equal(call(['story', 'edit', 'GRA-31', '--version', '1', '--owner', 'dan@example.com', '--no-owner', '--json']).status, 1); // clap: they conflict
 });
+test('comment add --item comments on an initiative, an epic or a story (--story is its alias); comment ls lists the thread', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } });
+  const add = (flag, on, n) => JSON.parse(call(['comment', 'add', flag, on, '--body', `on ${on}`, '--idempotency-key', `refining-epic:GRA-20:0a1b2c3d:${n}`, '--json']).stdout).value;
+  assert.deepEqual(add('--item', 'GRA-12', 1).map((c) => [c.on_initiative, c.on_epic, c.on_story, c.on_decision]), [['GRA-12', null, null, null]]);
+  assert.equal(add('--item', 'GRA-20', 2)[0].on_epic, 'GRA-20');
+  assert.equal(add('--story', 'GRA-31', 3)[0].on_story, 'GRA-31');
+  assert.equal(add('--decision', '7', 4)[0].on_decision, 7);
+  assert.equal(add('--item', 'GRA-20', 5).length, 2, 'the answer is the whole thread');
+  const ls = (flag, on) => JSON.parse(call(['comment', 'ls', flag, on, '--json']).stdout).value.map((c) => c.body);
+  assert.deepEqual(ls('--item', 'GRA-20'), ['on GRA-20', 'on GRA-20']);
+  assert.deepEqual(ls('--item', 'GRA-13'), []);
+  assert.deepEqual(ls('--decision', '7'), ['on 7']);
+  assert.ok(JSON.parse(call(['story', 'context', 'GRA-31', '--json']).stdout).value.comments.some((c) => c.body === 'on GRA-31'));
+  assert.equal(JSON.parse(call(['comment', 'ls', '--item', 'GRA-999', '--json']).stdout).code, 'not_found');
+  assert.equal(call(['comment', 'ls', '--item', 'GRA-20', '--decision', '7', '--json']).status, 1);
+  assert.equal(call(['comment', 'ls', '--json']).status, 1);
+});

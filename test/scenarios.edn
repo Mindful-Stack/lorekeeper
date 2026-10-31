@@ -288,7 +288,7 @@ git commit -m \"feat: add DeviceStatusDto\"
                 "^initiative create (?=.*--horizon Later\\b)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "^epic create (?=.*--initiative GRA-1\\d\\d\\b).*--json$"
                 "^story edit GRA-44 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
-                "^comment add (?=.*--story GRA-47\\b)(?=.*Proposed home)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^comment add (?=.*--item GRA-47\\b)(?=.*Proposed home)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "(?s)^story create .*^story ls --epic GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add) )"
                 "(?s)^story edit .*^decision ls --on GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add) )"]
   :log-rejects ["--brief-file" "^story edit GRA-42 .*--kind" "^story edit GRA-45 .*--epic GRA-20\\b" "^story (?:edit|mv) GRA-46 "

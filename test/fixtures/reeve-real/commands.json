@@ -129,11 +129,18 @@
       "types": { "value.closed.reason": "string", "value.closed.at": "string", "value.closed.by": "string" }
     },
     {
-      "row": "`reeve comment add --decision <id> --body <text> --idempotency-key <key> --json` (or `--story <KEY>`)",
-      "argv": ["comment", "add", "--decision", "{{decision.id}}", "--body", "Linked by the skill smoke.", "--idempotency-key", "recording-decisions:{{decision.id}}:{{run_id}}:1", "--json"],
-      "alternates": [["comment", "add", "--story", "{{story.key}}", "--body", "Read by the skill smoke.", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:3", "--json"]],
+      "row": "`reeve comment add --item <KEY> --body <text> --idempotency-key <key> --json` (or `--decision <id>`)",
+      "argv": ["comment", "add", "--item", "{{story.key}}", "--body", "Read by the skill smoke.", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:3", "--json"],
+      "alternates": [["comment", "add", "--decision", "{{decision.id}}", "--body", "Linked by the skill smoke.", "--idempotency-key", "recording-decisions:{{decision.id}}:{{run_id}}:1", "--json"]],
       "reads": ["value[].id", "value[].body"],
       "types": { "value[].id": "number", "value[].body": "string" }
+    },
+    {
+      "row": "`reeve comment ls --item <KEY> --json` (or `--decision <id>`)",
+      "argv": ["comment", "ls", "--item", "{{story.key}}", "--json"],
+      "alternates": [["comment", "ls", "--decision", "{{decision.id}}", "--json"]],
+      "reads": ["value[].id", "value[].author", "value[].body", "value[].at"],
+      "types": { "value[].id": "number", "value[].author": "string", "value[].body": "string", "value[].at": "string" }
     },
     {
       "row": "`reeve decision ls --on <KEY> --json`",

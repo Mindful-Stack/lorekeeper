@@ -33,7 +33,7 @@ test('the real fixture fails coverage when a form loses its run or is run twice'
   assert.ok(s.coverageProblems(rows, f).some((p) => /2 runs cover the form story ls --epic <KEY> --json$/.test(p)));
   f = clone();
   delete entryOf(f, '`reeve comment add').alternates;
-  assert.ok(s.coverageProblems(rows, f).some((p) => /no run covers the form comment add --story <KEY>$/.test(p)));
+  assert.ok(s.coverageProblems(rows, f).some((p) => /no run covers the form comment add --decision <id>$/.test(p)));
 });
 test("the real fixture fails coverage when its reads stop reaching the reference's Read cell", () => {
   const f = clone();

@@ -49,7 +49,9 @@ argument.
    `value.target_month` and `value.version`), `reeve initiative findings <KEY> --json`,
    `reeve decision ls --on <KEY> --json` and `reeve epic ls --initiative <KEY> --json`. Quote the
    findings to the user in the reference's *Findings* words (or "Findings: none"); they are
-   advisory, so a failed findings read is said and the run goes on. If any other read does not
+   advisory, so a failed findings read is said and the run goes on. Read the initiative's
+   comments too, `reeve comment ls --item <KEY> --json`: the discussion is context for step 2,
+   and a failed comment read is likewise said and the run goes on. If any other read does not
    answer `ok`, stop the run: for `not_found` say "The planner has no initiative
    <KEY>."; for `unauthenticated` or `forbidden` say it and tell the user to run `reeve auth login`;
    otherwise show the code and message. In parallel, dispatch the **knowledge-reader** with the

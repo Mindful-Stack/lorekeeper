@@ -115,7 +115,8 @@ items; never derive a key from a title. Print the run id in the report.
 | `reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json` | `value.id` |
 | `reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json` | `value.check.kind` |
 | `reeve decision close <id> --reason <text> --json` | `value.closed.reason`, `value.closed.at`, `value.closed.by` |
-| `reeve comment add --decision <id> --body <text> --idempotency-key <key> --json` (or `--story <KEY>`) | `value[]`, the thread |
+| `reeve comment add --item <KEY> --body <text> --idempotency-key <key> --json` (or `--decision <id>`) | `value[]`, the thread |
+| `reeve comment ls --item <KEY> --json` (or `--decision <id>`) | `value[]`: `id`, `author`, `body`, `at`; oldest first, empty when there are none |
 
 An initiative's owner is an email and its target month is `YYYY-MM` (`2027-03`); pass either on
 create or edit only with a value the user gave (rule *The user decides* in each skill), and leave a
@@ -129,6 +130,10 @@ its title would use (several words are searched as one phrase, case-insensitive)
 epics and stories whose title, brief or description, or external reference contains them. A hit
 that covers what you were about to create is reused (say which key); show the hits you judged
 not to cover it. Run one or two searches, never one per word.
+
+`--item` names an initiative, an epic or a story by its key (a key says what it is); a decision,
+being numbered rather than keyed, takes `--decision <id>`. `--story <KEY>` is an older alias of
+`--item <KEY>`: write `--item`.
 
 No command lists the planner's configured repositories or horizon buckets (they are in
 `GET /api/v1/config`, which the CLI does not expose): ask for them, or take them from the request.

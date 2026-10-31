@@ -63,7 +63,9 @@ section says.
    `reeve story ls --epic <EPIC> --json`, `reeve story ls --untriaged --json`,
    `reeve epic ls --json` and `reeve initiative ls --json`. Quote the findings to the user in the
    reference's *Findings* words (or "Findings: none"); they are advisory, so a failed findings read
-   is said and the run goes on. If any other read does not answer `ok`, stop the run: for
+   is said and the run goes on. Read the epic's comments too, `reeve comment ls --item <EPIC> --json`:
+   the discussion is context for step 2, and a failed comment read is likewise said and the run
+   goes on. If any other read does not answer `ok`, stop the run: for
    `not_found` say "The planner has no epic <EPIC>." (or the item it names); for `unauthenticated` or `forbidden` say it and tell the user to run `reeve auth login`;
    otherwise show the code and message. In parallel, dispatch the **knowledge-reader** with the
    epic's title and "Prioritise domain context and architecture patterns.", and the **architect**
@@ -143,7 +145,7 @@ section says.
      For 2 and 3, show the proposed title, brief (and horizon) and create them only on a
      confirmation for that story; in a session that cannot ask, only when the request names that
      create. Otherwise create nothing for it and leave it untriaged with the proposal:
-     `reeve comment add --story <KEY> --body 'Proposed home: <the new epic or initiative, its title and where it goes>' --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
+     `reeve comment add --item <KEY> --body 'Proposed home: <the new epic or initiative, its title and where it goes>' --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
    - **Won't do**, or the user says "leave it untriaged": write nothing for it.
 8. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
    only on yes run `reeve epic discovery <EPIC> --complete --version <latest version> --json`.

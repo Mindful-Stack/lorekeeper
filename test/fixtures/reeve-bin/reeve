@@ -78,7 +78,8 @@ const SPEC = {
   'decision require': { pos: 0, val: ['idempotency-key', 'on', 'title', 'decider', 'due'], req: ['idempotency-key', 'on', 'title', 'decider'] },
   'decision link': { pos: 1, val: ['record', 'repo', 'path', 'pr', 'household'], req: ['record', 'repo', 'path'] },
   'decision close': { pos: 1, val: ['reason'], req: ['reason'] },
-  'comment add': { pos: 0, val: ['idempotency-key', 'story', 'decision', 'body'], req: ['idempotency-key', 'body'] },
+  'comment add': { pos: 0, val: ['idempotency-key', 'item', 'story', 'decision', 'body'], req: ['idempotency-key', 'body'] },
+  'comment ls': { pos: 0, val: ['item', 'story', 'decision'] },
   search: { pos: 1, variadic: true }, // `reeve search <TEXT>...`: several words are one phrase
 };
 // A command is one word (`search`) or two (`story ls`).
@@ -104,7 +105,9 @@ if (spec === DISCOVERY && !f.complete && !f.reopen) usage('pass --complete or --
 if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) usage(`invalid value '${f.kind}' for '--kind'`);
 if (f.version && !/^\d+$/.test(f.version)) usage(`invalid value '${f.version}' for '--version'`);
 if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}' for '--due'`);
-if (cmd === 'comment add' && !f.story === !f.decision) usage('pass exactly one of --story and --decision');
+// `--story` is an alias of `--item` (GRA-70); a comment is on exactly one item or decision.
+if (f.story !== undefined) { if (f.item !== undefined) usage("the argument '--item' cannot be used multiple times"); f.item = f.story; delete f.story; }
+if (cmd.startsWith('comment ') && !f.item === !f.decision) usage('pass exactly one of --item and --decision');
 for (const [a, b] of [['epic', 'no-epic'], ['owner', 'no-owner'], ['initiative', 'no-initiative']]) if (a in f && b in f) usage(`the argument '--${a}' cannot be used with '--${b}'`);
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
 
@@ -190,6 +193,23 @@ const readinessOf = (s) => {
   return { ready: !reasons.length, reasons };
 };
 
+// Comments made in this run, stored by idempotency key like any create, in the planner's CommentDto shape.
+const comment = (id, author, body, on) => ({ id, on_story: null, on_decision: null, on_initiative: null, on_epic: null, author, body, at: NOW, external_ref: null, ...on });
+const thread = (on) => {
+  const [field, value] = Object.entries(on)[0];
+  return Object.values(withState((st) => st.creates)).filter((c) => c && !Array.isArray(c) && 'on_decision' in c && c[field] === value);
+};
+// What `--item` or `--decision` names, as the comment's own field.
+const target = () => {
+  if (f.decision !== undefined) {
+    if (!/^\d+$/.test(f.decision)) error('validation', 'the decision id must be an integer');
+    const d = allDecisions().find((x) => String(x.id) === f.decision) || error('not_found', `no decision ${f.decision}`);
+    return { on_decision: d.id };
+  }
+  const x = itemsOf()[f.item] || initiatives[f.item] || epics[f.item] || stories[f.item] || error('not_found', `no item ${f.item}`);
+  return { [`on_${kindOf(x)}`]: x.key };
+};
+
 // The planner's advisory findings (reeve-planning domain/findings.rs): computed on read, never blocking.
 const findingsOf = (item, ancestors, storyCount) => {
   const out = [];
@@ -230,7 +250,7 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
     // The planner's bundle (story_context): the open decisions on the initiative, then the epic, then the story.
     const on = [i && i.key, e && e.key, s.key].filter(Boolean);
     const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
-    ok({ story: s, epic: e, initiative: i, required_decisions: required, blockers: [], comments: [{ id: 1, author: 'sam@example.com', body: 'Coordinators want to see every retry.', at: NOW, on_story: s.key, on_decision: null, external_ref: null }], readiness: readinessOf(s) });
+    ok({ story: s, epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s) });
   },
   'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic))
     .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery) && (!f.label || s.labels.includes(f.label)))
@@ -288,7 +308,11 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
     });
     ok(hits.filter((h) => h.matched.length).sort((a, b) => Number(b.key.split('-')[1]) - Number(a.key.split('-')[1])).slice(0, 50));
   },
+  // A comment is on a story, an epic, an initiative (by key, GRA-70) or a decision (by id); the answer is the thread.
   'comment add': () => {
-    ok(mint((id) => [{ id, author: 'dan@example.com', body: f.body, at: NOW, on_story: f.story || null, on_decision: f.decision ? Number(f.decision) : null, external_ref: null }]));
+    const on = target();
+    mint((id) => comment(id, 'dan@example.com', f.body, on));
+    ok(thread(on));
   },
+  'comment ls': () => ok(thread(target())),
 })[cmd]();

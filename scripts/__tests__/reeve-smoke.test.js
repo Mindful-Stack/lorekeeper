@@ -26,7 +26,7 @@ test('commandRows reads the Commands table only and reads \\| inside a cell as |
 });
 test('commandRows finds the rows of the reference, each with its Read cell', () => {
   const rows = s.commandRows(fs.readFileSync(path.join(__dirname, '..', '..', 'references', 'reeve-cli.md'), 'utf8'));
-  assert.equal(rows.length, 22);
+  assert.equal(rows.length, 23);
   for (const r of rows) {
     assert.match(r.row, /^`reeve [a-z]+( [a-z]+)?[ `]/, r.row);
     assert.match(r.read, /`value/, r.row);

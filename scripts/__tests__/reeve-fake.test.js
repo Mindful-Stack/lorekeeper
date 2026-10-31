@@ -25,9 +25,9 @@ test('--version names the fake planner and is not logged (the SessionStart hook 
   assert.equal(r.log, '');
 });
 test('a flag the real CLI lacks is a usage error: no envelope, text on stderr, exit 1', () => {
-  const r = run(['epic', 'edit', 'GRA-20', '--brief-file', 'brief.md', '--version', '2', '--json']);
+  const r = run(['epic', 'edit', 'GRA-20', '--brief-url', 'https://example.com/brief', '--version', '2', '--json']);
   assert.deepEqual([r.status, r.stdout], [1, '']);
-  assert.match(r.stderr, /unexpected argument '--brief-file'/);
+  assert.match(r.stderr, /unexpected argument '--brief-url'/);
 });
 test('a value starting with - is a usage error, except comment add --body', () => {
   for (const args of [
@@ -280,4 +280,21 @@ test('a link to a repository the planner does not check yet is stored, exits 0, 
   // A link whose check ran says so beside the decision.
   assert.deepEqual(call(link).immediate_check, { id: 7, outcome: 'stored', check: { kind: 'proposed_pr_open' } });
   assert.ok(!call(['story', 'ls', '--epic', 'GRA-20', '--json']).value[0].readiness.reasons.some((x) => x.reason === 'decision_repo_not_configured'));
+});
+test('--brief-file and --description-file send the file unchanged; - reads stdin; an unreadable file reaches nothing', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-'));
+  const log = path.join(dir, 'log');
+  const md = "## Vision\n\n- Mentees aren't left waiting: `match` within a day.\n--- not a flag\n";
+  fs.writeFileSync(path.join(dir, 'brief.md'), md);
+  const call = (args, input) => spawnSync(fake, args, { encoding: 'utf8', input, env: { ...process.env, REEVE_FAKE_LOG: log } });
+  const epic = JSON.parse(call(['epic', 'create', '--initiative', 'GRA-12', '--title', 'A', '--brief-file', path.join(dir, 'brief.md'), '--idempotency-key', KEY, '--json']).stdout).value;
+  assert.equal(epic.brief, md);
+  assert.equal(JSON.parse(call(['epic', 'edit', epic.key, '--brief-file', '-', '--version', '1', '--json'], md.toUpperCase()).stdout).value.brief, md.toUpperCase());
+  const story = JSON.parse(call(['story', 'create', '--title', 'S', '--description-file', '-', '--idempotency-key', 'refining-epic:GRA-20:0a1b2c3d:2', '--json'], md).stdout).value;
+  assert.equal(story.description, md);
+  const before = fs.readFileSync(log, 'utf8');
+  const missing = call(['initiative', 'edit', 'GRA-12', '--brief-file', path.join(dir, 'nope.md'), '--version', '3', '--json']);
+  assert.deepEqual([missing.status, JSON.parse(missing.stdout).code], [1, 'internal']);
+  assert.equal(fs.readFileSync(log, 'utf8'), before, 'not logged');
+  assert.equal(call(['epic', 'edit', 'GRA-20', '--brief', 'x', '--brief-file', '-', '--version', '2', '--json'], 'y').status, 1); // they conflict
 });

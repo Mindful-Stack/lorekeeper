@@ -244,16 +244,16 @@ git commit -m \"feat: add DeviceStatusDto\"
                 "^initiative show GRA-12 --json$"
                 "^decision ls --initiative GRA-12 --json$"
                 "^epic ls --initiative GRA-12 --json$"
-                "^initiative edit GRA-12 (?=.*--brief )(?=.*--version 3\\b).*--json$"
+                "^initiative edit GRA-12 (?=.*--brief-file )(?=.*--version 3\\b).*--json$"
                 "^decision require (?=.*--on GRA-12\\b)(?=.*--decider dan@example\\.com\\b)(?=.*--due 2026-11-15\\b)(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "^comment add (?=.*--decision 1\\d\\d\\b)(?=.*/lore:adr link )(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
-                "^epic create (?=.*--initiative GRA-12\\b)(?=.*--title Match notifications )(?=.*--brief )(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
-                "^epic create (?=.*--initiative GRA-12\\b)(?=.*--title Match reminders )(?=.*--brief )(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^epic create (?=.*--initiative GRA-12\\b)(?=.*--title Match notifications )(?=.*--brief-file )(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
+                "^epic create (?=.*--initiative GRA-12\\b)(?=.*--title Match reminders )(?=.*--brief-file )(?=.*--idempotency-key planning-initiative:GRA-12:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "^epic create [^\\n]*--idempotency-key (\\S+) [^\\n]*\\n(?s:.*)^epic create [^\\n]*--idempotency-key (?!\\1 )\\S+ "
                 "(?s)planning-initiative:GRA-12:([0-9a-f]{8}):1\\b.*planning-initiative:GRA-12:\\1:2\\b"
                 "(?s)^epic create .*^decision ls --initiative GRA-12 --json$(?!.*^(?:initiative edit|decision require|comment add|epic create) )"
                 "(?s)^epic create .*^epic ls --initiative GRA-12 --json$(?!.*^(?:initiative edit|decision require|comment add|epic create) )"]
-  :log-rejects ["--brief-file" "^epic edit " "^initiative discovery " "^decision link " "^epic create .*--title Matching queue "]}
+  :log-rejects ["--brief " "^epic edit " "^initiative discovery " "^decision link " "^epic create .*--title Matching queue "]}
  {:name "reeve-refining-epic"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]
@@ -272,7 +272,7 @@ git commit -m \"feat: add DeviceStatusDto\"
                 "^initiative show GRA-12 --json$"
                 "^decision ls --on GRA-20 --json$"
                 "^story ls --untriaged --json$"
-                "^epic edit GRA-20 (?=.*--brief )(?=.*--version 2\\b).*--json$"
+                "^epic edit GRA-20 (?=.*--brief-file )(?=.*--version 2\\b).*--json$"
                 "^story create (?=.*--epic GRA-20\\b)(?=.*--title Enqueue match requests )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "^story create (?=.*--epic GRA-20\\b)(?=.*--title Process the match queue )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "^story create (?=.*--epic GRA-20\\b)(?=.*--title Alert on a stuck queue )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
@@ -291,7 +291,7 @@ git commit -m \"feat: add DeviceStatusDto\"
                 "^comment add (?=.*--item GRA-47\\b)(?=.*Proposed home)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "(?s)^story create .*^story ls --epic GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add) )"
                 "(?s)^story edit .*^decision ls --on GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add) )"]
-  :log-rejects ["--brief-file" "^story edit GRA-42 .*--kind" "^story edit GRA-45 .*--epic GRA-20\\b" "^story (?:edit|mv) GRA-46 "
+  :log-rejects ["--brief " "^story edit GRA-42 .*--kind" "^story edit GRA-45 .*--epic GRA-20\\b" "^story (?:edit|mv) GRA-46 "
                 "^story (?:edit|mv) GRA-47 " "(?s)^initiative create .*^initiative create "
                 "^story mv " "^epic discovery " "^decision require " "^decision link "
                 "^story create .*--title (?:Retry failed matches|Show match history) "
@@ -305,7 +305,7 @@ git commit -m \"feat: add DeviceStatusDto\"
   :rejects ["(?im)^\\W*Stopped" "(?i)planner has no (?:epic|initiative)"]
   :log-expects ["^epic show GRA-22 --json$"
                 "^decision ls --on GRA-22 --json$"
-                "^epic edit GRA-22 (?=.*--brief )(?=.*--version 1\\b).*--json$"
+                "^epic edit GRA-22 (?=.*--brief-file )(?=.*--version 1\\b).*--json$"
                 "^story create (?=.*--epic GRA-22\\b)(?=.*--title Rate a session )(?=.*--criterion .*--criterion )(?=.*--idempotency-key refining-epic:GRA-22:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "(?s)^story create .*^story ls --epic GRA-22 --json$"]
   :log-rejects ["^initiative show " "^story edit " "^epic discovery " "^decision require " "^epic create " "^initiative create "]}

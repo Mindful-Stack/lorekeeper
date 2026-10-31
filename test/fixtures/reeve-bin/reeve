@@ -59,19 +59,19 @@ const SPEC = {
   'auth status': { pos: 0 },
   'story context': { pos: 1 },
   'story ls': { pos: 0, val: ['epic', 'owner', 'delivery', 'label'], bool: ['untriaged', 'ready', 'mine'] },
-  'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'owner', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
+  'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'description-file', 'owner', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
   'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
-  'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank', 'owner', 'external-ref', 'description'], bool: ['no-epic', 'no-owner'], rep: ['criterion', 'add-label', 'remove-label'], req: ['version'] },
+  'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank', 'owner', 'external-ref', 'description', 'description-file'], bool: ['no-epic', 'no-owner'], rep: ['criterion', 'add-label', 'remove-label'], req: ['version'] },
   'initiative show': { pos: 1 },
   'initiative ls': { pos: 0 },
-  'initiative create': { pos: 0, val: ['idempotency-key', 'title', 'horizon', 'brief', 'target-month', 'owner', 'external-ref'], req: ['idempotency-key', 'title', 'horizon'] },
-  'initiative edit': { pos: 1, val: ['version', 'title', 'brief', 'horizon', 'target-month', 'owner', 'external-ref'], req: ['version'] },
+  'initiative create': { pos: 0, val: ['idempotency-key', 'title', 'horizon', 'brief', 'brief-file', 'target-month', 'owner', 'external-ref'], req: ['idempotency-key', 'title', 'horizon'] },
+  'initiative edit': { pos: 1, val: ['version', 'title', 'brief', 'brief-file', 'horizon', 'target-month', 'owner', 'external-ref'], req: ['version'] },
   'initiative discovery': DISCOVERY,
   'initiative findings': { pos: 1 },
   'epic show': { pos: 1 },
   'epic ls': { pos: 0, val: ['initiative'] },
-  'epic create': { pos: 0, val: ['idempotency-key', 'title', 'initiative', 'brief', 'external-ref'], req: ['idempotency-key', 'title'] },
-  'epic edit': { pos: 1, val: ['version', 'title', 'brief', 'initiative', 'external-ref'], bool: ['no-initiative'], req: ['version'] },
+  'epic create': { pos: 0, val: ['idempotency-key', 'title', 'initiative', 'brief', 'brief-file', 'external-ref'], req: ['idempotency-key', 'title'] },
+  'epic edit': { pos: 1, val: ['version', 'title', 'brief', 'brief-file', 'initiative', 'external-ref'], bool: ['no-initiative'], req: ['version'] },
   'epic discovery': DISCOVERY,
   'epic findings': { pos: 1 },
   'decision ls': { pos: 0, val: ['on', 'initiative'], bool: ['mine'] },
@@ -109,7 +109,13 @@ if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}'
 // `--story` is an alias of `--item` (GRA-70); a comment is on exactly one item or decision.
 if (f.story !== undefined) { if (f.item !== undefined) usage("the argument '--item' cannot be used multiple times"); f.item = f.story; delete f.story; }
 if (cmd.startsWith('comment ') && !f.item === !f.decision) usage('pass exactly one of --item and --decision');
-for (const [a, b] of [['epic', 'no-epic'], ['owner', 'no-owner'], ['initiative', 'no-initiative'], ['on', 'initiative']]) if (a in f && b in f) usage(`the argument '--${a}' cannot be used with '--${b}'`);
+for (const [a, b] of [['epic', 'no-epic'], ['owner', 'no-owner'], ['initiative', 'no-initiative'], ['on', 'initiative'], ['brief', 'brief-file'], ['description', 'description-file']]) if (a in f && b in f) usage(`the argument '--${a}' cannot be used with '--${b}'`);
+// --brief-file / --description-file (GRA-65): the file's contents unchanged, `-` reads stdin. The CLI reads it before
+// any request, so a file it cannot read is its own error and nothing reaches the planner (not logged).
+const readText = (file) => {
+  try { return fs.readFileSync(file === '-' ? 0 : file, 'utf8'); } catch (e) { return error('internal', `reading ${file}: ${e.message}`); }
+};
+for (const name of ['brief', 'description']) if (f[`${name}-file`] !== undefined) f[name] = readText(f[`${name}-file`]);
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
 
 const NOW = '2026-10-20T09:00:00Z';

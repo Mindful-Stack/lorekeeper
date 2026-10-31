@@ -16,8 +16,8 @@ path in every Bash command. Read `<plugin-root>/references/reeve-cli.md` before 
 call: commands, flags, exit statuses, idempotency keys and wording come from there. Invoke
 `${REEVE_BIN:-reeve}` as that reference says: the detector's `bin` as the first word. Every
 command below is copied from the reference, flags in the order shown and `--json` the last
-argument; a brief or a criterion is one single-quoted argument as the reference's Arguments
-section says.
+argument; a brief goes through a file (`--brief-file`), and a title or a criterion is one
+single-quoted argument on one line, as the reference's Arguments section says.
 
 ## The rule
 
@@ -80,7 +80,8 @@ section says.
    and show what changes; decisions already taken go under a *Decisions* heading, one line each
    naming its record, as `<plugin-root>/skills/planning-initiative/reference/brief-template.md`
    lays it out. Write it only on a yes for this brief (rule 1):
-   `reeve epic edit <EPIC> --brief <md> --version <version> --json`; keep the new `value.version`.
+   write the Markdown to a file with the Write tool, then
+   `reeve epic edit <EPIC> --brief-file <brief file> --version <version> --json`; keep the new `value.version`.
 5. **Decisions.** Show the decisions step 1 found, worded by the reference; the open
    ones (as its *Wording the planner's answers* section defines them; a closed decision never is)
    go into the report. Then triage by `<plugin-root>/references/decision-triage.md` (read it
@@ -129,10 +130,10 @@ section says.
      1. an epic covers it (this one, or one from `epic ls`):
         `reeve story edit <KEY> --version <v> --epic <COVERING-EPIC> --json`;
      2. else an initiative covers it, but none of its epics does: a new epic under it,
-        `reeve epic create --initiative <COVERING-INITIATIVE> --title <title> --brief <md> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
+        `reeve epic create --initiative <COVERING-INITIATIVE> --title <title> --brief-file <brief file> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
         then `reeve story edit <KEY> --version <v> --epic <new epic> --json`;
      3. else a new initiative, proposed in the last horizon bucket before "Won't do":
-        `reeve initiative create --title <title> --horizon <bucket> --brief <md> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
+        `reeve initiative create --title <title> --horizon <bucket> --brief-file <brief file> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
         an epic under it as in 2, then the `story edit`. The CLI does not list the buckets: ask for
         them (offering the horizons seen in `initiative ls`), or take them from the request. Ask
         who owns the new initiative (an email) and which month it targets (`YYYY-MM`), or take

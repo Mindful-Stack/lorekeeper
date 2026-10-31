@@ -26,7 +26,8 @@ const PLACEHOLDERS = {
   run_id: '0a1b2c3d', key: 'planning-initiative:GRA-12:0a1b2c3d:1', prefix: 'recording-decisions:7', title: 'Title',
   md: 'Brief', text: 'Criterion', email: 'dan@example.com', 'YYYY-MM': '2027-03', ref: 'PIB-30', delivery: 'todo', label: 'migrated', bucket: 'Later', 'qualified id': 'kb/ADR-0002', 'front-matter id': 'kb/ADR-0002',
   repo: 'lore', 'path in repo': 'knowledge/adrs/0002-x.md', path: 'knowledge/adrs/0002-x.md', url: 'https://github.com/example/w/pull/9',
-  household: '.', dir: '.', branch: 'feat/x', 'the new epic or initiative, its title and where it goes': 'new epic under GRA-13',
+  household: '.', dir: '.', branch: 'feat/x',
+  'brief file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'brief.md'), 'description file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'brief.md'), 'the new epic or initiative, its title and where it goes': 'new epic under GRA-13',
 };
 
 // `reeve … --json` spans: inline code, and fenced blocks that start with `reeve `.

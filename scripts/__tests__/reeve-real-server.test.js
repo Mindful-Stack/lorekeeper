@@ -72,7 +72,13 @@ function baseEnv() {
   return env;
 }
 const fakeSide = (bin, dir) => ({ bin, env: { ...baseEnv(), REEVE_CONFIG_DIR: dir, REEVE_FAKE_LOG: path.join(dir, 'log') } });
-const selfScope = (dir) => ({ run_id: crypto.randomBytes(4).toString('hex'), household: dir, email: 'dan@example.com', repo: 'kb', record: { id: 'kb/ADR-0001', path: 'adrs/0001-x.md' } });
+// The files the entries pass by path (--brief-file), written for the run into dir; {{files.<name>}} names each.
+function smokeFiles(dir) {
+  const brief = path.join(dir, 'brief.md');
+  fs.writeFileSync(brief, "## Vision\n\nWritten by the skill smoke's brief file: it isn't quoted.\n\n- a bullet\n");
+  return { brief };
+}
+const selfScope = (dir) => ({ run_id: crypto.randomBytes(4).toString('hex'), household: dir, email: 'dan@example.com', repo: 'kb', record: { id: 'kb/ADR-0001', path: 'adrs/0001-x.md' }, files: smokeFiles(dir) });
 
 test('the seed and every entry run against the fake on both sides', (t) => {
   const results = s.runSmoke({ fixture, real: fakeSide(FAKE, tmp(t)), fake: fakeSide(FAKE, tmp(t)), scope: selfScope(tmp(t)), expect: false });
@@ -108,7 +114,7 @@ test('every Commands row against a real planner, the fake answering in the same 
     fixture,
     real: { bin: process.env.REEVE_REAL_BIN, env: realEnv },
     fake: fakeSide(FAKE, tmp(t)),
-    scope: { ...seed, run_id: detected.run_id },
+    scope: { ...seed, run_id: detected.run_id, files: smokeFiles(tmp(t)) },
     out: process.env.REEVE_SMOKE_OUT,
   });
   // not vacuous: every entry's runs all reached the real planner and got an envelope back

@@ -72,11 +72,11 @@ argument.
    `Researched: nothing — no open question is answerable by research`.
 4. **Brief.** Start from the existing `value.brief`: keep what still holds, fold in the answers,
    lay it out by the template, and show what changes. Write it only on a yes for this brief (rule
-   1): `reeve initiative edit <KEY> [--brief <md>] [--owner <email>] [--target-month <YYYY-MM>] --version <version> --json`,
+   1): write the Markdown to a file with the Write tool, as the reference's Arguments section says,
+   then `reeve initiative edit <KEY> [--brief-file <brief file>] [--owner <email>] [--target-month <YYYY-MM>] --version <version> --json`,
    with `--owner` and `--target-month` only for a value step 2 gave (the user's answer is its
-   confirmation), and the Markdown quoted as the reference's Arguments section says (single
-   quotes, real newlines, setext headings); keep the new `value.version`. An owner or target month
-   with no brief change is the same command without `--brief`.
+   confirmation); keep the new `value.version`. An owner or target month with no brief change is
+   the same command without `--brief-file`.
 5. **What already exists.** Show the decisions and epics step 1 found, each decision with the item
    it is on (`on`, and `on_type`: the initiative itself, one of its epics or a story under one)
    and worded by the reference (open or closed, as its *Wording the planner's answers* section defines them) and, for each decision and
@@ -120,7 +120,8 @@ argument.
    elsewhere, even under another initiative, may already cover it; say which key and reuse it
    rather than duplicate it. Show them, and write the ones confirmed as rule 1 says (epics and
    briefs the request names are confirmed by it); for each
-   `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`.
+   `reeve epic create --initiative <KEY> --title <title> --brief-file <brief file> --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`,
+   each brief written to its own file first.
    Each epic gets its own `<n>`.
 8. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
    only on yes run `reeve initiative discovery <KEY> --complete --version <latest version> --json`.

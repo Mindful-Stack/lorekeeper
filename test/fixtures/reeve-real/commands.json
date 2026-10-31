@@ -28,15 +28,15 @@
       "types": { "value[].key": "string", "value[].item": "string", "value[].kind": "string|null", "value[].title": "string", "value[].matched[]": "string" }
     },
     {
-      "row": "`reeve initiative create --title <title> --horizon <bucket> --brief <md> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json`",
-      "argv": ["initiative", "create", "--title", "Skill smoke second initiative", "--horizon", "Now", "--brief", "Created by the skill smoke.", "--owner", "{{email}}", "--target-month", "2027-03", "--idempotency-key", "planning-initiative:{{initiative.key}}:{{run_id}}:1", "--json"],
+      "row": "`reeve initiative create --title <title> --horizon <bucket> --brief-file <brief file> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json`",
+      "argv": ["initiative", "create", "--title", "Skill smoke second initiative", "--horizon", "Now", "--brief-file", "{{files.brief}}", "--owner", "{{email}}", "--target-month", "2027-03", "--idempotency-key", "planning-initiative:{{initiative.key}}:{{run_id}}:1", "--json"],
       "reads": ["value.key", "value.version"],
       "types": { "value.key": "string", "value.version": "number" }
     },
     {
-      "row": "`reeve initiative edit <KEY> [--brief <md>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json`",
+      "row": "`reeve initiative edit <KEY> [--brief-file <brief file>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json`",
       "bind": "initiative",
-      "argv": ["initiative", "edit", "{{initiative.key}}", "--brief", "Edited by the skill smoke.", "--version", "{{initiative.version}}", "--json"],
+      "argv": ["initiative", "edit", "{{initiative.key}}", "--brief-file", "{{files.brief}}", "--version", "{{initiative.version}}", "--json"],
       "reads": ["value.version"],
       "types": { "value.version": "number" }
     },
@@ -61,15 +61,15 @@
       "types": { "value[].key": "string", "value[].title": "string", "value[].initiative": "string|null" }
     },
     {
-      "row": "`reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key <key> --json`",
-      "argv": ["epic", "create", "--initiative", "{{initiative.key}}", "--title", "Skill smoke second epic", "--brief", "Created by the skill smoke.", "--idempotency-key", "planning-initiative:{{initiative.key}}:{{run_id}}:2", "--json"],
+      "row": "`reeve epic create --initiative <KEY> --title <title> --brief-file <brief file> --idempotency-key <key> --json`",
+      "argv": ["epic", "create", "--initiative", "{{initiative.key}}", "--title", "Skill smoke second epic", "--brief-file", "{{files.brief}}", "--idempotency-key", "planning-initiative:{{initiative.key}}:{{run_id}}:2", "--json"],
       "reads": ["value.key", "value.version"],
       "types": { "value.key": "string", "value.version": "number" }
     },
     {
-      "row": "`reeve epic edit <KEY> --brief <md> --version <n> --json`",
+      "row": "`reeve epic edit <KEY> --brief-file <brief file> --version <n> --json`",
       "bind": "epic",
-      "argv": ["epic", "edit", "{{epic.key}}", "--brief", "Edited by the skill smoke.", "--version", "{{epic.version}}", "--json"],
+      "argv": ["epic", "edit", "{{epic.key}}", "--brief-file", "{{files.brief}}", "--version", "{{epic.version}}", "--json"],
       "reads": ["value.version"],
       "types": { "value.version": "number" }
     },

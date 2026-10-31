@@ -20,26 +20,33 @@ stands for it.
 
 Put `--json` on every command, as the last argument (the real CLI takes it anywhere; these
 examples end with it). The CLI's other global flag, `--ascii`, only changes text output (each key's
-level glyph, such as `◆` for an initiative, becomes `[I]`), so the skills never pass it. Pass Markdown (a brief) or any text with spaces as one single-quoted
-argument with real newlines, `'\''` for an apostrophe, and no line whose first non-blank
-character is `#` (an indented `#` is refused too): write a heading in setext form, its title
-underlined with `---`. No value starts with `-` (the real CLI reads it as a flag; only
-`comment add --body` accepts one): open a brief, title or criterion with a word, not a bullet. No
-backticks and no `$(` in a value.
+level glyph, such as `◆` for an initiative, becomes `[I]`), so the skills never pass it.
+
+**Markdown goes through a file.** A brief or a story description is Markdown: write it to a file
+and pass the file, `--brief-file <brief file>` or `--description-file <description file>`, in
+place of `--brief` or `--description`. The CLI sends the file's contents unchanged, with no shell
+quoting in between, so headings (`## Vision`), apostrophes, backticks and a line starting with `-`
+are all safe. Write the file with the Write tool, never with a heredoc or `echo` in the Bash
+command (a heredoc carrying Markdown meets the permission check below), at an absolute path in a
+temporary directory: the session's scratchpad directory when it has one, else `/tmp`, named for
+the run and the item (`/tmp/reeve-<run_id>/GRA-12-brief.md`). `-` in place of the path reads
+standard input, for a script that pipes the text in.
 
 ```
-reeve epic create --initiative GRA-12 --title 'Matching queue' --brief 'Vision
-------
-Every mentee …
-
-Capabilities
-------------
-- …' --idempotency-key planning-initiative:GRA-12:0a1b2c3d:1 --json
+reeve epic create --initiative GRA-12 --title 'Matching queue' --brief-file /tmp/reeve-0a1b2c3d/matching-queue-brief.md --idempotency-key planning-initiative:GRA-12:0a1b2c3d:1 --json
 ```
+
+**Other values are one line, inline.** A title, a criterion, a comment body or a reason is one
+single-quoted argument on one line, `'\''` for an apostrophe, with no backticks and no `$(`. No
+value starts with `-` (the real CLI reads it as a flag; only `comment add --body` accepts one):
+open a title or criterion with a word, not a bullet. `--brief <md>` and `--description <text>`
+inline (*Other flags*) are for one line of plain text under these same rules; anything longer goes
+through the file.
 
 Claude Code's permission check cannot inspect ANSI-C quoting (`$'…'`) and refuses a quoted
-newline followed by `#`, indented or not; either one turns an allowed `Bash(reeve *)` call into a permission
-prompt, and into a refusal when nobody can answer it (`claude --print`, CI).
+newline followed by `#`, indented or not; either one turns an allowed `Bash(reeve *)` call into a
+permission prompt, and into a refusal when nobody can answer it (`claude --print`, CI). That is why
+a multi-line value never goes inline.
 
 ## Envelope and exit status
 
@@ -97,13 +104,13 @@ items; never derive a key from a title. Print the run id in the report.
 | `reeve initiative show <KEY> --json` | `value.brief`, `.horizon`, `.owner` (null = none), `.target_month` (a month such as 2027-03, null = none), `.external_ref` (null = none), `.discovery_complete` (null = not complete), `.version` |
 | `reeve initiative ls --json` | `value[]`: `key`, `title`, `horizon` |
 | `reeve search <text> --json` | `value[]`: `key`, `item` (initiative, epic or story), `kind` (null = not a story), `title`, `matched[]` (which of title, brief, description and external_ref contain the text); newest first, at most 50, empty when nothing matches |
-| `reeve initiative create --title <title> --horizon <bucket> --brief <md> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json` | `value.key`, `value.version`; a bucket the planner does not have is a `validation` error |
-| `reeve initiative edit <KEY> [--brief <md>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json` | `value.version` |
+| `reeve initiative create --title <title> --horizon <bucket> --brief-file <brief file> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json` | `value.key`, `value.version`; a bucket the planner does not have is a `validation` error |
+| `reeve initiative edit <KEY> [--brief-file <brief file>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json` | `value.version` |
 | `reeve initiative discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
 | `reeve epic show <KEY> --json` | `value.brief`, `.initiative`, `.discovery_complete`, `.version` |
 | `reeve epic ls [--initiative <KEY>] --json` | `value[]`: `key`, `title`, `initiative` |
-| `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key <key> --json` | `value.key`, `value.version` |
-| `reeve epic edit <KEY> --brief <md> --version <n> --json` | `value.version` |
+| `reeve epic create --initiative <KEY> --title <title> --brief-file <brief file> --idempotency-key <key> --json` | `value.key`, `value.version` |
+| `reeve epic edit <KEY> --brief-file <brief file> --version <n> --json` | `value.version` |
 | `reeve epic discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
 | `reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json` | `value[]`, `.finding`; empty when there are none (see *Findings*) |
 | `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version`. Untriaged: kind `story` with no epic (a bug or chore without one is not listed) |
@@ -150,9 +157,11 @@ the user asks for what it does, with the command written as shown.
 | `reeve initiative discovery <KEY> --reopen --version <n> --json` / `reeve epic discovery <KEY> --reopen --version <n> --json` | reopens discovery that was marked complete |
 | `reeve epic edit <KEY> --version <n> [--title <title>] [--initiative <KEY>] --json` | renames the epic or moves it to another initiative; `--no-initiative` in place of `--initiative` detaches it (a standalone epic) |
 | `reeve story ls [--owner <email>] [--delivery <delivery>] [--label <label>] [--ready] [--mine] --json` | filters the list: owner, delivery state (`todo`, `in-progress`, `in-review`, `testing`, `done`), label, `--ready` (ready stories still in todo), `--mine` (owned by the signed-in user) |
-| `reeve story create --epic <KEY> --title <title> --kind story --description <text> --label <label> --criterion <text> --idempotency-key <key> --json` | a story with a longer description and labels (`--label` repeats, one per label) |
+| `reeve story create --epic <KEY> --title <title> --kind story --description-file <description file> --label <label> --criterion <text> --idempotency-key <key> --json` | a story with a longer description (Markdown, through a file as *Arguments* says) and labels (`--label` repeats, one per label) |
 | `reeve story edit <KEY> --version <n> [--title <title>] [--criterion <text> …] [--rank <n>] --json` | renames the story, replaces ALL its criteria (one `--criterion` each; a criterion unchanged at the same position keeps its done flag) or sets its rank; `--no-epic` in place of `--epic` detaches it (it becomes untriaged) |
-| `reeve story edit <KEY> --version <n> [--description <text>] [--add-label <label> …] [--remove-label <label> …] --json` | replaces the whole description, or adds and removes labels (each repeats; a label the story already has is kept once) |
+| `reeve story edit <KEY> --version <n> [--description-file <description file>] [--add-label <label> …] [--remove-label <label> …] --json` | replaces the whole description (through a file), or adds and removes labels (each repeats; a label the story already has is kept once) |
+| `reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key <key> --json` / `reeve initiative edit <KEY> --brief <md> --version <n> --json` / `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key <key> --json` / `reeve epic edit <KEY> --brief <md> --version <n> --json` | a one-line brief inline, in place of `--brief-file` (one line, single-quoted, as *Arguments* says) |
+| `reeve story create --epic <KEY> --title <title> --kind story --description <text> --idempotency-key <key> --json` / `reeve story edit <KEY> --version <n> --description <text> --json` | a one-line description inline, in place of `--description-file` |
 | `reeve story edit <KEY> --version <n> --no-owner --json` | clears the story's owner (`--no-owner` in place of `--owner`) |
 | `reeve decision ls --mine --json` | the decisions the signed-in user is the decider of |
 
@@ -175,8 +184,8 @@ Any other `finding` is shown verbatim. Text-mode `show` lists the findings too.
 An item moved by hand from another tracker records the key it came from (a Jira key such as
 `PIB-30`), so a later `reeve import jira` finds that item instead of creating a duplicate.
 
-- On create: `reeve initiative create --title <title> --horizon <bucket> --brief <md> --external-ref <ref> --idempotency-key <key> --json`,
-  `reeve epic create --initiative <KEY> --title <title> --brief <md> --external-ref <ref> --idempotency-key <key> --json`,
+- On create: `reeve initiative create --title <title> --horizon <bucket> --brief-file <brief file> --external-ref <ref> --idempotency-key <key> --json`,
+  `reeve epic create --initiative <KEY> --title <title> --brief-file <brief file> --external-ref <ref> --idempotency-key <key> --json`,
   `reeve story create --epic <KEY> --title <title> --kind story --criterion <text> --external-ref <ref> --idempotency-key <key> --json`.
 - Set once on an item that has none: `reeve initiative edit <KEY> --version <v> --external-ref <ref> --json`,
   `reeve epic edit <KEY> --version <v> --external-ref <ref> --json`,

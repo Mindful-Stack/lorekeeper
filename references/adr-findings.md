@@ -18,9 +18,9 @@ closes `additionalProperties` and lists every property as required, so an option
 The major version is in the file name. A breaking change adds a `v2` file, and `verdict` accepts
 both until v1 is retired. Pin the schema through the plugin tag you check out.
 
-Version 3.4.0 added `behaviour-rule` to v1's `class` enum. Adding a class is not a breaking
+Version 3.5.0 added `behaviour-rule` to v1's `class` enum. Adding a class is not a breaking
 change: a reviewer on the older file never emits it. Update your prompt before adding behaviour
-docs, though: a pre-3.4.0 prompt attests a selected doc without checking its rules, and that is
+docs, though: a pre-3.5.0 prompt attests a selected doc without checking its rules, and that is
 a silent pass, not an exit 2.
 
 ```json

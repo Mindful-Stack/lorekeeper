@@ -1,8 +1,8 @@
 # Behaviour docs — design
 
 **Date:** 2026-10-09, amended 2026-10-13 to fit what shipped in 3.0.0 (#28) and the pilot doc,
-and 2026-10-30 with what Plan D settled (3.4.0) and the PR review's fail-closed decisions
-**Status:** approved design; Plan D is implemented in 3.4.0, Plan E (the skill) remains
+and 2026-10-30 with what Plan D settled (3.5.0) and the PR review's fail-closed decisions
+**Status:** approved design; Plan D is implemented in 3.5.0, Plan E (the skill) remains
 **Builds on:** `2026-10-07-adr-centred-workflow-design.md` (homes, `select`, the review check)
 **Touches:** `scripts/adr-lint.js` + `scripts/adr/` (`homes`, `check`, `select`, `index`),
 `agents/architect`, `agents/knowledge-updater`, `skills/reviewing-changes`, `skills/brainstorming`,
@@ -218,7 +218,7 @@ rules beside binding ADRs.
 
 ### Until the review check ships
 
-*Superseded by 3.4.0, which ships the review check; kept as the history of the interim process.*
+*Superseded by 3.5.0, which ships the review check; kept as the history of the interim process.*
 
 Nothing reads behaviour docs at review time before plan D's review step lands. Until then the
 household runs it as process: a PR that changes a documented behaviour lists the rule edits in its
@@ -287,7 +287,7 @@ Two implementation plans:
   (the tab-separated output is unchanged); and
   the `SEVERITY` table in `scripts/adr/verdict.js`, keyed by finding class, so this finding is
   one row. `check` reads each changed file at head and the patch's removed lines, with no
-  separate base read. Delivered in 3.4.0.
+  separate base read. Delivered in 3.5.0.
 - **E. The skill**: `documenting-behaviour` with `derive` (draft only), `edit` and `list`, the
   aliases, the knowledge-updater Type and the brainstorming question.
 

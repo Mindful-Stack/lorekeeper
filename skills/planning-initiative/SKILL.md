@@ -5,8 +5,8 @@ description: Use when the user asks to plan an initiative in the Reeve planner, 
 
 # Planning an initiative
 
-Discovery for one initiative in the Reeve planner: its brief, the required decisions with their
-deciders and drafted records, and its epics. Everything goes into the planner through the `reeve`
+Discovery for one initiative in the Reeve planner: its brief, the decisions already taken turned
+into records, the required decisions with their deciders and drafted records, and its epics. Everything goes into the planner through the `reeve`
 CLI. This skill writes no spec and no plan (kb/ADR-0005 R4).
 
 The plugin root is `${CLAUDE_PLUGIN_ROOT}`; below it is `<plugin-root>`, written out as an absolute
@@ -45,15 +45,23 @@ argument.
    the Reeve planner." Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints
    `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this
    session: <reason>." and stop; this skill has no fallback. Keep `bin` and `run_id`.
-1. **Read.** `reeve initiative show <KEY> --json` (keep `value.brief` and `value.version`),
-   `reeve decision ls --on <KEY> --json` and `reeve epic ls --initiative <KEY> --json`. If any of
-   them does not answer `ok`, stop the run: for `not_found` say "The planner has no initiative
+1. **Read.** `reeve initiative show <KEY> --json` (keep `value.brief`, `value.owner`,
+   `value.target_month` and `value.version`), `reeve initiative findings <KEY> --json`,
+   `reeve decision ls --on <KEY> --json` and `reeve epic ls --initiative <KEY> --json`. Quote the
+   findings to the user in the reference's *Findings* words (or "Findings: none"); they are
+   advisory, so a failed findings read is said and the run goes on. If any other read does not
+   answer `ok`, stop the run: for `not_found` say "The planner has no initiative
    <KEY>."; for `unauthenticated` or `forbidden` say it and tell the user to run `reeve auth login`;
    otherwise show the code and message. In parallel, dispatch the **knowledge-reader** with the
    initiative's title and "Prioritise domain context and architecture patterns.", and the
    **architect** in `survey` mode on the repositories the brief or the user names.
 2. **Discovery conversation**, following `<plugin-root>/skills/planning-initiative/reference/brief-template.md`:
-   the outcome, who it is for, what is known, what is open.
+   the outcome, who it is for, what is known (and what of it is a decision already taken), what is
+   open. When the initiative has no owner or no
+   target month, ask for each one that is missing: who owns it (an email) and which month it
+   targets (`YYYY-MM`). They come from the user (rule 4); an initiative may stay without either
+   when the user says so. In a session that cannot ask, take them from the request, or leave them
+   unset and say so in the report (not a stop).
 3. **Research.** For each open question from step 2 that research can answer (a library's limits,
    a vendor's API, how others solve the same problem), look it up: web search or documentation
    when the session has them, otherwise the knowledge base and the code. Say what you looked up
@@ -61,15 +69,28 @@ argument.
    `Researched: nothing — no open question is answerable by research`.
 4. **Brief.** Start from the existing `value.brief`: keep what still holds, fold in the answers,
    lay it out by the template, and show what changes. Write it only on a yes for this brief (rule
-   1): `reeve initiative edit <KEY> --brief <md> --version <version> --json`, the Markdown quoted as
-   the reference's Arguments section says (single quotes, real newlines, setext headings); keep the
-   new `value.version`.
+   1): `reeve initiative edit <KEY> [--brief <md>] [--owner <email>] [--target-month <YYYY-MM>] --version <version> --json`,
+   with `--owner` and `--target-month` only for a value step 2 gave (the user's answer is its
+   confirmation), and the Markdown quoted as the reference's Arguments section says (single
+   quotes, real newlines, setext headings); keep the new `value.version`. An owner or target month
+   with no brief change is the same command without `--brief`.
 5. **What already exists.** Show the decisions and epics step 1 found, each decision worded by the
    reference (open or closed, as its *Wording the planner's answers* section defines them) and, for each decision and
    epic the user's answers call for, whether an existing one already covers it (say which key or
    id). Steps 6 and 7 create only the ones that are not covered. A re-run on an initiative that
    already has them creates nothing unless the user asks for something new.
-6. **Required decisions.** For each open question that is a consequential choice blocking work
+6. **Decisions.** Triage by `<plugin-root>/references/decision-triage.md` (read it now): the
+   open questions from step 2, the Known knowns that are choices rather than facts, each choice
+   behind a `brief_cites_without_decision` finding from step 1, and every
+   finding of the architect's survey from step 1 (it finds the decisions already taken without a
+   record; use its output here). Show each candidate with its source and proposed outcome (a kind
+   of record by the household's ADR process, a required decision, closing an open required
+   decision with a reason, or leaving it) before anything is written, then carry out the outcomes
+   the user confirms as that reference says; each recorded decision gets its line under *Decisions*
+   in the brief (fold it into the step 4 brief, or edit the brief once more with the new
+   `version`). The rest of this step is the required-decision outcome.
+
+   For each open question that is a consequential choice blocking work
    (not a clarification) and has no decision yet: ask who decides and by when (the due date is
    optional: with none given, leave `--due` out), show and run
    `reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`,
@@ -104,10 +125,14 @@ argument.
 10. **Report.** Open with the step 0 sentence, then the plain lines `Run id: <run_id>` and the
    `Researched:` line, all unformatted (no bold, so they can be searched for; a non-interactive
    session shows only this report, not the announcement). Then every key written and every
-   existing key reused, and every proposal left unwritten; each required decision from the re-read
+   existing key reused, and every proposal left unwritten; the findings step 1 quoted; the
+   initiative's owner and target month
+   (or "no owner", "no target month"); each required decision from the re-read
    with its decider, due date and state worded by the reference ("no record", "proposed, PR open",
-   "closed: …"), plus the comment pointer when the record is only drafted; each epic from the
+   "closed: …"), plus the comment pointer when the record is only drafted; each triaged candidate
+   from step 6 with its outcome and record, or "proposed, not written"; each epic from the
    re-read. End with the next step: "refine an epic with refining-epic".
 
-`<n>` is one counter for the whole run, from 1, shared by decisions, comments and epics: every
+`<n>` is one counter for the whole run, from 1, shared by decisions, comments and epics (and the
+creates recording-decisions runs for this skill): every
 create takes the next number, and a retry of the same create reuses its number.

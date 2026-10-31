@@ -404,7 +404,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/checkout@v4
-        with: { repository: your-org/lorekeeper, ref: v3.4.0, path: _ci/lorekeeper }   # pin a tag, never main
+        with: { repository: your-org/lorekeeper, ref: v3.5.0, path: _ci/lorekeeper }   # pin a tag, never main
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: echo "LORE=$(realpath "$GITHUB_WORKSPACE/_ci/lorekeeper")" >> "$GITHUB_ENV"
@@ -415,7 +415,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      # check out the plugin (ref: v3.4.0, path: _ci/lorekeeper) as above, and the knowledge
+      # check out the plugin (ref: v3.5.0, path: _ci/lorekeeper) as above, and the knowledge
       # base (path: _ci/kb, i.e. $KNOWLEDGE_BASE_PATH) here
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
@@ -470,7 +470,7 @@ jobs:
 
 `/lore:review` runs the same gate locally.
 
-- **Pin a tag:** check out the plugin at a release tag (`ref: v3.4.0`), never `main`. The schema
+- **Pin a tag:** check out the plugin at a release tag (`ref: v3.5.0`), never `main`. The schema
   and `verdict` change only with the tag. A breaking findings change ships as a new
   `adr-findings.v<N>` schema file.
 - **`codex exec` needs `</dev/null`:** without it, it blocks waiting on stdin.
@@ -494,7 +494,7 @@ jobs:
 - **Fails closed:** a missing or invalid findings file, or a selected record the reviewer did not
   attest to, exits 2.
 - **Behaviour docs:** update the reviewer prompt first (see the starter prompt in
-  `references/adr-findings.md`): a prompt written before 3.4.0 attests a selected doc without
+  `references/adr-findings.md`): a prompt written before 3.5.0 attests a selected doc without
   checking its rules, which passes silently rather than exiting 2. The second `check` line
   validates the repo's behaviour home with the same flags (they change nothing for it); drop it
   in a repo that has none. A knowledge-base repo must run `check --home shared` on

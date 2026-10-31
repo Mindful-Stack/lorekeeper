@@ -78,7 +78,9 @@
                                             :in "" :continue true :env env}
                                      (concat ["claude" "--print" "--permission-mode" "default"
                                               "--allowedTools"] tools
-                                             ["--disallowedTools"] disallowed-tools
+                                             ;; a tool the scenario allows lifts the base denial of the same tool
+                                             ;; (the reeve skills write briefs and plans with Write)
+                                             ["--disallowedTools"] (remove (set (:allowed-tools scenario)) disallowed-tools)
                                              (when plugin-dir ["--plugin-dir" plugin-dir])
                                              ["--" prompt]))
             output (str out err)

@@ -25,9 +25,9 @@ test('--version names the fake planner and is not logged (the SessionStart hook 
   assert.equal(r.log, '');
 });
 test('a flag the real CLI lacks is a usage error: no envelope, text on stderr, exit 1', () => {
-  const r = run(['epic', 'edit', 'GRA-20', '--brief-file', 'brief.md', '--version', '2', '--json']);
+  const r = run(['epic', 'edit', 'GRA-20', '--brief-url', 'https://example.com/brief', '--version', '2', '--json']);
   assert.deepEqual([r.status, r.stdout], [1, '']);
-  assert.match(r.stderr, /unexpected argument '--brief-file'/);
+  assert.match(r.stderr, /unexpected argument '--brief-url'/);
 });
 test('a value starting with - is a usage error, except comment add --body', () => {
   for (const args of [
@@ -211,4 +211,145 @@ test('story context of a created story bundles its created initiative and the op
 test('story context leaves a closed decision out of the bundle', () => {
   const { value } = run(['story', 'context', 'GRA-31', '--json']).envelope;
   assert.deepEqual(value.required_decisions.map((d) => d.id), [7]); // #8 on GRA-20 is closed
+});
+test('search finds items by title, brief, description or external reference, newest first; several words are one phrase', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => JSON.parse(spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } }).stdout);
+  call(['epic', 'create', '--initiative', 'GRA-12', '--title', 'Queue alerts', '--brief', 'Alert on a stuck MATCHING queue.', '--idempotency-key', KEY, '--json']);
+  const hits = call(['search', 'matching', 'queue', '--json']).value;
+  assert.deepEqual(hits.map((h) => [h.key, h.item, h.kind, h.matched]), [['GRA-100', 'epic', null, ['brief']], ['GRA-20', 'epic', null, ['title']]]);
+  assert.deepEqual(call(['search', 'match', '--json']).value.map((h) => h.key).slice(0, 2), ['GRA-100', 'GRA-46']);
+  assert.equal(call(['search', 'Retry failed', '--json']).value[0].kind, 'story');
+  assert.deepEqual(call(['search', 'nothing like this', '--json']).value, []);
+  assert.equal(run(['search', '--json']).status, 1); // the text is required
+});
+test('a story owner is set on create and edit, cleared by --no-owner, and must be an allowed user', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } });
+  const made = JSON.parse(call(['story', 'create', '--epic', 'GRA-20', '--title', 'Owned', '--owner', 'sam@example.com', '--idempotency-key', KEY, '--json']).stdout).value;
+  assert.equal(made.owner, 'sam@example.com');
+  const edited = JSON.parse(call(['story', 'edit', made.key, '--version', '1', '--owner', 'dan@example.com', '--json']).stdout).value;
+  assert.equal(edited.owner, 'dan@example.com');
+  assert.equal(JSON.parse(call(['story', 'edit', made.key, '--version', '2', '--no-owner', '--json']).stdout).value.owner, null);
+  const refused = call(['story', 'edit', 'GRA-31', '--version', '1', '--owner', 'nobody@example.com', '--json']);
+  assert.deepEqual([refused.status, JSON.parse(refused.stdout).code], [1, 'validation']);
+  assert.equal(call(['story', 'edit', 'GRA-31', '--version', '1', '--owner', 'dan@example.com', '--no-owner', '--json']).status, 1); // clap: they conflict
+});
+test('comment add --item comments on an initiative, an epic or a story (--story is its alias); comment ls lists the thread', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } });
+  const add = (flag, on, n) => JSON.parse(call(['comment', 'add', flag, on, '--body', `on ${on}`, '--idempotency-key', `refining-epic:GRA-20:0a1b2c3d:${n}`, '--json']).stdout).value;
+  assert.deepEqual(add('--item', 'GRA-12', 1).map((c) => [c.on_initiative, c.on_epic, c.on_story, c.on_decision]), [['GRA-12', null, null, null]]);
+  assert.equal(add('--item', 'GRA-20', 2)[0].on_epic, 'GRA-20');
+  assert.equal(add('--story', 'GRA-31', 3)[0].on_story, 'GRA-31');
+  assert.equal(add('--decision', '7', 4)[0].on_decision, 7);
+  assert.equal(add('--item', 'GRA-20', 5).length, 2, 'the answer is the whole thread');
+  const ls = (flag, on) => JSON.parse(call(['comment', 'ls', flag, on, '--json']).stdout).value.map((c) => c.body);
+  assert.deepEqual(ls('--item', 'GRA-20'), ['on GRA-20', 'on GRA-20']);
+  assert.deepEqual(ls('--item', 'GRA-13'), []);
+  assert.deepEqual(ls('--decision', '7'), ['on 7']);
+  assert.ok(JSON.parse(call(['story', 'context', 'GRA-31', '--json']).stdout).value.comments.some((c) => c.body === 'on GRA-31'));
+  assert.equal(JSON.parse(call(['comment', 'ls', '--item', 'GRA-999', '--json']).stdout).code, 'not_found');
+  assert.equal(call(['comment', 'ls', '--item', 'GRA-20', '--decision', '7', '--json']).status, 1);
+  assert.equal(call(['comment', 'ls', '--json']).status, 1);
+});
+test('decision ls --initiative lists every decision on the initiative, its epics and their stories, each with on_type', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } });
+  const require = (on, n) => call(['decision', 'require', '--on', on, '--title', `on ${on}`, '--decider', 'dan@example.com', '--idempotency-key', `planning-initiative:GRA-12:0a1b2c3d:${n}`, '--json']);
+  require('GRA-12', 1);
+  require('GRA-31', 2);
+  require('GRA-13', 3); // another initiative
+  const listed = JSON.parse(call(['decision', 'ls', '--initiative', 'GRA-12', '--json']).stdout).value;
+  assert.deepEqual(listed.map((d) => [d.on, d.on_type]), [['GRA-20', 'epic'], ['GRA-20', 'epic'], ['GRA-12', 'initiative'], ['GRA-31', 'story']]);
+  assert.equal(JSON.parse(call(['decision', 'ls', '--initiative', 'GRA-999', '--json']).stdout).code, 'not_found');
+  assert.equal(call(['decision', 'ls', '--on', 'GRA-20', '--initiative', 'GRA-12', '--json']).status, 1);
+});
+test('a link to a repository the planner does not check yet is stored, exits 0, and gates readiness as decision_repo_not_configured', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args, env = {}) => {
+    const r = spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log, ...env } });
+    return { status: r.status, stderr: r.stderr, ...JSON.parse(r.stdout) };
+  };
+  const link = ['decision', 'link', '7', '--record', 'web/ADR-0001', '--repo', 'web', '--path', 'docs/adr/0001-x.md', '--pr', 'https://github.com/example/web/pull/3', '--json'];
+  const r = call(link, { REEVE_FAKE_LINK_CHECK: 'repo_not_configured' });
+  assert.deepEqual([r.status, r.outcome, r.value.check.kind, r.immediate_check.outcome], [0, 'ok', 'unchecked', 'repo_not_configured']);
+  assert.match(r.stderr, /^decision 7: linked; its repository is not configured/);
+  assert.equal(call(['decision', 'show', '7', '--json']).value.record.repo, 'web');
+  assert.ok(call(['story', 'ls', '--epic', 'GRA-20', '--json']).value[0].readiness.reasons.some((x) => x.reason === 'decision_repo_not_configured' && x.decision_id === 7));
+  // A link whose check ran says so beside the decision.
+  assert.deepEqual(call(link).immediate_check, { id: 7, outcome: 'stored', check: { kind: 'proposed_pr_open' } });
+  assert.ok(!call(['story', 'ls', '--epic', 'GRA-20', '--json']).value[0].readiness.reasons.some((x) => x.reason === 'decision_repo_not_configured'));
+});
+test('--brief-file and --description-file send the file unchanged; - reads stdin; an unreadable file reaches nothing', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-'));
+  const log = path.join(dir, 'log');
+  const md = "## Vision\n\n- Mentees aren't left waiting: `match` within a day.\n--- not a flag\n";
+  fs.writeFileSync(path.join(dir, 'brief.md'), md);
+  const call = (args, input) => spawnSync(fake, args, { encoding: 'utf8', input, env: { ...process.env, REEVE_FAKE_LOG: log } });
+  const epic = JSON.parse(call(['epic', 'create', '--initiative', 'GRA-12', '--title', 'A', '--brief-file', path.join(dir, 'brief.md'), '--idempotency-key', KEY, '--json']).stdout).value;
+  assert.equal(epic.brief, md);
+  assert.equal(JSON.parse(call(['epic', 'edit', epic.key, '--brief-file', '-', '--version', '1', '--json'], md.toUpperCase()).stdout).value.brief, md.toUpperCase());
+  const story = JSON.parse(call(['story', 'create', '--title', 'S', '--description-file', '-', '--idempotency-key', 'refining-epic:GRA-20:0a1b2c3d:2', '--json'], md).stdout).value;
+  assert.equal(story.description, md);
+  const before = fs.readFileSync(log, 'utf8');
+  const missing = call(['initiative', 'edit', 'GRA-12', '--brief-file', path.join(dir, 'nope.md'), '--version', '3', '--json']);
+  assert.deepEqual([missing.status, JSON.parse(missing.stdout).code], [1, 'internal']);
+  assert.equal(fs.readFileSync(log, 'utf8'), before, 'not logged');
+  assert.equal(call(['epic', 'edit', 'GRA-20', '--brief', 'x', '--brief-file', '-', '--version', '2', '--json'], 'y').status, 1); // they conflict
+});
+test('apply creates a plan in one call: names resolve in the plan, else to existing keys; the same plan again creates nothing', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-'));
+  const log = path.join(dir, 'log');
+  const call = (args, input) => { const r = spawnSync(fake, args, { encoding: 'utf8', input, env: { ...process.env, REEVE_FAKE_LOG: log } }); return { status: r.status, stderr: r.stderr, ...(r.stdout ? JSON.parse(r.stdout) : {}) }; };
+  const plan = {
+    id: 'refining-epic:GRA-20:0a1b2c3d:1',
+    initiatives: [{ name: 'billing', title: 'Employer billing', horizon: 'Later', brief: '## Vision\n\nEmployers pay.' }],
+    epics: [{ name: 'invoices', title: 'Invoices', initiative: 'billing', brief: 'Invoice employers.' }],
+    stories: [
+      { name: 'enqueue', title: 'Enqueue match requests', epic: 'GRA-20', criteria: ['a new request is queued', 'a repeat is queued once'] },
+      { name: 'process', title: 'Process the match queue', epic: 'GRA-20', criteria: ['oldest first'] },
+      { name: 'invoice', title: 'Send an invoice', epic: 'invoices', criteria: ['an invoice is sent'] },
+    ],
+    decisions: [{ name: 'retry', on: 'enqueue', title: 'Retry or drop', decider: 'dan@example.com', due: '2026-11-15' }],
+    blocks: [{ story: 'process', blocked_by: 'enqueue' }],
+  };
+  fs.writeFileSync(path.join(dir, 'plan.json'), JSON.stringify(plan, null, 2));
+  const first = call(['apply', path.join(dir, 'plan.json'), '--json']);
+  assert.equal(first.status, 0);
+  assert.deepEqual(first.value.items.map((i) => [i.name, i.item, i.created]), [['billing', 'initiative', true], ['invoices', 'epic', true], ['enqueue', 'story', true], ['process', 'story', true], ['invoice', 'story', true]]);
+  const key = Object.fromEntries(first.value.items.map((i) => [i.name, i.key]));
+  assert.deepEqual(first.value.decisions.map((d) => [d.name, d.created]), [['retry', true]]);
+  assert.deepEqual(first.value.blocks, [{ story: key.process, blocked_by: key.enqueue, created: true }]);
+  assert.match(fs.readFileSync(log, 'utf8'), /^apply \S+plan\.json --json \{"id":"refining-epic:GRA-20:0a1b2c3d:1",.*"title":"Enqueue match requests"/m);
+  // The plan's items are there for later reads.
+  assert.equal(call(['epic', 'show', key.invoices, '--json']).value.initiative, key.billing);
+  const listed = call(['story', 'ls', '--epic', 'GRA-20', '--json']).value.find((x) => x.story.key === key.process);
+  assert.ok(listed.readiness.reasons.some((r) => r.reason === 'blocked_by' && r.story === key.enqueue));
+  assert.deepEqual(call(['decision', 'ls', '--on', key.enqueue, '--json']).value.map((d) => [d.title, d.on_type, d.due]), [['Retry or drop', 'story', '2026-11-15']]);
+  // The same plan again, from stdin: the same keys, nothing created.
+  const again = call(['apply', '-', '--json'], JSON.stringify(plan));
+  assert.deepEqual(again.value.items.map((i) => [i.key, i.created]), first.value.items.map((i) => [i.key, false]));
+  assert.deepEqual([again.value.decisions[0].created, again.value.blocks[0].created], [false, false]);
+});
+test('apply validates the whole plan first and reports every problem at once; an unknown field never reaches the planner', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-'));
+  const log = path.join(dir, 'log');
+  const apply = (plan) => { const r = spawnSync(fake, ['apply', '-', '--json'], { encoding: 'utf8', input: JSON.stringify(plan), env: { ...process.env, REEVE_FAKE_LOG: log } }); return { status: r.status, ...JSON.parse(r.stdout) }; };
+  const bad = apply({
+    id: 'p',
+    epics: [{ name: 'GRA-77', title: 'Key-shaped' }, { name: 'dup', title: 'One' }, { name: 'dup', title: 'Two', initiative: 'GRA-20' }],
+    stories: [{ name: 's', title: 'S', epic: 'nowhere' }],
+    blocks: [{ story: 's', blocked_by: 's' }],
+  });
+  assert.deepEqual([bad.status, bad.code], [1, 'validation']);
+  for (const want of ['"GRA-77" looks like a key', '"dup" is used twice', 'initiative "GRA-20" is neither a name in the plan nor an existing initiative', 'epic "nowhere" is neither', 'a story cannot block itself']) assert.ok(bad.message.includes(want), `${want} in ${bad.message}`);
+  assert.equal(apply({ id: 'p', initiatives: [{ name: 'x', title: 'X', horizon: 'Someday' }] }).code, 'validation');
+  const before = fs.readFileSync(log, 'utf8');
+  const typo = apply({ id: 'p', stories: [{ name: 's', title: 'S', colour: 'red' }] });
+  assert.deepEqual([typo.status, typo.code], [1, 'internal']);
+  assert.match(typo.message, /stories\[0\]: unknown field `colour`/);
+  assert.equal(fs.readFileSync(log, 'utf8'), before, 'not logged');
+  const r = spawnSync(fake, ['apply', '-', '--json'], { encoding: 'utf8', input: 'id: p\n', env: { ...process.env, REEVE_FAKE_LOG: log } });
+  assert.match(JSON.parse(r.stdout).message, /JSON plans only/);
 });

@@ -16,8 +16,8 @@ path in every Bash command. Read `<plugin-root>/references/reeve-cli.md` before 
 call: commands, flags, exit statuses, idempotency keys and wording come from there. Invoke
 `${REEVE_BIN:-reeve}` as that reference says: the detector's `bin` as the first word. Every
 command below is copied from the reference, flags in the order shown and `--json` the last
-argument; a brief or a criterion is one single-quoted argument as the reference's Arguments
-section says.
+argument; a brief goes through a file (`--brief-file`), and a title or a criterion is one
+single-quoted argument on one line, as the reference's Arguments section says.
 
 ## The rule
 
@@ -36,8 +36,8 @@ section says.
    `reeve auth login`. Any other refused or failed write skips that one item (that story,
    placement, decision or comment): show the reasons or the message, go on with the next item,
    and list what was skipped in the report.
-4. **The user decides.** Deciders, due dates, applying a record, a story's home and the discovery
-   mark come from the user, never from you; you propose.
+4. **The user decides.** Deciders, due dates, applying a record, a story's home, a story's owner
+   and the discovery mark come from the user, never from you; you propose.
 5. **Build on what is there.** The planner may already hold a brief, decisions and stories for
    this epic. Reuse them; create only what the user's answers add. Whether an existing item covers
    what the user asked for is your judgment in the conversation, shown to the user, never a rule
@@ -63,7 +63,9 @@ section says.
    `reeve story ls --epic <EPIC> --json`, `reeve story ls --untriaged --json`,
    `reeve epic ls --json` and `reeve initiative ls --json`. Quote the findings to the user in the
    reference's *Findings* words (or "Findings: none"); they are advisory, so a failed findings read
-   is said and the run goes on. If any other read does not answer `ok`, stop the run: for
+   is said and the run goes on. Read the epic's comments too, `reeve comment ls --item <EPIC> --json`:
+   the discussion is context for step 2, and a failed comment read is likewise said and the run
+   goes on. If any other read does not answer `ok`, stop the run: for
    `not_found` say "The planner has no epic <EPIC>." (or the item it names); for `unauthenticated` or `forbidden` say it and tell the user to run `reeve auth login`;
    otherwise show the code and message. In parallel, dispatch the **knowledge-reader** with the
    epic's title and "Prioritise domain context and architecture patterns.", and the **architect**
@@ -78,7 +80,8 @@ section says.
    and show what changes; decisions already taken go under a *Decisions* heading, one line each
    naming its record, as `<plugin-root>/skills/planning-initiative/reference/brief-template.md`
    lays it out. Write it only on a yes for this brief (rule 1):
-   `reeve epic edit <EPIC> --brief <md> --version <version> --json`; keep the new `value.version`.
+   write the Markdown to a file with the Write tool, then
+   `reeve epic edit <EPIC> --brief-file <brief file> --version <version> --json`; keep the new `value.version`.
 5. **Decisions.** Show the decisions step 1 found, worded by the reference; the open
    ones (as its *Wording the planner's answers* section defines them; a closed decision never is)
    go into the report. Then triage by `<plugin-root>/references/decision-triage.md` (read it
@@ -106,10 +109,15 @@ section says.
    says is not needed is never required.
 6. **Stories.** Propose stories, each finishable by one person or one agent session, each with
    2–6 acceptance criteria written as observable outcomes, leaving out what an existing story
-   from step 1 already covers (say which key). Show them, and write the ones confirmed as rule 1
-   says (stories and criteria the request names are confirmed by it); for each
-   `reeve story create --epic <EPIC> --title <title> --kind story --criterion <text> --criterion <text> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
-   one `--criterion` per criterion.
+   from step 1 already covers (say which key). Show them; the ones confirmed as rule 1 says
+   (stories and criteria the request names are confirmed by it) are written in step 7's last
+   bullet, together with the new epics and initiatives the placement tree confirms. Each is a
+   plan story `{"name": "<name>", "title": "<title>", "kind": "story", "epic": "<EPIC>", "criteria": ["<text>", …]}`
+   (a longer description goes in `description`, Markdown as written). When the user names who
+   owns a story, set it once the story exists (a plan carries no owner):
+   `reeve story edit <KEY> --version 1 --owner <email> --json` for a story the plan just created
+   (an owner who is not an allowed user is a `validation` error: show it and leave the story
+   unowned); otherwise leave the story unowned.
 7. **Placement tree.** For each story from `story ls --untriaged`, classify it, propose its home
    with the branch that led there, and write it on a confirmation as rule 1 says ("place the
    untriaged stories" names the `story edit`s; `<v>` is the story's `version` from the listing;
@@ -124,22 +132,36 @@ section says.
      not name the change yet.
      1. an epic covers it (this one, or one from `epic ls`):
         `reeve story edit <KEY> --version <v> --epic <COVERING-EPIC> --json`;
-     2. else an initiative covers it, but none of its epics does: a new epic under it,
-        `reeve epic create --initiative <COVERING-INITIATIVE> --title <title> --brief <md> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
-        then `reeve story edit <KEY> --version <v> --epic <new epic> --json`;
-     3. else a new initiative, proposed in the last horizon bucket before "Won't do":
-        `reeve initiative create --title <title> --horizon <bucket> --brief <md> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
-        an epic under it as in 2, then the `story edit`. The CLI does not list the buckets: ask for
-        them (offering the horizons seen in `initiative ls`), or take them from the request. Ask
-        who owns the new initiative (an email) and which month it targets (`YYYY-MM`), or take
-        them from the request; pass only the ones given (never guess an owner), and name the
-        missing ones in the report.
+     2. else an initiative covers it, but none of its epics does: a new epic under it, a plan epic
+        `{"name": "<name>", "title": "<title>", "initiative": "<COVERING-INITIATIVE>", "brief": "<md>"}`,
+        then, once the plan is applied, `reeve story edit <KEY> --version <v> --epic <new epic> --json`;
+     3. else a new initiative, proposed in the last horizon bucket before "Won't do": a plan
+        initiative `{"name": "<name>", "title": "<title>", "horizon": "<bucket>", "brief": "<md>"}`
+        (with `"owner"` and `"target_month"` only when given), a plan epic under it as in 2 (its
+        `initiative` is the initiative's name), then the `story edit`. The CLI does not list the
+        buckets: ask for them (offering the horizons seen in `initiative ls`), or take them from
+        the request. Ask who owns the new initiative (an email) and which month it targets
+        (`YYYY-MM`), or take them from the request; pass only the ones given (never guess an
+        owner), and name the missing ones in the report.
 
+     Before proposing a new epic or initiative (2 or 3), search for it
+     (`reeve search <text> --json`, as the reference's *Search before creating* says): a hit that
+     covers the story is its home by 1 or 2 instead; say which key.
      For 2 and 3, show the proposed title, brief (and horizon) and create them only on a
      confirmation for that story; in a session that cannot ask, only when the request names that
      create. Otherwise create nothing for it and leave it untriaged with the proposal:
-     `reeve comment add --story <KEY> --body 'Proposed home: <the new epic or initiative, its title and where it goes>' --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
+     `reeve comment add --item <KEY> --body 'Proposed home: <the new epic or initiative, its title and where it goes>' --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
    - **Won't do**, or the user says "leave it untriaged": write nothing for it.
+   - **Write.** Everything step 6 and this step confirmed for creating goes into ONE plan, as the
+     reference's *Plans* section says: write it as JSON to a file with the Write tool, its `id`
+     `refining-epic:<EPIC>:<run_id>:<n>`, and run `reeve apply <plan file> --json` once. Then run
+     the placements' `story edit`s, a new home's key read from `value.items[]` by its name. When
+     the run creates exactly one item (one story, no new home), its single create does instead:
+     `reeve story create --epic <EPIC> --title <title> --kind story --criterion <text> --criterion <text> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
+     one `--criterion` per criterion (`--owner <email>` before `--idempotency-key` when the user
+     named one). A refused plan writes nothing: show every problem the `validation` message
+     lists and apply again only as the reference says; a placement whose new home the plan did
+     not create is left untriaged and reported as skipped.
 8. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
    only on yes run `reeve epic discovery <EPIC> --complete --version <latest version> --json`.
    No answer in a session that cannot ask leaves discovery open (not a stop: nothing is written).
@@ -164,5 +186,6 @@ section says.
      abbreviate them as "the shared reasons" or "as above".
    End with the next step: "pick a ready story and brainstorm it".
 
-`<n>` is one counter for the whole run, from 1, shared by decisions, comments, stories, epics and
-initiatives: every create takes the next number, and a retry of the same create reuses its number.
+`<n>` is one counter for the whole run, from 1, shared by decisions, comments, the plan and any
+single create: every create (and the plan, as one) takes the next number, and a retry of the same
+create or plan reuses its number.

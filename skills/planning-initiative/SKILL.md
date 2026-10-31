@@ -47,9 +47,12 @@ argument.
    session: <reason>." and stop; this skill has no fallback. Keep `bin` and `run_id`.
 1. **Read.** `reeve initiative show <KEY> --json` (keep `value.brief`, `value.owner`,
    `value.target_month` and `value.version`), `reeve initiative findings <KEY> --json`,
-   `reeve decision ls --on <KEY> --json` and `reeve epic ls --initiative <KEY> --json`. Quote the
+   `reeve decision ls --initiative <KEY> --json` (every decision on the initiative, on its epics and
+   on their stories, each with `on` and `on_type`) and `reeve epic ls --initiative <KEY> --json`. Quote the
    findings to the user in the reference's *Findings* words (or "Findings: none"); they are
-   advisory, so a failed findings read is said and the run goes on. If any other read does not
+   advisory, so a failed findings read is said and the run goes on. Read the initiative's
+   comments too, `reeve comment ls --item <KEY> --json`: the discussion is context for step 2,
+   and a failed comment read is likewise said and the run goes on. If any other read does not
    answer `ok`, stop the run: for `not_found` say "The planner has no initiative
    <KEY>."; for `unauthenticated` or `forbidden` say it and tell the user to run `reeve auth login`;
    otherwise show the code and message. In parallel, dispatch the **knowledge-reader** with the
@@ -69,13 +72,14 @@ argument.
    `Researched: nothing — no open question is answerable by research`.
 4. **Brief.** Start from the existing `value.brief`: keep what still holds, fold in the answers,
    lay it out by the template, and show what changes. Write it only on a yes for this brief (rule
-   1): `reeve initiative edit <KEY> [--brief <md>] [--owner <email>] [--target-month <YYYY-MM>] --version <version> --json`,
+   1): write the Markdown to a file with the Write tool, as the reference's Arguments section says,
+   then `reeve initiative edit <KEY> [--brief-file <brief file>] [--owner <email>] [--target-month <YYYY-MM>] --version <version> --json`,
    with `--owner` and `--target-month` only for a value step 2 gave (the user's answer is its
-   confirmation), and the Markdown quoted as the reference's Arguments section says (single
-   quotes, real newlines, setext headings); keep the new `value.version`. An owner or target month
-   with no brief change is the same command without `--brief`.
-5. **What already exists.** Show the decisions and epics step 1 found, each decision worded by the
-   reference (open or closed, as its *Wording the planner's answers* section defines them) and, for each decision and
+   confirmation); keep the new `value.version`. An owner or target month with no brief change is
+   the same command without `--brief-file`.
+5. **What already exists.** Show the decisions and epics step 1 found, each decision with the item
+   it is on (`on`, and `on_type`: the initiative itself, one of its epics or a story under one)
+   and worded by the reference (open or closed, as its *Wording the planner's answers* section defines them) and, for each decision and
    epic the user's answers call for, whether an existing one already covers it (say which key or
    id). Steps 6 and 7 create only the ones that are not covered. A re-run on an initiative that
    already has them creates nothing unless the user asks for something new.
@@ -111,14 +115,23 @@ argument.
       so the decision's thread in the planner carries the pointer. Never link or apply a record
       the user did not say to apply.
 7. **Epics.** Propose 2–5 epics, each a deliverable slice with a one-paragraph brief, leaving out
-   those step 5 found covered; show them, and write the ones confirmed as rule 1 says (epics and
-   briefs the request names are confirmed by it); for each
-   `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`.
-   Each epic gets its own `<n>`.
+   those step 5 found covered. Before proposing a new one, search for it
+   (`reeve search <text> --json`, as the reference's *Search before creating* says): an epic
+   elsewhere, even under another initiative, may already cover it; say which key and reuse it
+   rather than duplicate it. Show them, and write the ones confirmed as rule 1 says (epics and
+   briefs the request names are confirmed by it). Two or more go into ONE plan, as the
+   reference's *Plans* section says: plan epics
+   `{"name": "<name>", "title": "<title>", "initiative": "<KEY>", "brief": "<md>"}`, written as
+   JSON to a file with the Write tool, the plan's `id` `planning-initiative:<KEY>:<run_id>:<n>`,
+   then `reeve apply <plan file> --json` once; read each epic's key from `value.items[]` by its
+   name. A single epic is its single create, its brief written to a file first:
+   `reeve epic create --initiative <KEY> --title <title> --brief-file <brief file> --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`.
+   A refused plan writes nothing: show every problem the `validation` message lists and apply
+   again only as the reference says.
 8. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
    only on yes run `reeve initiative discovery <KEY> --complete --version <latest version> --json`.
    No answer in a session that cannot ask leaves discovery open (not a stop: nothing is written).
-9. **Re-read.** After the last write, run `reeve decision ls --on <KEY> --json` and
+9. **Re-read.** After the last write, run `reeve decision ls --initiative <KEY> --json` and
    `reeve epic ls --initiative <KEY> --json` again. The report states what these return, not what
    you remember writing. If a re-read fails, say so and list the writes with their own responses,
    marked unverified.
@@ -128,11 +141,11 @@ argument.
    existing key reused, and every proposal left unwritten; the findings step 1 quoted; the
    initiative's owner and target month
    (or "no owner", "no target month"); each required decision from the re-read
-   with its decider, due date and state worded by the reference ("no record", "proposed, PR open",
+   with the item it is on, its decider, due date and state worded by the reference ("no record", "proposed, PR open",
    "closed: …"), plus the comment pointer when the record is only drafted; each triaged candidate
    from step 6 with its outcome and record, or "proposed, not written"; each epic from the
    re-read. End with the next step: "refine an epic with refining-epic".
 
-`<n>` is one counter for the whole run, from 1, shared by decisions, comments and epics (and the
-creates recording-decisions runs for this skill): every
-create takes the next number, and a retry of the same create reuses its number.
+`<n>` is one counter for the whole run, from 1, shared by decisions, comments, the plan and any
+single create (and the creates recording-decisions runs for this skill): every create (and the
+plan, as one) takes the next number, and a retry of the same create or plan reuses its number.

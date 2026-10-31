@@ -101,7 +101,7 @@ Skills that drive the Reeve planner are tested against a fake `reeve` CLI,
 |---|---|
 | `:requires ["reeve-fake"]` | Runs only when the runner is invoked with `--with reeve-fake`; otherwise printed as `[SKIP]` and not counted. Such a scenario gets `<checkout>/test/fixtures/reeve-bin` first on `PATH` and a fresh empty `REEVE_FAKE_LOG` file for each run (also each `--runs` repeat). |
 | `:env {"NAME" "value"}` | Merged last into the child's environment (the link scenario sets `REEVE_FAKE_LINK_CHECK`). |
-| `:allowed-tools [...]` | Added to the base allow-list; reeve scenarios add `"Bash(reeve *)"` (`Bash(node *)` is already in the base list). |
+| `:allowed-tools [...]` | Added to the base allow-list, and lifts the base deny-list's entry for the same tool; reeve scenarios that write add `"Bash(reeve *)"` and `"Write"` (the skills write briefs and plans to a temporary file and pass it by path; `Bash(node *)` is already in the base list). |
 | `:log-expects [...]` / `:log-rejects [...]` | Regexes matched, multiline (`(?m)` prepended), against the fake log after the run; failures print as `log: <regex>`. Positive evidence that a command was executed, which a transcript match cannot give. |
 
 **Environment.** Every scenario, fake or not, runs with a fresh empty `REEVE_CONFIG_DIR` and

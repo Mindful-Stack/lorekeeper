@@ -41,6 +41,15 @@ function commandRows(markdown) {
 
 const flagsIn = (text) => [...new Set(text.match(/--[a-z][a-z-]*/g) || [])];
 const runsOf = (entry) => [entry.argv, ...(entry.alternates || [])];
+// A command's words: one (`search`, `apply`) or two (`story ls`), the leading words before a placeholder or a flag.
+function commandWords(text) {
+  const out = [];
+  for (const w of text.trim().split(/\s+/)) {
+    if (out.length === 2 || w.startsWith('<') || w.startsWith('-')) break;
+    out.push(w);
+  }
+  return out.join(' ');
+}
 
 // The command forms a row names: every `reeve …` span is one (its required flags are those outside `[…]`), and an
 // "(or `--flag <V>`)" suffix is the form before it with its first flag replaced by --flag (`comment add --story`).
@@ -49,7 +58,7 @@ function formsOf(row) {
   const forms = [];
   for (const m of row.matchAll(/`reeve ([^`]*)`|\(or `(--[a-z][a-z-]*)([^`]*)`\)/g)) {
     if (m[1] !== undefined) {
-      forms.push({ label: m[1], words: m[1].split(' ').slice(0, 2).join(' '), required: flagsIn(m[1].replace(/\[[^\]]*\]/g, '')) });
+      forms.push({ label: m[1], words: commandWords(m[1]), required: flagsIn(m[1].replace(/\[[^\]]*\]/g, '')) });
     } else {
       const base = forms[forms.length - 1];
       forms.push({ label: `${base.words} ${m[2]}${m[3]}`, words: base.words, required: [m[2], ...base.required.slice(1)] });
@@ -173,7 +182,7 @@ function coverageProblems(rows, fixture) {
     for (const argv of runsOf(e)) {
       const shown = `"${argv.join(' ')}"`;
       const has = new Set(argv.filter((a) => a.startsWith('--')));
-      const match = forms.flatMap((f, i) => (f.words === argv.slice(0, 2).join(' ') && f.required.every((x) => has.has(x)) ? [i] : []));
+      const match = forms.flatMap((f, i) => (f.words === argv.slice(0, f.words.split(' ').length).join(' ') && f.required.every((x) => has.has(x)) ? [i] : []));
       if (match.length !== 1) problems.push(`${e.row}: run ${shown} matches ${match.length} of the row's forms (want exactly 1)`);
       else hits[match[0]] += 1;
       if (argv[argv.length - 1] !== '--json') problems.push(`${e.row}: run ${shown} must end with --json`);
@@ -359,4 +368,4 @@ function runSmoke({ fixture, real, fake, scope, expect = true, out }) {
   return results;
 }
 
-module.exports = { runSmoke, typeOf, envelopeOf, commandRows, formsOf, readPaths, coverageProblems, runsOf, bind, walk, realProblems, fakeProblems, liveConfig };
+module.exports = { runSmoke, commandWords, typeOf, envelopeOf, commandRows, formsOf, readPaths, coverageProblems, runsOf, bind, walk, realProblems, fakeProblems, liveConfig };

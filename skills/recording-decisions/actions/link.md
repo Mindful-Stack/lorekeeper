@@ -69,10 +69,13 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
    record write):
    `reeve decision link <id> --record <front-matter id> --repo <repo> --path <path> --pr <url> --household <household> --json`
 4. **Report** the answer with the reference's *decision link* table: give the table's sentence
-   for the result verbatim, on its own line, read from `value.check.kind` (never from your own
-   reading of the record). Exit 0 has one row per `check.kind` (`proposed_pr_open`, `accepted`,
-   `not_accepted`, `not_found`; `not_found` carries its remedy, check the repository name and
-   path). Exit 1 with an `ok` envelope is "Linked; the check could not run here: <stderr line>;
+   for the result verbatim, on its own line, read from `immediate_check.outcome` and
+   `value.check.kind` (never from your own reading of the record). Exit 0 with
+   `immediate_check.outcome` `repo_not_configured` is the link to a repository the planner does
+   not check yet: it is linked (not a failure, never retried), and the record is checked once that
+   repository is configured in the planner. Otherwise exit 0 has one row per `check.kind`
+   (`proposed_pr_open`, `accepted`, `not_accepted`, `not_found`; `not_found` carries its remedy,
+   check the repository name and path). Exit 1 with an `ok` envelope is "Linked; the check could not run here: <stderr line>;
    it runs on the next scheduled check." (the link succeeded: do not call it a failure and do
    not run it again). A `refused` envelope, or an `error` other than `internal`, shows the reasons
    or the message and says nothing was linked (`unauthenticated` or `forbidden`: also tell the

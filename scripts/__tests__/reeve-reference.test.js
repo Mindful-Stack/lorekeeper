@@ -13,6 +13,7 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
+const { commandWords } = require('./helpers/reeve-smoke');
 
 const root = path.join(__dirname, '..', '..');
 const SOURCES = ['references/reeve-cli.md', 'skills/planning-initiative/SKILL.md', 'skills/refining-epic/SKILL.md',
@@ -25,7 +26,9 @@ const PLACEHOLDERS = {
   run_id: '0a1b2c3d', key: 'planning-initiative:GRA-12:0a1b2c3d:1', prefix: 'recording-decisions:7', title: 'Title',
   md: 'Brief', text: 'Criterion', email: 'dan@example.com', 'YYYY-MM': '2027-03', ref: 'PIB-30', delivery: 'todo', label: 'migrated', bucket: 'Later', 'qualified id': 'kb/ADR-0002', 'front-matter id': 'kb/ADR-0002',
   repo: 'lore', 'path in repo': 'knowledge/adrs/0002-x.md', path: 'knowledge/adrs/0002-x.md', url: 'https://github.com/example/w/pull/9',
-  household: '.', dir: '.', branch: 'feat/x', 'the new epic or initiative, its title and where it goes': 'new epic under GRA-13',
+  household: '.', dir: '.', branch: 'feat/x',
+  'brief file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'brief.md'), 'description file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'brief.md'),
+  'plan file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'plan.json'), 'the new epic or initiative, its title and where it goes': 'new epic under GRA-13',
 };
 
 // `reeve … --json` spans: inline code, and fenced blocks that start with `reeve `.
@@ -94,7 +97,7 @@ function referenceMentions() {
   const text = fs.readFileSync(path.join(root, file), 'utf8');
   const mentions = new Map();
   const add = (words, flags) => { if (!mentions.has(words)) mentions.set(words, new Set()); for (const x of flags) mentions.get(words).add(x); };
-  const wordsOf = (cmd) => cmd.split(/\s+/).slice(1, 3).join(' ');
+  const wordsOf = (cmd) => commandWords(cmd.replace(/^reeve\s+/, ''));
   for (const { cmd } of all.filter((c) => c.file === file)) add(wordsOf(cmd), flagsIn(cmd));
   for (const line of text.split('\n')) {
     for (const m of line.matchAll(/`(reeve [^`]*?--json)`/g)) add(wordsOf(m[1]), flagsIn(line));

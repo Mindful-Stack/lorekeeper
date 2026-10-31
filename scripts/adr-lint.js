@@ -16,11 +16,13 @@ const C = require('./adr/catalogue');
 const V = require('./adr/verdict');
 const S = require('./adr/selection');
 const Cov = require('./adr/coverage');
+const B = require('./adr/behaviour');
+const { parseRecord } = require('./adr/frontmatter');
 const P = require('./adr/prs');
 
 const USAGE = `usage:
   adr-lint check [--home local|shared] [--repo <name>] [--single-home] [--base <ref>]
-                 [--strict] [--ci] <dir>
+                 [--strict] [--ci] <dir>   (an ADR or a behaviour home)
   adr-lint select (--diff <patch-file|-> | --paths <path,...>) [--repo <name>] [--pr-body <file>]
                   [--cwd <dir>] [--json]
   adr-lint backfill [--home local|shared] [--repo <name>] [--dry-run] <dir>
@@ -90,8 +92,7 @@ function readInput(file, flag) {
 }
 
 // Works out which home `dir` is and the id prefix its records use.
-function locateHome(dir, flags) {
-    const homes = H.resolveHomes(dir);
+function locateHome(dir, flags, homes = H.resolveHomes(dir)) {
     const inferredRepo = () => {
         const root = G.gitRoot(dir);
         return H.repoFromRemote(homes, root && G.originUrl(root)) || (root ? G.repoName(root) : path.basename(dir));
@@ -158,8 +159,111 @@ function makeResolver(homes) {
         if (!fs.existsSync(dir)) return { state: 'unavailable' };
         if (!loaded.has(dir)) loaded.set(dir, R.loadHome(dir).records);
         const hit = loaded.get(dir).find((r) => r.number === m[2]);
-        return hit ? { state: 'found', fm: hit.fm } : { state: 'missing' };
+        return hit ? { state: 'found', fm: hit.fm, text: hit.text } : { state: 'missing' };
     };
+}
+
+// The behaviour home `dir` is, or null for an ADR home. A resolved behaviour home is one; with
+// --home, so is a dir whose path ends in that kind's configured behaviour dir, unless it is a
+// resolved ADR home. Anything else stays an ADR home, so no existing invocation changes meaning.
+function locateBehaviourHome(dir, flags, homes) {
+    if (flags.home && flags.home !== 'local' && flags.home !== 'shared') throw new UsageError('--home is local or shared');
+    let home = H.behaviourHomeOf(homes, dir);
+    const isAdrHome = !!H.homeOf(homes, dir);
+    if (home && isAdrHome) throw new UsageError(`${display(dir)} is configured as both an ADR home and a behaviour home`);
+    if (!home && flags.home && !isAdrHome) {
+        const want = flags.home === 'shared' ? homes.behaviourConfig.sharedDir : homes.behaviourConfig.localDir;
+        if (toPosix(dir).endsWith(`/${toPosix(want).replace(/\/+$/, '')}`)) {
+            home = flags.home === 'shared' ? { kind: 'shared', prefix: 'kb' } : { kind: 'local', repo: null, prefix: null };
+        }
+    }
+    if (!home) return null;
+    if (home.kind === 'local') {
+        const root = G.gitRoot(dir);
+        // Outside git, the repo is the dir holding the behaviour dir.
+        const want = toPosix(homes.behaviourConfig.localDir).replace(/\/+$/, '');
+        const holder = toPosix(dir).endsWith(`/${want}`) ? toPosix(dir).slice(0, -(want.length + 1)) : path.dirname(dir);
+        home.repo = flags.repo || home.repo || (root ? G.repoName(root) : path.basename(holder));
+        home.prefix = home.repo;
+    }
+    return home;
+}
+
+// The ADR dir beside a behaviour home, or null when it cannot be told.
+function ownAdrDir(homes, dir, home) {
+    if (home.kind === 'shared') {
+        const b = toPosix(homes.behaviourConfig.sharedDir).replace(/\/+$/, '');
+        const d = toPosix(dir);
+        return d.endsWith(`/${b}`) ? path.join(d.slice(0, -b.length), homes.config.sharedDir) : homes.sharedHome;
+    }
+    // The repo root is what holds the behaviour dir; outside git, homes.root is only the start dir.
+    const b = toPosix(homes.behaviourConfig.localDir).replace(/\/+$/, '');
+    const d = toPosix(dir);
+    if (d.endsWith(`/${b}`)) {
+        const entry = homes.mode === 'household' && homes.localHomes.find((h) => realpathLoose(h.behaviourDir) === realpathLoose(dir));
+        return entry ? entry.dir : path.join(d.slice(0, -b.length), homes.config.localDir);
+    }
+    if (homes.mode === 'single') return path.join(homes.root, homes.config.localDir);
+    const entry = homes.localHomes.find((h) => realpathLoose(h.behaviourDir) === realpathLoose(dir));
+    if (entry) return entry.dir;
+    const root = G.gitRoot(dir);
+    return root ? path.join(root, homes.config.localDir) : null;
+}
+
+// Resolves refs into the home's own ADR dir by that dir, so a KB repo checked alone, or a
+// --repo override, still finds them; a ref not there is missing even if the dir is absent.
+// Other prefixes resolve as for an ADR check.
+function behaviourResolver(homes, dir, home) {
+    const fallback = makeResolver(homes);
+    const adrDir = ownAdrDir(homes, dir, home);
+    let records = null;
+    return (id) => {
+        const m = R.ID_RE.exec(id);
+        if (!adrDir || !m || m[1] !== home.prefix) return fallback(id);
+        if (!records) records = R.loadHome(adrDir).records;
+        const hit = records.find((r) => r.number === m[2]);
+        return hit ? { state: 'found', fm: hit.fm, text: hit.text } : { state: 'missing' };
+    };
+}
+
+// The tracked files of the repo a scope glob is relative to, or null (skip the dead-glob
+// warning). In a household each repo is its own checkout: a sibling that is a plain directory
+// must not answer with the meta repo's files, which G.gitRoot would walk up to.
+function repoFilesFor(homes, dir, home) {
+    const cache = new Map();
+    const own = (repoDir) => {
+        const top = fs.existsSync(repoDir) ? G.gitRoot(repoDir) : null;
+        return top && realpathLoose(top) === realpathLoose(repoDir) ? top : null;
+    };
+    return (repo) => {
+        let root;
+        if (home.kind === 'local') {
+            root = G.gitRoot(dir);
+            // The meta repo, or any repo the household sits inside, is not this repo's checkout.
+            if (root && homes.mode === 'household' && !path.relative(realpathLoose(root), realpathLoose(homes.root)).startsWith('..')) root = null;
+        } else root = homes.mode === 'single' ? null : own(path.join(homes.root, repo));
+        if (!root) return null;
+        if (!cache.has(root)) cache.set(root, G.trackedFiles(root));
+        return cache.get(root);
+    };
+}
+
+// Prints one line per violation; the exit code is 1 when any is an error.
+function report(dir, violations) {
+    for (const v of violations) {
+        const file = path.isAbsolute(v.file) ? v.file : path.join(dir, v.file);
+        const level = v.level === 'warning' ? 'warning: ' : '';
+        console.log(`${display(file)}: ${v.rule}: ${level}${v.message}`);
+    }
+    return violations.some((v) => v.level === 'error') ? 1 : 0;
+}
+
+function looksLikeBehaviourDoc(file) {
+    try {
+        return 'prefix' in parseRecord(fs.readFileSync(file, 'utf8')).fm;
+    } catch (e) {
+        return false;
+    }
 }
 
 function cmdCheck(flags, positional) {
@@ -167,8 +271,23 @@ function cmdCheck(flags, positional) {
     // Without a base the merge gate would skip the lock and pass.
     if (flags.ci && !flags.base) throw new UsageError('--ci needs --base <ref>');
     const dir = path.resolve(positional[0]);
-    const { homes, home } = locateHome(dir, flags);
+    const homes0 = H.resolveHomes(dir);
+    const behaviour = locateBehaviourHome(dir, flags, homes0);
+    if (behaviour) {
+        const { docs } = B.loadBehaviourHome(dir);
+        const violations = B.checkBehaviourHome({
+            home: behaviour, docs, resolveRef: behaviourResolver(homes0, dir, behaviour),
+            repoFiles: repoFilesFor(homes0, dir, behaviour),
+        });
+        return report(dir, violations);
+    }
+    const { homes, home } = locateHome(dir, flags, homes0);
     const { records, strays } = R.loadHome(dir);
+    // No records but a doc with a `prefix:`: a behaviour home check does not recognise. Checked
+    // as ADRs it would only warn about file names, and its rules would go unchecked.
+    if (!records.length && strays.some(looksLikeBehaviourDoc)) {
+        throw new UsageError(`${display(dir)} looks like a behaviour home; configure behaviour.localDir / repos[].behaviourDir, or pass --home with the configured name`);
+    }
     const violations = checkHome({
         home,
         records,
@@ -179,12 +298,7 @@ function cmdCheck(flags, positional) {
         resolveRef: makeResolver(homes),
         base: flags.base ? loadBase(dir, flags.base) : null,
     });
-    for (const v of violations) {
-        const file = path.isAbsolute(v.file) ? v.file : path.join(dir, v.file);
-        const level = v.level === 'warning' ? 'warning: ' : '';
-        console.log(`${display(file)}: ${v.rule}: ${level}${v.message}`);
-    }
-    return violations.some((v) => v.level === 'error') ? 1 : 0;
+    return report(dir, violations);
 }
 
 function cmdSelect(flags) {
@@ -203,13 +317,12 @@ function cmdSelect(flags) {
     const { repo, picked, candidates } = sel;
     if (flags.json) {
         const byId = new Map(candidates.map((c) => [c.id, c]));
-        // `kind` is the document kind; behaviour docs (a later plan) add `behaviour` rows.
         console.log(JSON.stringify({
             repo,
             candidates: picked.map((p) => {
                 const c = byId.get(p.id);
                 return {
-                    id: p.id, kind: 'adr', home: p.home, status: p.status, file: p.file ? display(p.file) : null, reasons: p.reasons,
+                    id: p.id, kind: p.doc, home: p.home, status: p.status, file: p.file ? display(p.file) : null, reasons: p.reasons,
                     title: c ? c.fm.title || '' : '', description: c ? c.fm.description || '' : '',
                     scope: c ? c.scope : [], record: c ? c.text : '',
                 };
@@ -281,13 +394,14 @@ function cmdHomes(flags) {
     };
     const repoDirOf = (h) => (homes.mode === 'single' ? homes.root : path.join(homes.root, h.repo));
     const shared = homes.sharedHome ? place(homes.sharedHome, homes.sharedRoot) : place(null, null);
+    const sharedB = homes.sharedBehaviourHome ? place(homes.sharedBehaviourHome, homes.sharedRoot) : place(null, null);
     console.log(JSON.stringify({
         mode: homes.mode,
         root: homes.root,
         governedRepo: governedRepo(homes, cwd),
         config: homes.config,
         localHomes: homes.localHomes.map((h) => ({
-            ...h, exists: exists(h.dir), ...place(h.dir, h.present ? repoDirOf(h) : null),
+            ...h, exists: exists(h.dir), behaviourExists: exists(h.behaviourDir), ...place(h.dir, h.present ? repoDirOf(h) : null),
         })),
         sharedHome: homes.sharedHome,
         sharedHomeExists: exists(homes.sharedHome),
@@ -295,6 +409,10 @@ function cmdHomes(flags) {
         sharedRepoRoot: shared.repoRoot,
         sharedRelDir: shared.relDir,
         sharedDefaultBranch: shared.defaultBranch,
+        behaviourConfig: homes.behaviourConfig,
+        sharedBehaviourHome: homes.sharedBehaviourHome,
+        sharedBehaviourHomeExists: exists(homes.sharedBehaviourHome),
+        sharedBehaviourRelDir: sharedB.relDir,
         otherKbs: homes.otherKbs.map((k) => ({ ...k, exists: exists(k.dir) })),
     }, null, 2));
     return 0;
@@ -308,7 +426,7 @@ function cmdIndex(flags) {
     }
     if (flags.json) {
         const records = cat.records.filter((e) => !flags.status || e.status === flags.status);
-        console.log(JSON.stringify({ homes: cat.homes, records }, null, 2));
+        console.log(JSON.stringify({ homes: cat.homes, records, behaviour: cat.behaviour }, null, 2));
     } else {
         console.log(C.renderMarkdown(cat, flags.status));
     }
@@ -370,7 +488,8 @@ function cmdVerdict(flags) {
         const doc = V.parseFindings(readInput(flags.findings, 'findings'));
         const { homes, picked } = S.selectFor({ cwd, repo: flags.repo, diffText, prBody });
         // Selected candidates first: their ids come from --repo, which the catalogue may not share.
-        const files = new Map(C.buildCatalogue(homes).records.map((r) => [r.id, r.file]));
+        const cat = C.buildCatalogue(homes);
+        const files = new Map([...cat.records, ...cat.behaviour].map((r) => [r.id, r.file]));
         for (const p of picked) if (p.file) files.set(p.id, p.file);
         const texts = new Map();
         const recordText = (id) => {
@@ -378,9 +497,15 @@ function cmdVerdict(flags) {
             if (!texts.has(id)) texts.set(id, fs.readFileSync(files.get(id), 'utf8'));
             return texts.get(id);
         };
-        const cov = Cov.validate({ doc, picked, recordText });
+        const kinds = new Map([...cat.records.map((r) => [r.id, 'adr']), ...cat.behaviour.map((d) => [d.id, 'behaviour'])]);
+        const cov = Cov.validate({ doc, picked, recordText, kindOf: (id) => kinds.get(id) });
         const added = cov.dangling.map((id) => ({
-            class: 'dangling', ids: [id], where: null, summary: `${id} is cited in the PR description but resolves nowhere`,
+            class: 'dangling',
+            ids: [id],
+            where: null,
+            summary: picked.find((p) => p.id === id).reasons.includes('cited')
+                ? `${id} is cited in the PR description but resolves nowhere`
+                : `${id} is named in a behaviour rule's Source: line but resolves nowhere`,
         }));
         const v = V.verdict({ findings: [...doc.findings, ...added] });
         console.log(JSON.stringify({ ...v, coverage: { checked: doc.coverage.checked, extra: cov.extra, notReviewed: cov.notReviewed } }, null, 2));
@@ -405,7 +530,8 @@ function main(argv) {
         if (cmd === 'next') return cmdNext(flags, positional);
         return cmdBackfill(flags, positional);
     } catch (e) {
-        if (!(e instanceof UsageError)) throw e;
+        // An unreadable behaviour-home entry is an environment error: exit 2, not a stack.
+        if (!(e instanceof UsageError) && !(e instanceof B.HomeReadError)) throw e;
         console.error(`adr-lint: ${e.message}\n\n${USAGE}`);
         return 2;
     }

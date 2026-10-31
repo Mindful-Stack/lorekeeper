@@ -1,0 +1,12 @@
+diff --git a/src/Application/Devices/Queries/GetDeviceStatus/DeviceStatusMapper.cs b/src/Application/Devices/Queries/GetDeviceStatus/DeviceStatusMapper.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Application/Devices/Queries/GetDeviceStatus/DeviceStatusMapper.cs
+@@ -0,0 +1,7 @@
++namespace MyApp.Application.Devices.Queries.GetDeviceStatus;
++
++public static class DeviceStatusMapper
++{
++    // Shows the last reported status as is.
++    public static DeviceStatusDto ToDto(Device d) => new(d.Id, d.LastReportedStatus);
++}

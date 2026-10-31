@@ -111,6 +111,10 @@ If there's no warning, skip this step.
    ## Key Workflows
 
    > To fill in — list 2-3 typical user-or-system workflows that pass through this domain. The cultivate command did not auto-generate workflows; they require human input.
+
+   ## Behaviour docs
+
+   > To fill in — list the behaviour docs whose rules this domain's code must keep, one line each: `<doc id>` — <title> (`<path>`). The cultivate command does not create behaviour docs.
    ```
 
 6. Show the draft to the user. Run AskUserQuestion: [Looks good — open PR] / [Let me edit it first] / [Cancel].
@@ -150,6 +154,7 @@ If there's no warning, skip this step.
    - `add-entity` — a class/struct in code matching the domain area but not in Key Entities.
    - `link-cross-ref` — an integration point that exists but has no wikilink to a partner-context node.
    - `fix-broken-wikilink` — wikilinks in the doc that don't resolve to existing nodes.
+   - `move-rules-to-behaviour-doc` — *Key Workflows* states rules (who may, what must stay true). Propose moving them into a behaviour doc (format: `<plugin-root>/references/behaviour-docs.md`). [Apply] only lists the doc under *Behaviour docs*: cultivate writes to the knowledge base and cannot create a doc in a code repo, so the user writes the doc. Never move rules without the user's yes.
 
 5. Walk suggestions one at a time via AskUserQuestion. For each:
    - Show the suggestion (kind + proposed text).

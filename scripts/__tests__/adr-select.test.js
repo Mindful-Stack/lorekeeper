@@ -151,3 +151,30 @@ test('C1: select returns each pick\'s home, and null for a cited id that resolve
         ['kb/ADR-0009', null],
     ]);
 });
+
+test('parseCitedIds reads behaviour rule ids under Decisions as their doc', () => {
+    const body = '## Decisions\n- Changes: kb/contract.R3 (knowledge-base#12)\n- Adds: api/org.R7, api/org.R8\n- kb/ADR-0001.R2\n';
+    assert.deepEqual(parseCitedIds(body).sort(), ['api/org', 'kb/ADR-0001', 'kb/contract']);
+});
+
+test('select carries each candidate\'s doc kind, and a missing cited doc is behaviour', () => {
+    const out = select({
+        candidates: [
+            { id: 'api/ADR-0001', kind: 'local', doc: 'adr', status: 'accepted', file: 'a', scope: ['src/**'] },
+            { id: 'api/device', kind: 'local', doc: 'behaviour', status: '-', file: 'b', scope: ['src/**'] },
+        ],
+        repo: 'api', paths: ['src/x.cs'], cited: ['kb/contract'],
+    });
+    assert.deepEqual(out.map((p) => [p.id, p.doc, p.status]), [
+        ['api/ADR-0001', 'adr', 'accepted'], ['api/device', 'behaviour', '-'], ['kb/contract', 'behaviour', 'missing'],
+    ]);
+});
+
+test('parseCitedIds does not read URLs, longer paths or longer rule numbers as behaviour rule ids', () => {
+    const body = '## Decisions\n- https://github.com/org/repo/blob/main/x.R2\n- path/to/file.R1x\n- docs/a/b.R3-old\n- see (kb/contract.R3).\n';
+    assert.deepEqual(parseCitedIds(body), ['kb/contract']);
+});
+
+test('parseCitedIds reads ids wrapped in emphasis or glued to a label', () => {
+    assert.deepEqual(parseCitedIds('## Decisions\n- _kb/contract.R3_\n- Changes:api/org.R7\n').sort(), ['api/org', 'kb/contract']);
+});

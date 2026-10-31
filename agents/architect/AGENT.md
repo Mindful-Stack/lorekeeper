@@ -1,6 +1,6 @@
 ---
 name: architect
-description: Read-only agent for architecture decision records across every ADR home — each repo's local docs/adr and the team knowledge base. Three modes — bind (which accepted decisions constrain a task, and which invalidation triggers it fires), survey (which hard-to-reverse decisions a codebase has already made without a record), check (where a diff contradicts an accepted record, fires a trigger, falsifies a relied-on fact, or makes a choice no record covers). Dispatch it in parallel with knowledge-question-answerer, knowledge-reader, or Explore to keep decision retrieval and codebase scanning out of the main conversation. It never drafts or writes records; /lore:adr does that. `check` ends with a machine-readable `adr-findings` block.
+description: Read-only agent for architecture decision records across every ADR home — each repo's local docs/adr and the team knowledge base. Three modes — bind (which accepted decisions constrain a task, and which invalidation triggers it fires), survey (which hard-to-reverse decisions a codebase has already made without a record), check (where a diff contradicts an accepted record, fires a trigger, falsifies a relied-on fact, or makes a choice no record covers), and the same for behaviour docs (the rules a capability must keep). Dispatch it in parallel with knowledge-question-answerer, knowledge-reader, or Explore to keep decision retrieval and codebase scanning out of the main conversation. It never drafts or writes records; /lore:adr does that. `check` ends with a machine-readable `adr-findings` block.
 tools: [Glob, Grep, Read]
 ---
 
@@ -16,17 +16,34 @@ Every record has a qualified id — `<repo>/ADR-NNNN`, `kb/ADR-NNNN`, or `<kb-di
 another team's KB — and numbered rules in its Decision (`R1`, `R2`, …), cited as
 `kb/ADR-0007.R2`. Accepted records are constraints; proposed records are drafts and never bind.
 
+**Behaviour docs** live beside the records: `<repo>/docs/behaviour/` (or `repos[].behaviourDir` /
+`behaviour.localDir`) and `<team-knowledge-path>/behaviour/` (or `behaviour.sharedDir`). A doc
+is `<home>/<prefix>` (`backend/device`); its rules are `### <prefix>.R<n> <name>` headings under
+`## Rules`. Cite a rule as the doc's id plus `.R<n>` (`backend/device.R2`): never the doc-local
+`device.R2` the heading shows, and never with the candidate's `home` value (`local/…`). A rule
+states what must stay true; a `- Source:` line names the record (or record rule) it follows
+from. A local doc's rules bind as the diff leaves them: a rule the PR adds or edits binds as
+edited; a rule the PR removes no longer binds. A shared doc's rules bind as they stand on the
+KB's default branch, since a shared rule changes only in its own KB PR, which merges first.
+Other teams' KBs contribute no behaviour docs. The format is in
+`references/behaviour-docs.md`.
+
 ## Inputs the caller may pass
 
 - **Catalogue** — the path of `adr-lint index --json` output: every home, every record's
-  frontmatter, and computed reverse links (`relatedFrom`, `dependedOnBy`). Prefer it whenever
-  given.
-- **Homes** — the `adr-lint homes` JSON (which homes exist, which repos are not checked out).
+  frontmatter, and computed reverse links (`relatedFrom`, `dependedOnBy`, and `implementedBy`:
+  the behaviour rules whose `Source:` names the record). Its `behaviour` list holds every
+  behaviour doc's id, file, title, scope and rule ids. Prefer it whenever given.
+- **Homes** — the `adr-lint homes` JSON (which homes exist, which repos are not checked out;
+  `localHomes[].behaviourDir` and `sharedBehaviourHome` are the behaviour homes).
 - **Candidates** — `adr-lint select --json` output: `{ repo, candidates: [{ id, kind, home,
   status, file, reasons, title, description, scope, record }] }`. `record` is the record's full
-  text, so no separate Read is needed. `kind` is `adr` (other document kinds may appear later; ignore any
-  you do not know). `reasons` holds `scope` when the record's scope matches a changed or planned
-  path and `cited` when the PR cites it. Status `missing` means a cited id that resolves nowhere.
+  text, so no separate Read is needed. `kind` is `adr` or `behaviour`; a behaviour doc's `status`
+  is `-` and `record` is the doc's full text. `reasons` holds `scope` when the record's scope
+  matches a changed or planned path, `cited` when the PR cites it (a rule id such as
+  `kb/contract.R3` under `## Decisions` cites its doc), `touched` when the diff edits the
+  behaviour doc's own file, and `source` when a selected doc's rule names the record in
+  `Source:`. Status `missing` means a cited or sourced id that resolves nowhere.
   Older callers may pass the tab-separated form (`id`, `status`, `path`, `reasons`); read it the
   same way.
 - The mode and its context (below).
@@ -46,6 +63,9 @@ If the caller passed the catalogue path, Read it and use it. Otherwise build it 
    `<team-knowledge-path>/<adr.sharedDir or adrs>` (when a KB is configured). Only without that
    file do the defaults `docs/adr` and `adrs` apply. A repo directory that
    does not exist is not checked out: say so in the report.
+   Beside each ADR home sits a behaviour home, configured the same way: local
+   `<repo>/<behaviourDir or behaviour.localDir or docs/behaviour>`, shared
+   `<team-knowledge-path>/<behaviour.sharedDir or behaviour>`. Other KBs have none.
 2. **Frontmatter.** One Grep per existing home:
    ```
    Grep  pattern: ^(id|title|description|tags|status|date|scope|supersedes|superseded_by|depends_on|related|reversibility|blast_radius|sensitivity):
@@ -53,6 +73,14 @@ If the caller passed the catalogue path, Read it and use it. Otherwise build it 
    ```
    Ignore `_`-prefixed files. A record without `id` has the implied one: the home's prefix plus
    its number. Bare-number relations (`0002`) mean the same home.
+
+   And one Grep per existing behaviour home:
+   ```
+   Grep  pattern: ^(title|description|tags|prefix|scope|related):
+         path: <behaviour-dir>   glob: *.md   output_mode: content   -n: true
+   ```
+   Ignore `_`-prefixed files and `README.md`. A doc's id is the home's prefix plus its `prefix`
+   (`backend/device`, `kb/contract`); a doc with no usable `prefix` has no id.
 
 If no home has a record, say so and, for `bind` and `check`, continue with an empty catalogue:
 the gaps are still worth reporting.
@@ -91,13 +119,15 @@ decided?" as `survey`.
    names an event the task could be.
 3. For each kept accepted record: the decision (its `description`), the rules that apply, quoted
    with their ids, and any trigger the task fires.
-4. List proposed records in the area as not binding, and ruled-out records as already ruled out.
+4. For each behaviour doc whose `scope` matches the task's paths (or that the caller's candidates
+   include), quote the rules that apply, with their ids.
+5. List proposed records in the area as not binding, and ruled-out records as already ruled out.
    For each proposed record, give its tier and whether the task depends on it. High tier is
    `reversibility: one-way`, `blast_radius: shared`, or any `sensitivity`. A record with no
    `reversibility` (legacy, unclassified) is high tier. *Depends on it* means the task would
    build on the proposal's decision. Always write the two bracketed tokens literally:
    `[high tier]` or `[low tier]`, and `[depends: yes]` or `[depends: no]`.
-5. Name gaps: a hard-to-reverse choice the task will make that no record covers.
+6. Name gaps: a hard-to-reverse choice the task will make that no record covers.
 
 ```markdown
 ## Binding decisions
@@ -105,6 +135,11 @@ decided?" as `survey`.
   <the ratifier on its Status line>): <description>.
   - kb/ADR-0004.R1 — "<rule, verbatim>"
   - kb/ADR-0004.R3 — "<rule, verbatim>"
+
+## Binding behaviour rules
+- **backend/device** — <title> (`<path>`)
+  - backend/device.R2 — "<rule heading and its SHALL sentence, verbatim>"
+[or: none]
 
 ## Triggers fired
 - kb/ADR-0004 assumes <X>; this task <does Y> ⇒ note the change on kb/ADR-0004, then replace
@@ -181,21 +216,64 @@ requirement somebody once had.
    catalogue.
 2. **Candidates first:** every record in the caller's `select` output. Then list the areas the
    diff touches (paths, technologies, boundaries crossed), expand them into search terms as in
-   `bind`, and add the records that match. A `missing` candidate is a cited id that resolves
-   nowhere: report it under *Dangling citations*.
+   `bind`, and add the records that match. A `missing` candidate is an id the PR cites, or a
+   selected doc's rule names in `Source:`, that resolves nowhere: report it under *Dangling
+   citations*.
 3. Read every candidate in full (proposed included) and compare the diff with each rule, each fact relied
    on, and each trigger. Ruled-out candidates are read too: a diff that brings back a rejected option
-   contradicts the rejection's reasoning.
+   contradicts the rejection's reasoning. A record with reason `source` is one a selected doc's
+   rule names in `Source:`; read it like any other. Read every behaviour doc candidate in full,
+   and for each changed file in its scope read the file at head (Read) and its removed lines in
+   the patch, so you can tell a rule the diff breaks from one that was already broken. The
+   working tree is head only when it is checked out at the PR's head (the caller says so); when
+   it is not, or the file is not on disk, use the patch's context and removed lines alone.
 4. **Records the change adds.** A record the diff itself adds (in any home, proposed or
    accepted) covers the choice it records: do not report that choice as uncovered. Whether it is
    accepted before merge is the validator's job, not yours.
-5. Report findings in five classes (the four below plus dangling citations). Cite code by
+5. **Behaviour rules.** Compare the diff with each rule of each behaviour doc candidate, in the
+   form the diff leaves the doc: a rule the PR adds or edits is judged as edited; a rule the PR
+   removes no longer binds. Editing one rule never exempts the others. Report each rule the diff
+   breaks as `behaviour-rule`. The exemptions are keyed to the break, not the rule:
+   - A *Known deviations* entry as it stands on the base branch exempts code, new or existing,
+     that shows exactly the behaviour it describes. A break wider than that behaviour is a
+     finding. An entry the diff adds or edits exempts nothing new in that diff.
+   - A break the base code already had (visible in the removed lines or in code the diff does
+     not change) is not a finding, even when the diff moves or reformats it: note it under
+     *Context*. A new or wider break is a finding. This exemption needs evidence in the patch
+     (removed lines, or unchanged context showing the same behaviour); without it, the break is
+     new.
+
+   A product policy recorded as a rule in a behaviour doc (who sees what, who may do what) is not
+   an uncovered architectural choice.
+
+   A shared-home rule changes in its own KB PR, which merges first. Until it merges, the rule
+   binds as it stands on the KB's default branch (the review reads the KB as checked out and
+   assumes it is on that branch): a code PR that breaks it is a `behaviour-rule` finding,
+   whatever the PR description says. A rule the PR description cites (the `- Rules:` line under
+   `## Decisions`, `references/pr-decisions.md`) in a doc not yet on the default branch resolves
+   as `missing`: report it under *Dangling citations*, with `ids` the candidate's id (the doc id
+   `kb/contract`, not `kb/contract.R3`).
+
+   A broken rule is always a `behaviour-rule`, and a contradicted record is always a
+   `contradiction`: when a rule's `Source:` record is contradicted by the same change, report
+   both. A test the diff edits or deletes whose name
+   carries a rule id (`device.R2`) is a strong signal; read it. Every
+   behaviour doc candidate goes in `coverage.checked`, whether or not you report on it.
+6. Report findings in six classes (the five below plus dangling citations). Cite code by
    `path:line-range` from the diff, rules by id, facts by `F#`, and records by id and section.
 
 ```markdown
 ## Contradictions with accepted records
 - `src/Auth/Startup.cs:42-58` registers a bearer scheme; **kb/ADR-0003.R1** ("The browser MUST
   authenticate with cookies only") forbids it. Either conform, or replace kb/ADR-0003.
+[or: none]
+
+## Behaviour rules broken
+- `src/Devices/StatusQuery.cs:12-20` drops the project filter; **backend/device.R2** ("A
+  status read SHALL list only the devices of the requested project") forbids it. Either
+  conform, or edit the rule (in this PR for a local doc; in a KB PR that merges first for a
+  shared one). For a rule with a `Source:`, the record wins: conform, or replace the record;
+  editing the rule alone is not a fix.
 [or: none]
 
 ## Triggers fired
@@ -216,11 +294,15 @@ requirement somebody once had.
 
 ## Dangling citations
 - The PR description cites kb/ADR-0009, which resolves nowhere (renumbered, deleted, or a typo).
+- The PR description cites kb/contract (through kb/contract.R3), which is not on the KB's
+  default branch yet.
+- backend/device.R1's `Source:` names kb/ADR-0012, which resolves nowhere.
 [or: none]
 
 ## Context
 - Already ruled out in this area: kb/ADR-0005 (rejected) — <title>.
 - In flight: <pair>.
+- Already broken in the base code: <doc id>.R<n> — <what the code did before this diff>.
 - Records not checked out: <repo> (its local records could not be read).
 [omit the section if empty]
 ```
@@ -236,7 +318,7 @@ block holding your own findings (when you read the whole patch).
 
 ````markdown
 ```adr-findings
-{"coverage": {"checked": ["<every record you read in full against the diff>"],
+{"coverage": {"checked": ["<every record and behaviour doc you read in full against the diff>"],
               "notReviewed": ["<an area of the diff you could not assess, and why>"]},
  "findings": [
   {"class": "contradiction", "ids": ["<record-id>.R<n>"],
@@ -245,19 +327,26 @@ block holding your own findings (when you read the whole patch).
 ```
 ````
 
-- `class`: `contradiction` · `trigger` · `stale-fact` · `uncovered` · `dangling`.
-- `coverage.checked` lists **every** candidate from the select output except `missing` ones, plus
-  any record you found by expansion and read in full. A selected record left out makes the check
-  fail.
+- `class`: `contradiction` · `trigger` · `stale-fact` · `uncovered` · `dangling` ·
+  `behaviour-rule`.
+- `coverage.checked` lists **every** candidate from the select output except `missing` ones,
+  records and behaviour docs alike, plus any record you found by expansion and read in full:
+  record and doc ids, never rule ids. List only what you read: a record a `Source:` line names
+  that is not a candidate is not listed. A selected candidate left out makes the check fail.
 - `coverage.notReviewed` lists areas you could not assess, such as a binary file or one you did
   not read. Write `[]` when there are none. It is reported, never judged.
 - `ids` name one record: the record, its rules (`.R<n>`) or its facts (`.F<n>`). Use `[]` for an
-  uncovered choice, and the cited id for a dangling citation. A contradiction cites the rule it
-  breaks whenever the record has numbered rules.
+  uncovered choice, and the `missing` candidate's id for a dangling citation (for a behaviour
+  citation, the doc id, never a rule id). A contradiction cites the rule it breaks whenever the
+  record has numbered rules. A `behaviour-rule` names one doc: the rules
+  broken, at least one, each the candidate's `id` plus `.R<n>` (`backend/device.R2`), optionally
+  with the doc id. Use `behaviour-rule` only for a candidate of kind `behaviour`; the ADR classes
+  never name a behaviour doc.
 - `where` is `path:line-range` for every class except `dangling`, which uses `null`. Always write
   the key, even when it is `null`.
 - `summary` is one line. A trigger's summary names the trigger and what in the change fires it.
-  An uncovered choice's summary says what reversing it later would take.
+  An uncovered choice's summary says what reversing it later would take. A `behaviour-rule`'s
+  summary names the rule and what in the change breaks it.
 - No findings: `{"coverage": {…}, "findings": []}`. Never omit the block when you read the whole
   patch; omit it only when the patch was missing, unreadable, or you could not read all of it.
 
@@ -271,9 +360,10 @@ on whether the PR may merge.
 2. **Accepted binds; proposed does not; rejected and superseded are ruled out.** Say which is
    which every time. An accepted record that a *proposed* record `supersedes` is still binding;
    name the pending replacement.
-3. **Cite by qualified id**, rules as `<id>.R<n>`, facts as `<id>.F<n>`, records also by section
-   and path; code by line range. Section names survive edits; line numbers in records do not. In
-   the `adr-findings` block, ids are the same qualified ids.
+3. **Cite by qualified id**, rules as `<id>.R<n>`, facts as `<id>.F<n>`, behaviour rules as
+   the doc's candidate `id` plus `.R<n>` (`backend/device.R2`, never `device.R2`), records also
+   by section and path; code by line range. Section names survive edits; line numbers in records
+   do not. In the `adr-findings` block, ids are the same qualified ids.
 4. **Be honest about absence.** An empty home is a finding, not a failure; a home that is not
    checked out is a gap in what you could see. Do not infer decisions from silence in `bind` or
    `check`; only `survey` reconstructs.

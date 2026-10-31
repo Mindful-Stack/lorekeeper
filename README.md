@@ -98,6 +98,13 @@ An optional `adr` key overrides where ADR records live — every field optional,
 `"adrDir"`. `sharedDir` is the shared KB's ADR directory, under its `knowledge/`.
 `.lorekeeper/config.json` takes the same keys under `adr` for single-repo setups.
 
+Behaviour docs sit beside the records, configured the same way under a `behaviour` key (a
+`repos[]` entry overrides `localDir` with `"behaviourDir"`):
+
+```json
+{ "behaviour": { "localDir": "docs/behaviour", "sharedDir": "behaviour" } }
+```
+
 Setting the env var globally:
 
 **Windows (System Environment Variables) — recommended:**
@@ -359,6 +366,7 @@ the code against them, and asks `adr-lint verdict` whether anything blocks:
 | fires a record's invalidation trigger | Critical (blocks) |
 | makes a *Facts relied on* entry false | Minor (draft an observation) |
 | cites an id that resolves nowhere | Important |
+| breaks a behaviour doc's rule | Critical (blocks) |
 
 When a Critical finding blocks: conform, or replace the record (`/lore:adr replace …`). For an
 uncovered choice: low tier, add the record and have it accepted in this PR before merge; high
@@ -387,6 +395,7 @@ concurrency:
 env:
   KNOWLEDGE_BASE_PATH: ${{ github.workspace }}/_ci/kb # the team KB (shared ADR home)
   ADR_DIR: docs/adr                                    # this repo's local ADR home
+  BEHAVIOUR_DIR: docs/behaviour                        # this repo's local behaviour home
   OUT: ${{ github.workspace }}/.adr-review             # inside the workspace, wiped first
 jobs:
   adr-lint:                         # required check 1: deterministic
@@ -395,28 +404,31 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/checkout@v4
-        with: { repository: your-org/lorekeeper, ref: v3.2.0, path: _ci/lorekeeper }   # pin a tag, never main
+        with: { repository: your-org/lorekeeper, ref: v3.5.0, path: _ci/lorekeeper }   # pin a tag, never main
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: echo "LORE=$(realpath "$GITHUB_WORKSPACE/_ci/lorekeeper")" >> "$GITHUB_ENV"
       - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} "$ADR_DIR"
+      - run: node "$LORE/scripts/adr-lint.js" check --ci --home local --base origin/${{ github.base_ref }} "$BEHAVIOUR_DIR"
   adr-judgment:                     # required check 2: the reviewer, then the verdict
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      # check out the plugin (ref: v3.2.0, path: _ci/lorekeeper) as above, and the knowledge
+      # check out the plugin (ref: v3.5.0, path: _ci/lorekeeper) as above, and the knowledge
       # base (path: _ci/kb, i.e. $KNOWLEDGE_BASE_PATH) here
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Resolve $LORE once, absolute and free of `..`
         run: echo "LORE=$(realpath "$GITHUB_WORKSPACE/_ci/lorekeeper")" >> "$GITHUB_ENV"
-      - name: ADR homes are the trusted ones, local and shared
+      - name: ADR and behaviour homes are the trusted ones, local and shared
         run: |
           node "$LORE/scripts/adr-lint.js" homes | node -e '
             const fs = require("fs"), path = require("path");
             const h = JSON.parse(fs.readFileSync(0, "utf8"));
             const real = (p) => { try { return fs.realpathSync(p); } catch (e) { return null; } };
+            // A behaviour home may not exist yet: resolve its nearest existing ancestor instead.
+            const loose = (p) => (!p ? null : real(p) || (path.dirname(p) === p ? p : path.join(loose(path.dirname(p)), path.basename(p))));
             const trusted = real(path.join(process.env.KNOWLEDGE_BASE_PATH, "knowledge", "adrs"));
             const home = real(h.sharedHome);
             if (h.sharedHomeExists !== true || !trusted || home !== trusted) {
@@ -427,6 +439,16 @@ jobs:
             const local = h.localHomes[0] && real(h.localHomes[0].dir);
             if (!localTrusted || local !== localTrusted) {
               console.error(`local ADR home ${h.localHomes[0] && h.localHomes[0].dir} is not the trusted GITHUB_WORKSPACE/ADR_DIR (${localTrusted})`);
+              process.exit(1);
+            }
+            const sharedB = loose(path.join(process.env.KNOWLEDGE_BASE_PATH, "knowledge", "behaviour"));
+            if (loose(h.sharedBehaviourHome) !== sharedB) {
+              console.error(`shared behaviour home ${h.sharedBehaviourHome} is not the trusted KNOWLEDGE_BASE_PATH/knowledge/behaviour (${sharedB})`);
+              process.exit(1);
+            }
+            const localB = loose(path.join(process.env.GITHUB_WORKSPACE, process.env.BEHAVIOUR_DIR));
+            if (loose(h.localHomes[0] && h.localHomes[0].behaviourDir) !== localB) {
+              console.error(`local behaviour home ${h.localHomes[0] && h.localHomes[0].behaviourDir} is not the trusted GITHUB_WORKSPACE/BEHAVIOUR_DIR (${localB})`);
               process.exit(1);
             }'
       - name: Fetch the diff and body
@@ -448,7 +470,7 @@ jobs:
 
 `/lore:review` runs the same gate locally.
 
-- **Pin a tag:** check out the plugin at a release tag (`ref: v3.2.0`), never `main`. The schema
+- **Pin a tag:** check out the plugin at a release tag (`ref: v3.5.0`), never `main`. The schema
   and `verdict` change only with the tag. A breaking findings change ships as a new
   `adr-findings.v<N>` schema file.
 - **`codex exec` needs `</dev/null`:** without it, it blocks waiting on stdin.
@@ -457,8 +479,11 @@ jobs:
   it wrote itself (for example `adr.sharedDir` set to `..`, or `adr.localDir` set to an empty
   directory). The step fails unless the shared home's realpath is **exactly**
   `$KNOWLEDGE_BASE_PATH/knowledge/adrs` and the local home's is exactly
-  `$GITHUB_WORKSPACE/$ADR_DIR`. `ADR_DIR` is defined once and used by both the preflight and the
-  `check` step.
+  `$GITHUB_WORKSPACE/$ADR_DIR`. The behaviour homes are pinned the same way, to
+  `$KNOWLEDGE_BASE_PATH/knowledge/behaviour` and `$GITHUB_WORKSPACE/$BEHAVIOUR_DIR` (they may not
+  exist yet), so a PR cannot set `behaviour.sharedDir` to an empty directory and drop every shared
+  rule. `ADR_DIR` and `BEHAVIOUR_DIR` are each defined once and used by both the preflight and
+  the `check` steps.
 - **Checkouts under the workspace:** `actions/checkout` only accepts a `path` inside
   `$GITHUB_WORKSPACE`, so the plugin and the KB go under `_ci/`. Nothing there is part of the diff.
 - **`$LORE` is resolved once:** absolute and free of `..`, so every later step reads the same path.
@@ -468,6 +493,14 @@ jobs:
   needs history, not just the PR's tip commit.
 - **Fails closed:** a missing or invalid findings file, or a selected record the reviewer did not
   attest to, exits 2.
+- **Behaviour docs:** update the reviewer prompt first (see the starter prompt in
+  `references/adr-findings.md`): a prompt written before 3.5.0 attests a selected doc without
+  checking its rules, which passes silently rather than exiting 2. The second `check` line
+  validates the repo's behaviour home with the same flags (they change nothing for it); drop it
+  in a repo that has none. A knowledge-base repo must run `check --home shared` on
+  `knowledge/behaviour` as a required check the same way: a code PR's review skips a file there
+  with no frontmatter (a note) and never sees KB edits, so only the KB's own check catches a
+  doc broken that way.
 - **Required checks:** make both jobs required status checks. The repository's admin bypass, used
   by its bypass group, is the only override.
 
@@ -481,6 +514,32 @@ fact, or makes an unrecorded hard-to-reverse choice is reviewed as such. Discove
 runs the agent's `survey` mode and drafts every pick as a proposal in one batch per home; each is
 then accepted by a named human. The `recording-decisions` skill is the gate: record it as proposed
 before building on it.
+
+### Behaviour docs
+
+A behaviour doc states the rules a capability must keep, what must stay true now, where an ADR
+records why a hard-to-reverse choice was made: it is living, edited in the same PR as the change
+that alters the behaviour, and a rule that follows from a decision names it in a `Source:` line.
+`/lore:review` selects the docs whose `scope` a diff touches, and a rule the diff breaks is a
+`behaviour-rule` finding, critical and blocking like a contradicted record.
+
+A doc lives in the same two homes as ADRs: `docs/behaviour/<capability>.md` in the repo that
+implements it (`backend/device`), or `behaviour/<capability>.md` in the team knowledge base for a
+capability that spans repos (`kb/contract`). Its rules are cited as the doc id plus `.R<n>`
+(`backend/device.R2`). The dirs are set by the `behaviour` config block (see
+[ADR homes](#adr-homes)). A shared-home rule changes in its own knowledge-base PR, which merges
+first; until it does, a code PR that breaks the rule is blocked.
+
+`adr-lint check` validates a behaviour dir as it does an ADR dir, so pre-commit and CI run one
+line per home kind:
+
+```bash
+node scripts/adr-lint.js check --home local docs/behaviour              # a code repo
+node scripts/adr-lint.js check --home shared knowledge/behaviour        # the knowledge base
+```
+
+The format, the checks and how review judges a rule are in
+[`references/behaviour-docs.md`](references/behaviour-docs.md).
 
 ### Cultivate
 
@@ -741,4 +800,4 @@ Follows [semantic versioning](https://semver.org/). **Every PR that changes plug
 - **MINOR** — new commands/skills/agents, additive options
 - **MAJOR** — renamed/removed commands, config or manifest schema changes
 
-Keep the version in sync across `.claude-plugin/plugin.json`, `package.json`, and the lorekeeper entry in the [Witan marketplace](https://github.com/Mindful-Stack/witan) manifest (the one the updater actually compares — needs a companion PR there).
+Keep the version in sync across `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `package.json` (a test checks these three agree), and the lorekeeper entry in the [Witan marketplace](https://github.com/Mindful-Stack/witan) manifest (the one the updater actually compares — needs a companion PR there).

@@ -1,0 +1,10 @@
+diff --git a/src/Application/Devices/Queries/GetDeviceStatus/GetDeviceStatusQueryHandler.cs b/src/Application/Devices/Queries/GetDeviceStatus/GetDeviceStatusQueryHandler.cs
+--- a/src/Application/Devices/Queries/GetDeviceStatus/GetDeviceStatusQueryHandler.cs
++++ b/src/Application/Devices/Queries/GetDeviceStatus/GetDeviceStatusQueryHandler.cs
+@@ -7,5 +7,5 @@ public class GetDeviceStatusQueryHandler
+     public GetDeviceStatusQueryHandler(IBaseDeviceRepository devices) => _devices = devices;
+ 
+     public async Task<List<DeviceStatusDto>> Handle(Guid projectId)
+-        => await _devices.GetStatusForProject(projectId);
++        => await _devices.GetAllStatuses();
+ }

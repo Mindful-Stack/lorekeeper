@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { resolveHomes, homeOf, repoFromRemote, dirForPrefix } = require('../adr/homes');
+const { resolveHomes, homeOf, behaviourHomeOf, repoFromRemote, dirForPrefix } = require('../adr/homes');
 const { makeRecord, tmpDir, write, gitEnv, git, initRepo, commitAll, runCli } = require('./helpers/adr-fixtures');
 
 const NO_ENV = { KNOWLEDGE_BASE_PATH: '' };
@@ -135,4 +135,37 @@ test('CLI check and select infer the repo from origin in a linked worktree', (t)
     write(path.join(wt, 'docs', 'adr', '0002-b.md'), makeRecord({ prefix: 'svc', number: '0002', fm: { id: undefined, scope: ['src/**'] } }));
     const s = runCli(wt, env, 'select', '--paths', 'src/x.cs');
     assert.match(s.stdout, /^svc\/ADR-0002\t/m);
+});
+
+test('a household resolves behaviour dirs beside the ADR dirs, with overrides', (t) => {
+    const root = tmpDir(t);
+    write(path.join(root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore',
+        behaviour: { sharedDir: 'rules' },
+        repos: [{ name: 'ws' }, { name: 'lore' }, { name: 'api' }, { name: 'web', behaviourDir: 'spec/behaviour' }],
+    }));
+    const h = resolveHomes(root, NO_ENV);
+    assert.deepEqual(h.behaviourConfig, { localDir: 'docs/behaviour', sharedDir: 'rules' });
+    assert.equal(h.localHomes.find((x) => x.repo === 'api').behaviourDir, path.join(root, 'api', 'docs', 'behaviour'));
+    assert.equal(h.localHomes.find((x) => x.repo === 'web').behaviourDir, path.join(root, 'web', 'spec', 'behaviour'));
+    assert.equal(h.sharedBehaviourHome, path.join(root, 'lore', 'knowledge', 'rules'));
+});
+
+test('a single repo reads the behaviour block from .lorekeeper/config.json', (t) => {
+    const root = tmpDir(t);
+    write(path.join(root, '.lorekeeper', 'config.json'), JSON.stringify({ behaviour: { localDir: 'b' } }));
+    const h = resolveHomes(root, NO_ENV);
+    assert.equal(h.localHomes[0].behaviourDir, path.join(root, 'b'));
+    assert.equal(h.sharedBehaviourHome, null);
+});
+
+test('behaviourHomeOf names the home a behaviour dir is, and nothing for an ADR dir', (t) => {
+    const root = tmpDir(t);
+    write(path.join(root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore', repos: [{ name: 'ws' }, { name: 'lore' }, { name: 'api' }],
+    }));
+    const h = resolveHomes(root, NO_ENV);
+    assert.deepEqual(behaviourHomeOf(h, path.join(root, 'api', 'docs', 'behaviour')), { kind: 'local', repo: 'api', prefix: 'api' });
+    assert.deepEqual(behaviourHomeOf(h, path.join(root, 'lore', 'knowledge', 'behaviour')), { kind: 'shared', prefix: 'kb' });
+    assert.equal(behaviourHomeOf(h, path.join(root, 'api', 'docs', 'adr')), null);
 });

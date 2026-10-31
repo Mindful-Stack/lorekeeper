@@ -52,8 +52,33 @@ function selectFixture(patch) {
     return JSON.parse(r.stdout).candidates.map((c) => c.id);
 }
 
-test('review fixture: the device-cache patch selects exactly backend/ADR-0001', () => {
-    assert.deepEqual(selectFixture('device-cache.patch'), ['backend/ADR-0001']);
+test('review fixture: the device-cache patch selects backend/ADR-0001 and backend/device', () => {
+    assert.deepEqual(selectFixture('device-cache.patch'), ['backend/ADR-0001', 'backend/device']);
+});
+
+test('review fixture: both behaviour docs pass check with no output', () => {
+    for (const dir of ['backend/docs/behaviour', 'lore/knowledge/behaviour']) {
+        const r = spawnSync(process.execPath, [CLI, 'check', path.join(WORKSPACE, dir)], { encoding: 'utf8' });
+        assert.equal(r.status, 0, r.stdout + r.stderr);
+        assert.equal(r.stdout, '', dir);
+    }
+});
+
+test('review fixture: device-scope selects backend/device, device-events selects kb/events', () => {
+    assert.ok(selectFixture('device-scope.patch').includes('backend/device'));
+    assert.ok(selectFixture('device-events.patch').includes('kb/events'));
+});
+
+test('review fixture: every new patch hunk header matches its line counts', () => {
+    const fs = require('fs');
+    for (const name of ['device-scope.patch', 'device-rename.patch', 'device-events.patch']) {
+        const lines = fs.readFileSync(path.join(WORKSPACE, '.review', name), 'utf8').split('\n');
+        const at = lines.findIndex((l) => l.startsWith('@@'));
+        const [, oldN, newN] = /^@@ -\d+,(\d+) \+\d+,(\d+) @@/.exec(lines[at]).map(Number);
+        const hunk = lines.slice(at + 1).filter((l) => l !== '');
+        assert.equal(hunk.filter((l) => !l.startsWith('+')).length, oldN, name);
+        assert.equal(hunk.filter((l) => !l.startsWith('-')).length, newN, name);
+    }
 });
 
 test('review fixture: the search-store patch selects nothing, so only judgment can find it', () => {

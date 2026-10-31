@@ -195,10 +195,17 @@ the item, already there.
 
 `--repo` is the repository name as configured in the planner; the record must be readable at
 `<household>/<repo>/<path>`, or at `<household>/<path>` when the household directory's own name is
-`<repo>`. `--pr` is omitted only for a record already merged to the default branch.
+`<repo>`. `--pr` is omitted only for a record already merged to the default branch. A repository
+the planner does not check yet is accepted too: the link is stored and no check runs until the
+repository is configured in the planner.
+
+The `ok` envelope carries `immediate_check` beside `value`: its `outcome` is `stored` (the check
+ran; read `value.check.kind`), `held`, `unreadable`, `failed`, or `repo_not_configured`. Read
+`immediate_check.outcome` first for `repo_not_configured`, then `value.check.kind`.
 
 | Result | Say |
 |---|---|
+| exit 0, `immediate_check.outcome` `repo_not_configured` (`check.kind` stays `unchecked`) | "Linked: <record> answers decision #<id> — record in an unchecked repository: the planner checks it once <repo> is configured." |
 | exit 0, `check.kind` `proposed_pr_open` | "Linked: <record> answers decision #<id> — proposed, PR open." |
 | exit 0, `accepted` | "Linked: … — accepted." |
 | exit 0, `not_accepted` | "Linked: … — the record is <check.status>." |
@@ -211,7 +218,8 @@ the item, already there.
 
 Readiness is read, never computed (kb/ADR-0003 R1). A required decision with `closed` set is
 "closed: <closed.reason>". Otherwise, with `record: null` it is "no record"; else its
-`check.kind`: `unchecked` "not checked yet", `proposed_pr_open` "proposed, PR open", `accepted`
+`check.kind`: `unchecked` "not checked yet" (with a record in a repository the planner does not
+check yet, readiness says "record in an unchecked repository"), `proposed_pr_open` "proposed, PR open", `accepted`
 "accepted", `not_accepted` "record <check.status>" (with `check.superseded_by`: "record
 superseded by <id>, re-point"), `not_found` "record not found".
 
@@ -227,6 +235,7 @@ is never open, whatever its record; skills that list open decisions use this def
 | `decision_unchecked` | decision: not checked yet — #<decision_id> <title> |
 | `decision_proposed_pr_open` | decision: proposed, PR open — #<decision_id> <title> |
 | `decision_record_not_found` | decision: record not found — #<decision_id> <title> |
+| `decision_repo_not_configured` | decision: record in an unchecked repository — #<decision_id> <title> (the record is in a repository the planner does not check yet; it is checked once that repository is configured) |
 | `decision_not_accepted` | decision: record <status> — #<decision_id> <title>; with `superseded_by`: decision: record superseded by <superseded_by>, re-point — #<decision_id> <title> |
 | `blocked_by` | blocked by <story> |
 

@@ -6,7 +6,8 @@
 // stdout, exit 1. Answers use the planner's wire shapes (StoryContextDto, RequiredDecisionDto,
 // CheckResult, Reason in the Reeve repository's crates/reeve-server/tests/snapshots/openapi.json).
 // REEVE_FAKE_LINK_CHECK=unreadable makes `decision link` behave like a link whose immediate check
-// could not run. REEVE_FAKE_REFUSE=<text> makes every command whose name contains <text> (e.g.
+// could not run; REEVE_FAKE_LINK_CHECK=repo_not_configured like a link to a repository the planner does
+// not check yet (GRA-68: stored, no check, readiness reason decision_repo_not_configured). REEVE_FAKE_REFUSE=<text> makes every command whose name contains <text> (e.g.
 // `story create`) answer with a `refused` envelope and exit 2. REEVE_FAKE_SIGNIN=expired makes every
 // call but `auth status` answer an `unauthenticated` error, exit 2. Creates replay by
 // --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates, edits and decision links
@@ -179,7 +180,8 @@ const readinessOf = (s) => {
   const reasons = [];
   // Each open decision's reason from its check, as decision_reason does; an accepted record gates nothing.
   const REASON = { proposed_pr_open: 'decision_proposed_pr_open', not_found: 'decision_record_not_found', not_accepted: 'decision_not_accepted' };
-  const reasonOf = (d) => (d.check.kind === 'unchecked' ? (d.record ? 'decision_unchecked' : 'decision_no_record') : REASON[d.check.kind]);
+  const unconfigured = (d) => !!(state.unconfigured || {})[d.id];
+  const reasonOf = (d) => (d.check.kind === 'unchecked' ? (d.record ? (unconfigured(d) ? 'decision_repo_not_configured' : 'decision_unchecked') : 'decision_no_record') : REASON[d.check.kind]);
   const open = (key) => allDecisions().filter((d) => d.on === key && !d.closed && d.check.kind !== 'accepted').map((d) => ({ reason: reasonOf(d), decision_id: d.id, title: d.title, ...(d.check.kind === 'not_accepted' ? { status: d.check.status, superseded_by: d.check.superseded_by ?? null } : {}) }));
   if (s.kind === 'story' && !s.epic) reasons.push({ reason: 'untriaged' });
   const e = s.epic && (itemsOf()[s.epic] || epics[s.epic]);
@@ -291,15 +293,25 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
     const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);
     const linked = { ...d, record: { repo: f.repo, path: f.path, record_id: f.record }, pr_url: f.pr || null, version: d.version + 1 };
-    // The link is stored even when its immediate check cannot run; the check stays unchecked.
-    const unreadable = process.env.REEVE_FAKE_LINK_CHECK === 'unreadable';
-    const value = unreadable ? { ...linked, check: { kind: 'unchecked' }, checked_at: null } : { ...linked, check: { kind: f.pr ? 'proposed_pr_open' : 'not_found' }, checked_at: NOW };
-    withState((st) => { (st.decisions ||= {})[d.id] = value; });
-    if (unreadable) {
-      process.stderr.write(`decision ${p0}: cannot read ${f.path}: ${f.household || '.'}/${f.repo} is not a git checkout\n`);
-      emit({ outcome: 'ok', value }, 1);
+    // The link is stored even when its immediate check cannot run, or does not run because the planner does not
+    // check the record's repository yet; the check stays unchecked. The answer carries the check's outcome beside it.
+    const mode = process.env.REEVE_FAKE_LINK_CHECK;
+    const unchecked = mode === 'unreadable' || mode === 'repo_not_configured';
+    const value = unchecked ? { ...linked, check: { kind: 'unchecked' }, checked_at: null } : { ...linked, check: { kind: f.pr ? 'proposed_pr_open' : 'not_found' }, checked_at: NOW };
+    withState((st) => {
+      (st.decisions ||= {})[d.id] = value;
+      st.unconfigured = { ...st.unconfigured, [d.id]: mode === 'repo_not_configured' };
+    });
+    if (mode === 'unreadable') {
+      const message = `cannot read ${f.path}: ${f.household || '.'}/${f.repo} is not a git checkout`;
+      process.stderr.write(`decision ${p0}: ${message}\n`);
+      emit({ outcome: 'ok', value, immediate_check: { id: d.id, outcome: 'unreadable', error: message } }, 1);
     }
-    ok(value);
+    if (mode === 'repo_not_configured') {
+      process.stderr.write(`decision ${p0}: linked; its repository is not configured on the server, so the record is not checked yet (the scheduled check reads it once the repository is configured)\n`);
+      emit({ outcome: 'ok', value, immediate_check: { id: d.id, outcome: 'repo_not_configured' } }, 0);
+    }
+    emit({ outcome: 'ok', value, immediate_check: { id: d.id, outcome: 'stored', check: value.check } }, 0);
   },
   'decision close': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');

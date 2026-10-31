@@ -265,3 +265,19 @@ test('decision ls --initiative lists every decision on the initiative, its epics
   assert.equal(JSON.parse(call(['decision', 'ls', '--initiative', 'GRA-999', '--json']).stdout).code, 'not_found');
   assert.equal(call(['decision', 'ls', '--on', 'GRA-20', '--initiative', 'GRA-12', '--json']).status, 1);
 });
+test('a link to a repository the planner does not check yet is stored, exits 0, and gates readiness as decision_repo_not_configured', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args, env = {}) => {
+    const r = spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log, ...env } });
+    return { status: r.status, stderr: r.stderr, ...JSON.parse(r.stdout) };
+  };
+  const link = ['decision', 'link', '7', '--record', 'web/ADR-0001', '--repo', 'web', '--path', 'docs/adr/0001-x.md', '--pr', 'https://github.com/example/web/pull/3', '--json'];
+  const r = call(link, { REEVE_FAKE_LINK_CHECK: 'repo_not_configured' });
+  assert.deepEqual([r.status, r.outcome, r.value.check.kind, r.immediate_check.outcome], [0, 'ok', 'unchecked', 'repo_not_configured']);
+  assert.match(r.stderr, /^decision 7: linked; its repository is not configured/);
+  assert.equal(call(['decision', 'show', '7', '--json']).value.record.repo, 'web');
+  assert.ok(call(['story', 'ls', '--epic', 'GRA-20', '--json']).value[0].readiness.reasons.some((x) => x.reason === 'decision_repo_not_configured' && x.decision_id === 7));
+  // A link whose check ran says so beside the decision.
+  assert.deepEqual(call(link).immediate_check, { id: 7, outcome: 'stored', check: { kind: 'proposed_pr_open' } });
+  assert.ok(!call(['story', 'ls', '--epic', 'GRA-20', '--json']).value[0].readiness.reasons.some((x) => x.reason === 'decision_repo_not_configured'));
+});

@@ -36,8 +36,8 @@ section says.
    `reeve auth login`. Any other refused or failed write skips that one item (that story,
    placement, decision or comment): show the reasons or the message, go on with the next item,
    and list what was skipped in the report.
-4. **The user decides.** Deciders, due dates, applying a record, a story's home and the discovery
-   mark come from the user, never from you; you propose.
+4. **The user decides.** Deciders, due dates, applying a record, a story's home, a story's owner
+   and the discovery mark come from the user, never from you; you propose.
 5. **Build on what is there.** The planner may already hold a brief, decisions and stories for
    this epic. Reuse them; create only what the user's answers add. Whether an existing item covers
    what the user asked for is your judgment in the conversation, shown to the user, never a rule
@@ -109,7 +109,9 @@ section says.
    from step 1 already covers (say which key). Show them, and write the ones confirmed as rule 1
    says (stories and criteria the request names are confirmed by it); for each
    `reeve story create --epic <EPIC> --title <title> --kind story --criterion <text> --criterion <text> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
-   one `--criterion` per criterion.
+   one `--criterion` per criterion. When the user names who owns a story, add `--owner <email>`
+   before `--idempotency-key` (an owner who is not an allowed user is a `validation` error: show
+   it and create the story without the owner); otherwise leave the story unowned.
 7. **Placement tree.** For each story from `story ls --untriaged`, classify it, propose its home
    with the branch that led there, and write it on a confirmation as rule 1 says ("place the
    untriaged stories" names the `story edit`s; `<v>` is the story's `version` from the listing;

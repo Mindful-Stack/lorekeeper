@@ -223,3 +223,15 @@ test('search finds items by title, brief, description or external reference, new
   assert.deepEqual(call(['search', 'nothing like this', '--json']).value, []);
   assert.equal(run(['search', '--json']).status, 1); // the text is required
 });
+test('a story owner is set on create and edit, cleared by --no-owner, and must be an allowed user', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } });
+  const made = JSON.parse(call(['story', 'create', '--epic', 'GRA-20', '--title', 'Owned', '--owner', 'sam@example.com', '--idempotency-key', KEY, '--json']).stdout).value;
+  assert.equal(made.owner, 'sam@example.com');
+  const edited = JSON.parse(call(['story', 'edit', made.key, '--version', '1', '--owner', 'dan@example.com', '--json']).stdout).value;
+  assert.equal(edited.owner, 'dan@example.com');
+  assert.equal(JSON.parse(call(['story', 'edit', made.key, '--version', '2', '--no-owner', '--json']).stdout).value.owner, null);
+  const refused = call(['story', 'edit', 'GRA-31', '--version', '1', '--owner', 'nobody@example.com', '--json']);
+  assert.deepEqual([refused.status, JSON.parse(refused.stdout).code], [1, 'validation']);
+  assert.equal(call(['story', 'edit', 'GRA-31', '--version', '1', '--owner', 'dan@example.com', '--no-owner', '--json']).status, 1); // clap: they conflict
+});

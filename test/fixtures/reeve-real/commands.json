@@ -96,15 +96,15 @@
       "types": { "value[].story.key": "string", "value[].story.title": "string", "value[].story.kind": "string", "value[].story.version": "number", "value[].readiness.ready": "boolean", "value[].readiness.reasons[].reason": "string" }
     },
     {
-      "row": "`reeve story create --epic <KEY> --title <title> --kind story|bug|chore --criterion <text> [--criterion <text> …] --idempotency-key <key> --json`",
-      "argv": ["story", "create", "--epic", "{{epic.key}}", "--title", "Skill smoke created story", "--kind", "story", "--criterion", "It is created", "--criterion", "It is listed", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:1", "--json"],
+      "row": "`reeve story create --epic <KEY> --title <title> --kind story|bug|chore --criterion <text> [--criterion <text> …] [--owner <email>] --idempotency-key <key> --json`",
+      "argv": ["story", "create", "--epic", "{{epic.key}}", "--title", "Skill smoke created story", "--kind", "story", "--criterion", "It is created", "--criterion", "It is listed", "--owner", "{{email}}", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:1", "--json"],
       "reads": ["value.key"],
       "types": { "value.key": "string" }
     },
     {
-      "row": "`reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story|bug|chore] --json`",
+      "row": "`reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story|bug|chore] [--owner <email>] --json`",
       "bind": "untriaged",
-      "argv": ["story", "edit", "{{untriaged.key}}", "--version", "{{untriaged.version}}", "--epic", "{{epic.key}}", "--kind", "story", "--json"],
+      "argv": ["story", "edit", "{{untriaged.key}}", "--version", "{{untriaged.version}}", "--epic", "{{epic.key}}", "--kind", "story", "--owner", "{{email}}", "--json"],
       "reads": ["value.version"],
       "types": { "value.version": "number" }
     },

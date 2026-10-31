@@ -107,8 +107,8 @@ items; never derive a key from a title. Print the run id in the report.
 | `reeve epic discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
 | `reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json` | `value[]`, `.finding`; empty when there are none (see *Findings*) |
 | `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version`. Untriaged: kind `story` with no epic (a bug or chore without one is not listed) |
-| `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] --idempotency-key <key> --json` | `value.key` |
-| `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] --json` | `value.version` |
+| `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] [--owner <email>] --idempotency-key <key> --json` | `value.key`; an owner who is not an allowed user is a `validation` error |
+| `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] [--owner <email>] --json` | `value.version`; an owner who is not an allowed user is a `validation` error |
 | `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}` |
 | `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `on`, `title`, `decider`, `due`, `record` (null = no record), `pr_url`, `check.kind`, `closed` (null, or `{at, by, reason}`); closed decisions are listed too |
 | `reeve decision show <id> --json` | `value`: one decision, the same fields |
@@ -119,7 +119,10 @@ items; never derive a key from a title. Print the run id in the report.
 
 An initiative's owner is an email and its target month is `YYYY-MM` (`2027-03`); pass either on
 create or edit only with a value the user gave (rule *The user decides* in each skill), and leave a
-flag out to keep what is there.
+flag out to keep what is there. A story's owner is likewise an email the user gave, and must be an
+allowed user of the planner: any other is a `validation` error (show it; never retry with another
+address). Pass `--owner` only when the user names who owns the story; `--no-owner` clears it, only
+when the user asks.
 
 **Search before creating** an initiative or an epic: `reeve search <text> --json` with the words
 its title would use (several words are searched as one phrase, case-insensitive) finds initiatives,
@@ -144,6 +147,7 @@ the user asks for what it does, with the command written as shown.
 | `reeve story create --epic <KEY> --title <title> --kind story --description <text> --label <label> --criterion <text> --idempotency-key <key> --json` | a story with a longer description and labels (`--label` repeats, one per label) |
 | `reeve story edit <KEY> --version <n> [--title <title>] [--criterion <text> …] [--rank <n>] --json` | renames the story, replaces ALL its criteria (one `--criterion` each; a criterion unchanged at the same position keeps its done flag) or sets its rank; `--no-epic` in place of `--epic` detaches it (it becomes untriaged) |
 | `reeve story edit <KEY> --version <n> [--description <text>] [--add-label <label> …] [--remove-label <label> …] --json` | replaces the whole description, or adds and removes labels (each repeats; a label the story already has is kept once) |
+| `reeve story edit <KEY> --version <n> --no-owner --json` | clears the story's owner (`--no-owner` in place of `--owner`) |
 | `reeve decision ls --mine --json` | the decisions the signed-in user is the decider of |
 
 ## Findings

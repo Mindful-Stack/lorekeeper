@@ -58,9 +58,9 @@ const SPEC = {
   'auth status': { pos: 0 },
   'story context': { pos: 1 },
   'story ls': { pos: 0, val: ['epic', 'owner', 'delivery', 'label'], bool: ['untriaged', 'ready', 'mine'] },
-  'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
+  'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'owner', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
   'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
-  'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank', 'external-ref', 'description'], bool: ['no-epic'], rep: ['criterion', 'add-label', 'remove-label'], req: ['version'] },
+  'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank', 'owner', 'external-ref', 'description'], bool: ['no-epic', 'no-owner'], rep: ['criterion', 'add-label', 'remove-label'], req: ['version'] },
   'initiative show': { pos: 1 },
   'initiative ls': { pos: 0 },
   'initiative create': { pos: 0, val: ['idempotency-key', 'title', 'horizon', 'brief', 'target-month', 'owner', 'external-ref'], req: ['idempotency-key', 'title', 'horizon'] },
@@ -105,6 +105,7 @@ if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) usage(`invalid value 
 if (f.version && !/^\d+$/.test(f.version)) usage(`invalid value '${f.version}' for '--version'`);
 if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}' for '--due'`);
 if (cmd === 'comment add' && !f.story === !f.decision) usage('pass exactly one of --story and --decision');
+for (const [a, b] of [['epic', 'no-epic'], ['owner', 'no-owner'], ['initiative', 'no-initiative']]) if (a in f && b in f) usage(`the argument '--${a}' cannot be used with '--${b}'`);
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
 
 const NOW = '2026-10-20T09:00:00Z';
@@ -124,6 +125,7 @@ const decision7 = { id: 7, on: 'GRA-20', title: 'Queue or cron', decider: 'dan@e
 // Closed without a record: listed by `decision ls`, never open, never a readiness reason (kb/ADR-0003 R3).
 const decision8 = { ...decision7, id: 8, title: 'Match by postcode', closed: { at: NOW, by: 'dan@example.com', reason: 'matching no longer uses the postcode' }, version: 2 };
 const HORIZONS = ['Now', 'Next', 'Later', "Won't do"];
+const NOT_ALLOWED = 'nobody@example.com';
 const stories = {
   'GRA-31': story('GRA-31', 'Retry failed matches', { epic: 'GRA-20', criteria: [{ text: 'A failed match is retried up to three times', done: false }, { text: 'The third failure is reported to the coordinator', done: false }] }),
   'GRA-32': story('GRA-32', 'Show match history', { epic: 'GRA-20' }),
@@ -215,6 +217,8 @@ if (['story create', 'story edit', 'epic create', 'epic edit'].includes(cmd)) {
 logCall(); // valid: the call reached the planner (a refusal below is the planner's answer)
 if (process.env.REEVE_FAKE_SIGNIN === 'expired' && cmd !== 'auth status') error('unauthenticated', 'the session has expired; run `reeve auth login`');
 if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)) emit({ outcome: 'refused', reasons: [{ reason: 'no_criteria' }] }, 2);
+// A story's owner must be an allowed user (GRA-69); nobody@example.com stands for one who is not.
+if ((cmd === 'story create' || cmd === 'story edit') && f.owner === NOT_ALLOWED) error('validation', `owner ${f.owner} is not an allowed user`);
 if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validation', `horizon ${f.horizon} is not one of the configured buckets`);
 
 ({
@@ -231,9 +235,9 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
   'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic))
     .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery) && (!f.label || s.labels.includes(f.label)))
     .map((s) => ({ story: s, readiness: readinessOf(s) })).filter((x) => !f.ready || (x.readiness.ready && x.story.delivery === 'todo'))),
-  'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], external_ref: f['external-ref'] || null }))),
+  'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], owner: f.owner || null, external_ref: f['external-ref'] || null }))),
   'story mv': () => { const s = find(stories, p0); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1] })); }, // exists so a delivery change is logged; no skill may call it
-  'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic, external_ref: refOf(s), description: f.description ?? s.description,
+  'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic, owner: f['no-owner'] ? null : f.owner ?? s.owner, external_ref: refOf(s), description: f.description ?? s.description,
     criteria: f.criterion ? f.criterion.map((text, i) => ({ text, done: !!(s.criteria[i] && s.criteria[i].text === text && s.criteria[i].done) })) : s.criteria,
     labels: [...new Set([...s.labels, ...(f['add-label'] || [])])].filter((l) => !(f['remove-label'] || []).includes(l)) })); },
   'initiative show': () => ok(find(initiatives, p0)),

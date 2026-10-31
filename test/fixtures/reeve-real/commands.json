@@ -22,6 +22,12 @@
       "types": { "value[].key": "string", "value[].title": "string", "value[].horizon": "string" }
     },
     {
+      "row": "`reeve search <text> --json`",
+      "argv": ["search", "Skill smoke", "--json"],
+      "reads": ["value[].key", "value[].item", "value[].kind", "value[].title", "value[].matched[]"],
+      "types": { "value[].key": "string", "value[].item": "string", "value[].kind": "string|null", "value[].title": "string", "value[].matched[]": "string" }
+    },
+    {
       "row": "`reeve initiative create --title <title> --horizon <bucket> --brief <md> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json`",
       "argv": ["initiative", "create", "--title", "Skill smoke second initiative", "--horizon", "Now", "--brief", "Created by the skill smoke.", "--owner", "{{email}}", "--target-month", "2027-03", "--idempotency-key", "planning-initiative:{{initiative.key}}:{{run_id}}:1", "--json"],
       "reads": ["value.key", "value.version"],

@@ -96,6 +96,7 @@ items; never derive a key from a title. Print the run id in the report.
 |---|---|
 | `reeve initiative show <KEY> --json` | `value.brief`, `.horizon`, `.owner` (null = none), `.target_month` (a month such as 2027-03, null = none), `.external_ref` (null = none), `.discovery_complete` (null = not complete), `.version` |
 | `reeve initiative ls --json` | `value[]`: `key`, `title`, `horizon` |
+| `reeve search <text> --json` | `value[]`: `key`, `item` (initiative, epic or story), `kind` (null = not a story), `title`, `matched[]` (which of title, brief, description and external_ref contain the text); newest first, at most 50, empty when nothing matches |
 | `reeve initiative create --title <title> --horizon <bucket> --brief <md> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json` | `value.key`, `value.version`; a bucket the planner does not have is a `validation` error |
 | `reeve initiative edit <KEY> [--brief <md>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json` | `value.version` |
 | `reeve initiative discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
@@ -119,6 +120,12 @@ items; never derive a key from a title. Print the run id in the report.
 An initiative's owner is an email and its target month is `YYYY-MM` (`2027-03`); pass either on
 create or edit only with a value the user gave (rule *The user decides* in each skill), and leave a
 flag out to keep what is there.
+
+**Search before creating** an initiative or an epic: `reeve search <text> --json` with the words
+its title would use (several words are searched as one phrase, case-insensitive) finds initiatives,
+epics and stories whose title, brief or description, or external reference contains them. A hit
+that covers what you were about to create is reused (say which key); show the hits you judged
+not to cover it. Run one or two searches, never one per word.
 
 No command lists the planner's configured repositories or horizon buckets (they are in
 `GET /api/v1/config`, which the CLI does not expose): ask for them, or take them from the request.

@@ -79,12 +79,14 @@ const SPEC = {
   'decision link': { pos: 1, val: ['record', 'repo', 'path', 'pr', 'household'], req: ['record', 'repo', 'path'] },
   'decision close': { pos: 1, val: ['reason'], req: ['reason'] },
   'comment add': { pos: 0, val: ['idempotency-key', 'story', 'decision', 'body'], req: ['idempotency-key', 'body'] },
+  search: { pos: 1, variadic: true }, // `reeve search <TEXT>...`: several words are one phrase
 };
-const cmd = words.slice(0, 2).join(' ');
+// A command is one word (`search`) or two (`story ls`).
+const cmd = SPEC[words[0]] ? words[0] : words.slice(0, 2).join(' ');
 const spec = SPEC[cmd] || usage(`unrecognized subcommand: reeve ${cmd}`);
 const pos = [];
 const f = {};
-for (let i = 2; i < words.length; i++) {
+for (let i = cmd.split(' ').length; i < words.length; i++) {
   const w = words[i];
   if (!w.startsWith('--')) { pos.push(w); continue; }
   const name = w.slice(2);
@@ -96,7 +98,7 @@ for (let i = 2; i < words.length; i++) {
     if ((spec.rep || []).includes(name)) (f[name] ||= []).push(v); else f[name] = v;
   } else usage(`unexpected argument '--${name}' found`);
 }
-if (pos.length !== spec.pos) usage(`reeve ${cmd} takes ${spec.pos} positional argument(s), got ${pos.length}`);
+if (spec.variadic ? pos.length < spec.pos : pos.length !== spec.pos) usage(`reeve ${cmd} takes ${spec.pos} positional argument(s), got ${pos.length}`);
 for (const r of spec.req || []) if (!(r in f)) usage(`the following required arguments were not provided: --${r}`);
 if (spec === DISCOVERY && !f.complete && !f.reopen) usage('pass --complete or --reopen');
 if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) usage(`invalid value '${f.kind}' for '--kind'`);
@@ -270,6 +272,17 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
     const value = { ...d, closed: { at: NOW, by: 'dan@example.com', reason: f.reason }, version: d.version + 1 };
     withState((st) => { (st.decisions ||= {})[d.id] = value; });
     ok(value);
+  },
+  // GET /search (GRA-73): title, brief or description, or external reference containing the text (case-insensitive,
+  // literal), newest first, at most 50, each with the fields that matched.
+  search: () => {
+    const q = pos.join(' ').toLowerCase();
+    const hits = [...all(initiatives, 'initiative'), ...all(epics, 'epic'), ...all(stories, 'story')].map((x) => {
+      const item = kindOf(x);
+      const fields = [['title', x.title], item === 'story' ? ['description', x.description] : ['brief', x.brief], ['external_ref', x.external_ref]];
+      return { key: x.key, item, kind: item === 'story' ? x.kind : null, title: x.title, matched: fields.filter(([, v]) => v && v.toLowerCase().includes(q)).map(([n]) => n) };
+    });
+    ok(hits.filter((h) => h.matched.length).sort((a, b) => Number(b.key.split('-')[1]) - Number(a.key.split('-')[1])).slice(0, 50));
   },
   'comment add': () => {
     ok(mint((id) => [{ id, author: 'dan@example.com', body: f.body, at: NOW, on_story: f.story || null, on_decision: f.decision ? Number(f.decision) : null, external_ref: null }]));

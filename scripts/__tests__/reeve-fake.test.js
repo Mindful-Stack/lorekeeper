@@ -212,3 +212,14 @@ test('story context leaves a closed decision out of the bundle', () => {
   const { value } = run(['story', 'context', 'GRA-31', '--json']).envelope;
   assert.deepEqual(value.required_decisions.map((d) => d.id), [7]); // #8 on GRA-20 is closed
 });
+test('search finds items by title, brief, description or external reference, newest first; several words are one phrase', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => JSON.parse(spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } }).stdout);
+  call(['epic', 'create', '--initiative', 'GRA-12', '--title', 'Queue alerts', '--brief', 'Alert on a stuck MATCHING queue.', '--idempotency-key', KEY, '--json']);
+  const hits = call(['search', 'matching', 'queue', '--json']).value;
+  assert.deepEqual(hits.map((h) => [h.key, h.item, h.kind, h.matched]), [['GRA-100', 'epic', null, ['brief']], ['GRA-20', 'epic', null, ['title']]]);
+  assert.deepEqual(call(['search', 'match', '--json']).value.map((h) => h.key).slice(0, 2), ['GRA-100', 'GRA-46']);
+  assert.equal(call(['search', 'Retry failed', '--json']).value[0].kind, 'story');
+  assert.deepEqual(call(['search', 'nothing like this', '--json']).value, []);
+  assert.equal(run(['search', '--json']).status, 1); // the text is required
+});

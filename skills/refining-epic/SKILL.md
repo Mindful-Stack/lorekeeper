@@ -135,6 +135,9 @@ section says.
         them from the request; pass only the ones given (never guess an owner), and name the
         missing ones in the report.
 
+     Before proposing a new epic or initiative (2 or 3), search for it
+     (`reeve search <text> --json`, as the reference's *Search before creating* says): a hit that
+     covers the story is its home by 1 or 2 instead; say which key.
      For 2 and 3, show the proposed title, brief (and horizon) and create them only on a
      confirmation for that story; in a session that cannot ask, only when the request names that
      create. Otherwise create nothing for it and leave it untriaged with the proposal:

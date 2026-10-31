@@ -111,7 +111,10 @@ argument.
       so the decision's thread in the planner carries the pointer. Never link or apply a record
       the user did not say to apply.
 7. **Epics.** Propose 2–5 epics, each a deliverable slice with a one-paragraph brief, leaving out
-   those step 5 found covered; show them, and write the ones confirmed as rule 1 says (epics and
+   those step 5 found covered. Before proposing a new one, search for it
+   (`reeve search <text> --json`, as the reference's *Search before creating* says): an epic
+   elsewhere, even under another initiative, may already cover it; say which key and reuse it
+   rather than duplicate it. Show them, and write the ones confirmed as rule 1 says (epics and
    briefs the request names are confirmed by it); for each
    `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`.
    Each epic gets its own `<n>`.

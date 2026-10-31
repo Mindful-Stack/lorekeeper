@@ -26,9 +26,9 @@ test('commandRows reads the Commands table only and reads \\| inside a cell as |
 });
 test('commandRows finds the rows of the reference, each with its Read cell', () => {
   const rows = s.commandRows(fs.readFileSync(path.join(__dirname, '..', '..', 'references', 'reeve-cli.md'), 'utf8'));
-  assert.equal(rows.length, 21);
+  assert.equal(rows.length, 22);
   for (const r of rows) {
-    assert.match(r.row, /^`reeve [a-z]+ [a-z]+[ `]/, r.row);
+    assert.match(r.row, /^`reeve [a-z]+( [a-z]+)?[ `]/, r.row);
     assert.match(r.read, /`value/, r.row);
   }
 });
@@ -40,6 +40,7 @@ test('formsOf: every `reeve …` span is a form, and an "(or `--flag …`)" suff
     ['comment add --story <KEY>', ['--story', '--body', '--json']],
   ]);
   assert.deepEqual(s.formsOf('`reeve epic ls [--initiative <KEY>] --json`')[0].required, ['--json']); // a [optional] flag is not required
+  assert.deepEqual(s.formsOf('`reeve search <text> --json`').map((f) => f.words), ['search']); // a one-word command stops at its placeholder
 });
 test('readPaths: the field paths of a Read cell, with nesting and relative fields kept', () => {
   assert.deepEqual(s.readPaths('`value.brief`, `.owner` (null = not complete), `.version`'), ['value.brief', 'value.owner', 'value.version']);

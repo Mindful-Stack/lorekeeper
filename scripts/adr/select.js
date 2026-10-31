@@ -90,9 +90,10 @@ function parsePatchPaths(patch) {
 }
 
 // Each file a patch changes, at file level, for telling a deleted or moved file from an edit:
-// [{ from, to, prefixes: { removed: [], added: [] } }]. `from` is null for an added file, `to`
-// null for a deleted one; a rename has both, different. `prefixes` are the `prefix:` values on
-// the hunks' removed and added lines (a behaviour doc's id, for a rename written without -M).
+// [{ from, to, oldFirst }]. `from` is null for an added file (a copy included: its
+// source stays), `to` null for a deleted one; a rename (git's `rename from`/`rename to`) has
+// both, different. `oldFirst` is the old file's first line when a hunk shows it (else
+// undefined).
 function patchFiles(patch) {
     return scanPatch(patch).files;
 }
@@ -103,12 +104,13 @@ function scanPatch(patch) {
     let file = null;
     // A `---` line opens a file of its own when the current one already has its `+++` (diff -u).
     const open = () => {
-        file = { from: undefined, to: undefined, deleted: false, added: false, paired: false, prefixes: { removed: [], added: [] } };
+        file = { from: undefined, to: undefined, deleted: false, added: false, copy: false, paired: false, oldFirst: undefined };
         files.push(file);
     };
     let prefixed = true;
     let oldLeft = 0;
     let newLeft = 0;
+    let oldLine = 0;
     for (const line of patch.replace(/\r\n/g, '\n').split('\n')) {
         if (line.startsWith('diff ')) {
             oldLeft = 0;
@@ -131,8 +133,11 @@ function scanPatch(patch) {
             continue;
         }
         if (oldLeft > 0 || newLeft > 0) {
-            const pv = /^([-+])prefix:\s*(\S+)/.exec(line);
-            if (pv && file) file.prefixes[pv[1] === '-' ? 'removed' : 'added'].push(pv[2].replace(/^["']|["']$/g, ''));
+            // Old line 1, as context or removed: whether the old file started with frontmatter.
+            if (file && oldLine === 1 && !line.startsWith('+') && !line.startsWith('\\')) {
+                file.oldFirst = line.slice(1);
+            }
+            if (!line.startsWith('+') && !line.startsWith('\\')) oldLine++;
             if (line.startsWith('-')) oldLeft--;
             else if (line.startsWith('+')) newLeft--;
             else if (!line.startsWith('\\')) {
@@ -142,10 +147,11 @@ function scanPatch(patch) {
             continue;
         }
         if (line.startsWith('@@')) {
-            const m = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
+            const m = /^@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
+            oldLine = m ? Number(m[1]) : 0;
             // A malformed hunk header: treat the rest of the file as hunk content.
-            oldLeft = m ? (m[1] === undefined ? 1 : Number(m[1])) : Infinity;
-            newLeft = m ? (m[2] === undefined ? 1 : Number(m[2])) : Infinity;
+            oldLeft = m ? (m[2] === undefined ? 1 : Number(m[2])) : Infinity;
+            newLeft = m ? (m[3] === undefined ? 1 : Number(m[3])) : Infinity;
             continue;
         }
         if (file && /^deleted file mode /.test(line)) file.deleted = true;
@@ -155,6 +161,7 @@ function scanPatch(patch) {
             const p = pathToken(moved[3]);
             paths.add(p);
             if (file && moved[1] === 'rename') file[moved[2] === 'from' ? 'from' : 'to'] = p;
+            if (file && moved[1] === 'copy') file.copy = true;
             continue;
         }
         const m = /^(\+\+\+|---) (.+)$/.exec(line);
@@ -175,9 +182,9 @@ function scanPatch(patch) {
     return {
         paths: [...paths],
         files: files.map((f) => ({
-            from: f.added ? null : (f.from === undefined ? f.to : f.from),
+            from: f.added || f.copy ? null : (f.from === undefined ? f.to : f.from),
             to: f.deleted ? null : (f.to === undefined ? f.from : f.to),
-            prefixes: f.prefixes,
+            oldFirst: f.oldFirst,
         })).filter((f) => f.from || f.to),
     };
 }

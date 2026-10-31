@@ -1171,7 +1171,6 @@ test('I1: a doc the patch deletes or moves out of being a doc exits 2, whatever 
         upper: renamePatch(from, 'docs/behaviour/device-status.MD'),
         subdir: renamePatch(from, 'docs/behaviour/devices/device-status.md'),
         'out of the home': renamePatch(from, 'docs/old/device-status.md'),
-        'no -M, re-added under _': delPatch(from) + addPatch('docs/behaviour/_device-status.md'),
     };
     for (const [label, patch] of Object.entries(cases)) {
         fs.rmSync(dir, { recursive: true, force: true });
@@ -1184,21 +1183,61 @@ test('I1: a doc the patch deletes or moves out of being a doc exits 2, whatever 
     }
 });
 
-test('I1: a rename to another doc name in the same home selects the doc under its new path', (t) => {
+test('I1/N1: a rename is read only from git\'s rename markers', (t) => {
     const w = workspace(t);
     write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
     const dir = path.join(w.api, 'docs', 'behaviour');
     write(path.join(dir, 'device-statuses.md'), makeBehaviourDoc({ prefix: 'api', fm: { scope: ['src/Other/**'] } }));
     const from = 'docs/behaviour/device-status.md';
     const to = 'docs/behaviour/device-statuses.md';
-    for (const [label, patch] of Object.entries({ '-M': renamePatch(from, to), 'no -M': delPatch(from) + addPatch(to) })) {
-        const { sel } = selectAndVerdict(w, patch);
-        assert.equal(sel.code, 0, `${label}: ${sel.stdout}${sel.stderr}`);
-        assert.match(sel.stdout, /^api\/device\t-\t\S+device-statuses\.md\ttouched$/m, label);
-    }
-    // Without -M, a deleted doc whose prefix no added doc carries is still gone.
-    const other = selectAndVerdict(w, delPatch(from) + addPatch(to, 'status'));
-    assert.equal(other.sel.code, 2, other.sel.stdout + other.sel.stderr);
+    const m = selectAndVerdict(w, renamePatch(from, to)).sel;
+    assert.equal(m.code, 0, m.stdout + m.stderr);
+    assert.match(m.stdout, /^api\/device\t-\t\S+device-statuses\.md\ttouched$/m);
+    // --no-renames: a delete plus an add, even of the same doc, fails closed.
+    const nr = selectAndVerdict(w, delPatch(from) + addPatch(to)).sel;
+    assert.equal(nr.code, 2, nr.stdout + nr.stderr);
+    assert.match(nr.stderr, /is deleted by the diff.*if this is a rename, produce the diff with rename detection \(git's default\)/);
+    // A delete plus another doc whose body carries the same prefix line is not a rename either.
+    const spoof = `${delPatch(from)}diff --git a/docs/behaviour/other.md b/docs/behaviour/other.md\n--- a/docs/behaviour/other.md\n+++ b/docs/behaviour/other.md\n@@ -5,0 +6,1 @@\n+prefix: device\n`;
+    write(path.join(dir, 'other.md'), makeBehaviourDoc({ prefix: 'api', fm: { prefix: 'other', scope: ['src/Other/**'] } }));
+    const sp = selectAndVerdict(w, spoof).sel;
+    assert.equal(sp.code, 2, sp.stdout + sp.stderr);
+});
+
+test('M-a: deleting or editing a note (no frontmatter at line 1) is not a doc change', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    const p = 'docs/behaviour/login.md';
+    const del = `diff --git a/${p} b/${p}\ndeleted file mode 100644\n--- a/${p}\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-# Login notes\n-Some notes.\n`;
+    const d = selectAndVerdict(w, del);
+    assert.equal(d.sel.code, 0, d.sel.stdout + d.sel.stderr);
+    assert.equal(d.ver.code, 0, d.ver.stdout + d.ver.stderr);
+    write(path.join(w.api, p), '# Login notes\nSome notes.\nx\n');
+    const edit = `diff --git a/${p} b/${p}\n--- a/${p}\n+++ b/${p}\n@@ -1,2 +1,3 @@\n # Login notes\n Some notes.\n+x\n`;
+    const e = selectAndVerdict(w, edit);
+    assert.equal(e.sel.code, 0, e.sel.stdout + e.sel.stderr);
+    // An edit that strips a doc's frontmatter (removes a `---` line 1) is still a doc, and exits 2.
+    write(path.join(w.api, p), '# Login notes\n');
+    const strip = `diff --git a/${p} b/${p}\n--- a/${p}\n+++ b/${p}\n@@ -1,3 +1,1 @@\n----\n-prefix: login\n----\n # Login notes\n`;
+    const st = selectAndVerdict(w, strip).sel;
+    assert.equal(st.code, 2, st.stdout + st.stderr);
+    // So is a line inserted above a doc's `---`.
+    write(path.join(w.api, p), `# Login notes\n${makeBehaviourDoc({ prefix: 'api', fm: { prefix: 'login' } })}`);
+    const above = `diff --git a/${p} b/${p}\n--- a/${p}\n+++ b/${p}\n@@ -1,1 +1,2 @@\n+# Login notes\n ---\n`;
+    assert.equal(selectAndVerdict(w, above).sel.code, 2);
+    // A deletion whose first line is not in the patch (binary) still fails closed.
+    const bin = `diff --git a/docs/behaviour/device-status.md b/docs/behaviour/device-status.md\ndeleted file mode 100644\nBinary files a/docs/behaviour/device-status.md and /dev/null differ\n`;
+    assert.equal(selectAndVerdict(w, bin).sel.code, 2);
+});
+
+test('M-b: a copy is not a move; the source stays', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.api, 'docs', 'behaviour', 'device-status.md'), makeBehaviourDoc({ prefix: 'api' }));
+    const copy = 'diff --git a/docs/behaviour/device-status.md b/docs/archive/device-status.md\nsimilarity index 100%\ncopy from docs/behaviour/device-status.md\ncopy to docs/archive/device-status.md\n';
+    const { sel } = selectAndVerdict(w, copy);
+    assert.equal(sel.code, 0, sel.stdout + sel.stderr);
+    assert.doesNotMatch(sel.stderr, /moved/);
 });
 
 test('I1: an added doc missing from the working tree, and planned --paths, do not exit 2', (t) => {
@@ -1223,8 +1262,9 @@ test('I2b: a file in a behaviour home with no frontmatter is not a doc, unless t
     const ok = selectAndVerdict(w, PATCH, ['kb/ADR-0001']);
     assert.equal(ok.sel.code, 0, ok.sel.stdout + ok.sel.stderr);
     assert.equal(ok.ver.code, 0, ok.ver.stdout + ok.ver.stderr);
-    // Touched, it is a doc the PR left unreadable.
-    const touched = selectAndVerdict(w, touchPatch('docs/behaviour/notes.md'));
+    // Touched where the patch does not show its first line, it is taken as a doc left unreadable.
+    const deep = 'diff --git a/docs/behaviour/notes.md b/docs/behaviour/notes.md\n--- a/docs/behaviour/notes.md\n+++ b/docs/behaviour/notes.md\n@@ -5 +5 @@\n-a\n+b\n';
+    const touched = selectAndVerdict(w, deep);
     assert.equal(touched.sel.code, 2, touched.sel.stdout + touched.sel.stderr);
     assert.match(touched.sel.stderr, /notes\.md: no frontmatter.*behaviour\.localDir \/ repos\[\]\.behaviourDir/);
     // Starting with --- (a BOM before it included) it is a doc that fails to parse: exit 2.

@@ -331,7 +331,8 @@ block holding your own findings (when you read the whole patch).
   `behaviour-rule`.
 - `coverage.checked` lists **every** candidate from the select output except `missing` ones,
   records and behaviour docs alike, plus any record you found by expansion and read in full:
-  record and doc ids, never rule ids. A selected candidate left out makes the check fail.
+  record and doc ids, never rule ids. List only what you read: a record a `Source:` line names
+  that is not a candidate is not listed. A selected candidate left out makes the check fail.
 - `coverage.notReviewed` lists areas you could not assess, such as a binary file or one you did
   not read. Write `[]` when there are none. It is reported, never judged.
 - `ids` name one record: the record, its rules (`.R<n>`) or its facts (`.F<n>`). Use `[]` for an

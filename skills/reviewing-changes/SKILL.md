@@ -174,6 +174,9 @@ Then dispatch two agents in parallel (both Task calls in one message):
   files on disk. It cites changed lines from the patch and ends with an `adr-findings` block —
   unless it had no patch to read, in which case it ends with none.
 
+Run a local review of a PR on the PR's head: `select` reads docs from disk, so off the head a
+doc the PR renames within its home is not there under its new name and is not selected.
+
 Include both outputs in your review context.
 
 Also check for repo-specific knowledge:

@@ -22,7 +22,8 @@ Other teams' knowledge bases contribute no behaviour docs.
 
 Every `.md` file in a behaviour home is a doc, except `_`-prefixed files and `README.md`.
 Subdirectories are not read. In review, a file with no frontmatter at all (it does not start
-with `---`) is a note, not a doc, unless the diff touches it; `check` still reports it. A doc
+with `---`) is a note, not a doc, unless the diff touches it and the patch does not show it was
+a note before; `check` still reports it. A doc
 that cannot be read (a dangling symlink, no permission) makes `select`, `verdict`, `check` and
 `index` exit 2.
 
@@ -189,9 +190,12 @@ binds:
 
 - the patch deletes a doc, or renames or moves it to a path that is not a doc in the same home
   (`_…`, `README.md`, `.MD`, a subdirectory, another dir). This is read from the patch, not the
-  working tree, so an off-branch review of a PR that adds a doc passes; a rename to another doc
-  name in the same home selects the doc under its new path, with or without `-M` (without it, a
-  deleted doc re-added with the same `prefix:`). Planned paths (`--paths`) are not checked;
+  working tree, so an off-branch review of a PR that adds a doc passes. A rename to another doc
+  name in the same home selects the doc under its new path; it is recognised only from git's
+  `rename from` / `rename to` lines, which `git diff` and `gh pr diff` emit by default, so a
+  `--no-renames` patch (a delete plus an add) exits 2. A copy is not a move, and deleting or
+  editing a file the patch shows did not start with `---` (a note) is not a doc change. Planned
+  paths (`--paths`) are not checked;
 - a doc in a home being selected from starts with `---` (after any byte-order mark) but its
   frontmatter is unclosed, has an error on `scope` or `prefix`, or has an unparseable line (it
   may be either); or a doc the diff touches has no frontmatter. The message names

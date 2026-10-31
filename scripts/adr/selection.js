@@ -17,10 +17,11 @@ class SelectionError extends Error {}
 
 // The doc files the diff touches, from each behaviour home inside this repo's checkout, decided
 // from the patch, not the working tree (an off-branch review has the base on disk). A doc the
-// patch deletes, or moves to a path that is not a doc in the same home, throws: its rules would
-// silently stop binding the PR that removes them. A rename written without -M (a delete plus an
-// add of a doc in the same home with the same `prefix:`) is a rename. Planned paths (`--paths`)
-// are never checked for absence: a plan may create a doc.
+// patch deletes, or renames (git's rename markers only) to a path that is not a doc in the same
+// home, throws: its rules would silently stop binding the PR that removes them. A file the patch
+// shows did not start with `---` is a note, not a doc. Planned paths (`--paths`) are never
+// checked for absence: a plan may create a doc.
+// Returns { touched, notes }: touched doc files on disk, and touched files that were notes.
 function touchedDocs(homes, repo, dirs, { paths, files }) {
     const repoDir = homes.mode === 'single' ? homes.root : path.join(homes.root, repo);
     const rels = dirs.map((dir) => ({ dir, rel: toPosix(path.relative(repoDir, dir)) }))
@@ -33,18 +34,25 @@ function touchedDocs(homes, repo, dirs, { paths, files }) {
         }
         return null;
     };
+    // The patch shows the old file's first line, and it is not a frontmatter opener.
+    const wasNote = (f) => f.oldFirst !== undefined && !f.oldFirst.replace(/^\uFEFF/, '').startsWith('---');
     const gone = (from, how) => new SelectionError(`behaviour doc ${from} is ${how}; review cannot judge rules it no longer sees. Retiring a doc needs the admin bypass`);
     for (const f of files || []) {
         const old = f.from && docAt(f.from);
-        if (!old || f.to === f.from) continue;
+        if (!old || f.to === f.from || wasNote(f)) continue;
         if (f.to) {
             const now = docAt(f.to);
             if (!now || now.dir !== old.dir) throw gone(f.from, `moved by the diff to ${f.to}, which is not a doc in its home`);
             continue;
         }
-        const readded = files.some((g) => g !== f && g.to && (docAt(g.to) || {}).dir === old.dir
-            && g.prefixes.added.some((x) => f.prefixes.removed.includes(x)));
-        if (!readded) throw gone(f.from, 'deleted by the diff');
+        throw gone(f.from, "deleted by the diff (if this is a rename, produce the diff with rename detection (git's default))");
+    }
+    // A touched file the patch shows was a note before (old line 1 is not `---`). When the patch
+    // does not show line 1, the file is taken as a doc: a stripped frontmatter fails closed.
+    const notes = new Set();
+    for (const f of files || []) {
+        const hit = f.to && docAt(f.to);
+        if (hit && f.from === f.to && wasNote(f)) notes.add(hit.file);
     }
     const out = new Set();
     for (const p of files ? files.map((f) => f.to) : paths) {
@@ -57,7 +65,7 @@ function touchedDocs(homes, repo, dirs, { paths, files }) {
             // Not on disk: an off-branch review of a PR that adds it, or a planned doc.
         }
     }
-    return out;
+    return { touched: out, notes };
 }
 
 // The records a selected doc's rules name in `Source:` bind the same diff: each is selected
@@ -129,12 +137,13 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
     const paths = given || parsePatchPaths(diffText);
     const docHomes = [local.behaviourDir];
     if (homes.sharedBehaviourHome && !local.behaviourCoinciding) docHomes.push(homes.sharedBehaviourHome);
-    const touched = touchedDocs(homes, repo, docHomes, given ? { paths } : { files: patchFiles(diffText) });
+    const { touched, notes } = touchedDocs(homes, repo, docHomes, given ? { paths } : { files: patchFiles(diffText) });
     const unusable = [];
     const addDocs = (dir, kind, prefix) => {
         for (const d of B.loadBehaviourHome(dir).docs) {
-            // No frontmatter at all: not a behaviour doc (a note), unless this PR touches it.
-            if (!d.text.replace(/^\uFEFF/, '').startsWith('---') && !touched.has(d.file)) continue;
+            // No frontmatter at all: not a behaviour doc (a note), unless this PR touches it and the
+            // patch does not show it was a note before (an edit that strips a doc's frontmatter).
+            if (!d.text.replace(/^\uFEFF/, '').startsWith('---') && (!touched.has(d.file) || notes.has(d.file))) continue;
             // Its scope cannot be read, so whether it binds this diff cannot be told.
             const why = B.unreadable(d);
             if (why) {

@@ -183,10 +183,12 @@ rules beside binding ADRs.
    whose home is not on disk is not selected. Selection fails closed (exit 2, naming the path)
    when it cannot tell what a doc binds: the patch deletes a doc or moves it to a path that is
    not a doc in the same home (read from the patch, not the working tree; a rename within the
-   home, with or without `-M`, keeps the doc), a doc starting with `---` whose frontmatter is
-   unclosed or has an error on `scope`, `prefix` or an unparseable line, a touched doc with no
-   frontmatter, a selected doc with no `## Rules` section as parsed, or an unreadable entry. A
-   file with no frontmatter that the diff does not touch is a note, not a doc. Retiring a doc therefore needs the admin bypass.
+   home, recognised only from git's rename markers, keeps the doc; a copy is not a move), a doc
+   starting with `---` whose frontmatter is unclosed or has an error on `scope`, `prefix` or an
+   unparseable line, a touched doc with no frontmatter, a selected doc with no `## Rules`
+   section as parsed, or an unreadable entry. A file with no frontmatter is a note, not a doc,
+   unless the diff touches it without showing it was a note before. Retiring a doc therefore
+   needs the admin bypass.
 2. **Judgment:** the architect's `check` mode reports one more finding class, `behaviour-rule`:
    **the diff breaks rule `<id>` as the diff leaves it** (a rule the PR edits is judged in its
    edited form; a rule it removes no longer binds; editing one rule never exempts the others),

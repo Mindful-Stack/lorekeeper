@@ -133,11 +133,15 @@ Exit 2 means the check failed closed. Causes:
     (adr-lint check) before review`);
   - the patch deletes a doc, or renames or moves it to a path that is not a doc in the same
     home (`behaviour doc <path> is deleted by the diff …` / `is moved by the diff to …`). This is
-    read from the patch, not the working tree; a rename to another doc name in the same home
-    (with or without `-M`: a deleted doc re-added with the same `prefix:`) is not gone;
+    read from the patch, not the working tree. A rename to another doc name in the same home is
+    not gone, and is recognised only from git's `rename from` / `rename to` lines (`git diff`
+    and `gh pr diff` emit them by default); a delete plus an add, as a `--no-renames` patch
+    writes a rename, exits 2. A copy is not a move. A file the patch shows did not start with
+    `---` (a note) is not a doc;
   - a doc in a home being selected from starts with `---` (after any byte-order mark) but its
     frontmatter is unclosed, has an error on `scope` or `prefix`, or has an unparseable line; or
-    a doc the diff touches has no frontmatter (`<file>: <error>; review cannot tell what it
+    a doc the diff touches has no frontmatter, unless the patch shows it did not start with
+    `---` before (`<file>: <error>; review cannot tell what it
     binds …`, naming `behaviour.localDir` / `repos[].behaviourDir` for a dir that is not a
     behaviour home). A file with no frontmatter that the diff does not touch is not a doc;
   - a selected doc has no `## Rules` section as parsed (`<file> has no ## Rules section; review
@@ -229,8 +233,9 @@ its full record).
 7. A product policy recorded as a rule in a behaviour doc (who sees what, who may do what) is
    not an `uncovered` architectural choice.
 8. List every candidate whose status is not `missing` in `coverage.checked`, behaviour docs
-   included, whether or not you report on them: record and doc ids, never rule ids. List areas
-   you could not assess in `coverage.notReviewed`.
+   included, whether or not you report on them: record and doc ids, never rule ids. List only
+   candidates you read; a record a `Source:` line names that is not a candidate is not listed.
+   List areas you could not assess in `coverage.notReviewed`.
 
 Answer with one JSON document matching the schema, and nothing else.
 ```

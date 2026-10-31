@@ -497,8 +497,10 @@ jobs:
   `references/adr-findings.md`): a prompt written before 3.4.0 attests a selected doc without
   checking its rules, which passes silently rather than exiting 2. The second `check` line
   validates the repo's behaviour home with the same flags (they change nothing for it); drop it
-  in a repo that has none. A knowledge-base repo runs `check --home shared` on
-  `knowledge/behaviour` the same way.
+  in a repo that has none. A knowledge-base repo must run `check --home shared` on
+  `knowledge/behaviour` as a required check the same way: a code PR's review skips a file there
+  with no frontmatter (a note) and never sees KB edits, so only the KB's own check catches a
+  doc broken that way.
 - **Required checks:** make both jobs required status checks. The repository's admin bypass, used
   by its bypass group, is the only override.
 

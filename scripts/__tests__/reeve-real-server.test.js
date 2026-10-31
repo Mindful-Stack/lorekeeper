@@ -53,7 +53,7 @@ test("the real fixture fails coverage when its reads stop reaching the reference
     ["`reeve decision show <id> --json`: the reference's Read names value.title, which no read reaches (read it, or list it in unread with a reason)"]);
   // both names already appear in the decision ls reads (value[].record, value[].check.kind), but not this path (review round 2)
   // (decision show inherits the list's fields, so it is required there too)
-  assert.deepEqual(s.coverageProblems(grow('`reeve decision ls', '`record.kind`'), fixture), [
+  assert.deepEqual(s.coverageProblems(grow('`reeve decision ls --on', '`record.kind`'), fixture), [
     "`reeve decision ls --on <KEY> --json`: the reference's Read names value[].record.kind, which no read reaches (read it, or list it in unread with a reason)",
     "`reeve decision show <id> --json`: the reference's Read names value.record.kind, which no read reaches (read it, or list it in unread with a reason)",
   ]);

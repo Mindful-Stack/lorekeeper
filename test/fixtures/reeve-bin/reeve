@@ -73,7 +73,7 @@ const SPEC = {
   'epic edit': { pos: 1, val: ['version', 'title', 'brief', 'initiative', 'external-ref'], bool: ['no-initiative'], req: ['version'] },
   'epic discovery': DISCOVERY,
   'epic findings': { pos: 1 },
-  'decision ls': { pos: 0, val: ['on'], bool: ['mine'] },
+  'decision ls': { pos: 0, val: ['on', 'initiative'], bool: ['mine'] },
   'decision show': { pos: 1 },
   'decision require': { pos: 0, val: ['idempotency-key', 'on', 'title', 'decider', 'due'], req: ['idempotency-key', 'on', 'title', 'decider'] },
   'decision link': { pos: 1, val: ['record', 'repo', 'path', 'pr', 'household'], req: ['record', 'repo', 'path'] },
@@ -108,7 +108,7 @@ if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}'
 // `--story` is an alias of `--item` (GRA-70); a comment is on exactly one item or decision.
 if (f.story !== undefined) { if (f.item !== undefined) usage("the argument '--item' cannot be used multiple times"); f.item = f.story; delete f.story; }
 if (cmd.startsWith('comment ') && !f.item === !f.decision) usage('pass exactly one of --item and --decision');
-for (const [a, b] of [['epic', 'no-epic'], ['owner', 'no-owner'], ['initiative', 'no-initiative']]) if (a in f && b in f) usage(`the argument '--${a}' cannot be used with '--${b}'`);
+for (const [a, b] of [['epic', 'no-epic'], ['owner', 'no-owner'], ['initiative', 'no-initiative'], ['on', 'initiative']]) if (a in f && b in f) usage(`the argument '--${a}' cannot be used with '--${b}'`);
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
 
 const NOW = '2026-10-20T09:00:00Z';
@@ -124,7 +124,7 @@ const epics = {
   'GRA-21': epic('GRA-21', 'Mentor profiles', { brief: 'Mentors describe their skills and availability.', initiative: 'GRA-13' }),
   'GRA-22': epic('GRA-22', 'Session feedback', { brief: 'Mentees rate each mentoring session after it ends.' }), // standalone: no initiative
 };
-const decision7 = { id: 7, on: 'GRA-20', title: 'Queue or cron', decider: 'dan@example.com', due: null, record: null, pr_url: null, check: { kind: 'unchecked' }, checked_at: null, closed: null, created_at: NOW, version: 1 };
+const decision7 = { id: 7, on: 'GRA-20', on_type: 'epic', title: 'Queue or cron', decider: 'dan@example.com', due: null, record: null, pr_url: null, check: { kind: 'unchecked' }, checked_at: null, closed: null, created_at: NOW, version: 1 };
 // Closed without a record: listed by `decision ls`, never open, never a readiness reason (kb/ADR-0003 R3).
 const decision8 = { ...decision7, id: 8, title: 'Match by postcode', closed: { at: NOW, by: 'dan@example.com', reason: 'matching no longer uses the postcode' }, version: 2 };
 const HORIZONS = ['Now', 'Next', 'Later', "Won't do"];
@@ -193,6 +193,8 @@ const readinessOf = (s) => {
   return { ready: !reasons.length, reasons };
 };
 
+// The level of the item a key names (a decision's on_type).
+const typeOfKey = (key) => { const x = itemsOf()[key] || initiatives[key] || epics[key] || stories[key]; return x ? kindOf(x) : error('not_found', `no item ${key}`); };
 // Comments made in this run, stored by idempotency key like any create, in the planner's CommentDto shape.
 const comment = (id, author, body, on) => ({ id, on_story: null, on_decision: null, on_initiative: null, on_epic: null, author, body, at: NOW, external_ref: null, ...on });
 const thread = (on) => {
@@ -272,9 +274,19 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
   'epic create': () => ok(mint((id) => epic(`GRA-${id}`, f.title, { brief: f.brief || '', initiative: f.initiative || null, external_ref: f['external-ref'] || null }))),
   'epic edit': () => { const e = find(epics, p0); ok(save({ ...bump(e), brief: f.brief ?? e.brief, title: f.title ?? e.title, initiative: f['no-initiative'] ? null : f.initiative ?? e.initiative, external_ref: refOf(e) })); },
   'epic discovery': () => ok(save({ ...bump(find(epics, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
-  'decision ls': () => ok(allDecisions().filter((d) => !f.on || d.on === f.on)),
+  // --initiative (GRA-67): every decision on the initiative, on its epics and on their stories.
+  'decision ls': () => {
+    const under = (key) => {
+      const x = itemsOf()[key] || initiatives[key] || epics[key] || stories[key];
+      if (!x) return false;
+      if (x.key === f.initiative) return true;
+      return kindOf(x) === 'story' ? !!x.epic && under(x.epic) : kindOf(x) === 'epic' ? x.initiative === f.initiative : false;
+    };
+    if (f.initiative !== undefined) find(initiatives, f.initiative);
+    ok(allDecisions().filter((d) => (!f.on || d.on === f.on) && (!f.initiative || under(d.on))));
+  },
   'decision show': () => ok(allDecisions().find((d) => String(d.id) === p0) || error('not_found', `no decision ${p0}`)),
-  'decision require': () => ok(mint((id) => ({ ...decision7, id, on: f.on, title: f.title, decider: f.decider, due: f.due || null }))),
+  'decision require': () => ok(mint((id) => ({ ...decision7, id, on: f.on, on_type: typeOfKey(f.on), title: f.title, decider: f.decider, due: f.due || null }))),
   'decision link': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
     const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);

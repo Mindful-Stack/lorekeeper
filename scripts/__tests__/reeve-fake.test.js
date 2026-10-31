@@ -253,3 +253,15 @@ test('comment add --item comments on an initiative, an epic or a story (--story 
   assert.equal(call(['comment', 'ls', '--item', 'GRA-20', '--decision', '7', '--json']).status, 1);
   assert.equal(call(['comment', 'ls', '--json']).status, 1);
 });
+test('decision ls --initiative lists every decision on the initiative, its epics and their stories, each with on_type', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } });
+  const require = (on, n) => call(['decision', 'require', '--on', on, '--title', `on ${on}`, '--decider', 'dan@example.com', '--idempotency-key', `planning-initiative:GRA-12:0a1b2c3d:${n}`, '--json']);
+  require('GRA-12', 1);
+  require('GRA-31', 2);
+  require('GRA-13', 3); // another initiative
+  const listed = JSON.parse(call(['decision', 'ls', '--initiative', 'GRA-12', '--json']).stdout).value;
+  assert.deepEqual(listed.map((d) => [d.on, d.on_type]), [['GRA-20', 'epic'], ['GRA-20', 'epic'], ['GRA-12', 'initiative'], ['GRA-31', 'story']]);
+  assert.equal(JSON.parse(call(['decision', 'ls', '--initiative', 'GRA-999', '--json']).stdout).code, 'not_found');
+  assert.equal(call(['decision', 'ls', '--on', 'GRA-20', '--initiative', 'GRA-12', '--json']).status, 1);
+});

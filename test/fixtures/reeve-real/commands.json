@@ -145,8 +145,8 @@
     {
       "row": "`reeve decision ls --on <KEY> --json`",
       "argv": ["decision", "ls", "--on", "{{epic.key}}", "--json"],
-      "reads": ["value[].id", "value[].on", "value[].title", "value[].decider", "value[].due", "value[].record", "value[].pr_url", "value[].check.kind", "value[].closed"],
-      "types": { "value[].id": "number", "value[].on": "string", "value[].title": "string", "value[].decider": "string", "value[].due": "string|null", "value[].record": "object|null", "value[].pr_url": "string|null", "value[].check.kind": "string", "value[].closed": "object|null" },
+      "reads": ["value[].id", "value[].on", "value[].on_type", "value[].title", "value[].decider", "value[].due", "value[].record", "value[].pr_url", "value[].check.kind", "value[].closed"],
+      "types": { "value[].id": "number", "value[].on": "string", "value[].on_type": "string", "value[].title": "string", "value[].decider": "string", "value[].due": "string|null", "value[].record": "object|null", "value[].pr_url": "string|null", "value[].check.kind": "string", "value[].closed": "object|null" },
       "unread": {
         "value[].closed.at": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here",
         "value[].closed.by": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here",
@@ -156,8 +156,14 @@
     {
       "row": "`reeve decision show <id> --json`",
       "argv": ["decision", "show", "{{decision.id}}", "--json"],
-      "reads": ["value.id", "value.on", "value.title", "value.decider", "value.due", "value.record", "value.pr_url", "value.check.kind", "value.closed"],
-      "types": { "value.id": "number", "value.on": "string", "value.title": "string", "value.decider": "string", "value.due": "string|null", "value.record": "object|null", "value.pr_url": "string|null", "value.check.kind": "string", "value.closed": "object|null" }
+      "reads": ["value.id", "value.on", "value.on_type", "value.title", "value.decider", "value.due", "value.record", "value.pr_url", "value.check.kind", "value.closed"],
+      "types": { "value.id": "number", "value.on": "string", "value.on_type": "string", "value.title": "string", "value.decider": "string", "value.due": "string|null", "value.record": "object|null", "value.pr_url": "string|null", "value.check.kind": "string", "value.closed": "object|null" }
+    },
+    {
+      "row": "`reeve decision ls --initiative <KEY> --json`",
+      "argv": ["decision", "ls", "--initiative", "{{initiative.key}}", "--json"],
+      "reads": ["value[].id", "value[].on", "value[].on_type", "value[].title", "value[].decider", "value[].record", "value[].check.kind", "value[].closed"],
+      "types": { "value[].id": "number", "value[].on": "string", "value[].on_type": "string", "value[].title": "string", "value[].decider": "string", "value[].record": "object|null", "value[].check.kind": "string", "value[].closed": "object|null" }
     },
     {
       "row": "`reeve story context <KEY> --json`",

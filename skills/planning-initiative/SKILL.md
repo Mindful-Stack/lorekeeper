@@ -47,7 +47,8 @@ argument.
    session: <reason>." and stop; this skill has no fallback. Keep `bin` and `run_id`.
 1. **Read.** `reeve initiative show <KEY> --json` (keep `value.brief`, `value.owner`,
    `value.target_month` and `value.version`), `reeve initiative findings <KEY> --json`,
-   `reeve decision ls --on <KEY> --json` and `reeve epic ls --initiative <KEY> --json`. Quote the
+   `reeve decision ls --initiative <KEY> --json` (every decision on the initiative, on its epics and
+   on their stories, each with `on` and `on_type`) and `reeve epic ls --initiative <KEY> --json`. Quote the
    findings to the user in the reference's *Findings* words (or "Findings: none"); they are
    advisory, so a failed findings read is said and the run goes on. Read the initiative's
    comments too, `reeve comment ls --item <KEY> --json`: the discussion is context for step 2,
@@ -76,8 +77,9 @@ argument.
    confirmation), and the Markdown quoted as the reference's Arguments section says (single
    quotes, real newlines, setext headings); keep the new `value.version`. An owner or target month
    with no brief change is the same command without `--brief`.
-5. **What already exists.** Show the decisions and epics step 1 found, each decision worded by the
-   reference (open or closed, as its *Wording the planner's answers* section defines them) and, for each decision and
+5. **What already exists.** Show the decisions and epics step 1 found, each decision with the item
+   it is on (`on`, and `on_type`: the initiative itself, one of its epics or a story under one)
+   and worded by the reference (open or closed, as its *Wording the planner's answers* section defines them) and, for each decision and
    epic the user's answers call for, whether an existing one already covers it (say which key or
    id). Steps 6 and 7 create only the ones that are not covered. A re-run on an initiative that
    already has them creates nothing unless the user asks for something new.
@@ -123,7 +125,7 @@ argument.
 8. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
    only on yes run `reeve initiative discovery <KEY> --complete --version <latest version> --json`.
    No answer in a session that cannot ask leaves discovery open (not a stop: nothing is written).
-9. **Re-read.** After the last write, run `reeve decision ls --on <KEY> --json` and
+9. **Re-read.** After the last write, run `reeve decision ls --initiative <KEY> --json` and
    `reeve epic ls --initiative <KEY> --json` again. The report states what these return, not what
    you remember writing. If a re-read fails, say so and list the writes with their own responses,
    marked unverified.
@@ -133,7 +135,7 @@ argument.
    existing key reused, and every proposal left unwritten; the findings step 1 quoted; the
    initiative's owner and target month
    (or "no owner", "no target month"); each required decision from the re-read
-   with its decider, due date and state worded by the reference ("no record", "proposed, PR open",
+   with the item it is on, its decider, due date and state worded by the reference ("no record", "proposed, PR open",
    "closed: …"), plus the comment pointer when the record is only drafted; each triaged candidate
    from step 6 with its outcome and record, or "proposed, not written"; each epic from the
    re-read. End with the next step: "refine an epic with refining-epic".

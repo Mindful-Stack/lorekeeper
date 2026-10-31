@@ -110,8 +110,9 @@ items; never derive a key from a title. Print the run id in the report.
 | `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] [--owner <email>] --idempotency-key <key> --json` | `value.key`; an owner who is not an allowed user is a `validation` error |
 | `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] [--owner <email>] --json` | `value.version`; an owner who is not an allowed user is a `validation` error |
 | `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}` |
-| `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `on`, `title`, `decider`, `due`, `record` (null = no record), `pr_url`, `check.kind`, `closed` (null, or `{at, by, reason}`); closed decisions are listed too |
+| `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `on`, `on_type` (initiative, epic or story: the level of the item it is on), `title`, `decider`, `due`, `record` (null = no record), `pr_url`, `check.kind`, `closed` (null, or `{at, by, reason}`); closed decisions are listed too |
 | `reeve decision show <id> --json` | `value`: one decision, the same fields |
+| `reeve decision ls --initiative <KEY> --json` | `value[]`: `id`, `on`, `on_type`, `title`, `decider`, `record` (null = no record), `check.kind`, `closed` (null = not closed); every decision on the initiative, on its epics and on their stories, closed ones too |
 | `reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json` | `value.id` |
 | `reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json` | `value.check.kind` |
 | `reeve decision close <id> --reason <text> --json` | `value.closed.reason`, `value.closed.at`, `value.closed.by` |

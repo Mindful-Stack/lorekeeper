@@ -119,10 +119,15 @@ argument.
    (`reeve search <text> --json`, as the reference's *Search before creating* says): an epic
    elsewhere, even under another initiative, may already cover it; say which key and reuse it
    rather than duplicate it. Show them, and write the ones confirmed as rule 1 says (epics and
-   briefs the request names are confirmed by it); for each
-   `reeve epic create --initiative <KEY> --title <title> --brief-file <brief file> --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`,
-   each brief written to its own file first.
-   Each epic gets its own `<n>`.
+   briefs the request names are confirmed by it). Two or more go into ONE plan, as the
+   reference's *Plans* section says: plan epics
+   `{"name": "<name>", "title": "<title>", "initiative": "<KEY>", "brief": "<md>"}`, written as
+   JSON to a file with the Write tool, the plan's `id` `planning-initiative:<KEY>:<run_id>:<n>`,
+   then `reeve apply <plan file> --json` once; read each epic's key from `value.items[]` by its
+   name. A single epic is its single create, its brief written to a file first:
+   `reeve epic create --initiative <KEY> --title <title> --brief-file <brief file> --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`.
+   A refused plan writes nothing: show every problem the `validation` message lists and apply
+   again only as the reference says.
 8. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
    only on yes run `reeve initiative discovery <KEY> --complete --version <latest version> --json`.
    No answer in a session that cannot ask leaves discovery open (not a stop: nothing is written).
@@ -141,6 +146,6 @@ argument.
    from step 6 with its outcome and record, or "proposed, not written"; each epic from the
    re-read. End with the next step: "refine an epic with refining-epic".
 
-`<n>` is one counter for the whole run, from 1, shared by decisions, comments and epics (and the
-creates recording-decisions runs for this skill): every
-create takes the next number, and a retry of the same create reuses its number.
+`<n>` is one counter for the whole run, from 1, shared by decisions, comments, the plan and any
+single create (and the creates recording-decisions runs for this skill): every create (and the
+plan, as one) takes the next number, and a retry of the same create or plan reuses its number.

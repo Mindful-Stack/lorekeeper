@@ -1,0 +1,10 @@
+{
+  "id": "refining-epic:GRA-20:0a1b2c3d:1",
+  "epics": [{"name": "invoices", "title": "Invoices", "initiative": "GRA-12", "brief": "## Vision\n\nInvoice employers monthly."}],
+  "stories": [
+    {"name": "send-invoice", "title": "Send a monthly invoice", "epic": "invoices", "criteria": ["An invoice is sent"]},
+    {"name": "retry-match", "title": "Retry a failed match", "epic": "GRA-20", "criteria": ["A failed match is retried"]}
+  ],
+  "decisions": [{"name": "provider", "on": "invoices", "title": "Which invoicing provider", "decider": "dan@example.com"}],
+  "blocks": [{"story": "send-invoice", "blocked_by": "retry-match"}]
+}

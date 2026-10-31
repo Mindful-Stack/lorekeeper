@@ -19,7 +19,9 @@ const fs = require('node:fs');
 const argv = process.argv.slice(2);
 const log = process.env.REEVE_FAKE_LOG;
 // Logged only once the call passed validation, so a malformed call never satisfies a log expectation.
-const logCall = () => { if (log) fs.appendFileSync(log, argv.join(' ').replace(/[\r\n\u2028\u2029\u0085]+/g, ' ') + '\n'); };
+// `apply` logs the plan it read after its argv, as compact JSON, so a scenario can see what the plan carried.
+let logged = () => argv.join(' ');
+const logCall = () => { if (log) fs.appendFileSync(log, logged().replace(/[\r\n\u2028\u2029\u0085]+/g, ' ') + '\n'); };
 
 // Per-run state next to the log: { next, creates: { <idempotency key>: <response value> },
 // items: { <KEY>: <the item as last written> }, decisions: { <id>: <the decision as last linked> } }. Updates
@@ -81,7 +83,8 @@ const SPEC = {
   'decision close': { pos: 1, val: ['reason'], req: ['reason'] },
   'comment add': { pos: 0, val: ['idempotency-key', 'item', 'story', 'decision', 'body'], req: ['idempotency-key', 'body'] },
   'comment ls': { pos: 0, val: ['item', 'story', 'decision'] },
-  search: { pos: 1, variadic: true }, // `reeve search <TEXT>...`: several words are one phrase
+  search: { pos: 1, variadic: true },
+  apply: { pos: 1 }, // `reeve apply <FILE>` (GRA-66): a plan, YAML or JSON (the fake reads JSON only); `-` reads stdin // `reeve search <TEXT>...`: several words are one phrase
 };
 // A command is one word (`search`) or two (`story ls`).
 const cmd = SPEC[words[0]] ? words[0] : words.slice(0, 2).join(' ');
@@ -116,6 +119,25 @@ const readText = (file) => {
   try { return fs.readFileSync(file === '-' ? 0 : file, 'utf8'); } catch (e) { return error('internal', `reading ${file}: ${e.message}`); }
 };
 for (const name of ['brief', 'description']) if (f[`${name}-file`] !== undefined) f[name] = readText(f[`${name}-file`]);
+// The CLI parses the plan into the wire type before sending it: a misspelt field is its own error, never sent.
+const PLAN_FIELDS = {
+  '': ['id', 'initiatives', 'epics', 'stories', 'decisions', 'blocks'],
+  initiatives: ['name', 'title', 'horizon', 'brief', 'target_month', 'owner', 'external_ref'],
+  epics: ['name', 'title', 'initiative', 'brief', 'external_ref'],
+  stories: ['name', 'title', 'kind', 'epic', 'description', 'criteria', 'labels', 'external_ref'],
+  decisions: ['name', 'on', 'title', 'decider', 'due'],
+  blocks: ['story', 'blocked_by'],
+};
+let plan = null;
+if (cmd === 'apply') {
+  const text = readText(pos[0]);
+  try { plan = JSON.parse(text); } catch (e) { error('internal', `reading the plan in ${pos[0]}: the fake planner reads JSON plans only: ${e.message}`); }
+  const unknown = (o, list, at) => { for (const k of Object.keys(o || {})) if (!PLAN_FIELDS[list].includes(k)) error('internal', `reading the plan in ${pos[0]}: ${at}unknown field \`${k}\`, expected one of ${PLAN_FIELDS[list].map((x) => `\`${x}\``).join(', ')}`); };
+  unknown(plan, '', '');
+  if (typeof plan.id !== 'string') error('internal', `reading the plan in ${pos[0]}: missing field \`id\``);
+  for (const list of Object.keys(PLAN_FIELDS).filter(Boolean)) (plan[list] ||= []).forEach((x, i) => unknown(x, list, `${list}[${i}]: `));
+  logged = () => `${argv.join(' ')} ${JSON.stringify(plan)}`;
+}
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
 
 const NOW = '2026-10-20T09:00:00Z';
@@ -198,6 +220,7 @@ const readinessOf = (s) => {
   }
   reasons.push(...open(s.key));
   if (!s.criteria.length) reasons.push({ reason: 'no_criteria' });
+  for (const b of s.blocked_by) if (((itemsOf()[b] || stories[b]) || {}).delivery !== 'done') reasons.push({ reason: 'blocked_by', story: b });
   return { ready: !reasons.length, reasons };
 };
 
@@ -326,6 +349,86 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
     const value = { ...d, closed: { at: NOW, by: 'dan@example.com', reason: f.reason }, version: d.version + 1 };
     withState((st) => { (st.decisions ||= {})[d.id] = value; });
     ok(value);
+  },
+  // POST /plans (GRA-66): the whole plan validated first, every problem reported at once; then each item created
+  // under `plan:<id>:<name>`, so the same plan again creates nothing and answers every name as existing.
+  apply: () => {
+    const errors = [];
+    const id = plan.id.trim();
+    if (!id || id.length > 100) errors.push('the plan needs an id of 1..=100 characters');
+    const refs = {}; // name -> item type, for the plan's own items
+    const named = [...plan.initiatives.map((x) => [x, 'initiative']), ...plan.epics.map((x) => [x, 'epic']), ...plan.stories.map((x) => [x, 'story'])];
+    for (const [x, t] of named) {
+      const name = x.name || '';
+      if (!name.trim() || name.trim() !== name) errors.push(`${t} name ${JSON.stringify(name)} must be non-empty with no surrounding spaces`);
+      else if (/^[A-Z][A-Z0-9]*-[0-9]+$/.test(name)) errors.push(`${t} name ${JSON.stringify(name)} looks like a key; a name must not, so a reference is never ambiguous`);
+      else if (name in refs) errors.push(`${JSON.stringify(name)} is used twice; every name in a plan names one item`);
+      else refs[name] = t;
+    }
+    const decisionNames = new Set();
+    for (const d of plan.decisions) {
+      if (d.name in refs || decisionNames.has(d.name)) errors.push(`${JSON.stringify(d.name)} is used twice; every name in a plan names one item`);
+      decisionNames.add(d.name);
+    }
+    for (const x of plan.initiatives) {
+      if (!(x.title || '').trim()) errors.push(`initiative ${JSON.stringify(x.name)}: the title is required`);
+      if (!HORIZONS.includes(x.horizon)) errors.push(`initiative ${JSON.stringify(x.name)}: horizon ${x.horizon} is not one of the configured buckets`);
+    }
+    for (const x of [...plan.epics, ...plan.stories]) if (!(x.title || '').trim()) errors.push(`${JSON.stringify(x.name)}: the title is required`);
+    for (const x of plan.stories) if (x.kind !== undefined && !['story', 'bug', 'chore'].includes(x.kind)) errors.push(`story ${JSON.stringify(x.name)}: unknown kind ${x.kind}`);
+    // A reference is a name in the plan, else an existing item's key (of the wanted type; any type for a decision's on).
+    const existing = (r, wanted) => { const x = itemsOf()[r] || initiatives[r] || epics[r] || stories[r]; return x && (!wanted || kindOf(x) === wanted) ? x.key : null; };
+    const check = (r, wanted, at) => {
+      if (r in refs) { if (wanted && refs[r] !== wanted) errors.push(`${at} is a ${refs[r]} in the plan, not a ${wanted}`); return; }
+      if (!existing(r, wanted)) errors.push(`${at} is neither a name in the plan nor an existing ${wanted || 'item'}`);
+    };
+    for (const x of plan.epics) if (x.initiative != null) check(x.initiative, 'initiative', `epic ${JSON.stringify(x.name)}: initiative ${JSON.stringify(x.initiative)}`);
+    for (const x of plan.stories) if (x.epic != null) check(x.epic, 'epic', `story ${JSON.stringify(x.name)}: epic ${JSON.stringify(x.epic)}`);
+    for (const d of plan.decisions) {
+      if (!(d.title || '').trim() || !(d.decider || '').trim()) errors.push(`decision ${JSON.stringify(d.name)}: title and decider are required`);
+      check(d.on, null, `decision ${JSON.stringify(d.name)}: on ${JSON.stringify(d.on)}`);
+    }
+    for (const b of plan.blocks) {
+      const at = `block ${JSON.stringify(b.story)} by ${JSON.stringify(b.blocked_by)}`;
+      if (b.story === b.blocked_by) errors.push(`${at}: a story cannot block itself`);
+      check(b.story, 'story', `${at}: story ${JSON.stringify(b.story)}`);
+      check(b.blocked_by, 'story', `${at}: story ${JSON.stringify(b.blocked_by)}`);
+    }
+    if (errors.length) error('validation', errors.join('; '));
+    const keys = {};
+    const resolve = (r) => keys[r] || existing(r, null);
+    const items = [];
+    const make = (name, item, build) => withState((st) => {
+      const k = `plan:${id}:${name}`;
+      const created = !(k in st.creates);
+      if (created) { st.creates[k] = build(st.next++); if (st.creates[k].key) (st.items ||= {})[st.creates[k].key] = st.creates[k]; }
+      return { made: st.creates[k], created };
+    });
+    for (const x of plan.initiatives) {
+      const { made, created } = make(x.name, 'initiative', (n) => initiative(`GRA-${n}`, x.title, { brief: x.brief || '', horizon: x.horizon, owner: x.owner || null, target_month: x.target_month || null, external_ref: x.external_ref || null }));
+      keys[x.name] = made.key; items.push({ name: x.name, item: 'initiative', key: made.key, created });
+    }
+    for (const x of plan.epics) {
+      const { made, created } = make(x.name, 'epic', (n) => epic(`GRA-${n}`, x.title, { brief: x.brief || '', initiative: x.initiative != null ? resolve(x.initiative) : null, external_ref: x.external_ref || null }));
+      keys[x.name] = made.key; items.push({ name: x.name, item: 'epic', key: made.key, created });
+    }
+    for (const x of plan.stories) {
+      const { made, created } = make(x.name, 'story', (n) => story(`GRA-${n}`, x.title, { kind: x.kind || 'story', epic: x.epic != null ? resolve(x.epic) : null, description: x.description || '', criteria: (x.criteria || []).map((text) => ({ text, done: false })), labels: x.labels || [], external_ref: x.external_ref || null }));
+      keys[x.name] = made.key; items.push({ name: x.name, item: 'story', key: made.key, created });
+    }
+    const decisions = plan.decisions.map((d) => {
+      const on = resolve(d.on);
+      const { made, created } = make(d.name, 'decision', (n) => ({ ...decision7, id: n, on, on_type: refs[d.on] || typeOfKey(on), title: d.title, decider: d.decider, due: d.due || null }));
+      return { name: d.name, id: made.id, created };
+    });
+    const blocks = plan.blocks.map((b) => withState((st) => {
+      const [sk, bk] = [resolve(b.story), resolve(b.blocked_by)];
+      const s = (st.items || {})[sk] || stories[sk];
+      const created = !s.blocked_by.includes(bk);
+      if (created) (st.items ||= {})[sk] = { ...s, blocked_by: [...s.blocked_by, bk] };
+      return { story: sk, blocked_by: bk, created };
+    }));
+    ok({ items, decisions, blocks });
   },
   // GET /search (GRA-73): title, brief or description, or external reference containing the text (case-insensitive,
   // literal), newest first, at most 50, each with the fields that matched.

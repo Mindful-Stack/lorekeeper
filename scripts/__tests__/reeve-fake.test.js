@@ -298,3 +298,58 @@ test('--brief-file and --description-file send the file unchanged; - reads stdin
   assert.equal(fs.readFileSync(log, 'utf8'), before, 'not logged');
   assert.equal(call(['epic', 'edit', 'GRA-20', '--brief', 'x', '--brief-file', '-', '--version', '2', '--json'], 'y').status, 1); // they conflict
 });
+test('apply creates a plan in one call: names resolve in the plan, else to existing keys; the same plan again creates nothing', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-'));
+  const log = path.join(dir, 'log');
+  const call = (args, input) => { const r = spawnSync(fake, args, { encoding: 'utf8', input, env: { ...process.env, REEVE_FAKE_LOG: log } }); return { status: r.status, stderr: r.stderr, ...(r.stdout ? JSON.parse(r.stdout) : {}) }; };
+  const plan = {
+    id: 'refining-epic:GRA-20:0a1b2c3d:1',
+    initiatives: [{ name: 'billing', title: 'Employer billing', horizon: 'Later', brief: '## Vision\n\nEmployers pay.' }],
+    epics: [{ name: 'invoices', title: 'Invoices', initiative: 'billing', brief: 'Invoice employers.' }],
+    stories: [
+      { name: 'enqueue', title: 'Enqueue match requests', epic: 'GRA-20', criteria: ['a new request is queued', 'a repeat is queued once'] },
+      { name: 'process', title: 'Process the match queue', epic: 'GRA-20', criteria: ['oldest first'] },
+      { name: 'invoice', title: 'Send an invoice', epic: 'invoices', criteria: ['an invoice is sent'] },
+    ],
+    decisions: [{ name: 'retry', on: 'enqueue', title: 'Retry or drop', decider: 'dan@example.com', due: '2026-11-15' }],
+    blocks: [{ story: 'process', blocked_by: 'enqueue' }],
+  };
+  fs.writeFileSync(path.join(dir, 'plan.json'), JSON.stringify(plan, null, 2));
+  const first = call(['apply', path.join(dir, 'plan.json'), '--json']);
+  assert.equal(first.status, 0);
+  assert.deepEqual(first.value.items.map((i) => [i.name, i.item, i.created]), [['billing', 'initiative', true], ['invoices', 'epic', true], ['enqueue', 'story', true], ['process', 'story', true], ['invoice', 'story', true]]);
+  const key = Object.fromEntries(first.value.items.map((i) => [i.name, i.key]));
+  assert.deepEqual(first.value.decisions.map((d) => [d.name, d.created]), [['retry', true]]);
+  assert.deepEqual(first.value.blocks, [{ story: key.process, blocked_by: key.enqueue, created: true }]);
+  assert.match(fs.readFileSync(log, 'utf8'), /^apply \S+plan\.json --json \{"id":"refining-epic:GRA-20:0a1b2c3d:1",.*"title":"Enqueue match requests"/m);
+  // The plan's items are there for later reads.
+  assert.equal(call(['epic', 'show', key.invoices, '--json']).value.initiative, key.billing);
+  const listed = call(['story', 'ls', '--epic', 'GRA-20', '--json']).value.find((x) => x.story.key === key.process);
+  assert.ok(listed.readiness.reasons.some((r) => r.reason === 'blocked_by' && r.story === key.enqueue));
+  assert.deepEqual(call(['decision', 'ls', '--on', key.enqueue, '--json']).value.map((d) => [d.title, d.on_type, d.due]), [['Retry or drop', 'story', '2026-11-15']]);
+  // The same plan again, from stdin: the same keys, nothing created.
+  const again = call(['apply', '-', '--json'], JSON.stringify(plan));
+  assert.deepEqual(again.value.items.map((i) => [i.key, i.created]), first.value.items.map((i) => [i.key, false]));
+  assert.deepEqual([again.value.decisions[0].created, again.value.blocks[0].created], [false, false]);
+});
+test('apply validates the whole plan first and reports every problem at once; an unknown field never reaches the planner', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-'));
+  const log = path.join(dir, 'log');
+  const apply = (plan) => { const r = spawnSync(fake, ['apply', '-', '--json'], { encoding: 'utf8', input: JSON.stringify(plan), env: { ...process.env, REEVE_FAKE_LOG: log } }); return { status: r.status, ...JSON.parse(r.stdout) }; };
+  const bad = apply({
+    id: 'p',
+    epics: [{ name: 'GRA-77', title: 'Key-shaped' }, { name: 'dup', title: 'One' }, { name: 'dup', title: 'Two', initiative: 'GRA-20' }],
+    stories: [{ name: 's', title: 'S', epic: 'nowhere' }],
+    blocks: [{ story: 's', blocked_by: 's' }],
+  });
+  assert.deepEqual([bad.status, bad.code], [1, 'validation']);
+  for (const want of ['"GRA-77" looks like a key', '"dup" is used twice', 'initiative "GRA-20" is neither a name in the plan nor an existing initiative', 'epic "nowhere" is neither', 'a story cannot block itself']) assert.ok(bad.message.includes(want), `${want} in ${bad.message}`);
+  assert.equal(apply({ id: 'p', initiatives: [{ name: 'x', title: 'X', horizon: 'Someday' }] }).code, 'validation');
+  const before = fs.readFileSync(log, 'utf8');
+  const typo = apply({ id: 'p', stories: [{ name: 's', title: 'S', colour: 'red' }] });
+  assert.deepEqual([typo.status, typo.code], [1, 'internal']);
+  assert.match(typo.message, /stories\[0\]: unknown field `colour`/);
+  assert.equal(fs.readFileSync(log, 'utf8'), before, 'not logged');
+  const r = spawnSync(fake, ['apply', '-', '--json'], { encoding: 'utf8', input: 'id: p\n', env: { ...process.env, REEVE_FAKE_LOG: log } });
+  assert.match(JSON.parse(r.stdout).message, /JSON plans only/);
+});

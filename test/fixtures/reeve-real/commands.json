@@ -166,6 +166,12 @@
       "types": { "value[].id": "number", "value[].on": "string", "value[].on_type": "string", "value[].title": "string", "value[].decider": "string", "value[].record": "object|null", "value[].check.kind": "string", "value[].closed": "object|null" }
     },
     {
+      "row": "`reeve apply <plan file> --json`",
+      "argv": ["apply", "{{files.plan}}", "--json"],
+      "reads": ["value.items[].name", "value.items[].item", "value.items[].key", "value.items[].created", "value.decisions[].name", "value.decisions[].id", "value.decisions[].created", "value.blocks[].story", "value.blocks[].blocked_by", "value.blocks[].created"],
+      "types": { "value.items[].name": "string", "value.items[].item": "string", "value.items[].key": "string", "value.items[].created": "boolean", "value.decisions[].name": "string", "value.decisions[].id": "number", "value.decisions[].created": "boolean", "value.blocks[].story": "string", "value.blocks[].blocked_by": "string", "value.blocks[].created": "boolean" }
+    },
+    {
       "row": "`reeve story context <KEY> --json`",
       "argv": ["story", "context", "{{story.key}}", "--json"],
       "reads": ["value.story", "value.epic", "value.initiative", "value.required_decisions[]", "value.blockers[]", "value.comments[]", "value.readiness", "value.readiness.ready"],

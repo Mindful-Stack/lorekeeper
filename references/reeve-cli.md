@@ -66,7 +66,7 @@ your text (a teammate's edit is kept, never overwritten), show it, and retry onc
 `retry_after_secs` when the server sent a Retry-After, and text output says to retry after N
 seconds) — wait that many seconds (a few seconds when none is given), then run the SAME command
 again, with the SAME `--idempotency-key` for a create: a create retried with its key answers the
-same item, never a duplicate. Retry at most twice; then show the code and message and stop that
+same item, never a duplicate (an `apply` retried with the same plan file and `id` likewise). Retry at most twice; then show the code and message and stop that
 step. `decision link` — see its section. A usage error (an unknown flag, a value starting with
 `-`) prints the CLI's usage text on stderr and no envelope (stdout is empty), exit 1: fix the
 command, never retry it as it was.
@@ -95,7 +95,7 @@ the detector's `run_id`, and the ordinal of this create in the run (1, 2, …, a
 of the run). A skill called by another (recording-decisions from a planning skill) uses the
 caller's skill name, `<KEY>`, `run_id` and next `<n>`. A retry within the run reuses its key; a new
 run never reuses an old one, so only reading first keeps it from duplicating an earlier run's
-items; never derive a key from a title. Print the run id in the report.
+items; never derive a key from a title. A plan's `id` (*Plans*) is built the same way and takes the next `<n>`. Print the run id in the report.
 
 ## Commands
 
@@ -116,6 +116,7 @@ items; never derive a key from a title. Print the run id in the report.
 | `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version`. Untriaged: kind `story` with no epic (a bug or chore without one is not listed) |
 | `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] [--owner <email>] --idempotency-key <key> --json` | `value.key`; an owner who is not an allowed user is a `validation` error |
 | `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] [--owner <email>] --json` | `value.version`; an owner who is not an allowed user is a `validation` error |
+| `reeve apply <plan file> --json` | `value.items[]`: `name`, `item`, `key`, `created`; `value.decisions[]`: `name`, `id`, `created`; `value.blocks[]`: `story`, `blocked_by`, `created` (see *Plans*) |
 | `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}` |
 | `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `on`, `on_type` (initiative, epic or story: the level of the item it is on), `title`, `decider`, `due`, `record` (null = no record), `pr_url`, `check.kind`, `closed` (null, or `{at, by, reason}`); closed decisions are listed too |
 | `reeve decision show <id> --json` | `value`: one decision, the same fields |
@@ -164,6 +165,58 @@ the user asks for what it does, with the command written as shown.
 | `reeve story create --epic <KEY> --title <title> --kind story --description <text> --idempotency-key <key> --json` / `reeve story edit <KEY> --version <n> --description <text> --json` | a one-line description inline, in place of `--description-file` |
 | `reeve story edit <KEY> --version <n> --no-owner --json` | clears the story's owner (`--no-owner` in place of `--owner`) |
 | `reeve decision ls --mine --json` | the decisions the signed-in user is the decider of |
+
+## Plans: reeve apply
+
+`reeve apply <plan file> --json` creates initiatives, epics, stories, required decisions and
+blockers in one request. A run that creates two or more items sends them as one plan: the
+planner's edge rate-limits more than 5 API POSTs in 10 seconds, so a run of single creates is
+answered `rate_limited` part-way. A run that creates exactly one item uses that item's single
+create (*Commands*).
+
+Write the plan as JSON to a file with the Write tool, as a brief is (*Arguments*); `-` in place of
+the path reads standard input. The CLI also reads YAML; the skills write JSON.
+
+```json
+{
+  "id": "refining-epic:GRA-20:0a1b2c3d:3",
+  "initiatives": [{"name": "billing", "title": "Employer billing", "horizon": "Later", "brief": "## Vision\n\nEmployers pay for the programme.", "owner": "dan@example.com", "target_month": "2027-03"}],
+  "epics": [{"name": "invoices", "title": "Invoices", "initiative": "billing", "brief": "Invoice employers monthly."}],
+  "stories": [
+    {"name": "send-invoice", "title": "Send a monthly invoice", "kind": "story", "epic": "invoices", "criteria": ["An invoice is sent on the first working day", "It lists every session of the month"]},
+    {"name": "retry-match", "title": "Retry failed matches", "epic": "GRA-20", "description": "## Why\n\nCoordinators retry by hand today.", "criteria": ["A failed match is retried"], "labels": ["matching"]}
+  ],
+  "decisions": [{"name": "provider", "on": "invoices", "title": "Which invoicing provider", "decider": "dan@example.com", "due": "2026-11-15"}],
+  "blocks": [{"story": "send-invoice", "blocked_by": "GRA-31"}]
+}
+```
+
+- **Fields.** Every list is optional. An initiative has `name`, `title`, `horizon`, and optionally
+  `brief`, `target_month`, `owner`, `external_ref`; an epic `name`, `title`, and optionally
+  `initiative`, `brief`, `external_ref`; a story `name`, `title`, `criteria`, and optionally `kind`
+  (a story when left out), `epic`, `description`, `labels`, `external_ref`; a decision `name`,
+  `on`, `title`, `decider`, and optionally `due` (`YYYY-MM-DD`); a block `story` and `blocked_by`
+  (`blocked_by` blocks `story`). Any other field is refused by the CLI before anything is sent (an
+  `internal` error naming the field). A story's owner, a comment and an edit of an existing item
+  are not in a plan: run them after it.
+- **Names.** Each item and decision has a local `name`, unique in the plan: lower-case words with
+  hyphens (`send-invoice`), never shaped like a key (`GRA-31` is refused).
+- **References.** `initiative`, `epic`, `on`, `story` and `blocked_by` name an item of the plan by
+  its name, or else an existing item by its key (`GRA-20`) or external reference. `on` may name an
+  initiative, an epic or a story.
+- **The id.** `<skill>:<KEY>:<run_id>:<n>`, built like an idempotency key, the plan taking the run's
+  next `<n>`. Applying the same id again creates nothing and answers every name with `created`
+  false, so a retry (`rate_limited`, a lost answer) sends the same file again. A second plan in a
+  run takes a new `<n>`.
+- **All or nothing.** The planner validates the whole plan before writing anything and reports
+  every problem at once: a `validation` error whose message lists them, separated by `; `. Nothing
+  was written. Show every problem; fix what is the plan's own mistake (a name, a reference, a
+  field) and apply again under the same id, at most once; content the user gave (a title, a
+  horizon, a decider) is the user's to correct, never yours.
+
+Read the answer by name: `value.items[]` gives each item's `key` (`item` is initiative, epic or
+story), `value.decisions[]` each decision's `id`, and `value.blocks[]` each blocker edge, each with
+`created`. Report each name with its key, and say which already existed (`created` false).
 
 ## Findings
 

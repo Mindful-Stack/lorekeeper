@@ -109,12 +109,15 @@ single-quoted argument on one line, as the reference's Arguments section says.
    says is not needed is never required.
 6. **Stories.** Propose stories, each finishable by one person or one agent session, each with
    2–6 acceptance criteria written as observable outcomes, leaving out what an existing story
-   from step 1 already covers (say which key). Show them, and write the ones confirmed as rule 1
-   says (stories and criteria the request names are confirmed by it); for each
-   `reeve story create --epic <EPIC> --title <title> --kind story --criterion <text> --criterion <text> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
-   one `--criterion` per criterion. When the user names who owns a story, add `--owner <email>`
-   before `--idempotency-key` (an owner who is not an allowed user is a `validation` error: show
-   it and create the story without the owner); otherwise leave the story unowned.
+   from step 1 already covers (say which key). Show them; the ones confirmed as rule 1 says
+   (stories and criteria the request names are confirmed by it) are written in step 7's last
+   bullet, together with the new epics and initiatives the placement tree confirms. Each is a
+   plan story `{"name": "<name>", "title": "<title>", "kind": "story", "epic": "<EPIC>", "criteria": ["<text>", …]}`
+   (a longer description goes in `description`, Markdown as written). When the user names who
+   owns a story, set it once the story exists (a plan carries no owner):
+   `reeve story edit <KEY> --version 1 --owner <email> --json` for a story the plan just created
+   (an owner who is not an allowed user is a `validation` error: show it and leave the story
+   unowned); otherwise leave the story unowned.
 7. **Placement tree.** For each story from `story ls --untriaged`, classify it, propose its home
    with the branch that led there, and write it on a confirmation as rule 1 says ("place the
    untriaged stories" names the `story edit`s; `<v>` is the story's `version` from the listing;
@@ -129,16 +132,17 @@ single-quoted argument on one line, as the reference's Arguments section says.
      not name the change yet.
      1. an epic covers it (this one, or one from `epic ls`):
         `reeve story edit <KEY> --version <v> --epic <COVERING-EPIC> --json`;
-     2. else an initiative covers it, but none of its epics does: a new epic under it,
-        `reeve epic create --initiative <COVERING-INITIATIVE> --title <title> --brief-file <brief file> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
-        then `reeve story edit <KEY> --version <v> --epic <new epic> --json`;
-     3. else a new initiative, proposed in the last horizon bucket before "Won't do":
-        `reeve initiative create --title <title> --horizon <bucket> --brief-file <brief file> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
-        an epic under it as in 2, then the `story edit`. The CLI does not list the buckets: ask for
-        them (offering the horizons seen in `initiative ls`), or take them from the request. Ask
-        who owns the new initiative (an email) and which month it targets (`YYYY-MM`), or take
-        them from the request; pass only the ones given (never guess an owner), and name the
-        missing ones in the report.
+     2. else an initiative covers it, but none of its epics does: a new epic under it, a plan epic
+        `{"name": "<name>", "title": "<title>", "initiative": "<COVERING-INITIATIVE>", "brief": "<md>"}`,
+        then, once the plan is applied, `reeve story edit <KEY> --version <v> --epic <new epic> --json`;
+     3. else a new initiative, proposed in the last horizon bucket before "Won't do": a plan
+        initiative `{"name": "<name>", "title": "<title>", "horizon": "<bucket>", "brief": "<md>"}`
+        (with `"owner"` and `"target_month"` only when given), a plan epic under it as in 2 (its
+        `initiative` is the initiative's name), then the `story edit`. The CLI does not list the
+        buckets: ask for them (offering the horizons seen in `initiative ls`), or take them from
+        the request. Ask who owns the new initiative (an email) and which month it targets
+        (`YYYY-MM`), or take them from the request; pass only the ones given (never guess an
+        owner), and name the missing ones in the report.
 
      Before proposing a new epic or initiative (2 or 3), search for it
      (`reeve search <text> --json`, as the reference's *Search before creating* says): a hit that
@@ -148,6 +152,16 @@ single-quoted argument on one line, as the reference's Arguments section says.
      create. Otherwise create nothing for it and leave it untriaged with the proposal:
      `reeve comment add --item <KEY> --body 'Proposed home: <the new epic or initiative, its title and where it goes>' --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
    - **Won't do**, or the user says "leave it untriaged": write nothing for it.
+   - **Write.** Everything step 6 and this step confirmed for creating goes into ONE plan, as the
+     reference's *Plans* section says: write it as JSON to a file with the Write tool, its `id`
+     `refining-epic:<EPIC>:<run_id>:<n>`, and run `reeve apply <plan file> --json` once. Then run
+     the placements' `story edit`s, a new home's key read from `value.items[]` by its name. When
+     the run creates exactly one item (one story, no new home), its single create does instead:
+     `reeve story create --epic <EPIC> --title <title> --kind story --criterion <text> --criterion <text> --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`,
+     one `--criterion` per criterion (`--owner <email>` before `--idempotency-key` when the user
+     named one). A refused plan writes nothing: show every problem the `validation` message
+     lists and apply again only as the reference says; a placement whose new home the plan did
+     not create is left untriaged and reported as skipped.
 8. **Discovery mark.** Ask whether discovery is complete, or take the answer the request gave;
    only on yes run `reeve epic discovery <EPIC> --complete --version <latest version> --json`.
    No answer in a session that cannot ask leaves discovery open (not a stop: nothing is written).
@@ -172,5 +186,6 @@ single-quoted argument on one line, as the reference's Arguments section says.
      abbreviate them as "the shared reasons" or "as above".
    End with the next step: "pick a ready story and brainstorm it".
 
-`<n>` is one counter for the whole run, from 1, shared by decisions, comments, stories, epics and
-initiatives: every create takes the next number, and a retry of the same create reuses its number.
+`<n>` is one counter for the whole run, from 1, shared by decisions, comments, the plan and any
+single create: every create (and the plan, as one) takes the next number, and a retry of the same
+create or plan reuses its number.

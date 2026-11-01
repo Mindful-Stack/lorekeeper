@@ -60,9 +60,11 @@ from a sign-in error.
 | `{"outcome":"error","code":"unauthenticated"` or `"forbidden"`, …`}` | 2 | stop the run: say the message and tell the user to run `reeve auth login` |
 | `{"outcome":"error","code":"…","message":"…"}`, any other code | 1 | show code and message and stop that step |
 
-Exceptions: `code: conflict` (the `--version` is stale) — re-read the item, fold what changed into
+Exceptions: `code: conflict` (the `--version` is stale; the envelope carries `current`, the item's
+version to re-read from, so read it instead of parsing the message; `-1` means the planner gave up on
+a concurrent update, so re-read the item for its version) — re-read the item, fold what changed into
 your text (a teammate's edit is kept, never overwritten), show it, and retry once with the new
-`version`. `code: rate_limited` (the planner answered HTTP 429; the envelope carries
+`version`. Exit status stays 1. `code: rate_limited` (the planner answered HTTP 429; the envelope carries
 `retry_after_secs` when the server sent a Retry-After, and text output says to retry after N
 seconds) — wait that many seconds (a few seconds when none is given), then run the SAME command
 again, with the SAME `--idempotency-key` for a create: a create retried with its key answers the
@@ -129,7 +131,8 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 
 An initiative's owner is an email and its target month is `YYYY-MM` (`2027-03`); pass either on
 create or edit only with a value the user gave (rule *The user decides* in each skill), and leave a
-flag out to keep what is there. A story's owner is likewise an email the user gave, and must be an
+flag out to keep what is there. On an initiative edit `--no-owner` and `--no-target-month` clear them
+(each in place of its setter, never with it), only when the user asks. A story's owner is likewise an email the user gave, and must be an
 allowed user of the planner: any other is a `validation` error (show it; never retry with another
 address). Pass `--owner` only when the user names who owns the story; `--no-owner` clears it, only
 when the user asks.
@@ -157,14 +160,15 @@ the user asks for what it does, with the command written as shown.
 | `reeve initiative edit <KEY> --version <n> [--title <title>] [--horizon <bucket>] --json` | renames the initiative or moves it to another horizon bucket (a bucket the planner does not have is a `validation` error) |
 | `reeve initiative discovery <KEY> --reopen --version <n> --json` / `reeve epic discovery <KEY> --reopen --version <n> --json` | reopens discovery that was marked complete |
 | `reeve epic edit <KEY> --version <n> [--title <title>] [--initiative <KEY>] --json` | renames the epic or moves it to another initiative; `--no-initiative` in place of `--initiative` detaches it (a standalone epic) |
-| `reeve story ls [--owner <email>] [--delivery <delivery>] [--label <label>] [--ready] [--mine] --json` | filters the list: owner, delivery state (`todo`, `in-progress`, `in-review`, `testing`, `done`), label, `--ready` (ready stories still in todo), `--mine` (owned by the signed-in user) |
+| `reeve story ls [--owner <email>] [--delivery <delivery>] [--label <label>] [--ready] [--mine] --json` | filters the list: owner, delivery state (`todo`, `in-progress`, `in-review`, `testing`, `done`), label, `--ready` (ready stories still in todo), `--mine` (owned by the signed-in user; a refused token answers the `unauthenticated` or `forbidden` envelope, exit 2, as any call does) |
 | `reeve story create --epic <KEY> --title <title> --kind story --description-file <description file> --label <label> --criterion <text> --idempotency-key <key> --json` | a story with a longer description (Markdown, through a file as *Arguments* says) and labels (`--label` repeats, one per label) |
 | `reeve story edit <KEY> --version <n> [--title <title>] [--criterion <text> …] [--rank <n>] --json` | renames the story, replaces ALL its criteria (one `--criterion` each; a criterion unchanged at the same position keeps its done flag) or sets its rank; `--no-epic` in place of `--epic` detaches it (it becomes untriaged) |
 | `reeve story edit <KEY> --version <n> [--description-file <description file>] [--add-label <label> …] [--remove-label <label> …] --json` | replaces the whole description (through a file), or adds and removes labels (each repeats; a label the story already has is kept once) |
 | `reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key <key> --json` / `reeve initiative edit <KEY> --brief <md> --version <n> --json` / `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key <key> --json` / `reeve epic edit <KEY> --brief <md> --version <n> --json` | a one-line brief inline, in place of `--brief-file` (one line, single-quoted, as *Arguments* says) |
 | `reeve story create --epic <KEY> --title <title> --kind story --description <text> --idempotency-key <key> --json` / `reeve story edit <KEY> --version <n> --description <text> --json` | a one-line description inline, in place of `--description-file` |
 | `reeve story edit <KEY> --version <n> --no-owner --json` | clears the story's owner (`--no-owner` in place of `--owner`) |
-| `reeve decision ls --mine --json` | the decisions the signed-in user is the decider of |
+| `reeve initiative edit <KEY> --version <n> --no-owner --no-target-month --json` | clears the initiative's owner and target month (each in place of its setter; either alone is allowed) |
+| `reeve decision ls --mine --json` | the decisions the signed-in user is the decider of (a refused token answers as for `story ls --mine`) |
 
 ## Plans: reeve apply
 

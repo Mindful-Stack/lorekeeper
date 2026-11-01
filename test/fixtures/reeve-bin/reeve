@@ -48,7 +48,7 @@ const KEY_SHAPE = /^[a-z][a-z0-9-]*:(?:[A-Z][A-Z0-9]*-[0-9]+|[0-9]+):[0-9a-f]{8}
 
 const emit = (envelope, code) => { process.stdout.write(JSON.stringify(envelope) + '\n'); process.exit(code); };
 const ok = (value) => emit({ outcome: 'ok', value }, 0);
-const error = (code, message) => emit({ outcome: 'error', code, message }, code === 'unauthenticated' || code === 'forbidden' ? 2 : 1);
+const error = (code, message, extra = {}) => emit({ outcome: 'error', code, message, ...extra }, code === 'unauthenticated' || code === 'forbidden' ? 2 : 1);
 // What clap rejects: no envelope, the usage text on stderr, exit 1.
 const usage = (message) => { process.stderr.write(`error: ${message}\n\nFor more information, try '--help'.\n`); process.exit(1); };
 
@@ -67,7 +67,7 @@ const SPEC = {
   'initiative show': { pos: 1 },
   'initiative ls': { pos: 0 },
   'initiative create': { pos: 0, val: ['idempotency-key', 'title', 'horizon', 'brief', 'brief-file', 'target-month', 'owner', 'external-ref'], req: ['idempotency-key', 'title', 'horizon'] },
-  'initiative edit': { pos: 1, val: ['version', 'title', 'brief', 'brief-file', 'horizon', 'target-month', 'owner', 'external-ref'], req: ['version'] },
+  'initiative edit': { pos: 1, val: ['version', 'title', 'brief', 'brief-file', 'horizon', 'target-month', 'owner', 'external-ref'], bool: ['no-owner', 'no-target-month'], req: ['version'] },
   'initiative discovery': DISCOVERY,
   'initiative findings': { pos: 1 },
   'epic show': { pos: 1 },
@@ -112,7 +112,7 @@ if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}'
 // `--story` is an alias of `--item` (GRA-70); a comment is on exactly one item or decision.
 if (f.story !== undefined) { if (f.item !== undefined) usage("the argument '--item' cannot be used multiple times"); f.item = f.story; delete f.story; }
 if (cmd.startsWith('comment ') && !f.item === !f.decision) usage('pass exactly one of --item and --decision');
-for (const [a, b] of [['epic', 'no-epic'], ['owner', 'no-owner'], ['initiative', 'no-initiative'], ['on', 'initiative'], ['brief', 'brief-file'], ['description', 'description-file']]) if (a in f && b in f) usage(`the argument '--${a}' cannot be used with '--${b}'`);
+for (const [a, b] of [['epic', 'no-epic'], ['owner', 'no-owner'], ['target-month', 'no-target-month'], ['initiative', 'no-initiative'], ['on', 'initiative'], ['brief', 'brief-file'], ['description', 'description-file']]) if (a in f && b in f) usage(`the argument '--${a}' cannot be used with '--${b}'`);
 // --brief-file / --description-file (GRA-65): the file's contents unchanged, `-` reads stdin. The CLI reads it before
 // any request, so a file it cannot read is its own error and nothing reaches the planner (not logged).
 const readText = (file) => {
@@ -184,7 +184,7 @@ const refOf = (item) => {
   if (item.external_ref && item.external_ref !== f['external-ref']) emit({ outcome: 'refused', reasons: [{ reason: 'external_ref_already_set' }] }, 2);
   return f['external-ref'];
 };
-const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`));
+const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`, { current: item.version }));
 const [p0] = pos;
 // Items created in this run, by kind, in creation order (lists show them like the real planner).
 const createdDecisions = () => Object.values(state.creates).filter((v) => !Array.isArray(v) && 'decider' in v);
@@ -297,7 +297,7 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
   'initiative findings': () => { const i = find(initiatives, p0); const own = all(epics, 'epic').filter((e) => e.initiative === i.key).map((e) => e.key); ok(findingsOf(i, [], all(stories, 'story').filter((x) => own.includes(x.epic)).length)); },
   'initiative ls': () => ok(all(initiatives, 'initiative')),
   'initiative create': () => ok(mint((id) => initiative(`GRA-${id}`, f.title, { brief: f.brief || '', horizon: f.horizon, owner: f.owner || null, target_month: f['target-month'] || null, external_ref: f['external-ref'] || null }))),
-  'initiative edit': () => { const i = find(initiatives, p0); ok(save({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon, owner: f.owner ?? i.owner, target_month: f['target-month'] ?? i.target_month, external_ref: refOf(i) })); },
+  'initiative edit': () => { const i = find(initiatives, p0); ok(save({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon, owner: f['no-owner'] ? null : f.owner ?? i.owner, target_month: f['no-target-month'] ? null : f['target-month'] ?? i.target_month, external_ref: refOf(i) })); },
   'initiative discovery': () => ok(save({ ...bump(find(initiatives, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
   'epic show': () => ok(find(epics, p0)),
   'epic findings': () => { const e = find(epics, p0); ok(findingsOf(e, [e.initiative], all(stories, 'story').filter((x) => x.epic === e.key).length)); },

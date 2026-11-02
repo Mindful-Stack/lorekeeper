@@ -81,6 +81,23 @@ test('the story context carries a required decision with no record', () => {
 test('a stale version is a conflict', () => {
   const r = run(['initiative', 'edit', 'GRA-12', '--brief', 'b', '--version', '1', '--json']);
   assert.deepEqual([r.status, r.envelope.code], [1, 'conflict']);
+  assert.equal(r.envelope.current, 3); // the version to re-read from
+});
+test('an initiative owner and target month are cleared by --no-owner and --no-target-month', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } });
+  const value = (args) => JSON.parse(call(args).stdout).value;
+  assert.equal(value(['initiative', 'edit', 'GRA-12', '--no-owner', '--version', '3', '--json']).owner, null);
+  assert.equal(value(['initiative', 'edit', 'GRA-12', '--target-month', '2027-03', '--version', '4', '--json']).target_month, '2027-03');
+  assert.equal(value(['initiative', 'edit', 'GRA-12', '--no-target-month', '--version', '5', '--json']).target_month, null);
+  assert.equal(call(['initiative', 'edit', 'GRA-12', '--owner', 'dan@example.com', '--no-owner', '--version', '6', '--json']).status, 1); // clap: they conflict
+  assert.equal(call(['initiative', 'edit', 'GRA-12', '--target-month', '2027-03', '--no-target-month', '--version', '6', '--json']).status, 1);
+});
+test('--mine under REEVE_FAKE_SIGNIN=expired answers unauthenticated, exit 2', () => {
+  for (const argv of [['story', 'ls', '--mine', '--json'], ['decision', 'ls', '--mine', '--json']]) {
+    const r = run(argv, { REEVE_FAKE_SIGNIN: 'expired' });
+    assert.deepEqual([r.status, r.envelope.code], [2, 'unauthenticated']);
+  }
 });
 test('a link whose check cannot run exits 1 with the decision in an ok envelope', () => {
   const r = run(['decision', 'link', '7', '--record', 'kb/ADR-0002', '--repo', 'lore', '--path', 'knowledge/adrs/0002-inventory-reservation.md', '--pr', 'https://github.com/example/test-workspace/pull/9', '--json'], { REEVE_FAKE_LINK_CHECK: 'unreadable' });

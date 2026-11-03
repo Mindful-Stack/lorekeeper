@@ -89,7 +89,7 @@ argument.
    finding of the architect's survey from step 1 (it finds the decisions already taken without a
    record; use its output here). Show each candidate with its source and proposed outcome (a kind
    of record by the household's ADR process, a required decision, closing an open required
-   decision with a reason, or leaving it) before anything is written, then carry out the outcomes
+   decision as decided or withdrawn, or leaving it) before anything is written, then carry out the outcomes
    the user confirms as that reference says; each recorded decision gets its line under *Decisions*
    in the brief (fold it into the step 4 brief, or edit the brief once more with the new
    `version`). The rest of this step is the required-decision outcome.
@@ -97,8 +97,13 @@ argument.
    For each open question that is a consequential choice blocking work
    (not a clarification) and has no decision yet: ask who decides and by when (the due date is
    optional: with none given, leave `--due` out), show and run
-   `reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`,
-   and keep `value.id`. Then, for each decision, one at a time:
+   `reeve decision require --on <KEY> --title <title> --decider <email> --reversibility one-way|two-way [--due YYYY-MM-DD] --idempotency-key planning-initiative:<KEY>:<run_id>:<n> --json`,
+   and keep `value.id`. Pass
+   `--reversibility one-way` when `<plugin-root>/references/decision-triage.md` would record the
+   choice as an ADR (one recording-decisions drafts), `two-way` for any other kind, and show which
+   with the command. Pass `--due` only with a date the conversation gave (rule 4); without one the
+   CLI's stderr line `no decide-by date; the queue will flag it` is expected: never pick a date to
+   silence it. Then, for each decision, one at a time:
    1. Ask once: "Draft the record now, or leave it for <decider>? (they can run `/lore:adr` later
       and link it to #<id>)". Draft at once when the request states the answer or asks for a
       draft. In a session that cannot ask, draft only when the request says so; otherwise leave

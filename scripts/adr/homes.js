@@ -51,8 +51,9 @@ function sameDir(a, b) {
 }
 
 // Resolves every ADR home visible from `start`. Shape:
-//   { mode, root, config, repos, localHomes: [{ repo, dir, present, coinciding }], sharedHome,
-//     sharedRoot, otherKbs }
+//   { mode, root, config, repos, metaRepo, localHomes: [{ repo, dir, present, coinciding }],
+//     sharedHome, sharedRoot, otherKbs }
+// `metaRepo` is the manifest's `meta_repo` (null outside a household); it is not a local home.
 // `sharedRoot` is the team KB's root (the directory holding knowledge/), or null.
 // A local home `coinciding` is the only home: the shared home is the same directory, or
 // (single repo) no knowledge base resolves at all.
@@ -84,6 +85,7 @@ function resolveHomes(start, env = process.env) {
             root: household,
             config,
             repos: m.repos || [],
+            metaRepo: m.meta_repo || null,
             localHomes,
             sharedHome,
             sharedRoot: path.join(household, kbName),
@@ -109,6 +111,7 @@ function resolveHomes(start, env = process.env) {
         root,
         config,
         repos: [],
+        metaRepo: null,
         localHomes: [local],
         sharedHome,
         sharedRoot: team ? kbRoot : null,
@@ -154,5 +157,5 @@ function dirForPrefix(homes, prefix) {
 }
 
 module.exports = {
-    DEFAULTS, resolveHomes, homeOf, repoFromRemote, normaliseRemote, dirForPrefix, findHousehold,
+    DEFAULTS, resolveHomes, homeOf, repoFromRemote, normaliseRemote, dirForPrefix, findHousehold, sameDir,
 };

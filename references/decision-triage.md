@@ -53,13 +53,22 @@ the request names is written and the rest is listed as proposals in the report):
   linked where the household keeps RFCs); a dated line in the brief edit of the same run. Then
   add its line under *Decisions* in the brief, naming the record, and point the known known at it.
 - **Require a decision** (still open, consequential, blocking work): the skill's
-  `reeve decision require` step, with a decider from the user.
-- **Close a required decision with a reason**: when an open required decision in the planner is
-  already settled without a record the planner can link (recorded as a dated line, a behaviour
-  doc rule or a standard node, or no longer relevant), offer
-  `reeve decision close <id> --reason <text> --json`. The reason names where it was decided
-  ("dated line on GRA-20's brief", "<doc> R3", "the epic was dropped"). A closed decision gates
-  nothing; an ADR that answers a decision is linked instead (recording-decisions **link**).
+  `reeve decision require` step, with a decider from the user and its reversibility: `one-way`
+  when the choice is one the table above records as an **ADR** (hard-to-reverse architecture, a
+  record recording-decisions would draft), `two-way` for every other kind.
+- **Close a required decision**: when an open required decision in the planner no longer waits on
+  a record the planner can link, offer one of two closes (the CLI reference's *Closing a
+  decision*):
+  - **decided**, when it was settled and written down as a dated line, a behaviour doc rule or a
+    standard node: `reeve decision close <id> --decided <text> --json`, the text saying what was
+    decided and where ("flat fee: dated line on GRA-20's brief", "<doc> R3"). Never for a one-way
+    decision: the planner refuses it (a `validation` error), because only its accepted record
+    decides it; propose the record and its link instead.
+  - **withdrawn**, when it is no longer needed: `reeve decision close <id> --withdrawn <text> --json`,
+    the text saying why ("the epic was dropped").
+
+  A closed decision gates nothing; an ADR that answers a decision is linked instead
+  (recording-decisions **link**).
 - **Leave it** in Known knowns (a fact after all) or drop it, saying so.
 
 The report lists each candidate with its outcome and record, or "proposed, not written".

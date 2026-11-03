@@ -112,7 +112,7 @@ per run; the log is appended to the output shown by `--verbose` and deleted afte
 **The log.** One line per call that passed the fake's validation (a malformed call is not logged, so it never satisfies a log expectation; a valid call the planner refuses is), except `--version`, which the SessionStart hook also runs to decide whether to list the planner skills in its router (a skill's detection shows as `auth status --json`): the argv joined by spaces, newlines inside an argument
 flattened to spaces, e.g. `epic create --initiative GRA-12 --title A --brief one two --idempotency-key planning-initiative:GRA-12:0a1b2c3d:1 --json`.
 
-**What the fake answers.** `--version` prints `reeve-planner 0.1.0-fake`; every other call must
+**What the fake answers.** `--version` prints `reeve-planner 0.2.0-fake`; every other call must
 include `--json` (anywhere, as the real CLI's global flag) and uses only flags the real CLI has.
 What the real CLI's parser rejects (an unknown command or flag, a missing value, a value starting
 with `-` except `comment add --body`) is a usage error as there: the text on stderr, nothing on
@@ -134,8 +134,20 @@ Answers use the planner's wire shapes:
 - epics `GRA-20` "Matching queue" (in GRA-12, version 2), `GRA-21` "Mentor profiles" (in GRA-13)
   and `GRA-22` "Session feedback", a standalone epic (`initiative: null`, no decisions, no stories);
 - decision `7` "Queue or cron" on GRA-20, with no record (`record: null`, check `unchecked`), and
-  decision `8` "Match by postcode" on GRA-20, closed without a record (listed by `decision ls`,
-  readable with `decision show`, never a readiness reason);
+  decision `8` "Match by postcode" on GRA-20, withdrawn without a record (`closed.kind`
+  `withdrawn`, `closed.via` `interactive`; listed by `decision ls`, readable with `decision show`,
+  never a readiness reason); both unclassified (`reversibility: null`);
+- decisions as in Reeve CLI 0.2.0: `decision require --reversibility one-way|two-way` answers
+  `one_way`/`two_way` and, without `--due`, writes `no decide-by date; the queue will flag it` to
+  stderr; `decision close` takes exactly one of `--decided` and `--withdrawn` (`--reason` is a usage
+  error), and `--decided` on a one-way decision, a close of a closed decision and an empty reason are
+  `validation` errors with the planner's messages; `decision edit` changes an open decision's title,
+  decider, due date and reversibility (`--no-due`, `--no-reversibility`); `decision ls --queue`
+  answers `{entries[], summary}` grouped and ordered as the planner's queue (blocking, open,
+  satisfied, closed; overdue on today's UTC date), leaving closed decisions out unless scoped by
+  `--on` or `--initiative`, and conflicts with `--mine`; a key that names nothing lists nothing
+  (`decision ls --initiative`, `--queue`), as on the planner; a plan decision takes
+  `reversibility` `one_way`/`two_way`;
 - stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
   in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-47` (`story ls --untriaged` lists
   stories of kind `story` with no epic, as the real planner does);

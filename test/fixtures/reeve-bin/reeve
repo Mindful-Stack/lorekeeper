@@ -13,6 +13,8 @@
 // --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates, edits and decision links
 // persist there, so later shows, lists and readiness see them like the real planner.
 // `story context` bundles the open decisions on the story's initiative, epic and the story itself, as the planner does.
+// Decisions follow Reeve CLI 0.2.0 (kb/ADR-0013): reversibility on require, edit and plans; close --decided|--withdrawn
+// with the planner's validation messages; `decision ls --queue` grouped and counted as the planner's queue.
 'use strict';
 const fs = require('node:fs');
 
@@ -52,7 +54,7 @@ const error = (code, message, extra = {}) => emit({ outcome: 'error', code, mess
 // What clap rejects: no envelope, the usage text on stderr, exit 1.
 const usage = (message) => { process.stderr.write(`error: ${message}\n\nFor more information, try '--help'.\n`); process.exit(1); };
 
-if (argv[0] === '--version') { process.stdout.write('reeve-planner 0.1.0-fake\n'); process.exit(0); }
+if (argv[0] === '--version') { process.stdout.write('reeve-planner 0.2.0-fake\n'); process.exit(0); }
 if (!argv.includes('--json')) error('validation', 'the fake planner answers --json calls only');
 const words = argv.filter((a) => a !== '--json');
 
@@ -76,11 +78,12 @@ const SPEC = {
   'epic edit': { pos: 1, val: ['version', 'title', 'brief', 'brief-file', 'initiative', 'external-ref'], bool: ['no-initiative'], req: ['version'] },
   'epic discovery': DISCOVERY,
   'epic findings': { pos: 1 },
-  'decision ls': { pos: 0, val: ['on', 'initiative'], bool: ['mine'] },
+  'decision ls': { pos: 0, val: ['on', 'initiative'], bool: ['mine', 'queue'] },
   'decision show': { pos: 1 },
-  'decision require': { pos: 0, val: ['idempotency-key', 'on', 'title', 'decider', 'due'], req: ['idempotency-key', 'on', 'title', 'decider'] },
+  'decision require': { pos: 0, val: ['idempotency-key', 'on', 'title', 'decider', 'due', 'reversibility'], req: ['idempotency-key', 'on', 'title', 'decider'] },
   'decision link': { pos: 1, val: ['record', 'repo', 'path', 'pr', 'household'], req: ['record', 'repo', 'path'] },
-  'decision close': { pos: 1, val: ['reason'], req: ['reason'] },
+  'decision close': { pos: 1, val: ['decided', 'withdrawn'] }, // exactly one (clap's `outcome` group)
+  'decision edit': { pos: 1, val: ['version', 'title', 'decider', 'due', 'reversibility'], bool: ['no-due', 'no-reversibility'], req: ['version'] },
   'comment add': { pos: 0, val: ['idempotency-key', 'item', 'story', 'decision', 'body'], req: ['idempotency-key', 'body'] },
   'comment ls': { pos: 0, val: ['item', 'story', 'decision'] },
   search: { pos: 1, variadic: true },
@@ -109,10 +112,16 @@ if (spec === DISCOVERY && !f.complete && !f.reopen) usage('pass --complete or --
 if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) usage(`invalid value '${f.kind}' for '--kind'`);
 if (f.version && !/^\d+$/.test(f.version)) usage(`invalid value '${f.version}' for '--version'`);
 if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}' for '--due'`);
+// The CLI spells reversibility one-way|two-way; the wire (and a plan) says one_way|two_way.
+if (f.reversibility !== undefined && !['one-way', 'two-way'].includes(f.reversibility)) usage(`invalid value '${f.reversibility}' for '--reversibility <REVERSIBILITY>'\n  [possible values: one-way, two-way]`);
+const wireRev = (v) => (v === undefined ? undefined : v.replace('-', '_'));
+if (cmd === 'decision close' && !f.decided === !f.withdrawn) usage(f.decided ? "the argument '--decided <DECIDED>' cannot be used with '--withdrawn <WITHDRAWN>'" : 'the following required arguments were not provided: <--decided <DECIDED>|--withdrawn <WITHDRAWN>>');
+if (cmd === 'decision edit' && !['title', 'decider', 'due', 'no-due', 'reversibility', 'no-reversibility'].some((x) => x in f)) usage('the following required arguments were not provided: <--title <TITLE>|--decider <DECIDER>|--due <DUE>|--no-due|--reversibility <REVERSIBILITY>|--no-reversibility>');
+if (cmd === 'decision ls' && f.queue && f.mine) usage("the argument '--queue' cannot be used with '--mine'");
 // `--story` is an alias of `--item` (GRA-70); a comment is on exactly one item or decision.
 if (f.story !== undefined) { if (f.item !== undefined) usage("the argument '--item' cannot be used multiple times"); f.item = f.story; delete f.story; }
 if (cmd.startsWith('comment ') && !f.item === !f.decision) usage('pass exactly one of --item and --decision');
-for (const [a, b] of [['epic', 'no-epic'], ['owner', 'no-owner'], ['target-month', 'no-target-month'], ['initiative', 'no-initiative'], ['on', 'initiative'], ['brief', 'brief-file'], ['description', 'description-file']]) if (a in f && b in f) usage(`the argument '--${a}' cannot be used with '--${b}'`);
+for (const [a, b] of [['epic', 'no-epic'], ['owner', 'no-owner'], ['target-month', 'no-target-month'], ['due', 'no-due'], ['reversibility', 'no-reversibility'], ['initiative', 'no-initiative'], ['on', 'initiative'], ['brief', 'brief-file'], ['description', 'description-file']]) if (a in f && b in f) usage(`the argument '--${a}' cannot be used with '--${b}'`);
 // --brief-file / --description-file (GRA-65): the file's contents unchanged, `-` reads stdin. The CLI reads it before
 // any request, so a file it cannot read is its own error and nothing reaches the planner (not logged).
 const readText = (file) => {
@@ -125,7 +134,7 @@ const PLAN_FIELDS = {
   initiatives: ['name', 'title', 'horizon', 'brief', 'target_month', 'owner', 'external_ref'],
   epics: ['name', 'title', 'initiative', 'brief', 'external_ref'],
   stories: ['name', 'title', 'kind', 'epic', 'description', 'criteria', 'labels', 'external_ref'],
-  decisions: ['name', 'on', 'title', 'decider', 'due'],
+  decisions: ['name', 'on', 'title', 'decider', 'due', 'reversibility'],
   blocks: ['story', 'blocked_by'],
 };
 let plan = null;
@@ -136,6 +145,7 @@ if (cmd === 'apply') {
   unknown(plan, '', '');
   if (typeof plan.id !== 'string') error('internal', `reading the plan in ${pos[0]}: missing field \`id\``);
   for (const list of Object.keys(PLAN_FIELDS).filter(Boolean)) (plan[list] ||= []).forEach((x, i) => unknown(x, list, `${list}[${i}]: `));
+  plan.decisions.forEach((d, i) => { if (d.reversibility != null && !['one_way', 'two_way'].includes(d.reversibility)) error('internal', `reading the plan in ${pos[0]}: decisions[${i}].reversibility: unknown variant \`${d.reversibility}\`, expected \`one_way\` or \`two_way\``); });
   logged = () => `${argv.join(' ')} ${JSON.stringify(plan)}`;
 }
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
@@ -153,9 +163,9 @@ const epics = {
   'GRA-21': epic('GRA-21', 'Mentor profiles', { brief: 'Mentors describe their skills and availability.', initiative: 'GRA-13' }),
   'GRA-22': epic('GRA-22', 'Session feedback', { brief: 'Mentees rate each mentoring session after it ends.' }), // standalone: no initiative
 };
-const decision7 = { id: 7, on: 'GRA-20', on_type: 'epic', title: 'Queue or cron', decider: 'dan@example.com', due: null, record: null, pr_url: null, check: { kind: 'unchecked' }, checked_at: null, closed: null, created_at: NOW, version: 1 };
+const decision7 = { id: 7, on: 'GRA-20', on_type: 'epic', title: 'Queue or cron', decider: 'dan@example.com', due: null, reversibility: null, record: null, pr_url: null, check: { kind: 'unchecked' }, checked_at: null, closed: null, created_at: NOW, version: 1 };
 // Closed without a record: listed by `decision ls`, never open, never a readiness reason (kb/ADR-0003 R3).
-const decision8 = { ...decision7, id: 8, title: 'Match by postcode', closed: { at: NOW, by: 'dan@example.com', reason: 'matching no longer uses the postcode' }, version: 2 };
+const decision8 = { ...decision7, id: 8, title: 'Match by postcode', closed: { at: NOW, by: 'dan@example.com', reason: 'matching no longer uses the postcode', kind: 'withdrawn', via: 'interactive' }, version: 2 };
 const HORIZONS = ['Now', 'Next', 'Later', "Won't do"];
 const NOT_ALLOWED = 'nobody@example.com';
 const stories = {
@@ -243,6 +253,33 @@ const target = () => {
   return { [`on_${kindOf(x)}`]: x.key };
 };
 
+// GET /decisions/queue (reeve-planning domain/queue.rs): each decision in its group (closed; satisfied, its record
+// accepted; blocking, when a todo story's readiness names it; else open), groups in that order (blocking, open,
+// satisfied, closed); blocking and open by urgency (overdue first, earliest due first among them; more blocks; undated
+// first; earlier due, else earlier created; id). The summary counts blocking and open only, each blocked story once,
+// overdue on the server's UTC date.
+const queueOf = (ds) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const todo = all(stories, 'story').filter((s) => s.delivery === 'todo');
+  const blocksOf = (d) => todo.filter((s) => readinessOf(s).reasons.some((r) => r.decision_id === d.id)).map((s) => ({ key: s.key, title: s.title }));
+  const GROUPS = ['blocking', 'open', 'satisfied', 'closed'];
+  const entries = ds.map((d) => {
+    const blocks = d.closed || d.check.kind === 'accepted' ? [] : blocksOf(d);
+    return { decision: d, group: d.closed ? 'closed' : d.check.kind === 'accepted' ? 'satisfied' : blocks.length ? 'blocking' : 'open', blocks };
+  });
+  const overdue = (d) => !!d.due && d.due < today;
+  const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+  const urgency = (a, b) => {
+    const [da, db] = [a.decision, b.decision];
+    return (overdue(db) - overdue(da)) || (overdue(da) && overdue(db) ? cmp(da.due, db.due) : 0) || (b.blocks.length - a.blocks.length)
+      || (!!da.due - !!db.due) || (da.due && db.due ? cmp(da.due, db.due) : cmp(da.created_at, db.created_at)) || (da.id - db.id);
+  };
+  entries.sort((a, b) => (GROUPS.indexOf(a.group) - GROUPS.indexOf(b.group)) || (a.group === 'closed' ? cmp(b.decision.closed.at, a.decision.closed.at) || a.decision.id - b.decision.id
+    : a.group === 'satisfied' ? cmp(b.decision.checked_at || '', a.decision.checked_at || '') || a.decision.id - b.decision.id : urgency(a, b)));
+  const live = entries.filter((e) => e.group === 'blocking' || e.group === 'open');
+  const blocking = entries.filter((e) => e.group === 'blocking');
+  return { entries, summary: { open: live.length, blocking: blocking.length, blocked_stories: new Set(blocking.flatMap((e) => e.blocks.map((b) => b.key))).size, overdue: live.filter((e) => overdue(e.decision)).length } };
+};
 // The planner's advisory findings (reeve-planning domain/findings.rs): computed on read, never blocking.
 const findingsOf = (item, ancestors, storyCount) => {
   const out = [];
@@ -313,11 +350,30 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
       if (x.key === f.initiative) return true;
       return kindOf(x) === 'story' ? !!x.epic && under(x.epic) : kindOf(x) === 'epic' ? x.initiative === f.initiative : false;
     };
-    if (f.initiative !== undefined) find(initiatives, f.initiative);
-    ok(allDecisions().filter((d) => (!f.on || d.on === f.on) && (!f.initiative || under(d.on))));
+    // As the planner: a key that names nothing lists nothing (an empty list or queue, never not_found).
+    const known = (key) => !!(itemsOf()[key] || initiatives[key] || epics[key] || stories[key]);
+    const scoped = f.on !== undefined || f.initiative !== undefined;
+    const ds = allDecisions().filter((d) => (!f.on || d.on === f.on) && (!f.initiative || under(d.on)) && (f.on === undefined || known(f.on)));
+    if (f.queue) ok(queueOf(scoped ? ds : ds.filter((d) => !d.closed))); // unscoped, the queue leaves closed ones out
+    ok(ds);
   },
   'decision show': () => ok(allDecisions().find((d) => String(d.id) === p0) || error('not_found', `no decision ${p0}`)),
-  'decision require': () => ok(mint((id) => ({ ...decision7, id, on: f.on, on_type: typeOfKey(f.on), title: f.title, decider: f.decider, due: f.due || null }))),
+  'decision require': () => {
+    if (!f.due) process.stderr.write('no decide-by date; the queue will flag it\n'); // the CLI warns, also with --json
+    ok(mint((id) => ({ ...decision7, id, on: f.on, on_type: typeOfKey(f.on), title: f.title, decider: f.decider, due: f.due || null, reversibility: wireRev(f.reversibility) || null, created_at: new Date(Date.parse(NOW) + id * 1000).toISOString().replace('.000Z', 'Z') })));
+  },
+  // PATCH /decisions/<id>: an open decision's title, decider, due and reversibility; a stale version is a conflict first.
+  'decision edit': () => {
+    if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
+    const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);
+    if (Number(f.version) !== d.version) error('conflict', `decision ${d.id} is at version ${d.version}, not ${f.version}`, { current: d.version });
+    if (d.closed) error('validation', 'decision is closed');
+    const next = { ...d, title: f.title ?? d.title, decider: f.decider ?? d.decider, due: f['no-due'] ? null : f.due ?? d.due, reversibility: f['no-reversibility'] ? null : wireRev(f.reversibility) ?? d.reversibility };
+    const changed = ['title', 'decider', 'due', 'reversibility'].some((k) => next[k] !== d[k]);
+    const value = changed ? { ...next, version: d.version + 1 } : d; // an edit that changes nothing leaves the version
+    withState((st) => { (st.decisions ||= {})[d.id] = value; });
+    ok(value);
+  },
   'decision link': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
     const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);
@@ -345,8 +401,14 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
   'decision close': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
     const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);
-    if (d.closed) emit({ outcome: 'refused', reasons: [{ reason: 'decision_closed' }] }, 2);
-    const value = { ...d, closed: { at: NOW, by: 'dan@example.com', reason: f.reason }, version: d.version + 1 };
+    // The planner's rules (domain/decision.rs close), each a validation error: a reason, not closed yet, and a
+    // one-way decision is decided by its accepted record, never by --decided.
+    const kind = f.decided !== undefined ? 'decided' : 'withdrawn';
+    const reason = (f.decided ?? f.withdrawn).trim();
+    if (!reason) error('validation', 'closing needs a reason');
+    if (d.closed) error('validation', 'already closed');
+    if (kind === 'decided' && d.reversibility === 'one_way') error('validation', 'a one-way decision is decided by its accepted record; withdraw it if it is no longer needed');
+    const value = { ...d, closed: { at: NOW, by: 'dan@example.com', reason, kind, via: 'interactive' }, version: d.version + 1 };
     withState((st) => { (st.decisions ||= {})[d.id] = value; });
     ok(value);
   },
@@ -418,7 +480,7 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
     }
     const decisions = plan.decisions.map((d) => {
       const on = resolve(d.on);
-      const { made, created } = make(d.name, 'decision', (n) => ({ ...decision7, id: n, on, on_type: refs[d.on] || typeOfKey(on), title: d.title, decider: d.decider, due: d.due || null }));
+      const { made, created } = make(d.name, 'decision', (n) => ({ ...decision7, id: n, on, on_type: refs[d.on] || typeOfKey(on), title: d.title, decider: d.decider, due: d.due || null, reversibility: d.reversibility || null }));
       return { name: d.name, id: made.id, created };
     });
     const blocks = plan.blocks.map((b) => withState((st) => {

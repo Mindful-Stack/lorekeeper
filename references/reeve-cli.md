@@ -16,6 +16,10 @@ Write that value as the command's first word (it is `reeve` unless `REEVE_BIN` i
 `${…}` expression: permission rules such as `Bash(reeve *)` match the literal word. Below, `reeve`
 stands for it.
 
+This file describes `reeve-planner` 0.2.0 or later (`reeve --version`). An older CLI answers
+`--reversibility`, `--decided`, `--withdrawn` and `--queue` with a usage error: tell the user to
+update the CLI, and never fall back to `decision close --reason`, which 0.2.0 no longer has.
+
 ## Arguments
 
 Put `--json` on every command, as the last argument (the real CLI takes it anywhere; these
@@ -120,14 +124,19 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 | `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] [--owner <email>] --json` | `value.version`; an owner who is not an allowed user is a `validation` error |
 | `reeve apply <plan file> --json` | `value.items[]`: `name`, `item`, `key`, `created`; `value.decisions[]`: `name`, `id`, `created`; `value.blocks[]`: `story`, `blocked_by`, `created` (see *Plans*) |
 | `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}` |
-| `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `on`, `on_type` (initiative, epic or story: the level of the item it is on), `title`, `decider`, `due`, `record` (null = no record), `pr_url`, `check.kind`, `closed` (null, or `{at, by, reason}`); closed decisions are listed too |
+| `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `on`, `on_type` (initiative, epic or story: the level of the item it is on), `title`, `decider`, `due`, `reversibility` (one_way or two_way; null = unclassified, treated as two-way), `record` (null = no record), `pr_url`, `check.kind`, `closed` (null, or `{at, by, reason, kind, via}`); closed decisions are listed too |
 | `reeve decision show <id> --json` | `value`: one decision, the same fields |
-| `reeve decision ls --initiative <KEY> --json` | `value[]`: `id`, `on`, `on_type`, `title`, `decider`, `record` (null = no record), `check.kind`, `closed` (null = not closed); every decision on the initiative, on its epics and on their stories, closed ones too |
-| `reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json` | `value.id` |
+| `reeve decision ls --initiative <KEY> --json` | `value[]`: `id`, `on`, `on_type`, `title`, `decider`, `reversibility`, `record` (null = no record), `check.kind`, `closed` (null = not closed); every decision on the initiative, on its epics and on their stories, closed ones too |
+| `reeve decision ls --queue [--on <KEY>] --json` | `value.entries[]`: `decision` (one decision, the fields of decision show), `group` (blocking, open, satisfied or closed), `blocks[]` `{key, title}`; `value.summary`: `open`, `blocking`, `blocked_stories`, `overdue` (see *The decision queue*) |
+| `reeve decision require --on <KEY> --title <title> --decider <email> --reversibility one-way\|two-way [--due YYYY-MM-DD] --idempotency-key <key> --json` | `value.id` |
 | `reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json` | `value.check.kind` |
-| `reeve decision close <id> --reason <text> --json` | `value.closed.reason`, `value.closed.at`, `value.closed.by` |
+| `reeve decision close <id> --decided <text> --json` / `reeve decision close <id> --withdrawn <text> --json` | `value.closed.reason`, `.kind` (decided or withdrawn), `.via` (interactive or automation: the token that closed it), `.at`, `.by`; see *Closing a decision* |
 | `reeve comment add --item <KEY> --body <text> --idempotency-key <key> --json` (or `--decision <id>`) | `value[]`, the thread |
 | `reeve comment ls --item <KEY> --json` (or `--decision <id>`) | `value[]`: `id`, `author`, `body`, `at`; oldest first, empty when there are none |
+
+`decision require` without `--due` writes `no decide-by date; the queue will flag it` to stderr,
+also with `--json`; the envelope is `ok` and the exit status 0. It is a reminder, not an error: pass
+`--due` only with a date the user gave, never one you chose to silence it.
 
 An initiative's owner is an email and its target month is `YYYY-MM` (`2027-03`); pass either on
 create or edit only with a value the user gave (rule *The user decides* in each skill), and leave a
@@ -168,7 +177,8 @@ the user asks for what it does, with the command written as shown.
 | `reeve story create --epic <KEY> --title <title> --kind story --description <text> --idempotency-key <key> --json` / `reeve story edit <KEY> --version <n> --description <text> --json` | a one-line description inline, in place of `--description-file` |
 | `reeve story edit <KEY> --version <n> --no-owner --json` | clears the story's owner (`--no-owner` in place of `--owner`) |
 | `reeve initiative edit <KEY> --version <n> --no-owner --no-target-month --json` | clears the initiative's owner and target month (each in place of its setter; either alone is allowed) |
-| `reeve decision ls --mine --json` | the decisions the signed-in user is the decider of (a refused token answers as for `story ls --mine`) |
+| `reeve decision ls --mine --json` | the decisions the signed-in user is the decider of (a refused token answers as for `story ls --mine`; not with `--queue`, a usage error) |
+| `reeve decision edit <id> --version <n> [--title <title>] [--decider <email>] [--due YYYY-MM-DD] [--reversibility one-way\|two-way] --json` | changes an open decision's title, decider, due date or reversibility (at least one of them; `--no-due` and `--no-reversibility` clear, each in place of its setter); a closed decision is a `validation` error, a stale `--version` a `conflict`. The record is changed with `decision link`, never here |
 
 ## Plans: reeve apply
 
@@ -190,7 +200,7 @@ the path reads standard input. The CLI also reads YAML; the skills write JSON.
     {"name": "send-invoice", "title": "Send a monthly invoice", "kind": "story", "epic": "invoices", "criteria": ["An invoice is sent on the first working day", "It lists every session of the month"]},
     {"name": "retry-match", "title": "Retry failed matches", "epic": "GRA-20", "description": "## Why\n\nCoordinators retry by hand today.", "criteria": ["A failed match is retried"], "labels": ["matching"]}
   ],
-  "decisions": [{"name": "provider", "on": "invoices", "title": "Which invoicing provider", "decider": "dan@example.com", "due": "2026-11-15"}],
+  "decisions": [{"name": "provider", "on": "invoices", "title": "Which invoicing provider", "decider": "dan@example.com", "reversibility": "one_way", "due": "2026-11-15"}],
   "blocks": [{"story": "send-invoice", "blocked_by": "GRA-31"}]
 }
 ```
@@ -199,7 +209,8 @@ the path reads standard input. The CLI also reads YAML; the skills write JSON.
   `brief`, `target_month`, `owner`, `external_ref`; an epic `name`, `title`, and optionally
   `initiative`, `brief`, `external_ref`; a story `name`, `title`, `criteria`, and optionally `kind`
   (a story when left out), `epic`, `description`, `labels`, `external_ref`; a decision `name`,
-  `on`, `title`, `decider`, and optionally `due` (`YYYY-MM-DD`); a block `story` and `blocked_by`
+  `on`, `title`, `decider`, and optionally `reversibility` (`one_way` or `two_way`, with an underscore
+  as on the wire, where the CLI flag says `one-way`) and `due` (`YYYY-MM-DD`); a block `story` and `blocked_by`
   (`blocked_by` blocks `story`). Any other field is refused by the CLI before anything is sent (an
   `internal` error naming the field). A story's owner, a comment and an edit of an existing item
   are not in a plan: run them after it.
@@ -257,6 +268,55 @@ An item moved by hand from another tracker records the key it came from (a Jira 
 Before creating an item for something migrated, read by the reference first: an `ok` answer is
 the item, already there.
 
+## Reversibility
+
+A required decision is `one-way` (hard to undo: undoing it costs more than a day or breaks
+something others depend on) or `two-way`; a decision with none (null) is unclassified and treated
+as two-way. The spellings differ by place: the CLI flag and a record's front matter say `one-way` /
+`two-way`, the JSON answers and a plan say `one_way` / `two_way`, and text output prints
+`one-way`. Pass `--reversibility` on every `decision require` the skills run (each skill says which
+value); change it later only when the user asks (`decision edit`).
+
+A one-way decision is decided only by its accepted record: link the record (*decision link*); it
+cannot be closed as decided.
+
+## Closing a decision
+
+`decision close` takes exactly one of `--decided <text>` (what was decided, and where it is written
+down) and `--withdrawn <text>` (why the decision is no longer needed); neither or both is a usage
+error (exit 1, nothing sent). `--decided` on a one-way decision is a `validation` error, exit 1,
+with the message "a one-way decision is decided by its accepted record; withdraw it if it is no
+longer needed": show it and link the record instead, or withdraw the decision when the user says
+it is no longer needed. Closing a closed decision is a `validation` error too ("already closed").
+
+The `--decided` text says what was decided and where. Settled in the conversation (two-way), the
+text alone will do. Settled by a behaviour doc rule, close only once the rule is merged on the
+default branch, and name the path, the rule id and the PR:
+`--decided "docs/behaviour/orgs.md org.R7 (app#123)"`. A one-way decision is settled only by its
+accepted ADR, linked. A behaviour doc rule is closed as decided, never linked with `decision link`:
+the planner reads a linked behaviour doc as "not accepted: unparsable front matter" on every check,
+so a decision linked to one is never settled.
+
+`value.closed.kind` is `decided` or `withdrawn` and `value.closed.via` is `interactive` or
+`automation` (the kind of token that closed it); both are null on a decision closed before 0.2.0.
+
+## The decision queue
+
+`reeve decision ls --queue --json` answers the planner's queue: `value.entries[]`, each
+`{decision, group, blocks[]}`, and `value.summary`. Read them in the order given, never re-sort:
+
+- **`group`**: `blocking` (open, and the readiness of at least one todo story names it), `open`
+  (open, blocks nothing), `satisfied` (open, its record accepted), `closed`, in that order; blocking
+  and open decisions most urgent first (overdue first, then the ones blocking most stories).
+- **`blocks[]`**: the todo stories it holds back, each `{key, title}`; empty outside `blocking`.
+- **`summary`**: `{open, blocking, blocked_stories, overdue}`, counted over the blocking and open
+  decisions only: `open` is both groups together, `blocked_stories` counts each story once, and
+  `overdue` counts those whose `due` is before the planner's date (UTC).
+
+Unscoped, the queue leaves closed decisions out; with `--on <KEY>` or `--initiative <KEY>` (not both) it
+includes them, as `decision ls` does. A key that names nothing answers an empty queue, not
+`not_found`. `--queue` with `--mine` is a usage error.
+
 ## decision link
 
 `--repo` is the repository name as configured in the planner; the record must be readable at
@@ -268,6 +328,13 @@ repository is configured in the planner.
 The `ok` envelope carries `immediate_check` beside `value`: its `outcome` is `stored` (the check
 ran; read `value.check.kind`), `held`, `unreadable`, `failed`, or `repo_not_configured`. Read
 `immediate_check.outcome` first for `repo_not_configured`, then `value.check.kind`.
+
+An `accepted` or `not_accepted` check carries `check.reversibility` (`one_way` or `two_way`) when
+the record's front matter sets `reversibility`; it is absent otherwise (never null), on every other
+`check.kind`, and when the record's id does not match `--record`. When both it and the
+decision's `reversibility` are set and they differ, say so (an unclassified decision, null, has
+nothing to disagree with) ("the record says one-way, the decision two-way"); changing
+either is the user's call.
 
 | Result | Say |
 |---|---|
@@ -283,11 +350,14 @@ ran; read `value.check.kind`), `held`, `unreadable`, `failed`, or `repo_not_conf
 ## Wording the planner's answers
 
 Readiness is read, never computed (kb/ADR-0003 R1). A required decision with `closed` set is
-"closed: <closed.reason>". Otherwise, with `record: null` it is "no record"; else its
+"closed: decided: <closed.reason>" or "closed: withdrawn: <closed.reason>" by `closed.kind`
+("closed: <closed.reason>" when it is null). An open one, with `record: null`, is "no record"; else its
 `check.kind`: `unchecked` "not checked yet" (with a record in a repository the planner does not
 check yet, readiness says "record in an unchecked repository"), `proposed_pr_open` "proposed, PR open", `accepted`
 "accepted", `not_accepted` "record <check.status>" (with `check.superseded_by`: "record
 superseded by <id>, re-point"), `not_found` "record not found".
+
+A decision's `reversibility` reads "one-way", "two-way" or, when null, "unclassified".
 
 **Open** required decision: `closed` is null and `check.kind` is not `accepted`. A closed decision
 is never open, whatever its record; skills that list open decisions use this definition.

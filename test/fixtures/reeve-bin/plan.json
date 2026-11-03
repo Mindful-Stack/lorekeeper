@@ -5,6 +5,6 @@
     {"name": "send-invoice", "title": "Send a monthly invoice", "epic": "invoices", "criteria": ["An invoice is sent"]},
     {"name": "retry-match", "title": "Retry a failed match", "epic": "GRA-20", "criteria": ["A failed match is retried"]}
   ],
-  "decisions": [{"name": "provider", "on": "invoices", "title": "Which invoicing provider", "decider": "dan@example.com"}],
+  "decisions": [{"name": "provider", "on": "invoices", "title": "Which invoicing provider", "decider": "dan@example.com", "reversibility": "two_way"}],
   "blocks": [{"story": "send-invoice", "blocked_by": "retry-match"}]
 }

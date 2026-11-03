@@ -5,7 +5,8 @@
     { "bind": "epic", "argv": ["epic", "create", "--initiative", "{{initiative.key}}", "--title", "Skill smoke epic", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:2", "--json"] },
     { "bind": "story", "argv": ["story", "create", "--epic", "{{epic.key}}", "--title", "Skill smoke story", "--kind", "story", "--criterion", "It is seeded", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:3", "--json"] },
     { "bind": "untriaged", "argv": ["story", "create", "--title", "Skill smoke untriaged story", "--kind", "story", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:4", "--json"] },
-    { "bind": "decision", "argv": ["decision", "require", "--on", "{{epic.key}}", "--title", "Skill smoke seeded decision", "--decider", "{{email}}", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:5", "--json"] }
+    { "bind": "decision", "argv": ["decision", "require", "--on", "{{epic.key}}", "--title", "Skill smoke seeded decision", "--decider", "{{email}}", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:5", "--json"] },
+    { "bind": "blocker", "argv": ["decision", "require", "--on", "{{story.key}}", "--title", "Skill smoke blocking decision", "--decider", "{{email}}", "--reversibility", "one-way", "--due", "2027-01-15", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:6", "--json"] }
   ],
   "entries": [
     {
@@ -109,11 +110,17 @@
       "types": { "value.version": "number" }
     },
     {
-      "row": "`reeve decision require --on <KEY> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key <key> --json`",
+      "row": "`reeve decision require --on <KEY> --title <title> --decider <email> --reversibility one-way|two-way [--due YYYY-MM-DD] --idempotency-key <key> --json`",
       "bind": "required",
-      "argv": ["decision", "require", "--on", "{{epic.key}}", "--title", "Skill smoke required decision", "--decider", "{{email}}", "--due", "2027-01-15", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:2", "--json"],
+      "argv": ["decision", "require", "--on", "{{epic.key}}", "--title", "Skill smoke required decision", "--decider", "{{email}}", "--reversibility", "two-way", "--due", "2027-01-15", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:2", "--json"],
       "reads": ["value.id"],
       "types": { "value.id": "number" }
+    },
+    {
+      "row": "`reeve decision ls --queue [--on <KEY>] --json`",
+      "argv": ["decision", "ls", "--queue", "--on", "{{story.key}}", "--json"],
+      "reads": ["value.entries[].decision", "value.entries[].group", "value.entries[].blocks[].key", "value.entries[].blocks[].title", "value.summary.open", "value.summary.blocking", "value.summary.blocked_stories", "value.summary.overdue"],
+      "types": { "value.entries[].decision": "object", "value.entries[].group": "string", "value.entries[].blocks[].key": "string", "value.entries[].blocks[].title": "string", "value.summary.open": "number", "value.summary.blocking": "number", "value.summary.blocked_stories": "number", "value.summary.overdue": "number" }
     },
     {
       "row": "`reeve decision link <id> --record <qualified id> --repo <repo> --path <path in repo> --pr <url> --household <dir> --json`",
@@ -123,10 +130,11 @@
       "expect": { "value.check.kind": "accepted" }
     },
     {
-      "row": "`reeve decision close <id> --reason <text> --json`",
-      "argv": ["decision", "close", "{{required.id}}", "--reason", "Closed by the skill smoke: settled without a record.", "--json"],
-      "reads": ["value.closed.reason", "value.closed.at", "value.closed.by"],
-      "types": { "value.closed.reason": "string", "value.closed.at": "string", "value.closed.by": "string" }
+      "row": "`reeve decision close <id> --decided <text> --json` / `reeve decision close <id> --withdrawn <text> --json`",
+      "argv": ["decision", "close", "{{required.id}}", "--decided", "Closed by the skill smoke: settled without a record.", "--json"],
+      "alternates": [["decision", "close", "{{blocker.id}}", "--withdrawn", "Withdrawn by the skill smoke: no longer needed.", "--json"]],
+      "reads": ["value.closed.reason", "value.closed.kind", "value.closed.via", "value.closed.at", "value.closed.by"],
+      "types": { "value.closed.reason": "string", "value.closed.kind": "string", "value.closed.via": "string", "value.closed.at": "string", "value.closed.by": "string" }
     },
     {
       "row": "`reeve comment add --item <KEY> --body <text> --idempotency-key <key> --json` (or `--decision <id>`)",
@@ -145,25 +153,27 @@
     {
       "row": "`reeve decision ls --on <KEY> --json`",
       "argv": ["decision", "ls", "--on", "{{epic.key}}", "--json"],
-      "reads": ["value[].id", "value[].on", "value[].on_type", "value[].title", "value[].decider", "value[].due", "value[].record", "value[].pr_url", "value[].check.kind", "value[].closed"],
-      "types": { "value[].id": "number", "value[].on": "string", "value[].on_type": "string", "value[].title": "string", "value[].decider": "string", "value[].due": "string|null", "value[].record": "object|null", "value[].pr_url": "string|null", "value[].check.kind": "string", "value[].closed": "object|null" },
+      "reads": ["value[].id", "value[].on", "value[].on_type", "value[].title", "value[].decider", "value[].due", "value[].reversibility", "value[].record", "value[].pr_url", "value[].check.kind", "value[].closed"],
+      "types": { "value[].id": "number", "value[].on": "string", "value[].on_type": "string", "value[].title": "string", "value[].decider": "string", "value[].due": "string|null", "value[].reversibility": "string|null", "value[].record": "object|null", "value[].pr_url": "string|null", "value[].check.kind": "string", "value[].closed": "object|null" },
       "unread": {
         "value[].closed.at": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here",
         "value[].closed.by": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here",
-        "value[].closed.reason": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here"
+        "value[].closed.reason": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here",
+        "value[].closed.kind": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here",
+        "value[].closed.via": "null on every open decision in the list, so no read reaches it for every element; the decision close entry reads it, and value[].closed is read here"
       }
     },
     {
       "row": "`reeve decision show <id> --json`",
       "argv": ["decision", "show", "{{decision.id}}", "--json"],
-      "reads": ["value.id", "value.on", "value.on_type", "value.title", "value.decider", "value.due", "value.record", "value.pr_url", "value.check.kind", "value.closed"],
-      "types": { "value.id": "number", "value.on": "string", "value.on_type": "string", "value.title": "string", "value.decider": "string", "value.due": "string|null", "value.record": "object|null", "value.pr_url": "string|null", "value.check.kind": "string", "value.closed": "object|null" }
+      "reads": ["value.id", "value.on", "value.on_type", "value.title", "value.decider", "value.due", "value.reversibility", "value.record", "value.pr_url", "value.check.kind", "value.closed"],
+      "types": { "value.id": "number", "value.on": "string", "value.on_type": "string", "value.title": "string", "value.decider": "string", "value.due": "string|null", "value.reversibility": "string|null", "value.record": "object|null", "value.pr_url": "string|null", "value.check.kind": "string", "value.closed": "object|null" }
     },
     {
       "row": "`reeve decision ls --initiative <KEY> --json`",
       "argv": ["decision", "ls", "--initiative", "{{initiative.key}}", "--json"],
-      "reads": ["value[].id", "value[].on", "value[].on_type", "value[].title", "value[].decider", "value[].record", "value[].check.kind", "value[].closed"],
-      "types": { "value[].id": "number", "value[].on": "string", "value[].on_type": "string", "value[].title": "string", "value[].decider": "string", "value[].record": "object|null", "value[].check.kind": "string", "value[].closed": "object|null" }
+      "reads": ["value[].id", "value[].on", "value[].on_type", "value[].title", "value[].decider", "value[].reversibility", "value[].record", "value[].check.kind", "value[].closed"],
+      "types": { "value[].id": "number", "value[].on": "string", "value[].on_type": "string", "value[].title": "string", "value[].decider": "string", "value[].reversibility": "string|null", "value[].record": "object|null", "value[].check.kind": "string", "value[].closed": "object|null" }
     },
     {
       "row": "`reeve apply <plan file> --json`",

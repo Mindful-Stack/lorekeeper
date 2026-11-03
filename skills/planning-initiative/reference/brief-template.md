@@ -22,7 +22,7 @@ kb/ADR-0012") instead of a document or tracker page.
 ## Decisions
 
 Decisions already taken, one line each, each naming its record: an ADR id (`kb/ADR-0012`), a
-behaviour doc rule (`<doc> R3`), a standard node, an RFC outcome where the household keeps RFCs,
+behaviour doc rule (`app/org.R7`), a standard node, an RFC outcome where the household keeps RFCs,
 a closed required decision (`#14, closed: <reason>`), or, for a small choice, the line itself,
 dated and with who took it (`2026-10-30: <choice> (<who>)`). A wiki page, a tracker key or a
 spec is not a record: once it is archived nobody can check it, so a decision that rests only on

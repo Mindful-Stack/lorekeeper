@@ -88,15 +88,21 @@ single-quoted argument on one line, as the reference's Arguments section says.
    now), as planning-initiative's step 6 does: the open questions from step 2, the epic's known
    facts that are choices rather than facts, each choice behind a `brief_cites_without_decision`
    finding from step 1, and every finding of the architect's survey from step 1. Show each candidate with its source and proposed outcome (a kind of record by the
-   household's ADR process, a required decision, closing an open required decision with a
-   reason, or leaving it) before anything is written, and carry out the outcomes the user
+   household's ADR process, a required decision, closing an open required decision as
+   decided or withdrawn, or leaving it) before anything is written, and carry out the outcomes the user
    confirms as that reference says; each recorded decision gets its line under *Decisions* in the
    epic's brief (fold it into the step 4 brief, or edit the brief once more with the new
    `version`). For each open question that is a consequential choice blocking work (not a
    clarification) and has no decision yet, propose a required decision, as planning-initiative
    does: ask who decides and by when (the due date is optional: with none given, leave
    `--due` out), show and run
-   `reeve decision require --on <EPIC> --title <title> --decider <email> [--due YYYY-MM-DD] --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
+   `reeve decision require --on <EPIC> --title <title> --decider <email> --reversibility one-way|two-way [--due YYYY-MM-DD] --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`. Pass
+   the reversibility classified first, as `<plugin-root>/references/decision-triage.md` says:
+   `--reversibility one-way` when undoing the choice costs more than a day or breaks something
+   others depend on, whatever kind of choice it is (a one-way choice is always an ADR), `two-way`
+   otherwise; show which with the command. Pass `--due` only with a date the conversation gave (rule 4); without one the
+   CLI's stderr line `no decide-by date; the queue will flag it` is expected: never pick a date to
+   silence it.
    Then ask once: "Draft the record now, or leave it for <decider>?"; draft at once when the
    request states the answer or asks for a draft, and in a session that cannot ask only when the
    request says so (otherwise the report says "left for <decider>: run `/lore:adr` and link it to

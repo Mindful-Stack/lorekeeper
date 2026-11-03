@@ -45,7 +45,7 @@ function commands() {
 // placeholders filled, then split like a shell (single quotes only, as the reference allows).
 function argvOf(cmd) {
   let s = cmd.replace(/\\\|/g, '|').replace(/\s*…/g, '').replace(/\[([^\]]*)\]/g, '$1')
-    .replace(/(\w+)(?:\|\w+)+/g, '$1').replace(/YYYY-MM-DD/g, '2026-11-15');
+    .replace(/([\w-]+)(?:\|[\w-]+)+/g, '$1').replace(/YYYY-MM-DD/g, '2026-11-15');
   s = s.replace(/<([^<>]+)>/g, (_, name) => {
     assert.ok(name in PLACEHOLDERS, `no value for placeholder <${name}> in: ${cmd}`);
     return PLACEHOLDERS[name];

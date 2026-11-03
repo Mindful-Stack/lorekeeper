@@ -36,7 +36,9 @@ Proposed YYYY-MM-DD.
 - **<B>** — one honest advantage.
 
 ## Decision
-<One falsifiable sentence, active voice, named actor, strongest because.>
+<One falsifiable sentence, active voice, strongest because. The actor is what carries the
+decision out: the system or component ("The planner computes …"), or "The team" for a process
+decision. Never a person: who took the decision goes in `decided_by` only.>
 
 - **R1** <MUST / MUST NOT rule a reviewer can hold code against>
 

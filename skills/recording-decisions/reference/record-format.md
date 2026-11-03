@@ -28,9 +28,13 @@ converting a legacy record, and keep its keys and section order. The file is
 Body: *Context* (facts a proponent of the losing option would accept); *Facts relied on* (`F1 …
 — source: <path, URL or command>`); *Considered options* (two or more, each with one honest
 advantage; three is a guideline, not a limit: every rejected option that has a revisit trigger
-belongs on the record); *Decision* (one falsifiable sentence, named actor, strongest because, then rules `R1`,
-`R2` … each a MUST or MUST NOT); *Consequences* (at least one real negative); *Assumptions and
-invalidation triggers* (`*Assumes X.* Trigger: <event> ⇒ supersede.`); *Later observations*
+belongs on the record); *Decision* (one falsifiable sentence in active voice with its strongest
+because, then rules `R1`, `R2` … each a MUST or MUST NOT; the sentence's actor is what carries the
+decision out: the system or component, "The planner computes …", or "The team" for a process
+decision, never a person: the decision is made as a team, so who owns or took it lives only in
+`decided_by` and the ratifier in the last Status line; accepted records that name a person keep
+their wording, since they are locked); *Consequences* (at least one real negative); *Assumptions
+and invalidation triggers* (`*Assumes X.* Trigger: <event> ⇒ supersede.`); *Later observations*
 (empty on a draft); *See also*. Aim for 300–900 words, one decision per record (decompose "store X
 in Y" bundles), plain sentences, and never mention chat sessions or AI authorship.
 
@@ -42,7 +46,7 @@ collide with an open PR's record. The slug names the problem, never the answer.
 
 ## Self-check
 
-Fix inline: one falsifiable Decision; every rule a MUST/MUST NOT; Context a losing proponent would
-accept; every fact sourced; two or more real options (three is a guideline, not a limit); a real negative; a trigger; classification
+Fix inline: one falsifiable Decision whose actor is a system, component or the team, never a
+person; every rule a MUST/MUST NOT; Context a losing proponent would accept; every fact sourced; two or more real options (three is a guideline, not a limit); a real negative; a trigger; classification
 matching the evidence; scope non-empty for high tier and in the home's syntax; every value inline;
 no AI authorship.

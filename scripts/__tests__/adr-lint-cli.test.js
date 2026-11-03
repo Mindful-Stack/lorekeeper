@@ -197,6 +197,52 @@ test('select infers the repo from the origin remote', (t) => {
     assert.match(r.stdout, /^kb\/ADR-0001\taccepted\t/);
 });
 
+// A household whose meta-repo is also its code repo (GRA-86): the manifest names `planner` as
+// `meta_repo` and lists it, the team KB is inline (`lore/`), and the code sits at the root.
+function metaRepoWorkspace(t) {
+    const root = tmpDir(t);
+    const env = gitEnv(root);
+    write(path.join(root, 'household.json'), JSON.stringify({
+        schema_version: 2,
+        meta_repo: 'planner',
+        knowledge_base: 'lore',
+        repos: [{ name: 'planner', url: 'git@example.invalid:org/planner.git' }, { name: 'lore' }],
+    }));
+    initRepo(root, env);
+    const shared = path.join(root, 'lore', 'knowledge', 'adrs');
+    fs.mkdirSync(shared, { recursive: true });
+    write(path.join(shared, '0001-session-storage.md'), makeRecord({ fm: { scope: ['planner:src/**'] } }));
+    write(path.join(shared, '0002-web-only.md'), makeRecord({ number: '0002', fm: { scope: ['web:src/**'] } }));
+    return { root, env, shared };
+}
+
+test('GRA-86: select --repo names the meta-repo when it holds the code', (t) => {
+    const w = metaRepoWorkspace(t);
+    const r = runCli(w.root, w.env, 'select', '--repo', 'planner', '--paths', 'src/lib.rs');
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.deepEqual(r.stdout.trim().split('\n').map((l) => l.split('\t')[0] + ' ' + l.split('\t')[3]), [
+        'kb/ADR-0001 scope',
+    ]);
+});
+
+test('GRA-86: select infers the meta-repo from the origin remote', (t) => {
+    const w = metaRepoWorkspace(t);
+    git(w.root, w.env, 'remote', 'add', 'origin', 'https://example.invalid/org/planner.git');
+    const r = runCli(w.root, w.env, 'select', '--paths', 'src/lib.rs');
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^kb\/ADR-0001\taccepted\t/);
+});
+
+test('GRA-86: a meta-repo the manifest does not list is still not a repo', (t) => {
+    const w = metaRepoWorkspace(t);
+    write(path.join(w.root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'planner', knowledge_base: 'lore', repos: [{ name: 'lore' }],
+    }));
+    const r = runCli(w.root, w.env, 'select', '--repo', 'planner', '--paths', 'src/lib.rs');
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /repo planner is not in household\.json/);
+});
+
 test('I3: --base: a record accepted on the base after branching cannot be rewritten', (t) => {
     const w = workspace(t);
     const file = path.join(w.local, '0001-session-storage.md');

@@ -289,6 +289,14 @@ with the message "a one-way decision is decided by its accepted record; withdraw
 longer needed": show it and link the record instead, or withdraw the decision when the user says
 it is no longer needed. Closing a closed decision is a `validation` error too ("already closed").
 
+The `--decided` text says what was decided and where. Settled in the conversation (two-way), the
+text alone will do. Settled by a behaviour doc rule, close only once the rule is merged on the
+default branch, and name the path, the rule id and the PR:
+`--decided "docs/behaviour/orgs.md org.R7 (app#123)"`. A one-way decision is settled only by its
+accepted ADR, linked. A behaviour doc rule is closed as decided, never linked with `decision link`:
+the planner reads a linked behaviour doc as "not accepted: unparsable front matter" on every check,
+so a decision linked to one is never settled.
+
 `value.closed.kind` is `decided` or `withdrawn` and `value.closed.via` is `interactive` or
 `automation` (the kind of token that closed it); both are null on a decision closed before 0.2.0.
 
@@ -323,8 +331,9 @@ ran; read `value.check.kind`), `held`, `unreadable`, `failed`, or `repo_not_conf
 
 An `accepted` or `not_accepted` check carries `check.reversibility` (`one_way` or `two_way`) when
 the record's front matter sets `reversibility`; it is absent otherwise (never null), on every other
-`check.kind`, and when the record's id does not match `--record`. When it differs from the
-decision's `reversibility`, say so ("the record says one-way, the decision two-way"); changing
+`check.kind`, and when the record's id does not match `--record`. When both it and the
+decision's `reversibility` are set and they differ, say so (an unclassified decision, null, has
+nothing to disagree with) ("the record says one-way, the decision two-way"); changing
 either is the user's call.
 
 | Result | Say |

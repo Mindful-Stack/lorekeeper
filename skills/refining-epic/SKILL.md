@@ -97,9 +97,10 @@ single-quoted argument on one line, as the reference's Arguments section says.
    does: ask who decides and by when (the due date is optional: with none given, leave
    `--due` out), show and run
    `reeve decision require --on <EPIC> --title <title> --decider <email> --reversibility one-way|two-way [--due YYYY-MM-DD] --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`. Pass
-   `--reversibility one-way` when `<plugin-root>/references/decision-triage.md` would record the
-   choice as an ADR (one recording-decisions drafts), `two-way` for any other kind, and show which
-   with the command. Pass `--due` only with a date the conversation gave (rule 4); without one the
+   the reversibility classified first, as `<plugin-root>/references/decision-triage.md` says:
+   `--reversibility one-way` when undoing the choice costs more than a day or breaks something
+   others depend on, whatever kind of choice it is (a one-way choice is always an ADR), `two-way`
+   otherwise; show which with the command. Pass `--due` only with a date the conversation gave (rule 4); without one the
    CLI's stderr line `no decide-by date; the queue will flag it` is expected: never pick a date to
    silence it.
    Then ask once: "Draft the record now, or leave it for <decider>?"; draft at once when the

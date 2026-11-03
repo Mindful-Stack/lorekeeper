@@ -21,12 +21,18 @@ with where it can be checked.
 
 The kind follows **the household's ADR process**. Before proposing kinds, look in the knowledge
 base for it (the knowledge-reader from step 1, or a Grep of `knowledge/general/` for an ADR
-process or "RFC or ADR" node); where it says otherwise, it wins. Without one, use this:
+process or "RFC or ADR" node); where it says otherwise, it wins.
+
+Classify **reversibility first**, by the CLI reference's definition (*Reversibility*): a choice is
+one-way when undoing it costs more than a day or breaks something others depend on, whatever
+kind of choice it is. A one-way choice is always an **ADR**, a product policy too (data ownership,
+a consent model, a pricing promise); a behaviour doc rule may follow from it and cite it with
+`Source:` (ADR, then rule, then code). A two-way choice takes its kind from this table:
 
 | The choice | Kind of record |
 |---|---|
 | Hard-to-reverse architecture that code depends on (code will depend on it, and changing it later costs more than a day) | an **ADR**, drafted by recording-decisions |
-| Product policy (who may do or see what, consent, invitations, billing access) that is not also hard-to-reverse architecture | a rule in the capability's **behaviour doc** |
+| Product policy (who may do or see what, consent, invitations, billing access) that is not hard to reverse | a rule in the capability's **behaviour doc** |
 | A reversible convention | a **standard node** in the knowledge base |
 | A choice no code depends on (a tool, a vendor with no integration, a process) | the **RFC outcome**, where the household keeps RFCs; a household without them records it as recording-decisions' triage says |
 | A small choice inside one epic or initiative | a **dated line** under *Decisions* in that item's brief (`2026-10-30: <choice> (<who>)`) |
@@ -53,17 +59,19 @@ the request names is written and the rest is listed as proposals in the report):
   linked where the household keeps RFCs); a dated line in the brief edit of the same run. Then
   add its line under *Decisions* in the brief, naming the record, and point the known known at it.
 - **Require a decision** (still open, consequential, blocking work): the skill's
-  `reeve decision require` step, with a decider from the user and its reversibility: `one-way`
-  when the choice is one the table above records as an **ADR** (hard-to-reverse architecture, a
-  record recording-decisions would draft), `two-way` for every other kind.
+  `reeve decision require` step, with a decider from the user and the reversibility classified
+  first (above): `one-way` when undoing the choice costs more than a day or breaks something
+  others depend on, whatever its kind; `two-way` otherwise.
 - **Close a required decision**: when an open required decision in the planner no longer waits on
   a record the planner can link, offer one of two closes (the CLI reference's *Closing a
   decision*):
-  - **decided**, when it was settled and written down as a dated line, a behaviour doc rule or a
-    standard node: `reeve decision close <id> --decided <text> --json`, the text saying what was
-    decided and where ("flat fee: dated line on GRA-20's brief", "<doc> R3"). Never for a one-way
-    decision: the planner refuses it (a `validation` error), because only its accepted record
-    decides it; propose the record and its link instead.
+  - **decided**, two-way only: `reeve decision close <id> --decided <text> --json`. Settled in
+    the conversation (a dated line, a standard node), the text says what was decided ("flat fee:
+    dated line on GRA-20's brief"); no other citation is needed. Settled by a behaviour doc rule,
+    close only once the rule is merged on the default branch, and name the path, the rule id and
+    the PR: `--decided "docs/behaviour/orgs.md org.R7 (app#123)"`. Never for a one-way decision:
+    only its accepted ADR settles it, so propose the record and link it; the planner refuses
+    `--decided` (a `validation` error).
   - **withdrawn**, when it is no longer needed: `reeve decision close <id> --withdrawn <text> --json`,
     the text saying why ("the epic was dropped").
 

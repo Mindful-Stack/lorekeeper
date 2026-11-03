@@ -372,8 +372,7 @@ test('apply validates the whole plan first and reports every problem at once; an
 });
 
 // Decisions first-class (Reeve CLI 0.2.0, kb/ADR-0013): reversibility, close kinds, the queue.
-const session = () => {
-  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+const session = (log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log')) => {
   return (args) => {
     const r = spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } });
     return { status: r.status, stderr: r.stderr, stdout: r.stdout, ...(r.stdout.trim().startsWith('{') ? JSON.parse(r.stdout) : {}) };
@@ -411,6 +410,19 @@ test('decision close takes exactly one of --decided and --withdrawn; --reason is
   const again = call(['decision', 'close', String(id), '--withdrawn', 'twice', '--json']);
   assert.deepEqual([again.status, again.code, again.message], [1, 'validation', 'already closed']);
 });
+test('decision close checks the flags by presence: an empty value still counts, and a blank reason is the planner\'s validation', () => {
+  const call = session();
+  for (const args of [['decision', 'close', '7', '--decided', 'x', '--withdrawn', '', '--json'], ['decision', 'close', '7', '--decided', '', '--withdrawn', 'x', '--json']]) {
+    const r = call(args);
+    assert.deepEqual([r.status, r.stdout], [1, ''], args.join(' ')); // clap: they conflict, nothing sent
+    assert.match(r.stderr, /cannot be used with/);
+  }
+  for (const flag of ['--decided', '--withdrawn']) for (const blank of ['', '   ']) {
+    const r = call(['decision', 'close', '7', flag, blank, '--json']);
+    assert.deepEqual([r.status, r.code, r.message], [1, 'validation', 'closing needs a reason'], `${flag} '${blank}'`);
+  }
+  assert.equal(call(['decision', 'show', '7', '--json']).value.closed, null);
+});
 test('--decided on a one-way decision is a validation error, exit 1; withdrawing it is allowed', () => {
   const call = session();
   const id = String(call(requireArgs(1, '--reversibility', 'one-way', '--due', '2026-12-01')).value.id);
@@ -433,6 +445,18 @@ test('decision edit changes title, decider, due and reversibility of an open dec
   }
   const closed = call(['decision', 'edit', '8', '--version', '2', '--title', 'x', '--json']);
   assert.deepEqual([closed.status, closed.code, closed.message], [1, 'validation', 'decision is closed']);
+});
+test('decision edit trims title and decider, refuses a blank one before the version check, and a trimmed-unchanged edit is a no-op', () => {
+  const call = session();
+  for (const args of [['--title', '  '], ['--decider', ''], ['--title', 'ok', '--decider', ' ']]) {
+    const r = call(['decision', 'edit', '7', '--version', '99', ...args, '--json']); // a stale version too: blank is checked first
+    assert.deepEqual([r.status, r.code, r.message], [1, 'validation', 'title and decider must not be blank'], args.join(' '));
+  }
+  const d = call(['decision', 'show', '7', '--json']).value;
+  const same = call(['decision', 'edit', '7', '--version', '1', '--title', `  ${d.title}  `, '--decider', ` ${d.decider} `, '--json']).value;
+  assert.deepEqual([same.title, same.decider, same.version], [d.title, d.decider, 1]);
+  const trimmed = call(['decision', 'edit', '7', '--version', '1', '--title', '  Queue or cron  ', '--decider', ' ana@example.com ', '--json']).value;
+  assert.deepEqual([trimmed.title, trimmed.decider, trimmed.version], ['Queue or cron', 'ana@example.com', 2]);
 });
 test('a closed decision carries kind and via (the seeded #8 was withdrawn)', () => {
   const closed = run(['decision', 'show', '8', '--json']).envelope.value.closed;
@@ -468,10 +492,21 @@ test('the queue: overdue first by due date, a blocked story counted once', () =>
   assert.deepEqual(all.entries.map((e) => e.decision.id), [b, a, 7]); // overdue before not overdue
   assert.deepEqual(all.summary, { open: 3, blocking: 3, blocked_stories: 2, overdue: 2 }); // GRA-31 once
 });
-test('a plan decision takes reversibility one_way|two_way', () => {
-  const call = (input) => { const r = spawnSync(fake, ['apply', '-', '--json'], { encoding: 'utf8', input: JSON.stringify(input), env: { ...process.env, REEVE_FAKE_LOG: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log') } }); return { status: r.status, ...JSON.parse(r.stdout) }; };
-  const ok = call({ id: 'refining-epic:GRA-20:0a1b2c3d:1', decisions: [{ name: 'store', on: 'GRA-20', title: 'Which store', decider: 'dan@example.com', reversibility: 'one_way' }] });
-  assert.deepEqual([ok.status, ok.value.decisions[0].created], [0, true]);
+test('a plan decision takes reversibility one_way|two_way, stored as given', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (input) => { const r = spawnSync(fake, ['apply', '-', '--json'], { encoding: 'utf8', input: JSON.stringify(input), env: { ...process.env, REEVE_FAKE_LOG: log } }); return { status: r.status, ...JSON.parse(r.stdout) }; };
+  const other = session(log);
+  const ok = call({ id: 'refining-epic:GRA-20:0a1b2c3d:1', decisions: [
+    { name: 'store', on: 'GRA-20', title: 'Which store', decider: 'dan@example.com', reversibility: 'one_way' },
+    { name: 'colour', on: 'GRA-20', title: 'Which colour', decider: 'dan@example.com', reversibility: 'two_way' },
+  ] });
+  assert.deepEqual([ok.status, ok.value.decisions.map((d) => d.created)], [0, [true, true]]);
+  const [oneWay, twoWay] = ok.value.decisions.map((d) => String(d.id));
+  assert.equal(other(['decision', 'show', oneWay, '--json']).value.reversibility, 'one_way');
+  assert.equal(other(['decision', 'show', twoWay, '--json']).value.reversibility, 'two_way');
+  const refused = other(['decision', 'close', oneWay, '--decided', 'Postgres', '--json']);
+  assert.deepEqual([refused.status, refused.code], [1, 'validation']);
+  assert.equal(other(['decision', 'close', twoWay, '--decided', 'blue', '--json']).value.closed.kind, 'decided');
   const bad = call({ id: 'refining-epic:GRA-20:0a1b2c3d:1', decisions: [{ name: 'store', on: 'GRA-20', title: 'Which store', decider: 'dan@example.com', reversibility: 'one-way' }] });
   assert.deepEqual([bad.status, bad.code], [1, 'internal']);
   assert.match(bad.message, /unknown variant `one-way`/);

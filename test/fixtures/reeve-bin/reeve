@@ -115,7 +115,8 @@ if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}'
 // The CLI spells reversibility one-way|two-way; the wire (and a plan) says one_way|two_way.
 if (f.reversibility !== undefined && !['one-way', 'two-way'].includes(f.reversibility)) usage(`invalid value '${f.reversibility}' for '--reversibility <REVERSIBILITY>'\n  [possible values: one-way, two-way]`);
 const wireRev = (v) => (v === undefined ? undefined : v.replace('-', '_'));
-if (cmd === 'decision close' && !f.decided === !f.withdrawn) usage(f.decided ? "the argument '--decided <DECIDED>' cannot be used with '--withdrawn <WITHDRAWN>'" : 'the following required arguments were not provided: <--decided <DECIDED>|--withdrawn <WITHDRAWN>>');
+// clap's group counts presence, not value: `--decided x --withdrawn ''` conflicts, and `--decided ''` is sent (the planner refuses the blank reason).
+if (cmd === 'decision close' && ('decided' in f) === ('withdrawn' in f)) usage('decided' in f ? "the argument '--decided <DECIDED>' cannot be used with '--withdrawn <WITHDRAWN>'" : 'the following required arguments were not provided: <--decided <DECIDED>|--withdrawn <WITHDRAWN>>');
 if (cmd === 'decision edit' && !['title', 'decider', 'due', 'no-due', 'reversibility', 'no-reversibility'].some((x) => x in f)) usage('the following required arguments were not provided: <--title <TITLE>|--decider <DECIDER>|--due <DUE>|--no-due|--reversibility <REVERSIBILITY>|--no-reversibility>');
 if (cmd === 'decision ls' && f.queue && f.mine) usage("the argument '--queue' cannot be used with '--mine'");
 // `--story` is an alias of `--item` (GRA-70); a comment is on exactly one item or decision.
@@ -362,13 +363,17 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
     if (!f.due) process.stderr.write('no decide-by date; the queue will flag it\n'); // the CLI warns, also with --json
     ok(mint((id) => ({ ...decision7, id, on: f.on, on_type: typeOfKey(f.on), title: f.title, decider: f.decider, due: f.due || null, reversibility: wireRev(f.reversibility) || null, created_at: new Date(Date.parse(NOW) + id * 1000).toISOString().replace('.000Z', 'Z') })));
   },
-  // PATCH /decisions/<id>: an open decision's title, decider, due and reversibility; a stale version is a conflict first.
+  // PATCH /decisions/<id> (handler/decisions.rs edit_decision): title and decider trimmed, a blank one refused before
+  // the row is read; then a stale version is a conflict, then a closed decision a validation error.
   'decision edit': () => {
     if (!/^\d+$/.test(p0)) error('validation', 'the decision id must be an integer');
+    const title = f.title?.trim();
+    const decider = f.decider?.trim();
+    if (title === '' || decider === '') error('validation', 'title and decider must not be blank');
     const d = allDecisions().find((x) => String(x.id) === p0) || error('not_found', `no decision ${p0}`);
     if (Number(f.version) !== d.version) error('conflict', `decision ${d.id} is at version ${d.version}, not ${f.version}`, { current: d.version });
     if (d.closed) error('validation', 'decision is closed');
-    const next = { ...d, title: f.title ?? d.title, decider: f.decider ?? d.decider, due: f['no-due'] ? null : f.due ?? d.due, reversibility: f['no-reversibility'] ? null : wireRev(f.reversibility) ?? d.reversibility };
+    const next = { ...d, title: title ?? d.title, decider: decider ?? d.decider, due: f['no-due'] ? null : f.due ?? d.due, reversibility: f['no-reversibility'] ? null : wireRev(f.reversibility) ?? d.reversibility };
     const changed = ['title', 'decider', 'due', 'reversibility'].some((k) => next[k] !== d[k]);
     const value = changed ? { ...next, version: d.version + 1 } : d; // an edit that changes nothing leaves the version
     withState((st) => { (st.decisions ||= {})[d.id] = value; });

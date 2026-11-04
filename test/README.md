@@ -112,7 +112,7 @@ per run; the log is appended to the output shown by `--verbose` and deleted afte
 **The log.** One line per call that passed the fake's validation (a malformed call is not logged, so it never satisfies a log expectation; a valid call the planner refuses is), except `--version`, which the SessionStart hook also runs to decide whether to list the planner skills in its router (a skill's detection shows as `auth status --json`): the argv joined by spaces, newlines inside an argument
 flattened to spaces, e.g. `epic create --initiative GRA-12 --title A --brief one two --idempotency-key planning-initiative:GRA-12:0a1b2c3d:1 --json`.
 
-**What the fake answers.** `--version` prints `reeve-planner 0.2.0-fake`; every other call must
+**What the fake answers.** `--version` prints `reeve-planner 0.3.0-fake`; every other call must
 include `--json` (anywhere, as the real CLI's global flag) and uses only flags the real CLI has.
 What the real CLI's parser rejects (an unknown command or flag, a missing value, a value starting
 with `-` except `comment add --body`) is a usage error as there: the text on stderr, nothing on
@@ -148,6 +148,14 @@ Answers use the planner's wire shapes:
   `--on` or `--initiative`, and conflicts with `--mine`; a key that names nothing lists nothing
   (`decision ls --initiative`, `--queue`), as on the planner; a plan decision takes
   `reversibility` `one_way`/`two_way`;
+- sprints and goals as in Reeve CLI 0.3.0 (kb/ADR-0014): sprint `1` closed (goal `1`, verdict `met`, no links;
+  `sprint show 1` adds `at_close` and `changed_since_close` false), sprint `2` active (goal `2` linked to
+  epic GRA-20, goal `3` to initiative GRA-13) and sprint `3` the draft (goal `4`, no links); `sprint
+  show` without an id answers the active sprint with per-goal counts; the fake stands for an agent's
+  token, so `sprint open|close` and `goal add|edit|rm|confidence` are refused `interactive_only` (exit 2),
+  and a malformed `--verdict` or confidence is a usage error; `goal link|unlink|suggest` persist for the
+  run (refused `sprint_closed` on goal 1, `suggest` refused `sprint_not_active` on the draft's goal 4),
+  and `story ls` (also `--goal <id|any|none>`), `story context` (`goals[]`) and the counts see them;
 - stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
   in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-47` (`story ls --untriaged` lists
   stories of kind `story` with no epic, as the real planner does);

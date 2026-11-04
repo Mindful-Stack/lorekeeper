@@ -19,6 +19,9 @@ stands for it.
 This file describes `reeve-planner` 0.2.0 or later (`reeve --version`). An older CLI answers
 `--reversibility`, `--decided`, `--withdrawn` and `--queue` with a usage error: tell the user to
 update the CLI, and never fall back to `decision close --reason`, which 0.2.0 no longer has.
+Sprints and goals (`reeve sprint`, `reeve goal`, `story ls --goal`, `goals` in story context) need
+`reeve-planner` 0.3.0 or later: an older CLI answers them with a usage error (an unrecognized
+subcommand or flag), so tell the user to update the CLI and go on without goals.
 
 ## Arguments
 
@@ -123,7 +126,7 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 | `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] [--owner <email>] --idempotency-key <key> --json` | `value.key`; an owner who is not an allowed user is a `validation` error |
 | `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] [--owner <email>] --json` | `value.version`; an owner who is not an allowed user is a `validation` error |
 | `reeve apply <plan file> --json` | `value.items[]`: `name`, `item`, `key`, `created`; `value.decisions[]`: `name`, `id`, `created`; `value.blocks[]`: `story`, `blocked_by`, `created` (see *Plans*) |
-| `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}` |
+| `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}`; `value.goals[]`: `{goal, starts_on, ends_on, via}`, the active sprint's goals the story serves (empty when none; see *Sprints and goals*) |
 | `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `on`, `on_type` (initiative, epic or story: the level of the item it is on), `title`, `decider`, `due`, `reversibility` (one_way or two_way; null = unclassified, treated as two-way), `record` (null = no record), `pr_url`, `check.kind`, `closed` (null, or `{at, by, reason, kind, via}`); closed decisions are listed too |
 | `reeve decision show <id> --json` | `value`: one decision, the same fields |
 | `reeve decision ls --initiative <KEY> --json` | `value[]`: `id`, `on`, `on_type`, `title`, `decider`, `reversibility`, `record` (null = no record), `check.kind`, `closed` (null = not closed); every decision on the initiative, on its epics and on their stories, closed ones too |
@@ -133,6 +136,13 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 | `reeve decision close <id> --decided <text> --json` / `reeve decision close <id> --withdrawn <text> --json` | `value.closed.reason`, `.kind` (decided or withdrawn), `.via` (interactive or automation: the token that closed it), `.at`, `.by`; see *Closing a decision* |
 | `reeve comment add --item <KEY> --body <text> --idempotency-key <key> --json` (or `--decision <id>`) | `value[]`, the thread |
 | `reeve comment ls --item <KEY> --json` (or `--decision <id>`) | `value[]`: `id`, `author`, `body`, `at`; oldest first, empty when there are none |
+| `reeve sprint show --json` | `value.sprint`: `{id, state, starts_on, ends_on, goals[]: {id, outcome, check, owner, notes, confidence, suggested_confidence, version, links[]}}`; `value.counts`: `{goals[]: {goal_id, completed, in_flight, in_review, todo, blocked_decisions}, completed, upkeep_completed}`; the active sprint, else the draft (see *Sprints and goals*) |
+| `reeve sprint ls --json` | `value.active` (null = no active sprint; else the active sprint as sprint show answers it), `value.draft` (null = none), `value.closed[]`: `id`, `starts_on`, `ends_on`, `goals[].verdict`; closed sprints newest first |
+| `reeve sprint show <id> --json` | `value.sprint`, `value.counts` as above, and for a closed sprint `value.sprint.goals[].verdict` (met, partly_met or missed), `.verdict_note`, `value.at_close` (`{goals[], completed, upkeep_completed}`, its counts when it closed) and `value.changed_since_close` (true when a number now differs from at close) |
+| `reeve story ls --goal <id\|any\|none> --json` | `value[]`: `{story, readiness}`, as for the other story lists; `story.goals[]` `{id, outcome, via}` (via story, epic or initiative) |
+| `reeve goal link <id> <KEY> [<KEY> …] --json` | `value.links[]` (every key linked to the goal), `value.version` |
+| `reeve goal unlink <id> <KEY> [<KEY> …] --json` | `value.links[]` |
+| `reeve goal suggest <id> on_track\|at_risk\|off_track [<note>] --json` | `value.suggested_confidence`, `.suggested_note`, `.suggested_at`, `.suggested_by` |
 
 `decision require` without `--due` writes `no decide-by date; the queue will flag it` to stderr,
 also with `--json`; the envelope is `ok` and the exit status 0. It is a reminder, not an error: pass
@@ -346,6 +356,75 @@ either is the user's call.
 | exit 1 with an `ok` envelope (`value` present) | "Linked; the check could not run here: <the stderr line>; it runs on the next scheduled check." |
 | `refused`, or an `error` envelope other than `internal` | show the reasons or the message; nothing was linked |
 | an `internal` error (the server may have stored the link before the CLI failed) | run `reeve decision show <id> --json`: a `record` naming this record means "Linked; …" as above, else nothing was linked |
+
+## Sprints and goals
+
+A sprint is a time box holding the team's goals (kb/ADR-0014 in the Reeve repository): at most one
+sprint is active, one is the draft the next goals go into, and the rest are closed. A goal has an
+outcome, a check ("we'll know when …"), an owner, notes, a confidence a person records, and links
+to the work that serves it. A story serves a goal through a link to itself, its epic or its epic's
+initiative (`via`: story, epic or initiative; the nearest link wins). Sprints and goals have
+numeric ids, like decisions; items keep their keys.
+
+**What a skill may do.** Agents read goals and link work; people set goals and judge them.
+
+- **Read** the goals a story serves in `reeve story context <KEY> --json` (`value.goals[]`: the goal
+  with its outcome, check, owner, notes and confidence, the sprint's dates, and `via`), and every
+  story's in `story.goals[]` of the story lists. A goal's `notes` say why it matters and where its
+  boundaries are: keep the work inside them.
+- **Progress** comes from `reeve sprint show --json`: `value.counts.goals[]`, one per goal, matched
+  to `value.sprint.goals[]` by `goal_id`. `completed` counts stories completed in the sprint,
+  `in_flight` those started and not completed (`in_review`, in review or testing, is part of it),
+  `todo` those not started, and `blocked_decisions` the open decisions holding back its unfinished
+  stories. A goal's work is `completed + in_flight + todo` stories; say "3 of 7 completed, 2 in
+  review", never a percentage. `value.counts.upkeep_completed` counts completed stories that serve
+  no goal (upkeep).
+- **Link** with `reeve goal link <id> <KEY> [<KEY> …] --json` when the user names the goal a story,
+  epic or initiative serves, or confirms one you proposed (*Confirmation*); a link on an epic or an
+  initiative covers its stories. `goal unlink` takes the link back off; unlinking an item that is
+  not linked succeeds and changes nothing, and it sends one request per key, stopping at the first
+  failure (the answer is that failure). A key that names no item is `not_found`.
+- **Suggest** a confidence with `reeve goal suggest <id> on_track|at_risk|off_track '<note>' --json`
+  while the sprint is active, the note saying what it rests on ("3 of 7 completed, 2 in review").
+  It is a draft: it fills `suggested_confidence`, never `confidence`, and a person records it,
+  changes it or leaves it. The latest suggestion wins; recording a confidence clears it.
+- **Filter** stories with `reeve story ls --goal <id> --json` (the stories serving that goal of the
+  active sprint), `--goal any` (serving some goal) or `--goal none` (upkeep: serving none).
+
+A **closed sprint** is read with `reeve sprint show <id> --json`, the id from `sprint ls`. Its
+numbers are recomputed now, so its answer also carries `value.at_close`, the counts at its close,
+and `value.changed_since_close`. Report a closed sprint from `at_close`, and say "changed since
+close" when `changed_since_close` is true. `blocked_decisions` is live for the active sprint; for a
+closed one only `at_close`'s value means anything.
+
+Without an id, `sprint show` answers the active sprint, else the draft; with no sprint at all it is
+a `not_found` error (exit 1): say there is no sprint yet. The draft has no window: its counts are
+zero.
+
+**A person's commands.** These exist in the CLI, and a skill never runs them, whatever token it
+holds: with an automation token the planner refuses every one `interactive_only` (exit 2), and with
+a person's token it would act for them. When the user asks for one, show the command for them to
+run.
+
+| Command | What it does |
+|---|---|
+| `reeve goal add --outcome <text> --check <text> [--owner <email>] [--notes <text>] [--active] --idempotency-key <key> --json` | adds a goal to the draft (the first goal creates the first draft), or to the active sprint with `--active`; `value`: `{goal, warnings[]}` (`no_goals`, `more_than_three_goals`: advice, never a refusal) |
+| `reeve goal edit <id> --version <n> [--outcome <text>] [--check <text>] [--owner <email>] [--notes <text>] --json` | edits a goal; a stale `--version` is a `conflict` |
+| `reeve goal rm <id> --version <n> --json` | removes a draft's goal and its links |
+| `reeve goal confidence <id> on_track\|at_risk\|off_track [<note>] --json` | records the confidence (active sprint only) and clears any suggestion |
+| `reeve sprint open [--ends YYYY-MM-DD] --json` | opens the draft (the end defaults to one sprint length after today) and creates the next draft |
+| `reeve sprint close --verdict <goal id>=met\|partly_met\|missed[:<note>] --json` | closes the active sprint, one `--verdict` per goal (repeated); a malformed `--verdict` is a usage error (exit 1, nothing sent) |
+
+**Refusals** (exit 2), worded as:
+
+| `reason` | Words |
+|---|---|
+| `interactive_only` | only a person can do this (open or close a sprint, write a goal, record a confidence) |
+| `sprint_closed` | the sprint is closed: its goals, links and confidence are read-only |
+| `sprint_not_active` | the sprint is not active (a confidence, recorded or suggested, needs the active sprint) |
+| `sprint_not_draft` | only a draft's goal can be removed |
+| `sprint_active` | a sprint is already active; close it first |
+| `verdict_missing` (with `goals`) | closing needs a verdict for goals <goals> |
 
 ## Wording the planner's answers
 

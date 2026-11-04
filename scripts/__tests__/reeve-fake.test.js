@@ -21,7 +21,7 @@ test('every call is one log line, newlines flattened', () => {
 });
 test('--version names the fake planner and is not logged (the SessionStart hook probes it too)', () => {
   const r = run(['--version']);
-  assert.equal(r.stdout, 'reeve-planner 0.2.0-fake\n');
+  assert.equal(r.stdout, 'reeve-planner 0.3.0-fake\n');
   assert.equal(r.log, '');
 });
 test('a flag the real CLI lacks is a usage error: no envelope, text on stderr, exit 1', () => {
@@ -510,4 +510,55 @@ test('a plan decision takes reversibility one_way|two_way, stored as given', () 
   const bad = call({ id: 'refining-epic:GRA-20:0a1b2c3d:1', decisions: [{ name: 'store', on: 'GRA-20', title: 'Which store', decider: 'dan@example.com', reversibility: 'one-way' }] });
   assert.deepEqual([bad.status, bad.code], [1, 'internal']);
   assert.match(bad.message, /unknown variant `one-way`/);
+});
+
+// Sprints and goals (Reeve CLI 0.3.0, kb/ADR-0014): the fake stands for an agent's token.
+test('sprint show answers the active sprint with per-goal counts; a closed one adds at_close and changed_since_close', () => {
+  const active = run(['sprint', 'show', '--json']).envelope.value;
+  assert.equal(active.sprint.state, 'active');
+  assert.deepEqual(active.sprint.goals.map((g) => g.id), [2, 3]);
+  assert.deepEqual(active.counts.goals.map((g) => g.goal_id), [2, 3]);
+  assert.ok(!('at_close' in active));
+  assert.equal(active.counts.goals[0].todo, 2); // GRA-31 and GRA-32 serve goal 2 through epic GRA-20
+  const closed = run(['sprint', 'show', '1', '--json']).envelope.value;
+  assert.deepEqual([closed.sprint.state, closed.sprint.goals[0].verdict, closed.changed_since_close], ['closed', 'met', false]);
+  assert.deepEqual(closed.at_close, closed.counts);
+  assert.deepEqual([run(['sprint', 'show', '9', '--json']).envelope.code, run(['sprint', 'show', 'x', '--json']).status], ['not_found', 1]);
+  const ls = run(['sprint', 'ls', '--json']).envelope.value;
+  assert.deepEqual([ls.active.sprint.id, ls.draft.id, ls.closed.map((x) => x.id)], [2, 3, [1]]);
+});
+test("a person's sprint and goal commands are refused interactive_only, exit 2; a malformed verdict or confidence is a usage error", () => {
+  for (const args of [['sprint', 'open', '--ends', '2026-11-20'], ['sprint', 'close', '--verdict', '2=met', '--verdict', '3=partly_met:the checklist: half done'],
+    ['goal', 'add', '--outcome', 'O', '--check', 'C', '--idempotency-key', KEY], ['goal', 'edit', '2', '--version', '2', '--notes', 'N'],
+    ['goal', 'rm', '4', '--version', '1'], ['goal', 'confidence', '2', 'on_track', 'fine']]) {
+    const r = run([...args, '--json']);
+    assert.deepEqual([r.status, r.envelope.outcome, r.envelope.reasons], [2, 'refused', [{ reason: 'interactive_only' }]], args.join(' '));
+  }
+  for (const args of [['sprint', 'close', '--verdict', '2=maybe'], ['sprint', 'close', '--verdict', 'x=met'], ['goal', 'suggest', '2', 'fine'], ['goal', 'link', '2'], ['sprint', 'open', '--ends', 'soon']]) {
+    const r = run([...args, '--json']);
+    assert.deepEqual([r.status, r.envelope, r.log], [1, null, ''], args.join(' '));
+  }
+});
+test('goal link and unlink persist; a story serves a goal through the nearest link; story context and --goal see it', () => {
+  const call = session();
+  assert.deepEqual(call(['goal', 'link', '2', 'GRA-31', 'GRA-40', '--json']).value.links, ['GRA-20', 'GRA-31', 'GRA-40']);
+  const ctx = call(['story', 'context', 'GRA-31', '--json']).value;
+  assert.deepEqual(ctx.goals.map((g) => [g.goal.id, g.via, g.starts_on, g.ends_on]), [[2, 'story', '2026-10-20', '2026-11-03']]);
+  assert.deepEqual(ctx.story.goals, [{ id: 2, outcome: 'A mentee gets a mentor within a day', via: 'story' }]);
+  assert.deepEqual(call(['story', 'ls', '--goal', '2', '--json']).value.map((x) => x.story.key), ['GRA-31', 'GRA-32', 'GRA-40']);
+  assert.ok(call(['story', 'ls', '--goal', 'none', '--json']).value.every((x) => !x.story.goals.length));
+  assert.deepEqual(call(['goal', 'unlink', '2', 'GRA-40', 'GRA-47', '--json']).value.links, ['GRA-20', 'GRA-31']); // not linked: no change
+  assert.equal(call(['goal', 'link', '2', 'GRA-999', '--json']).code, 'not_found');
+  assert.equal(call(['story', 'ls', '--goal', 'some', '--json']).code, 'validation');
+});
+test('goal suggest fills the suggestion, never the confidence, on the active sprint only; a closed sprint refuses every goal write', () => {
+  const call = session();
+  const g = call(['goal', 'suggest', '3', 'off_track', '1 of 4 completed', '--json']).value;
+  assert.deepEqual([g.confidence, g.suggested_confidence, g.suggested_note], ['at_risk', 'off_track', '1 of 4 completed']);
+  assert.equal(call(['sprint', 'show', '--json']).value.sprint.goals[1].suggested_confidence, 'off_track');
+  assert.deepEqual(call(['goal', 'suggest', '4', 'on_track', '--json']).reasons, [{ reason: 'sprint_not_active' }]);
+  for (const args of [['goal', 'suggest', '1', 'on_track'], ['goal', 'link', '1', 'GRA-31'], ['goal', 'unlink', '1', 'GRA-21']]) {
+    const r = call([...args, '--json']);
+    assert.deepEqual([r.status, r.reasons], [2, [{ reason: 'sprint_closed' }]], args.join(' '));
+  }
 });

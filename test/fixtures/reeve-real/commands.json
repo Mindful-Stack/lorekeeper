@@ -6,7 +6,9 @@
     { "bind": "story", "argv": ["story", "create", "--epic", "{{epic.key}}", "--title", "Skill smoke story", "--kind", "story", "--criterion", "It is seeded", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:3", "--json"] },
     { "bind": "untriaged", "argv": ["story", "create", "--title", "Skill smoke untriaged story", "--kind", "story", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:4", "--json"] },
     { "bind": "decision", "argv": ["decision", "require", "--on", "{{epic.key}}", "--title", "Skill smoke seeded decision", "--decider", "{{email}}", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:5", "--json"] },
-    { "bind": "blocker", "argv": ["decision", "require", "--on", "{{story.key}}", "--title", "Skill smoke blocking decision", "--decider", "{{email}}", "--reversibility", "one-way", "--due", "2027-01-15", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:6", "--json"] }
+    { "bind": "blocker", "argv": ["decision", "require", "--on", "{{story.key}}", "--title", "Skill smoke blocking decision", "--decider", "{{email}}", "--reversibility", "one-way", "--due", "2027-01-15", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:6", "--json"] },
+    { "bind": "active", "argv": ["sprint", "show", "--json"] },
+    { "argv": ["goal", "link", "{{active.sprint.goals.0.id}}", "{{story.key}}", "--json"] }
   ],
   "entries": [
     {
@@ -184,9 +186,56 @@
     {
       "row": "`reeve story context <KEY> --json`",
       "argv": ["story", "context", "{{story.key}}", "--json"],
-      "reads": ["value.story", "value.epic", "value.initiative", "value.required_decisions[]", "value.blockers[]", "value.comments[]", "value.readiness", "value.readiness.ready"],
-      "types": { "value.story": "object", "value.epic": "object|null", "value.initiative": "object|null", "value.required_decisions[]": "object", "value.blockers[]": "object", "value.comments[]": "object", "value.readiness": "object", "value.readiness.ready": "boolean" },
+      "reads": ["value.story", "value.epic", "value.initiative", "value.required_decisions[]", "value.blockers[]", "value.comments[]", "value.readiness", "value.readiness.ready", "value.goals[].goal", "value.goals[].starts_on", "value.goals[].ends_on", "value.goals[].via"],
+      "types": { "value.story": "object", "value.epic": "object|null", "value.initiative": "object|null", "value.required_decisions[]": "object", "value.blockers[]": "object", "value.comments[]": "object", "value.readiness": "object", "value.readiness.ready": "boolean", "value.goals[].goal": "object", "value.goals[].starts_on": "string", "value.goals[].ends_on": "string", "value.goals[].via": "string" },
       "may_be_empty": ["value.blockers[]"]
+    },
+    {
+      "row": "`reeve sprint show --json`",
+      "argv": ["sprint", "show", "--json"],
+      "reads": ["value.sprint.id", "value.sprint.state", "value.sprint.starts_on", "value.sprint.ends_on", "value.sprint.goals[].id", "value.sprint.goals[].outcome", "value.sprint.goals[].check", "value.sprint.goals[].owner", "value.sprint.goals[].notes", "value.sprint.goals[].confidence", "value.sprint.goals[].suggested_confidence", "value.sprint.goals[].version", "value.sprint.goals[].links[]", "value.counts.goals[].goal_id", "value.counts.goals[].completed", "value.counts.goals[].in_flight", "value.counts.goals[].in_review", "value.counts.goals[].todo", "value.counts.goals[].blocked_decisions", "value.counts.completed", "value.counts.upkeep_completed"],
+      "types": { "value.sprint.id": "number", "value.sprint.state": "string", "value.sprint.starts_on": "string", "value.sprint.ends_on": "string", "value.sprint.goals[].id": "number", "value.sprint.goals[].outcome": "string", "value.sprint.goals[].check": "string", "value.sprint.goals[].owner": "string", "value.sprint.goals[].notes": "string", "value.sprint.goals[].confidence": "string|null", "value.sprint.goals[].suggested_confidence": "string|null", "value.sprint.goals[].version": "number", "value.sprint.goals[].links[]": "string", "value.counts.goals[].goal_id": "number", "value.counts.goals[].completed": "number", "value.counts.goals[].in_flight": "number", "value.counts.goals[].in_review": "number", "value.counts.goals[].todo": "number", "value.counts.goals[].blocked_decisions": "number", "value.counts.completed": "number", "value.counts.upkeep_completed": "number" },
+      "expect": { "value.sprint.state": "active" }
+    },
+    {
+      "row": "`reeve sprint ls --json`",
+      "bind": "sprints",
+      "argv": ["sprint", "ls", "--json"],
+      "reads": ["value.active", "value.draft", "value.closed[].id", "value.closed[].starts_on", "value.closed[].ends_on", "value.closed[].goals[].verdict"],
+      "types": { "value.active": "object|null", "value.draft": "object|null", "value.closed[].id": "number", "value.closed[].starts_on": "string", "value.closed[].ends_on": "string", "value.closed[].goals[].verdict": "string" }
+    },
+    {
+      "row": "`reeve sprint show <id> --json`",
+      "argv": ["sprint", "show", "{{sprints.closed.0.id}}", "--json"],
+      "reads": ["value.sprint.id", "value.sprint.state", "value.sprint.starts_on", "value.sprint.ends_on", "value.sprint.goals[].id", "value.sprint.goals[].outcome", "value.sprint.goals[].check", "value.sprint.goals[].owner", "value.sprint.goals[].notes", "value.sprint.goals[].confidence", "value.sprint.goals[].suggested_confidence", "value.sprint.goals[].version", "value.sprint.goals[].links[]", "value.counts.goals[].goal_id", "value.counts.goals[].completed", "value.counts.goals[].in_flight", "value.counts.goals[].in_review", "value.counts.goals[].todo", "value.counts.goals[].blocked_decisions", "value.counts.completed", "value.counts.upkeep_completed", "value.sprint.goals[].verdict", "value.sprint.goals[].verdict_note", "value.at_close.goals[].goal_id", "value.at_close.goals[].completed", "value.at_close.goals[].in_flight", "value.at_close.goals[].in_review", "value.at_close.goals[].todo", "value.at_close.goals[].blocked_decisions", "value.at_close.completed", "value.at_close.upkeep_completed", "value.changed_since_close"],
+      "types": { "value.sprint.id": "number", "value.sprint.state": "string", "value.sprint.starts_on": "string", "value.sprint.ends_on": "string", "value.sprint.goals[].id": "number", "value.sprint.goals[].outcome": "string", "value.sprint.goals[].check": "string", "value.sprint.goals[].owner": "string", "value.sprint.goals[].notes": "string", "value.sprint.goals[].confidence": "string|null", "value.sprint.goals[].suggested_confidence": "string|null", "value.sprint.goals[].version": "number", "value.sprint.goals[].links[]": "string", "value.counts.goals[].goal_id": "number", "value.counts.goals[].completed": "number", "value.counts.goals[].in_flight": "number", "value.counts.goals[].in_review": "number", "value.counts.goals[].todo": "number", "value.counts.goals[].blocked_decisions": "number", "value.counts.completed": "number", "value.counts.upkeep_completed": "number", "value.sprint.goals[].verdict": "string", "value.sprint.goals[].verdict_note": "string|null", "value.changed_since_close": "boolean", "value.at_close.completed": "number", "value.at_close.upkeep_completed": "number", "value.at_close.goals[].goal_id": "number", "value.at_close.goals[].completed": "number", "value.at_close.goals[].in_flight": "number", "value.at_close.goals[].in_review": "number", "value.at_close.goals[].todo": "number", "value.at_close.goals[].blocked_decisions": "number" },
+      "may_be_empty": ["value.sprint.goals[].links[]"],
+      "expect": { "value.sprint.state": "closed" }
+    },
+    {
+      "row": "`reeve story ls --goal <id|any|none> --json`",
+      "argv": ["story", "ls", "--goal", "{{active.sprint.goals.0.id}}", "--json"],
+      "reads": ["value[].story.key", "value[].readiness.ready", "value[].story.goals[].id", "value[].story.goals[].outcome", "value[].story.goals[].via"],
+      "types": { "value[].story.key": "string", "value[].readiness.ready": "boolean", "value[].story.goals[].id": "number", "value[].story.goals[].outcome": "string", "value[].story.goals[].via": "string" }
+    },
+    {
+      "row": "`reeve goal link <id> <KEY> [<KEY> …] --json`",
+      "argv": ["goal", "link", "{{active.sprint.goals.0.id}}", "{{epic.key}}", "{{untriaged.key}}", "--json"],
+      "reads": ["value.links[]", "value.version"],
+      "types": { "value.links[]": "string", "value.version": "number" }
+    },
+    {
+      "row": "`reeve goal unlink <id> <KEY> [<KEY> …] --json`",
+      "argv": ["goal", "unlink", "{{active.sprint.goals.0.id}}", "{{epic.key}}", "--json"],
+      "reads": ["value.links[]"],
+      "types": { "value.links[]": "string" }
+    },
+    {
+      "row": "`reeve goal suggest <id> on_track|at_risk|off_track [<note>] --json`",
+      "argv": ["goal", "suggest", "{{active.sprint.goals.0.id}}", "at_risk", "Skill smoke: 0 of 1 completed", "--json"],
+      "reads": ["value.suggested_confidence", "value.suggested_note", "value.suggested_at", "value.suggested_by"],
+      "types": { "value.suggested_confidence": "string", "value.suggested_note": "string", "value.suggested_at": "string", "value.suggested_by": "string" },
+      "expect": { "value.suggested_confidence": "at_risk" }
     }
   ]
 }

@@ -15,6 +15,9 @@
 // `story context` bundles the open decisions on the story's initiative, epic and the story itself, as the planner does.
 // Decisions follow Reeve CLI 0.2.0 (kb/ADR-0013): reversibility on require, edit and plans; close --decided|--withdrawn
 // with the planner's validation messages; `decision ls --queue` grouped and counted as the planner's queue.
+// Sprints and goals (kb/ADR-0014): a closed sprint (#1), the active one (#2) and the draft (#3) with goals 1-4; the fake
+// stands for an agent's token, so a person's command (sprint open|close, goal add|edit|rm|confidence) is refused
+// `interactive_only`; goal link|unlink|suggest persist, and stories, story context and the active sprint's counts see them.
 'use strict';
 const fs = require('node:fs');
 
@@ -54,7 +57,7 @@ const error = (code, message, extra = {}) => emit({ outcome: 'error', code, mess
 // What clap rejects: no envelope, the usage text on stderr, exit 1.
 const usage = (message) => { process.stderr.write(`error: ${message}\n\nFor more information, try '--help'.\n`); process.exit(1); };
 
-if (argv[0] === '--version') { process.stdout.write('reeve-planner 0.2.0-fake\n'); process.exit(0); }
+if (argv[0] === '--version') { process.stdout.write('reeve-planner 0.3.0-fake\n'); process.exit(0); }
 if (!argv.includes('--json')) error('validation', 'the fake planner answers --json calls only');
 const words = argv.filter((a) => a !== '--json');
 
@@ -62,7 +65,7 @@ const DISCOVERY = { pos: 1, val: ['version'], bool: ['complete', 'reopen'], req:
 const SPEC = {
   'auth status': { pos: 0 },
   'story context': { pos: 1 },
-  'story ls': { pos: 0, val: ['epic', 'owner', 'delivery', 'label'], bool: ['untriaged', 'ready', 'mine'] },
+  'story ls': { pos: 0, val: ['epic', 'owner', 'delivery', 'label', 'goal'], bool: ['untriaged', 'ready', 'mine'] },
   'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'description-file', 'owner', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
   'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
   'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank', 'owner', 'external-ref', 'description', 'description-file'], bool: ['no-epic', 'no-owner'], rep: ['criterion', 'add-label', 'remove-label'], req: ['version'] },
@@ -88,6 +91,17 @@ const SPEC = {
   'comment ls': { pos: 0, val: ['item', 'story', 'decision'] },
   search: { pos: 1, variadic: true },
   apply: { pos: 1 }, // `reeve apply <FILE>` (GRA-66): a plan, YAML or JSON (the fake reads JSON only); `-` reads stdin // `reeve search <TEXT>...`: several words are one phrase
+  'sprint show': { pos: 0, max: 1 }, // `reeve sprint show [<ID>]`
+  'sprint ls': { pos: 0 },
+  'sprint open': { pos: 0, val: ['ends'] },
+  'sprint close': { pos: 0, rep: ['verdict'] },
+  'goal add': { pos: 0, val: ['idempotency-key', 'outcome', 'check', 'owner', 'notes'], bool: ['active'], req: ['idempotency-key', 'outcome', 'check'] },
+  'goal edit': { pos: 1, val: ['version', 'outcome', 'check', 'owner', 'notes'], req: ['version'] },
+  'goal rm': { pos: 1, val: ['version'], req: ['version'] },
+  'goal confidence': { pos: 2, max: 3 }, // <ID> <CONFIDENCE> [<NOTE>]
+  'goal suggest': { pos: 2, max: 3 },
+  'goal link': { pos: 2, variadic: true }, // <ID> <KEYS>...
+  'goal unlink': { pos: 2, variadic: true },
 };
 // A command is one word (`search`) or two (`story ls`).
 const cmd = SPEC[words[0]] ? words[0] : words.slice(0, 2).join(' ');
@@ -106,12 +120,18 @@ for (let i = cmd.split(' ').length; i < words.length; i++) {
     if ((spec.rep || []).includes(name)) (f[name] ||= []).push(v); else f[name] = v;
   } else usage(`unexpected argument '--${name}' found`);
 }
-if (spec.variadic ? pos.length < spec.pos : pos.length !== spec.pos) usage(`reeve ${cmd} takes ${spec.pos} positional argument(s), got ${pos.length}`);
+if (spec.variadic ? pos.length < spec.pos : pos.length < spec.pos || pos.length > (spec.max ?? spec.pos)) usage(`reeve ${cmd} takes ${spec.pos} positional argument(s), got ${pos.length}`);
 for (const r of spec.req || []) if (!(r in f)) usage(`the following required arguments were not provided: --${r}`);
 if (spec === DISCOVERY && !f.complete && !f.reopen) usage('pass --complete or --reopen');
 if (f.kind && !['story', 'bug', 'chore'].includes(f.kind)) usage(`invalid value '${f.kind}' for '--kind'`);
 if (f.version && !/^\d+$/.test(f.version)) usage(`invalid value '${f.version}' for '--version'`);
 if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}' for '--due'`);
+if (f.ends && !/^\d{4}-\d{2}-\d{2}$/.test(f.ends)) usage(`invalid value '${f.ends}' for '--ends <ENDS>'`);
+// Sprint and goal ids are integers, a confidence one of three words and a verdict `<goal id>=<met|partly_met|missed>[:<note>]`:
+// clap's to check, so a malformed one is a usage error (exit 1) and reaches nothing.
+if ((cmd.startsWith('goal ') && cmd !== 'goal add') || (cmd === 'sprint show' && pos.length)) if (!/^\d+$/.test(pos[0])) usage(`invalid value '${pos[0]}' for '<ID>': invalid digit found in string`);
+if (['goal confidence', 'goal suggest'].includes(cmd) && !['on_track', 'at_risk', 'off_track'].includes(pos[1])) usage(`invalid value '${pos[1]}' for '<CONFIDENCE>'\n  [possible values: on_track, at_risk, off_track]`);
+for (const v of f.verdict || []) if (!/^\d+=(met|partly_met|missed)(:.*)?$/s.test(v)) usage(`invalid value '${v}' for '--verdict <VERDICTS>': \`${v}\`: expected <goal id>=<met|partly_met|missed>[:<note>]`);
 // The CLI spells reversibility one-way|two-way; the wire (and a plan) says one_way|two_way.
 if (f.reversibility !== undefined && !['one-way', 'two-way'].includes(f.reversibility)) usage(`invalid value '${f.reversibility}' for '--reversibility <REVERSIBILITY>'\n  [possible values: one-way, two-way]`);
 const wireRev = (v) => (v === undefined ? undefined : v.replace('-', '_'));
@@ -154,7 +174,7 @@ if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key']))
 const NOW = '2026-10-20T09:00:00Z';
 const initiative = (key, title, o = {}) => ({ key, title, brief: '', horizon: 'Later', owner: null, target_month: null, discovery_complete: null, external_ref: null, progress: null, version: 1, ...o });
 const epic = (key, title, o = {}) => ({ key, title, brief: '', initiative: null, discovery_complete: null, external_ref: null, version: 1, ...o });
-const story = (key, title, o = {}) => ({ key, title, kind: 'story', epic: null, description: '', criteria: [], labels: [], rank: 0, blocked_by: [], delivery: 'todo', resolution: null, owner: null, external_ref: null, prs: [], version: 1, ...o });
+const story = (key, title, o = {}) => ({ key, title, kind: 'story', epic: null, description: '', criteria: [], labels: [], rank: 0, blocked_by: [], delivery: 'todo', resolution: null, owner: null, external_ref: null, prs: [], goals: [], version: 1, ...o });
 const initiatives = {
   'GRA-12': initiative('GRA-12', 'Faster mentor matching', { brief: 'Mentees wait too long for a mentor.', horizon: 'Next', owner: 'dan@example.com', version: 3 }),
   'GRA-13': initiative('GRA-13', 'Mentor onboarding', { brief: 'New mentors get started without help.', horizon: 'Now', owner: 'sam@example.com' }),
@@ -181,6 +201,22 @@ const stories = {
   'GRA-46': story('GRA-46', 'Fax match summaries to coordinators'),
   'GRA-47': story('GRA-47', 'Translate the mentee app into Spanish'),
 };
+// Sprints (kb/ADR-0014): #1 closed, #2 active (opened at NOW), #3 the draft opening when #2 ends. Goal 1 is the closed
+// sprint's (met, no links), 2 and 3 the active one's (linked to epic GRA-20 and initiative GRA-13), 4 the draft's (no links).
+const sprints = {
+  1: { id: 1, state: 'closed', starts_on: '2026-10-06', ends_on: '2026-10-20', opened_at: '2026-10-06T09:00:00Z', closed_at: '2026-10-20T08:30:00Z', version: 3 },
+  2: { id: 2, state: 'active', starts_on: '2026-10-20', ends_on: '2026-11-03', opened_at: NOW, closed_at: null, version: 2 },
+  3: { id: 3, state: 'draft', starts_on: '2026-11-03', ends_on: '2026-11-17', opened_at: null, closed_at: null, version: 1 },
+};
+const goal = (id, sprint_id, outcome, check, o = {}) => ({ id, sprint_id, outcome, check, owner: 'dan@example.com', notes: '', confidence: null, confidence_note: null, confidence_at: null, suggested_confidence: null, suggested_note: null, suggested_at: null, suggested_by: null, verdict: null, verdict_note: null, version: 1, links: [], ...o });
+const goals = {
+  1: goal(1, 1, 'Mentors see their match queue', "we'll know when a mentor opens the queue from the app", { confidence: 'on_track', confidence_note: 'shipped behind a flag', confidence_at: '2026-10-13T09:00:00Z', verdict: 'met', verdict_note: 'live for every mentor on day 9', version: 4 }),
+  2: goal(2, 2, 'A mentee gets a mentor within a day', "we'll know when the median wait is under 24 hours", { notes: 'Retries only; no new matching rules this sprint.', confidence: 'on_track', confidence_note: 'queue is in review', confidence_at: NOW, links: ['GRA-20'], version: 2 }),
+  3: goal(3, 2, 'New mentors onboard without help', "we'll know when a mentor finishes onboarding without a call", { owner: 'sam@example.com', confidence: 'at_risk', confidence_note: 'the checklist is not written', confidence_at: NOW, links: ['GRA-13'], version: 2 }),
+  4: goal(4, 3, 'Coordinators retry a failed match in one click', "we'll know when a coordinator retries from the queue view"),
+};
+// The closed sprint's counts at close, from its `closed` activity entry; recomputed now they are the same.
+const AT_CLOSE = { goals: [{ goal_id: 1, completed: 2, in_flight: 0, todo: 0, in_review: 0, blocked_decisions: 0 }], completed: 3, upkeep_completed: 1 };
 // The run's state, read once: items created or edited in this run, by key (a show or a list sees
 // the last write), and the creates by idempotency key.
 const state = withState((st) => st);
@@ -197,6 +233,20 @@ const refOf = (item) => {
 };
 const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`, { current: item.version }));
 const [p0] = pos;
+// Goals as last written in this run (links, suggestions), else as seeded; a sprint's goals in id order.
+const allGoals = () => Object.values({ ...goals, ...(state.goals || {}) }).sort((a, b) => a.id - b.id);
+const goalsOfSprint = (id) => allGoals().filter((g) => g.sprint_id === id);
+const activeSprint = () => Object.values(sprints).find((x) => x.state === 'active');
+// The active sprint's goals a story serves, each through the nearest linked item: the story, its epic, its initiative.
+const servedBy = (s) => {
+  const e = s.epic && (itemsOf()[s.epic] || epics[s.epic]);
+  const chain = [[s.key, 'story'], [e && e.key, 'epic'], [e && e.initiative, 'initiative']].filter(([k]) => k);
+  return goalsOfSprint(activeSprint().id).flatMap((g) => {
+    const hit = chain.find(([k]) => g.links.includes(k));
+    return hit ? [{ goal: g, via: hit[1] }] : [];
+  });
+};
+const withGoals = (s) => ({ ...s, goals: servedBy(s).map(({ goal: g, via }) => ({ id: g.id, outcome: g.outcome, via })) });
 // Items created in this run, by kind, in creation order (lists show them like the real planner).
 const createdDecisions = () => Object.values(state.creates).filter((v) => !Array.isArray(v) && 'decider' in v);
 const kindOf = (v) => ('criteria' in v ? 'story' : 'horizon' in v ? 'initiative' : 'epic');
@@ -311,9 +361,62 @@ if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)
 // A story's owner must be an allowed user (GRA-69); nobody@example.com stands for one who is not.
 if ((cmd === 'story create' || cmd === 'story edit') && f.owner === NOT_ALLOWED) error('validation', `owner ${f.owner} is not an allowed user`);
 if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validation', `horizon ${f.horizon} is not one of the configured buckets`);
+// kb/ADR-0014 R5: a person opens and closes a sprint, writes goals and records confidence; an agent's token is refused.
+if (['sprint open', 'sprint close', 'goal add', 'goal edit', 'goal rm', 'goal confidence'].includes(cmd)) emit({ outcome: 'refused', reasons: [{ reason: 'interactive_only' }] }, 2);
+if (cmd === 'story ls' && f.goal !== undefined && !/^(\d+|any|none)$/.test(f.goal)) error('validation', `--goal takes a goal id, any or none, got ${f.goal}`);
+
+// GET /sprints/{id}: the sprint with its goals, and its numbers over its window (none for a draft).
+const sprintDto = (sp) => {
+  const gs = goalsOfSprint(sp.id);
+  const warnings = sp.state === 'closed' ? [] : gs.length === 0 ? ['no_goals'] : gs.length > 3 ? ['more_than_three_goals'] : [];
+  return { ...sp, goals: gs, warnings };
+};
+const countsOf = (sp) => {
+  if (sp.state === 'closed') return AT_CLOSE;
+  if (sp.state === 'draft') return { goals: [], completed: 0, upkeep_completed: 0 };
+  const served = all(stories, 'story').map((s) => ({ s, ids: servedBy(s).map((x) => x.goal.id) }));
+  const goalsCounts = goalsOfSprint(sp.id).map((g) => {
+    const mine = served.filter((x) => x.ids.includes(g.id)).map((x) => x.s);
+    const d = new Set(mine.filter((s) => s.delivery !== 'done').flatMap((s) => readinessOf(s).reasons.map((r) => r.decision_id).filter((x) => x !== undefined)));
+    return { goal_id: g.id, completed: mine.filter((s) => s.delivery === 'done').length, in_flight: mine.filter((s) => ['in-progress', 'in-review', 'testing'].includes(s.delivery)).length,
+      todo: mine.filter((s) => s.delivery === 'todo').length, in_review: mine.filter((s) => ['in-review', 'testing'].includes(s.delivery)).length, blocked_decisions: d.size };
+  });
+  const done = served.filter((x) => x.s.delivery === 'done');
+  return { goals: goalsCounts, completed: done.length, upkeep_completed: done.filter((x) => !x.ids.length).length };
+};
+const viewOf = (sp) => ({ sprint: sprintDto(sp), counts: countsOf(sp), upkeep_line: 20, demo: [] });
+// A goal write: the goal (not_found otherwise) and its sprint's rule, as domain/sprint.rs allow().
+const goalFor = (id, op) => {
+  const g = allGoals().find((x) => String(x.id) === id) || error('not_found', `no goal ${id}`);
+  const st = sprints[g.sprint_id].state;
+  if (st === 'closed') emit({ outcome: 'refused', reasons: [{ reason: 'sprint_closed' }] }, 2);
+  if (op === 'suggest' && st !== 'active') emit({ outcome: 'refused', reasons: [{ reason: 'sprint_not_active' }] }, 2);
+  return g;
+};
+const saveGoal = (g) => withState((st) => { (st.goals ||= {})[g.id] = g; return g; });
+const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
 
 ({
   'auth status': () => ok({ url: 'http://127.0.0.1:7474', token_from_env: false, email: 'dan@example.com', role: 'member', token_kind: 'interactive' }),
+  'sprint show': () => {
+    const sp = p0 !== undefined ? sprints[p0] || error('not_found', `no sprint ${p0}`) : activeSprint();
+    const v = viewOf(sp);
+    // `sprint show` adds a closed sprint's counts at close and whether a window number changed since (kb/ADR-0014 R6).
+    ok(sp.state === 'closed' ? { ...v, at_close: AT_CLOSE, changed_since_close: false } : v);
+  },
+  'sprint ls': () => ok({ active: viewOf(activeSprint()), draft: sprintDto(sprints[3]), closed: [sprintDto(sprints[1])] }),
+  'goal suggest': () => ok(saveGoal({ ...goalFor(p0, 'suggest'), suggested_confidence: pos[1], suggested_note: pos[2] ?? null, suggested_at: NOW, suggested_by: 'dan@example.com' })),
+  'goal link': () => {
+    const g = goalFor(p0, 'link');
+    for (const k of pos.slice(1)) typeOfKey(k); // a key that names no item is not_found, and nothing is linked
+    ok(saveGoal({ ...g, links: [...new Set([...g.links, ...pos.slice(1)])].sort(byKeyNumber) }));
+  },
+  // One request per key, stopping at the first failure; unlinking an item that is not linked changes nothing.
+  'goal unlink': () => {
+    let g = goalFor(p0, 'unlink');
+    for (const k of pos.slice(1)) { typeOfKey(k); g = saveGoal({ ...g, links: g.links.filter((x) => x !== k) }); }
+    ok(g);
+  },
   'story context': () => {
     const s = itemsOf()[p0] || stories[p0] || error('not_found', `no story ${p0}`);
     const e = s.epic ? itemsOf()[s.epic] || epics[s.epic] : null;
@@ -321,10 +424,14 @@ if (cmd === 'initiative create' && !HORIZONS.includes(f.horizon)) error('validat
     // The planner's bundle (story_context): the open decisions on the initiative, then the epic, then the story.
     const on = [i && i.key, e && e.key, s.key].filter(Boolean);
     const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
-    ok({ story: s, epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s) });
+    const sp = activeSprint();
+    const served = servedBy(s).map(({ goal: g, via }) => ({ goal: g, starts_on: sp.starts_on, ends_on: sp.ends_on, via }));
+    ok({ story: withGoals(s), epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served });
   },
   'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic))
     .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery) && (!f.label || s.labels.includes(f.label)))
+    .map(withGoals) // --goal: serving that active-sprint goal, any of them, or none (upkeep)
+    .filter((s) => f.goal === undefined || (f.goal === 'any' ? s.goals.length > 0 : f.goal === 'none' ? !s.goals.length : s.goals.some((g) => String(g.id) === f.goal)))
     .map((s) => ({ story: s, readiness: readinessOf(s) })).filter((x) => !f.ready || (x.readiness.ready && x.story.delivery === 'todo'))),
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], owner: f.owner || null, external_ref: f['external-ref'] || null }))),
   'story mv': () => { const s = find(stories, p0); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1] })); }, // exists so a delivery change is logged; no skill may call it

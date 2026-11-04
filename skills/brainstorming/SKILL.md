@@ -37,7 +37,9 @@ detector's `bin` as the first word). If it does not answer `ok`, say so in one l
 has no story <KEY>, and an epic or initiative key is not a story; for an `unauthenticated` or
 `forbidden` error, run `reeve auth login`) and go on with checklist item 1 without planner
 context. On `ok`, the story's title, description and criteria, the initiative and epic briefs,
-the required decisions, the blockers and the comments are project context for item 1.
+the required decisions, the blockers, the comments and the sprint goals the story serves
+(`value.goals[]`: each goal's outcome, check and notes, whose boundaries the design stays inside)
+are project context for item 1.
 
 ## Checklist
 

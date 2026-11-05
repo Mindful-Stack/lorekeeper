@@ -5,7 +5,8 @@ converting a legacy record, and keep its keys and section order. The file is
 `<home>/NNNN-<problem-slug>.md`.
 
 - `id` is `<prefix>/ADR-NNNN`; `title` is `"ADR-NNNN: …"`; `description` is the decision in one
-  sentence with its strongest because (≤300 chars): listings show it, so it carries the decision.
+  sentence with its strongest because, in the Decision's voice (≤300 chars): listings show it, so
+  it carries the decision and reads "We decided …".
 - `tags` includes `adr`; prefer tags already in use (`grep -rh '^tags:'` the home).
 - `status: proposed` on every draft. `decided_by` names the human(s) who took the decision, asked
   in the interview; a draft leaves it `[]` only until ratification fills it. The ratifier is not
@@ -29,13 +30,14 @@ Body: *Context* (facts a proponent of the losing option would accept); *Facts re
 — source: <path, URL or command>`); *Considered options* (two or more, each with one honest
 advantage; three is a guideline, not a limit: every rejected option that has a revisit trigger
 belongs on the record); *Decision* (one falsifiable sentence in active voice with its strongest
-because, then rules `R1`, `R2` … each a MUST or MUST NOT; the sentence's actor is what carries the
-decision out: the system or component, "The planner computes …", or "The team" for a process
-decision, never a person: the decision is made as a team, so who owns or took it lives only in
-`decided_by` and the ratifier in the last Status line; accepted records that name a person keep
-their wording, since they are locked); *Consequences* (at least one real negative); *Assumptions
-and invalidation triggers* (`*Assumes X.* Trigger: <event> ⇒ supersede.`); *Later observations*
-(empty on a draft); *See also*. Aim for 300–900 words, one decision per record (decompose "store X
+because, then rules `R1`, `R2` … each a MUST or MUST NOT; after Michael Nygard's *Documenting
+Architecture Decisions*, the sentence is in the first person plural, "We decided that the planner
+computes … because …" or "We decided to … because …", where "we" is the team that owns the record's
+home, never a named person: the decision is made as a team, so who owns or took it lives only in
+`decided_by` and the ratifier in the last Status line; accepted records keep their wording, since
+they are locked, and a proposal being amended takes this voice); *Consequences* (at least one
+real negative); *Assumptions and invalidation triggers* (`*Assumes X.* Trigger: <event> ⇒
+supersede.`); *Later observations* (empty on a draft); *See also*. Aim for 300–900 words, one decision per record (decompose "store X
 in Y" bundles), plain sentences, and never mention chat sessions or AI authorship.
 
 Numbers are four digits, per home, never reused: `adr-lint next --base origin/<default> <home-dir>`
@@ -46,7 +48,7 @@ collide with an open PR's record. The slug names the problem, never the answer.
 
 ## Self-check
 
-Fix inline: one falsifiable Decision whose actor is a system, component or the team, never a
-person; every rule a MUST/MUST NOT; Context a losing proponent would accept; every fact sourced; two or more real options (three is a guideline, not a limit); a real negative; a trigger; classification
+Fix inline: one falsifiable Decision, "We decided …", naming no person, and a `description` in
+the same voice; every rule a MUST/MUST NOT; Context a losing proponent would accept; every fact sourced; two or more real options (three is a guideline, not a limit); a real negative; a trigger; classification
 matching the evidence; scope non-empty for high tier and in the home's syntax; every value inline;
 no AI authorship.

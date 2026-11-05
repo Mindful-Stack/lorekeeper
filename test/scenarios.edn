@@ -138,7 +138,7 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "command-adr-new-shared-home-by-blast-radius"
   :prompt "/lore:adr Orders publish an OrderCancelled event that payments and inventory both consume. Interview answers: it is a contract shared across three repos; hard to undo once consumers exist (one-way); it governs backend:src/Orders/**; it touches billing. Do not ask me questions. Stop after presenting the draft: do not write files, branch, or open a PR."
   :workdir "."
-  :expects ["lore/knowledge/adrs/0003-|kb/ADR-0003" "blast_radius: shared" "id: kb/ADR-0003"]
+  :expects ["lore/knowledge/adrs/0003-|kb/ADR-0003" "blast_radius: shared" "id: kb/ADR-0003" "We decided (that|to) "]
   :rejects ["backend/docs/adr/0002-"]}
 
  {:name "command-adr-accept-requires-named-decider"

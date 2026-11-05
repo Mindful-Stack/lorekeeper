@@ -1,7 +1,7 @@
 ---
 id: kb/ADR-0002
 title: "ADR-0002: Inventory is reserved when an order is placed"
-description: "Inventory reserves stock on OrderPlaced and releases it on cancellation, because reserving at payment time oversells popular items."
+description: "We decided that inventory reserves stock on OrderPlaced and releases it on cancellation, because reserving at payment time oversells popular items."
 tags: [adr, inventory, events]
 status: proposed
 date: 2026-10-01
@@ -37,8 +37,8 @@ item at once.
 - **Decrement on payment** — no stock held by abandoned orders.
 
 ## Decision
-The inventory service reserves stock when it consumes `OrderPlaced` and releases it on
-cancellation, because reserving at payment time oversells popular items.
+We decided that the inventory service reserves stock when it consumes `OrderPlaced` and releases
+it on cancellation, because reserving at payment time oversells popular items.
 
 - **R1** Stock MUST be reserved from the `OrderPlaced` handler.
 

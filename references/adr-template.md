@@ -1,7 +1,7 @@
 ---
 id: <home>/ADR-NNNN
 title: "ADR-NNNN: <short title — may state the decision>"
-description: "<the decision in one sentence, with its strongest because>"
+description: "<the decision in one sentence, with its strongest because: We decided …>"
 tags: [adr, <topic>]
 status: proposed            # proposed | accepted | rejected | superseded
 date: YYYY-MM-DD
@@ -36,9 +36,9 @@ Proposed YYYY-MM-DD.
 - **<B>** — one honest advantage.
 
 ## Decision
-<One falsifiable sentence, active voice, strongest because. The actor is what carries the
-decision out: the system or component ("The planner computes …"), or "The team" for a process
-decision. Never a person: who took the decision goes in `decided_by` only.>
+<One falsifiable sentence, active voice, first person plural, strongest because: "We decided
+that the planner computes … because …" or "We decided to … because …". "We" is the team that
+owns this record's home. Never a named person: who took the decision goes in `decided_by` only.>
 
 - **R1** <MUST / MUST NOT rule a reviewer can hold code against>
 

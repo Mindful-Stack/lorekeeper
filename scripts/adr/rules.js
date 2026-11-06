@@ -314,7 +314,8 @@ function checkAcrossRecords(home) {
         if (R.RATIFIED.has(r.fm.status)) {
             for (const ref of asList(r.fm.supersedes)) {
                 const pred = byId.get(R.qualify(ref, h.prefix));
-                if (pred && (pred.fm.status !== 'superseded' || R.qualify(pred.fm.superseded_by || '', h.prefix) !== ownId(r))) {
+                // A proposed predecessor never bound anything, so there is nothing to retire.
+                if (pred && pred.fm.status !== 'proposed' && (pred.fm.status !== 'superseded' || R.qualify(pred.fm.superseded_by || '', h.prefix) !== ownId(r))) {
                     between([r, pred], r.file, 'relations', `${ownId(pred)} must be flipped to superseded_by ${ownId(r)} in the same change`);
                 }
             }

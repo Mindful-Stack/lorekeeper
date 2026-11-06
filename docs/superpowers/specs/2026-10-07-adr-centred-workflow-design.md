@@ -308,6 +308,10 @@ and the decision holds, or trigger X fired and a superseding record follows).
 never a moment when neither binds. A predecessor is never flipped to a successor that is not yet
 accepted, in either case.
 
+A predecessor that is still `proposed` never bound anything, so an accepted successor does not
+require it to be flipped, and it stays editable. This covers a successor that replaces only some
+of a proposal's rules: the proposal keeps the rest until it is accepted, rejected or replaced.
+
 **Across homes** (local ⇄ shared, or between two repos' local homes), supersession cannot be one
 PR. When the successor is accepted, both PRs are opened at once: the successor, accepted, in its
 home, and the predecessor's flip to `superseded` in the other home. The team merges the successor

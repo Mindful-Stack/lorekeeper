@@ -202,6 +202,14 @@ test('supersession: an accepted successor requires the predecessor flipped', () 
     assert.deepEqual(run([flipped, succ]), []);
 });
 
+test('supersession: a proposed predecessor is not required to flip', () => {
+    // A proposed record never bound anything, so an accepted successor has nothing to retire, and
+    // the predecessor stays editable (e.g. a successor that replaces only some of its rules).
+    const pred = rec({ status: 'proposed' });
+    const succ = rec({ number: '0002', slug: 'other', fm: { supersedes: ['kb/ADR-0001'] } });
+    assert.ok(!run([pred, succ]).some((v) => v.rule === 'relations'));
+});
+
 test('supersession: a proposed successor leaves the predecessor accepted', () => {
     const pred = rec();
     const succ = rec({ number: '0002', slug: 'other', status: 'proposed', fm: { supersedes: ['kb/ADR-0001'] } });

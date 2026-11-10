@@ -215,8 +215,7 @@ high-tier record it adds "please have the area owners review"; for a proposal it
 once accepted — tell Claude who approved it first", and in the shared home or on a ride-along "the
 ADR check stays red until then". With the setting on and nobody named to ratify, a proposal's PR
 also says "may be accepted by its decider under `adr.allowSelfRatification`", never who will.
-With no new PR
-(`pr-branch`, ride-along), return that text for the user's PR description.
+With no new PR (`pr-branch`, ride-along), return that text for the user's PR description.
 
 **Report** where the change landed, in words and with its link: "opened PR <url> on
 `<branch>`", "committed to PR <url> (`<branch>`)", or "staged on your branch `<branch>`, not

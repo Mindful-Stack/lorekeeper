@@ -22,6 +22,9 @@ update the CLI, and never fall back to `decision close --reason`, which 0.2.0 no
 Sprints and goals (`reeve sprint`, `reeve goal`, `story ls --goal`, `goals` in story context) need
 `reeve-planner` 0.3.0 or later: an older CLI answers them with a usage error (an unrecognized
 subcommand or flag), so tell the user to update the CLI and go on without goals.
+`story similar` and the any-kind untriaged filter (an item of any kind with no epic) need the
+`reeve-planner` release after 0.3.0 that ships them (kb/ADR-0018): an older CLI answers `story similar`
+with a usage error, so tell the user to update the CLI and go on without the duplicate check.
 
 ## Arguments
 
@@ -122,7 +125,9 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 | `reeve epic edit <KEY> --brief-file <brief file> --version <n> --json` | `value.version` |
 | `reeve epic discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
 | `reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json` | `value[]`, `.finding`; empty when there are none (see *Findings*) |
-| `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version`. Untriaged: kind `story` with no epic (a bug or chore without one is not listed) |
+| `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version`. Untriaged: an item of any kind with no epic that is not done (kb/ADR-0018); it is not ready until placed or closed |
+| `reeve story similar <text> [--limit <n>] --json` | `value[]`: `{key, kind, title, epic, delivery, resolution}`, open stories and recently done ones with a like title (the text is 8 to 200 characters, the limit 1 to 10 with default 5; otherwise a validation error, exit 1); run it before filing or placing an item, to catch a duplicate |
+| `reeve story mv <KEY> <delivery> [--version <n>] [--resolution completed\|dropped] --json` | `value.delivery`, `.resolution`; moving to done needs a resolution; --override is a person's (interactive tokens only), never passed by a skill. Skills use it only to close an item as dropped (a won't-do or duplicate); delivery is otherwise the person's or a pull request's |
 | `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] [--owner <email>] --idempotency-key <key> --json` | `value.key`; an owner who is not an allowed user is a `validation` error |
 | `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] [--owner <email>] --json` | `value.version`; an owner who is not an allowed user is a `validation` error |
 | `reeve apply <plan file> --json` | `value.items[]`: `name`, `item`, `key`, `created`; `value.decisions[]`: `name`, `id`, `created`; `value.blocks[]`: `story`, `blocked_by`, `created` (see *Plans*) |

@@ -5,6 +5,7 @@
     { "bind": "epic", "argv": ["epic", "create", "--initiative", "{{initiative.key}}", "--title", "Skill smoke epic", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:2", "--json"] },
     { "bind": "story", "argv": ["story", "create", "--epic", "{{epic.key}}", "--title", "Skill smoke story", "--kind", "story", "--criterion", "It is seeded", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:3", "--json"] },
     { "bind": "untriaged", "argv": ["story", "create", "--title", "Skill smoke untriaged story", "--kind", "story", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:4", "--json"] },
+    { "bind": "closable", "argv": ["story", "create", "--title", "Skill smoke dropped story", "--kind", "chore", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:7", "--json"] },
     { "bind": "decision", "argv": ["decision", "require", "--on", "{{epic.key}}", "--title", "Skill smoke seeded decision", "--decider", "{{email}}", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:5", "--json"] },
     { "bind": "blocker", "argv": ["decision", "require", "--on", "{{story.key}}", "--title", "Skill smoke blocking decision", "--decider", "{{email}}", "--reversibility", "one-way", "--due", "2027-01-15", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:6", "--json"] },
     { "bind": "active", "argv": ["sprint", "show", "--json"] },
@@ -99,6 +100,12 @@
       "types": { "value[].story.key": "string", "value[].story.title": "string", "value[].story.kind": "string", "value[].story.version": "number", "value[].readiness.ready": "boolean", "value[].readiness.reasons[].reason": "string" }
     },
     {
+      "row": "`reeve story similar <text> [--limit <n>] --json`",
+      "argv": ["story", "similar", "Skill smoke", "--limit", "5", "--json"],
+      "reads": ["value[].key", "value[].kind", "value[].title", "value[].epic", "value[].delivery", "value[].resolution"],
+      "types": { "value[].key": "string", "value[].kind": "string", "value[].title": "string", "value[].epic": "string|null", "value[].delivery": "string", "value[].resolution": "string|null" }
+    },
+    {
       "row": "`reeve story create --epic <KEY> --title <title> --kind story|bug|chore --criterion <text> [--criterion <text> …] [--owner <email>] --idempotency-key <key> --json`",
       "argv": ["story", "create", "--epic", "{{epic.key}}", "--title", "Skill smoke created story", "--kind", "story", "--criterion", "It is created", "--criterion", "It is listed", "--owner", "{{email}}", "--idempotency-key", "refining-epic:{{epic.key}}:{{run_id}}:1", "--json"],
       "reads": ["value.key"],
@@ -110,6 +117,12 @@
       "argv": ["story", "edit", "{{untriaged.key}}", "--version", "{{untriaged.version}}", "--epic", "{{epic.key}}", "--kind", "story", "--owner", "{{email}}", "--json"],
       "reads": ["value.version"],
       "types": { "value.version": "number" }
+    },
+    {
+      "row": "`reeve story mv <KEY> <delivery> [--version <n>] [--resolution completed|dropped] --json`",
+      "argv": ["story", "mv", "{{closable.key}}", "done", "--resolution", "dropped", "--json"],
+      "reads": ["value.delivery", "value.resolution"],
+      "types": { "value.delivery": "string", "value.resolution": "string|null" }
     },
     {
       "row": "`reeve decision require --on <KEY> --title <title> --decider <email> --reversibility one-way|two-way [--due YYYY-MM-DD] --idempotency-key <key> --json`",

@@ -124,15 +124,22 @@ single-quoted argument on one line, as the reference's Arguments section says.
    `reeve story edit <KEY> --version 1 --owner <email> --json` for a story the plan just created
    (an owner who is not an allowed user is a `validation` error: show it and leave the story
    unowned); otherwise leave the story unowned.
-7. **Placement tree.** For each story from `story ls --untriaged`, classify it, propose its home
+7. **Placement tree.** For each item from `story ls --untriaged` (any kind with no epic that is
+   not done), first look for a duplicate: `reeve story similar '<its title>' --json` (the title must
+   be 8 to 200 characters; shorter, skip this) lists open stories and recently done ones with a like
+   title. A hit that is the same work is a duplicate: propose "Won't do" for the item and name the
+   key it duplicates. Then classify it, propose its home
    with the branch that led there, and write it on a confirmation as rule 1 says ("place the
    untriaged stories" names the `story edit`s; `<v>` is the story's `version` from the listing;
    covering epics and initiatives come from `epic ls` and `initiative ls`):
    - **Broken behaviour** → a bug under the epic that covers the broken feature:
-     `reeve story edit <KEY> --version <v> --epic <COVERING-EPIC> --kind bug --json`
-     (no covering epic: `--kind bug` alone).
-   - **Internal work** (an upgrade, a refactor, tooling; nothing a user sees) → a chore:
-     `reeve story edit <KEY> --version <v> --kind chore --json` (add `--epic` when one covers it).
+     `reeve story edit <KEY> --version <v> --epic <COVERING-EPIC> --kind bug --json`.
+     No covering epic: the area's standing epic from `epic ls` (the one for ongoing upkeep of that
+     area); with none, a new epic as in *Product change* 2 or 3. A bug under no epic is never an end
+     state: it stays untriaged and not ready.
+   - **Internal work** (an upgrade, a refactor, tooling; nothing a user sees) → a chore, under the
+     epic that covers it or else the area's standing epic as above:
+     `reeve story edit <KEY> --version <v> --epic <EPIC> --kind chore --json`.
    - **Product change**, the first that applies, with no `--kind` (it stays a story). An epic
      covers a story when the story changes the feature that epic delivers, even if its brief does
      not name the change yet.
@@ -157,7 +164,9 @@ single-quoted argument on one line, as the reference's Arguments section says.
      confirmation for that story; in a session that cannot ask, only when the request names that
      create. Otherwise create nothing for it and leave it untriaged with the proposal:
      `reeve comment add --item <KEY> --body 'Proposed home: <the new epic or initiative, its title and where it goes>' --idempotency-key refining-epic:<EPIC>:<run_id>:<n> --json`.
-   - **Won't do**, or the user says "leave it untriaged": write nothing for it.
+   - **Won't do** (including a duplicate): close it as dropped, on a confirmation as rule 1 says:
+    `reeve story mv <KEY> done --resolution dropped --json`. If the user says "leave it
+    untriaged", write nothing for it.
    - **Write.** Everything step 6 and this step confirmed for creating goes into ONE plan, as the
      reference's *Plans* section says: write it as JSON to a file with the Write tool, its `id`
      `refining-epic:<EPIC>:<run_id>:<n>`, and run `reeve apply <plan file> --json` once. Then run

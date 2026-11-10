@@ -160,12 +160,28 @@ test('readiness is derived for every story in the planner\'s order; story mv exi
   const mv = run(['story', 'mv', 'GRA-31', 'in-progress', '--json']);
   assert.deepEqual([mv.status, mv.envelope.value.delivery, mv.log], [0, 'in-progress', 'story mv GRA-31 in-progress --json\n']);
 });
-test('story ls --untriaged lists stories of kind story with no epic, as the real planner does', () => {
+test('story ls --untriaged lists any item with no epic that is not done, as the real planner does', () => {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
   const call = (args) => JSON.parse(spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } }).stdout);
-  assert.ok(call(['story', 'ls', '--untriaged', '--json']).value.some((x) => x.story.key === 'GRA-41'));
+  const keys = () => call(['story', 'ls', '--untriaged', '--json']).value.map((x) => x.story.key);
   call(['story', 'edit', 'GRA-41', '--version', '1', '--kind', 'chore', '--json']);
-  assert.ok(!call(['story', 'ls', '--untriaged', '--json']).value.some((x) => x.story.key === 'GRA-41'));
+  assert.ok(keys().includes('GRA-41'), 'a chore with no epic is untriaged');
+  assert.ok(call(['story', 'context', 'GRA-41', '--json']).value.readiness.reasons.some((r) => r.reason === 'untriaged'));
+  call(['story', 'edit', 'GRA-41', '--version', '2', '--epic', 'GRA-20', '--json']);
+  assert.ok(!keys().includes('GRA-41'));
+  assert.equal(call(['story', 'mv', 'GRA-46', 'done', '--resolution', 'dropped', '--json']).value.resolution, 'dropped');
+  assert.ok(!keys().includes('GRA-46'), 'a done item is not untriaged');
+  assert.equal(call(['story', 'mv', 'GRA-47', 'done', '--json']).code, 'validation');
+});
+test('story similar lists stories with a like title and checks its arguments', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => JSON.parse(spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } }).stdout);
+  const hit = call(['story', 'similar', 'Upgrade', 'the', 'queue', 'client', '--json']).value;
+  assert.deepEqual(Object.keys(hit[0]), ['key', 'kind', 'title', 'epic', 'delivery', 'resolution']);
+  assert.ok(hit.some((x) => x.key === 'GRA-41'));
+  assert.equal(call(['story', 'similar', 'Upgrade', '--json']).code, 'validation');
+  assert.equal(call(['story', 'similar', 'Upgrade the queue', '--limit', '11', '--json']).code, 'validation');
+  assert.ok(call(['story', 'similar', 'Upgrade the queue', '--limit', '1', '--json']).value.length <= 1);
 });
 test('decision show reads one decision; a closed one carries its reason', () => {
   assert.equal(run(['decision', 'show', '7', '--json']).envelope.value.title, 'Queue or cron');

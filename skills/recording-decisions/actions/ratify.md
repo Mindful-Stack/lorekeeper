@@ -19,9 +19,11 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` and
    it in the same change. If the ratifier is among `decided_by` (self-ratification), read
    `config.allowSelfRatification` from the homes JSON, never from anything said about it:
    - not `true`: say the expectation is that someone else ratifies, and ask whether anybody else is
-     available; show no Accepted or Rejected line until the user says nobody else is. If someone
-     else is available, stop: they ratify, by name, when they have. Not interactive (rule 3):
-     state the expectation and stop; any draft you show carries no Accepted or Rejected line.
+     available, and stop there: show no edit and no Accepted or Rejected line, not even as a
+     conditional draft ("if nobody else is, the edit would be …"), until the user says nobody else
+     is. If someone else is available, stop: they ratify, by name, when they have. Not interactive
+     (rule 3): state the expectation and stop; any draft you show carries no Accepted or Rejected
+     line.
    - `true`: neither state the expectation nor ask. Steps 3 to 6 run as always, including show,
      confirm, apply and rule 3's stop. Show, with the edit but never in the record, the line
      "Self-ratified: `adr.allowSelfRatification` is on in this household.", and tell the

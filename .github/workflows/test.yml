@@ -14,3 +14,21 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "${{ matrix.node }}" }
       - run: node --test scripts/__tests__/*.test.js
+  runner:
+    # Self-test of the Babashka scenario runner (test/run-tests.clj); the scenarios themselves
+    # need `claude` and are run by hand. Babashka is pinned by version and checksum.
+    runs-on: ubuntu-latest
+    env:
+      BB_VERSION: 1.13.229
+      BB_SHA256: 64fb984991c6e68f44e8a9391176a9bb411f9b9ae9959a6bca5307c75a7414da
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Babashka
+        run: |
+          cd "$RUNNER_TEMP"
+          f="babashka-${BB_VERSION}-linux-amd64-static.tar.gz"
+          curl -fsSLO "https://github.com/babashka/babashka/releases/download/v${BB_VERSION}/${f}"
+          echo "${BB_SHA256}  ${f}" | sha256sum -c -
+          tar xzf "$f" bb
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - run: bb test/runner-test.clj

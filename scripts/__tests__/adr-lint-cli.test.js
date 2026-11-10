@@ -291,7 +291,7 @@ test('b3: who approves is not configured: an old adr.decisionOwners is ignored, 
     assert.equal(r.code, 0, r.stdout + r.stderr);
     assert.doesNotMatch(r.stdout, /decided-by/);
     const homes = JSON.parse(runCli(w.root, w.env, 'homes').stdout);
-    assert.deepEqual(homes.config, { localDir: 'docs/adr', sharedDir: 'adrs' });
+    assert.deepEqual(homes.config, { localDir: 'docs/adr', sharedDir: 'adrs', allowSelfRatification: false });
 });
 
 test('M2: a home directory that does not exist is empty, and deleting it is still checked', (t) => {
@@ -877,4 +877,14 @@ test('select --json gives a missing candidate empty reviewer context', (t) => {
     assert.equal(c.description, '');
     assert.deepEqual(c.scope, []);
     assert.equal(c.record, '');
+});
+
+test('homes prints adr.allowSelfRatification from the manifest', (t) => {
+    const w = workspace(t);
+    const manifest = JSON.parse(fs.readFileSync(path.join(w.root, 'household.json'), 'utf8'));
+    manifest.adr = { allowSelfRatification: true };
+    write(path.join(w.root, 'household.json'), JSON.stringify(manifest));
+    const r = runCli(w.root, w.env, 'homes');
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.strictEqual(JSON.parse(r.stdout).config.allowSelfRatification, true);
 });

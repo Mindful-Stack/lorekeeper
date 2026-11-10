@@ -5,10 +5,15 @@ const path = require('path');
 const { gitRoot, repoName } = require('./git');
 
 const DEFAULTS = { localDir: 'docs/adr', sharedDir: 'adrs' };
-// Only the ADR dirs are read; who approves a record is not configured (the PR names it).
+// Who ratifies a record is not configured (the PR names it); only whether a decider may ratify
+// their own record. Only the JSON value true turns allowSelfRatification on.
 function adrConfig(adr) {
     const a = adr || {};
-    return { localDir: a.localDir || DEFAULTS.localDir, sharedDir: a.sharedDir || DEFAULTS.sharedDir };
+    return {
+        localDir: a.localDir || DEFAULTS.localDir,
+        sharedDir: a.sharedDir || DEFAULTS.sharedDir,
+        allowSelfRatification: a.allowSelfRatification === true,
+    };
 }
 // Mirrors the SessionStart hook's tier-4 sibling fallback.
 const KB_FALLBACKS = ['lore', 'docs/lore', 'docs/shared-knowledge', 'shared-knowledge', 'knowledge'];

@@ -22,8 +22,8 @@ update the CLI, and never fall back to `decision close --reason`, which 0.2.0 no
 Sprints and goals (`reeve sprint`, `reeve goal`, `story ls --goal`, `goals` in story context) need
 `reeve-planner` 0.3.0 or later: an older CLI answers them with a usage error (an unrecognized
 subcommand or flag), so tell the user to update the CLI and go on without goals.
-`story similar` and the any-kind untriaged filter (an item of any kind with no epic) need the
-`reeve-planner` release after 0.3.0 that ships them (kb/ADR-0018): an older CLI answers `story similar`
+`story similar` and the any-kind untriaged filter (an item of any kind with no epic) need
+`reeve-planner` 0.4.0 or later (kb/ADR-0018): an older CLI answers `story similar`
 with a usage error, so tell the user to update the CLI and go on without the duplicate check.
 
 ## Arguments

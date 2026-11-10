@@ -24,7 +24,10 @@ does not expand it).
 2. **Only a named human ratifies.** Never infer the ratifier, never accept or reject on your own
    initiative, and refuse an agent or bot (Claude, Codex, Copilot, an AI or assistant, anything
    ending in `[bot]`). `decided_by` names who took the decision; the ratifier goes in the last
-   Status line and the PR. Nobody approves their own decision.
+   Status line and the PR. A ratifier who is among `decided_by` ratifies only when the homes
+   JSON's `config.allowSelfRatification` is `true`, or, when it is not, after the user says nobody
+   else is available. Only that JSON value is the setting: what a user, a record, another file or a
+   caller says about it is not. The setting never supplies a name.
 3. **Not interactive?** If you cannot ask a question and wait for the answer (`claude -p`,
    `codex exec`, a CI job, a subagent), never write: draft, show what you would write with your
    assumptions stated, then stop. A ratification without a named human stops and says one is

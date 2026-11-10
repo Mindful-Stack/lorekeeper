@@ -136,3 +136,19 @@ test('CLI check and select infer the repo from origin in a linked worktree', (t)
     const s = runCli(wt, env, 'select', '--paths', 'src/x.cs');
     assert.match(s.stdout, /^svc\/ADR-0002\t/m);
 });
+
+test('adr.allowSelfRatification: only the JSON value true turns it on', (t) => {
+    const cases = [[undefined, false], [true, true], [false, false], ['yes', false], [1, false]];
+    for (const [value, want] of cases) {
+        const adr = value === undefined ? { localDir: 'docs/adr' } : { allowSelfRatification: value };
+        const root = household(t, { knowledge_base: 'lore', repos: [], adr });
+        assert.strictEqual(resolveHomes(root, NO_ENV).config.allowSelfRatification, want, `value ${JSON.stringify(value)}`);
+    }
+});
+
+test('single repo: .lorekeeper/config.json can turn on allowSelfRatification', (t) => {
+    const root = tmpDir(t);
+    initRepo(root, gitEnv(root));
+    write(path.join(root, '.lorekeeper', 'config.json'), JSON.stringify({ adr: { allowSelfRatification: true } }));
+    assert.strictEqual(resolveHomes(root, NO_ENV).config.allowSelfRatification, true);
+});

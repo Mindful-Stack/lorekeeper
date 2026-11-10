@@ -88,15 +88,22 @@ Each entry is a directory name inside the household that must contain a `knowled
 
 #### ADR homes
 
-An optional `adr` key overrides where ADR records live — every field optional, shown at its default:
+An optional `adr` key sets where ADR records live and whether a decider may ratify their own record —
+every field optional, shown at its default:
 
 ```json
-{ "adr": { "localDir": "docs/adr", "sharedDir": "adrs" } }
+{ "adr": { "localDir": "docs/adr", "sharedDir": "adrs", "allowSelfRatification": false } }
 ```
 
 `localDir` is each repo's local ADR directory; a `repos[]` entry can override it per-repo with
 `"adrDir"`. `sharedDir` is the shared KB's ADR directory, under its `knowledge/`.
 `.lorekeeper/config.json` takes the same keys under `adr` for single-repo setups.
+
+`allowSelfRatification: true` lets anyone in `decided_by` accept or reject that record themselves
+without being asked whether anybody else is available; Claude's shown edit and the PR (never the
+record) then say it was self-ratified under this setting. It is household-wide and stays on until someone turns it off, for
+example when a second maintainer joins. A named human is still required and an agent is still
+refused. Only the JSON value `true` turns it on.
 
 Setting the env var globally:
 
@@ -283,7 +290,8 @@ Quick start — just tell Claude what you decided or what changed:
 3. The team reviews the PR.
 4. "Alex Doe approved it." Claude records the acceptance, naming Alex as approver, on the same
    PR. Nobody approves their own decision: the approver is someone other than those in
-   `decided_by`.
+   `decided_by`, unless the household sets `adr.allowSelfRatification` (see *ADR homes*), as a solo
+   project may.
 5. Merge.
 
 | You say | Claude does |

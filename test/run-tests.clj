@@ -1,8 +1,10 @@
 #!/usr/bin/env bb
 (require '[babashka.process :refer [shell]]
          '[babashka.fs :as fs]
+         '[cheshire.core :as json]
          '[clojure.edn :as edn]
          '[clojure.string :as str]
+         '[clojure.walk :as walk]
          '[clojure.java.io :as io])
 
 (def colors {:green "\u001b[32m" :red "\u001b[31m" :yellow "\u001b[33m" :reset "\u001b[0m"})
@@ -28,6 +30,23 @@
         root (fs/path dir "workspace")]
     (fs/copy-tree fixture root)
     {:temp-dir (str dir) :root (str (fs/canonicalize root))}))
+
+;; Nested maps merge key by key; anything else from b wins.
+(defn deep-merge [a b]
+  (if (and (map? a) (map? b)) (merge-with deep-merge a b) b))
+
+;; A scenario's :household map (string keys, as in household.json) is deep-merged into the
+;; household.json of a fresh fixture copy of its own, so its settings never reach the shared copy
+;; the other scenarios use. The caller deletes (:temp-dir copy).
+(defn household-copy [fixture overlay]
+  (let [copy (copy-fixture fixture)
+        f (str (fs/path (:root copy) "household.json"))]
+    (try
+      (spit f (json/generate-string (deep-merge (json/parse-string (slurp f)) (walk/stringify-keys overlay)) {:pretty true}))
+      copy
+      (catch Throwable t
+        (fs/delete-tree (:temp-dir copy))
+        (throw t)))))
 
 ;; Debug mode via .knowledge-debug file is available for manual debugging
 ;; but not used in automated tests. See scenarios.edn for details.
@@ -153,9 +172,10 @@
         runnable? (fn [s] (every? with (:requires s)))
         selected (cond->> (load-scenarios)
                    filter-name (filter #(str/includes? (:name %) filter-name)))
-        scenarios (filter runnable? selected)
-        skipped (remove runnable? selected)
         fixture (fixture-dir)
+        overlay-ok? (fn [s] (or (not (:household s)) (and fixture (not (:workspace-root opts)))))
+        scenarios (filter #(and (runnable? %) (overlay-ok? %)) selected)
+        skipped (remove #(and (runnable? %) (overlay-ok? %)) selected)
         copy (when (and (not (:workspace-root opts)) fixture) (copy-fixture fixture))
         env {:workspace-root (or (:workspace-root opts) (:root copy) (parent-workspace-root))
              :plugin-dir (or (:plugin-dir opts) (plugin-root))}
@@ -166,10 +186,16 @@
                      (println "")
                      (doseq [s skipped]
                        (println (colorize :yellow "[SKIP]") (:name s)
-                                (str "(requires " (str/join ", " (:requires s))
-                                     "; run with --with " (str/join "," (:requires s)) ")")))
+                                (if (and (runnable? s) (:household s))
+                                  "(:household needs a fresh copy of the bundled fixture: no fixture, or --workspace-root given)"
+                                  (str "(requires " (str/join ", " (:requires s))
+                                       "; run with --with " (str/join "," (:requires s)) ")"))))
                      (let [results (doall (map (fn [s]
-                                                 (let [r (run-repeated s env runs min-pass)]
+                                                 (let [r (if-let [overlay (:household s)]
+                                                           (let [own (household-copy fixture overlay)]
+                                                             (try (run-repeated s (assoc env :workspace-root (:root own)) runs min-pass)
+                                                                  (finally (fs/delete-tree (:temp-dir own)))))
+                                                           (run-repeated s env runs min-pass))]
                                                    (print-result r)
                                                    (when (and verbose (not (:passed r)))
                                                      (println "\n--- Output ---")

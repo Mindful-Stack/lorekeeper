@@ -100,8 +100,8 @@ every field optional, shown at its default:
 `.lorekeeper/config.json` takes the same keys under `adr` for single-repo setups.
 
 `allowSelfRatification: true` lets anyone in `decided_by` accept or reject that record themselves
-without being asked whether anybody else is available; the edit and the PR then say it was
-self-ratified under this setting. It is household-wide and stays on until someone turns it off, for
+without being asked whether anybody else is available; Claude's shown edit and the PR (never the
+record) then say it was self-ratified under this setting. It is household-wide and stays on until someone turns it off, for
 example when a second maintainer joins. A named human is still required and an agent is still
 refused. Only the JSON value `true` turns it on.
 

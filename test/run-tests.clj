@@ -4,6 +4,7 @@
          '[cheshire.core :as json]
          '[clojure.edn :as edn]
          '[clojure.string :as str]
+         '[clojure.walk :as walk]
          '[clojure.java.io :as io])
 
 (def colors {:green "\u001b[32m" :red "\u001b[31m" :yellow "\u001b[33m" :reset "\u001b[0m"})
@@ -40,8 +41,12 @@
 (defn household-copy [fixture overlay]
   (let [copy (copy-fixture fixture)
         f (str (fs/path (:root copy) "household.json"))]
-    (spit f (json/generate-string (deep-merge (json/parse-string (slurp f)) overlay) {:pretty true}))
-    copy))
+    (try
+      (spit f (json/generate-string (deep-merge (json/parse-string (slurp f)) (walk/stringify-keys overlay)) {:pretty true}))
+      copy
+      (catch Throwable t
+        (fs/delete-tree (:temp-dir copy))
+        (throw t)))))
 
 ;; Debug mode via .knowledge-debug file is available for manual debugging
 ;; but not used in automated tests. See scenarios.edn for details.
@@ -182,7 +187,7 @@
                      (doseq [s skipped]
                        (println (colorize :yellow "[SKIP]") (:name s)
                                 (if (and (runnable? s) (:household s))
-                                  "(:household needs the bundled fixture; not run with --workspace-root)"
+                                  "(:household needs a fresh copy of the bundled fixture: no fixture, or --workspace-root given)"
                                   (str "(requires " (str/join ", " (:requires s))
                                        "; run with --with " (str/join "," (:requires s)) ")"))))
                      (let [results (doall (map (fn [s]

@@ -88,7 +88,8 @@ Tests are defined in `scenarios.edn` as pure data:
 - **household** (optional): a map (string keys, as in `household.json`) deep-merged into the
   `household.json` of a fresh fixture copy used by that scenario alone, for example
   `{"adr" {"allowSelfRatification" true}}`. Other scenarios keep the shared copy; with
-  `--workspace-root` the scenario is skipped. `bb test/runner-test.clj` tests the overlay.
+  `--workspace-root` the scenario is skipped. `bb test/runner-test.clj` tests the overlay and the saved output of failing runs; CI runs it
+  (`.github/workflows/test.yml`, job `runner`).
 
 Scenarios assert on what a command prints before it writes. The runner pins
 `--permission-mode default`, allows only `Read`, `Glob`, `Grep`, `Bash(node *)` and agent and

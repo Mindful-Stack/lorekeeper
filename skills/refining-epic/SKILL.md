@@ -137,7 +137,7 @@ single-quoted argument on one line, as the reference's Arguments section says.
      No covering epic: the area's standing epic from `epic ls` (the one for ongoing upkeep of that
      area). It is the epic in that area's initiative whose title says it collects ongoing upkeep (for
      example "Maintenance" or "Upkeep"); if none is obvious, ask the user which epic it is rather than
-     guess. With none, a new epic as in *Product change* 2 or 3. A bug under no epic is never an end
+     guess. Only when the user confirms the area has no standing epic, propose a new one as in *Product change* 2 or 3. A bug under no epic is never an end
      state: it stays untriaged and not ready.
    - **Internal work** (an upgrade, a refactor, tooling; nothing a user sees) → a chore, under the
      epic that covers it or else the area's standing epic as above:

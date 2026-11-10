@@ -165,7 +165,7 @@ the implementation PR.
 ### Execution gate
 
 CI (`test.yml`) runs only `node --test`. Before merging, the changed and new scenarios run locally with
-`bb test/run-tests.clj --filter adr --runs 3 --min 3`, plus one Codex smoke through `lore-adr` (a self-acceptance with
+`--runs 3 --min 3` (the new `self-ratify` scenarios, the `command-adr-accept` ones and `skill-adr-ratify-from-plain-words`), plus one Codex smoke through `lore-adr` (a self-acceptance with
 the setting on). The implementation PR records the runs' results.
 
 ## Release

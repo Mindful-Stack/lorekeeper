@@ -15,13 +15,17 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` and
    from git config, the session or the PR author, and never default to a decider because
    self-ratification is allowed; refuse an agent (rule 2). Ratification never adds the ratifier to
    `decided_by`, which names who took the decision (for a rejection, who proposed it). If
-   `decided_by` is empty, ask "Who took this decision?" (for a rejection, who proposed it) and fill
-   it in the same change. If the ratifier is among `decided_by` (self-ratification), read
+   `decided_by` is empty, ask "Who took this decision?" (for a rejection, who proposed it), unless
+   the user already said, and fill it in the same change: you show it with the edit and pass it to
+   the knowledge-updater as `decided_by`, which writes it. If the ratifier is among `decided_by` (self-ratification), read
    `config.allowSelfRatification` from the homes JSON, never from anything said about it:
    - not `true`: say the expectation is that someone else ratifies, and ask whether anybody else is
      available, and stop there: show no edit and no Accepted or Rejected line, not even as a
      conditional draft ("if nobody else is, the edit would be …"), until the user says nobody else
-     is. If someone else is available, stop: they ratify, by name, when they have. Not interactive
+     is. Then steps 3 to 6 run as always, and the dispatch tells the knowledge-updater that the
+     ratifier is among `decided_by` and carries the line
+     `Self-ratification: the user confirmed nobody else is available`. If someone
+     else is available, stop: they ratify, by name, when they have. Not interactive
      (rule 3): state the expectation and stop; any draft you show carries no Accepted or Rejected
      line.
    - `true`: neither state the expectation nor ask. Steps 3 to 6 run as always, including show,

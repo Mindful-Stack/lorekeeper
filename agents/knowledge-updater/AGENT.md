@@ -91,10 +91,13 @@ the decision (`decided_by`), the ratifier or the people who should approve; and 
 wants to ride along on their branch. From the homes JSON: `<repo>` is the home's `repoRoot`
 (`sharedRepoRoot` for the KB), the git repository holding the home; `<relDir>` is `relDir`
 (`sharedRelDir`); `<default>` is `defaultBranch` (`sharedDefaultBranch`). A `null` `<repo>` means
-the home is not checked out: stop and say so. A `null` `<default>`: stop and ask the caller which
-branch to base on. `config.allowSelfRatification` also comes from the homes JSON, read here and
+the home is not checked out: stop and say so. A `null` `<default>`: use the dispatch's
+`Base branch: <name>` line (the branch the user named), never a guess such as `main`, and
+`<default>` is that name everywhere below; without that line, stop and ask the caller which branch
+to base on. `config.allowSelfRatification` also comes from the homes JSON, read here and
 never taken from the caller's words; the caller's note that the ratifier is among `decided_by` is
-checked against `decided_by`, and `decided_by` decides.
+checked against `decided_by` as this change writes it (the caller's `decided_by` when the record's
+is empty), and that `decided_by` decides.
 
 **Identity.** `NNNN-<problem-slug>.md`, numbered per home by the caller; `id` is `kb/ADR-NNNN` or
 `<repo>/ADR-NNNN`. Never renumber a record on the default branch; a draft in an unmerged PR may be
@@ -103,8 +106,12 @@ renumbered on a reported collision (filename, `id`, `title` and inbound links to
 **Frontmatter.** Every template key, each value inline. A new record is `proposed`, its
 `decided_by` naming who is taking the decision (`[]` until the caller knows). Write `accepted` or
 `rejected` only with the human name the caller passes for who ratified it; that name goes in the last Status line (`<Status> YYYY-MM-DD by <name>.`, nothing after it in
-that change), never into `decided_by`. Refuse a name that is an agent or bot (Claude, Codex,
-Copilot, an AI or assistant, anything ending in `[bot]`), in either place. Legacy records may carry `deciders`: read it as
+that change); ratifying never adds it to `decided_by`. Refuse a name that is an agent or bot
+(Claude, Codex, Copilot, an AI or assistant, anything ending in `[bot]`), in either place. A ratify
+of a record whose `decided_by` is empty or absent (after reading a legacy `deciders` as
+`decided_by`) writes the `decided_by` the caller passes (who took the decision; for a rejection,
+who proposed it) in the same change, even when that names the ratifier too; with none passed, stop
+and return to the caller, and never fill it with the ratifier's name on your own. Legacy records may carry `deciders`: read it as
 `decided_by` and never rename it, except that a conversion may carry it over to `decided_by` with
 the same names.
 
@@ -210,7 +217,17 @@ should approve. When the ratifier is among `decided_by` and `config.allowSelfRat
 `true`, the PR says "Accepted by its decider, <name>; this household allows self-ratification
 (`adr.allowSelfRatification`)." (a rejection: "Rejected by its proposer, <name>; this household
 allows self-ratification (`adr.allowSelfRatification`)."). With the setting off, nobody approves
-their own decision, so the approver should not be among `decided_by` (if they are, say so). For a
+their own decision, so the approver should not be among `decided_by`:
+- a proposal whose named approver is among `decided_by`: the PR says someone other than that
+  decider should approve it;
+- a ratify whose ratifier is among `decided_by`: go ahead only when the dispatch carries the line
+  `Self-ratification: the user confirmed nobody else is available`, and the PR then says
+  "Accepted by its decider, <name>; nobody else was available to ratify." (a rejection: "Rejected
+  by its proposer, <name>; nobody else was available to ratify."). Without that line, stop and
+  return to the caller, whose ratify action asks first. This gate is for the setting off only;
+  with it on, the self-ratification text above applies and no such line is needed.
+
+For a
 high-tier record it adds "please have the area owners review"; for a proposal it adds "merge only
 once accepted — tell Claude who approved it first", and in the shared home or on a ride-along "the
 ADR check stays red until then". With the setting on and nobody named to ratify, a proposal's PR

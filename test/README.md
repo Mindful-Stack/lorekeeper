@@ -81,6 +81,10 @@ Tests are defined in `scenarios.edn` as pure data:
 - **expects**: Regex patterns that must appear in output
 - **rejects** (optional): Regex patterns that must not appear, for outcomes a lenient `expects`
   could hide (an agent accepted as a decider, a record filed in the wrong home)
+- **household** (optional): a map (string keys, as in `household.json`) deep-merged into the
+  `household.json` of a fresh fixture copy used by that scenario alone, for example
+  `{"adr" {"allowSelfRatification" true}}`. Other scenarios keep the shared copy; with
+  `--workspace-root` the scenario is skipped. `bb test/runner-test.clj` tests the overlay.
 
 Scenarios assert on what a command prints before it writes. The runner pins
 `--permission-mode default`, allows only `Read`, `Glob`, `Grep`, `Bash(node *)` and agent and

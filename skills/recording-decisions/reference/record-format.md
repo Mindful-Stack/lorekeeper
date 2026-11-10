@@ -9,9 +9,10 @@ converting a legacy record, and keep its keys and section order. The file is
   it carries the decision and reads "We decided …".
 - `tags` includes `adr`; prefer tags already in use (`grep -rh '^tags:'` the home).
 - `status: proposed` on every draft. `decided_by` names the human(s) who took the decision, asked
-  in the interview; a draft leaves it `[]` only until ratification fills it. The ratifier is not
-  in `decided_by`: **ratify** names them in the last Status line (`Accepted YYYY-MM-DD by <name>.`)
-  and the PR, never guessed. `consulted` lists the people asked.
+  in the interview; a draft leaves it `[]` only until ratification fills it. Ratification never
+  adds the ratifier to `decided_by` (a decider may also be the ratifier, under rule 2): **ratify**
+  names them in the last Status line (`Accepted YYYY-MM-DD by <name>.`) and the PR, never
+  guessed. `consulted` lists the people asked.
 - **Classification**: `reversibility` (`one-way` when undoing costs more than a day or breaks
   consumers, else `two-way`); `blast_radius` picks the home (`repo` affects only this repo,
   `shared` crosses repos or is visible to customers);

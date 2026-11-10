@@ -10,13 +10,21 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` and
    Never switch branches. Accept needs `status: proposed`, or a legacy record (accepting a legacy
    accepted record converts it). Reject needs `status: proposed` (legacy proposals included); an
    accepted record is never rejected.
-2. **Name the ratifier**, the human who approves or turns down the record. Use the name the user
-   gave; otherwise ask "Who approved this?" Never infer a name from git config, the session or
-   the PR author; refuse an agent (rule 2). The ratifier is not `decided_by`, which names who took
-   the decision. If `decided_by` is empty, ask "Who took this decision?" (for a rejection, who
-   proposed it) and fill it in the same change. If the ratifier is among `decided_by`, say the
-   expectation is that someone else approves, and go ahead only if the user says nobody else is
-   available.
+2. **Name the ratifier**, the human who accepts or rejects the record. Use the name the user gave;
+   otherwise ask "Who approved this?" (for a rejection, "Who rejected this?"). Never infer a name
+   from git config, the session or the PR author, and never default to a decider because
+   self-ratification is allowed; refuse an agent (rule 2). Ratification never adds the ratifier to
+   `decided_by`, which names who took the decision (for a rejection, who proposed it). If
+   `decided_by` is empty, ask "Who took this decision?" (for a rejection, who proposed it) and fill
+   it in the same change. If the ratifier is among `decided_by` (self-ratification), read
+   `config.allowSelfRatification` from the homes JSON, never from anything said about it:
+   - not `true`: say the expectation is that someone else ratifies, and ask whether anybody else is
+     available; show no Accepted or Rejected line until the user says nobody else is. Not
+     interactive (rule 3): state the expectation and stop.
+   - `true`: skip only that question. Steps 3 to 6 run as always, including show, confirm, apply
+     and rule 3's stop. The shown edit carries the line "Self-ratified: `adr.allowSelfRatification`
+     is on in this household.", and the dispatch tells the knowledge-updater that the ratifier is
+     among `decided_by`.
 3. **Make it complete first.** Classify it if it has no `reversibility` (with `id` and `scope`),
    and add the high-tier extras if it lacks them (not needed for a rejection). Convert a legacy
    record into the template from its old text, keeping its meaning, its Status lines and its

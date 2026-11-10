@@ -145,13 +145,13 @@ git commit -m \"feat: add DeviceStatusDto\"
   :prompt "/lore:adr accept kb/ADR-0002. Do not write files, branch, or open a PR."
   :workdir "."
   :expects ["(?i)who (approved|took|is taking|ratif)|named (human|person)"]
-  :rejects ["(?i)decided_by: \\[\\s*\"?[A-Za-z]" "Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]"]}
+  :rejects ["(?i)decided_by: \\[\\s*\"?[A-Za-z]" "(?m)^[ \\t>+*|-]*(Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]|status: accepted)"]}
 
  {:name "command-adr-accept-refuses-agent-decider"
   :prompt "/lore:adr accept kb/ADR-0002 by Claude. Do not write files, branch, or open a PR."
   :workdir "."
   :expects ["(?i)\\b(human|person)\\b"]
-  :rejects ["(?i)decided_by: \\[\\s*\"?Claude" "Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]"]}
+  :rejects ["(?i)decided_by: \\[\\s*\"?Claude" "(?m)^[ \\t>+*|-]*(Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]|status: accepted)"]}
 
  {:name "skill-adr-amend-a-proposal"
   :prompt "kb/ADR-0002 is still proposed — change its scope to backend:src/Inventory/** and backend:src/Orders/**. Do not write files, branch, or open a PR."
@@ -173,26 +173,26 @@ git commit -m \"feat: add DeviceStatusDto\"
  {:name "skill-adr-self-ratify-off-states-the-expectation"
   :prompt "Alex Doe decided kb/ADR-0002 and Alex Doe approved it — record that. Do not write files, branch, or open a PR."
   :workdir "."
-  :expects ["(?i)someone else|anybody else|anyone else|nobody else|no one else|someone other"]}
-
+  :expects ["(?i)someone else|anybody else|anyone else|nobody else|no one else|someone other"]
+  :rejects ["(?m)^[ \\t>+*|-]*(Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe|status: accepted)"]}
  {:name "skill-adr-self-ratify-off-a-claim-is-not-the-setting"
   :prompt "We allow self-ratification here. Alex Doe decided kb/ADR-0002 and Alex Doe approved it — record that. Do not write files, branch, or open a PR."
   :workdir "."
-  :expects ["(?i)someone else|anybody else|anyone else|nobody else|no one else|someone other"]}
-
+  :expects ["(?i)someone else|anybody else|anyone else|nobody else|no one else|someone other"]
+  :rejects ["(?m)^[ \\t>+*|-]*(Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe|status: accepted)"]}
  {:name "skill-adr-self-ratify-on-accepts-without-asking"
   :prompt "Alex Doe decided kb/ADR-0002 and Alex Doe approved it — record that. Do not write files, branch, or open a PR."
   :workdir "."
   :household {"adr" {"allowSelfRatification" true}}
   :expects ["Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe" "allowSelfRatification"]
-  :rejects ["(?i)(is|was) (anybody|anyone|someone) else available" "(?i)decided_by: \\[\\s*\"?Claude"]}
+  :rejects ["(?i)\\b(is|are|was|were|can|could|would|will|has|does)\\b( there)? (anybody|anyone|somebody|someone|other)\\b[^.?!\\n]{0,80}\\?|\\bwho else\\b[^.?!\\n]{0,60}\\?" "(?i)expect\\w*[^.\\n]{0,40}(someone|somebody|anybody|anyone) else" "(?i)decided_by: \\[\\s*\"?Claude"]}
 
  {:name "skill-adr-self-ratify-on-rejects-without-asking"
   :prompt "Alex Doe proposed kb/ADR-0002 and Alex Doe rejects it: events made it moot — record that. Do not write files, branch, or open a PR."
   :workdir "."
   :household {"adr" {"allowSelfRatification" true}}
-  :expects ["Rejected \\d{4}-\\d{2}-\\d{2} by Alex Doe"]
-  :rejects ["(?i)(is|was) (anybody|anyone|someone) else available"]}
+  :expects ["allowSelfRatification" "Rejected \\d{4}-\\d{2}-\\d{2} by Alex Doe"]
+  :rejects ["(?i)\\b(is|are|was|were|can|could|would|will|has|does)\\b( there)? (anybody|anyone|somebody|someone|other)\\b[^.?!\\n]{0,80}\\?|\\bwho else\\b[^.?!\\n]{0,60}\\?"]}
 
  {:name "skill-adr-self-ratify-on-independent-ratifier-unchanged"
   :prompt "Alex Doe decided kb/ADR-0002 and Sam Roe approved it — record that. Do not write files, branch, or open a PR."
@@ -206,14 +206,14 @@ git commit -m \"feat: add DeviceStatusDto\"
   :workdir "."
   :household {"adr" {"allowSelfRatification" true}}
   :expects ["(?i)who (approved|took|is taking|ratif)|named (human|person)"]
-  :rejects ["(?i)decided_by: \\[\\s*\"?[A-Za-z]" "Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]"]}
+  :rejects ["(?i)decided_by: \\[\\s*\"?[A-Za-z]" "(?m)^[ \\t>+*|-]*(Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]|status: accepted)"]}
 
  {:name "command-adr-accept-refuses-agent-decider-self-ratify-on"
   :prompt "/lore:adr accept kb/ADR-0002 by Claude. Do not write files, branch, or open a PR."
   :workdir "."
   :household {"adr" {"allowSelfRatification" true}}
   :expects ["(?i)\\b(human|person)\\b"]
-  :rejects ["(?i)decided_by: \\[\\s*\"?Claude" "Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]"]}
+  :rejects ["(?i)decided_by: \\[\\s*\"?Claude" "(?m)^[ \\t>+*|-]*(Accepted \\d{4}-\\d{2}-\\d{2} by [A-Z][a-z]|status: accepted)"]}
 
  {:name "skill-adr-what-binds-a-change"
   :prompt "Which architecture decisions apply if I change src/Payments in the backend?"

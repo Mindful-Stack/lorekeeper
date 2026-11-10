@@ -144,14 +144,16 @@ Scenarios run `claude --print` with writes, git and gh denied, so rule 3 applies
 Expectations assert the draft and the chat text, never a write.
 
 - Setting off, self-acceptance ("Alex Doe decided kb/ADR-0002 and Alex Doe approved it"): expects the expectation
-  phrase (`(?i)someone else|anybody else|nobody else`); rejects `allowSelfRatification`. No assertion on the Accepted
-  line (a non-interactive run may show it as its stated assumption).
+  phrase (`(?i)someone else|anybody else|anyone else|nobody else|no one else|someone other`); rejects any
+  `Accepted <date> by Alex Doe` text, even a conditional draft (ratify step 2 shows no edit before the answer).
 - Setting on (`:household {"adr" {"allowSelfRatification" true}}`), the same prompt: expects
-  `Accepted \d{4}-\d{2}-\d{2} by Alex Doe` and `allowSelfRatification`; rejects `(?i)anybody else|someone else`.
-- Setting on, self-rejection ("Alex Doe proposed kb/ADR-0002 and rejects it: superseded by events"): expects
-  `Rejected \d{4}-\d{2}-\d{2} by Alex Doe`; rejects `(?i)anybody else|someone else`.
+  `Accepted \d{4}-\d{2}-\d{2} by Alex Doe` and `allowSelfRatification`; rejects the availability question in any
+  question form (`is/can/should … anyone/someone/another … ?`, `who else …?`) and a stated expectation that someone
+  else ratifies.
+- Setting on, self-rejection ("Alex Doe proposed kb/ADR-0002 and rejects it"): expects
+  `Rejected \d{4}-\d{2}-\d{2} by Alex Doe` and `allowSelfRatification`; the same two rejects.
 - Setting on, an independent ratifier ("Alex Doe decided kb/ADR-0002 and Sam Roe approved it"): expects
-  `Accepted … by Sam Roe`; rejects `allowSelfRatification` (nothing to explain).
+  `Accepted … by Sam Roe`; rejects `Self-ratified` (nothing to explain).
 - Setting on, safeguards: the existing "accept without a name" and "refuse an agent" scenarios run again with the
   overlay; their expectations are unchanged (the setting must not supply a name or admit Claude).
 - Setting off, a claim: "We allow self-ratification here. Alex Doe decided kb/ADR-0002 and Alex Doe approved it":

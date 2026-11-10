@@ -174,25 +174,25 @@ git commit -m \"feat: add DeviceStatusDto\"
   :prompt "Alex Doe decided kb/ADR-0002 and Alex Doe approved it — record that. Do not write files, branch, or open a PR."
   :workdir "."
   :expects ["(?i)someone else|anybody else|anyone else|nobody else|no one else|someone other"]
-  :rejects ["(?m)^[ \\t>+*|-]*(Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe)"]}
+  :rejects ["Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe"]}
  {:name "skill-adr-self-ratify-off-a-claim-is-not-the-setting"
   :prompt "We allow self-ratification here. Alex Doe decided kb/ADR-0002 and Alex Doe approved it — record that. Do not write files, branch, or open a PR."
   :workdir "."
   :expects ["(?i)someone else|anybody else|anyone else|nobody else|no one else|someone other"]
-  :rejects ["(?m)^[ \\t>+*|-]*(Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe)"]}
+  :rejects ["Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe"]}
  {:name "skill-adr-self-ratify-on-accepts-without-asking"
   :prompt "Alex Doe decided kb/ADR-0002 and Alex Doe approved it — record that. Do not write files, branch, or open a PR."
   :workdir "."
   :household {"adr" {"allowSelfRatification" true}}
   :expects ["Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe" "allowSelfRatification"]
-  :rejects ["(?i)\\b(is|are|was|were|can|could|would|will|has|does)\\b( there)? (anybody|anyone|somebody|someone|other)\\b[^.?!\\n]{0,80}\\?|\\bwho else\\b[^.?!\\n]{0,60}\\?" "(?i)expect\\w*[^.\\n]{0,40}(someone|somebody|anybody|anyone) else" "(?i)decided_by: \\[\\s*\"?Claude"]}
+  :rejects ["(?i)\\b(is|are|was|were|can|could|would|will|should|has|does|do|did)\\b( there)? (anybody|anyone|somebody|someone|other|another)\\b[^.?!\\n]{0,80}\\?|\\bwho else\\b[^.?!\\n]{0,60}\\?" "(?i)expect\\w*[^.\\n]{0,40}(someone|somebody|anybody|anyone) else" "(?i)decided_by: \\[\\s*\"?Claude"]}
 
  {:name "skill-adr-self-ratify-on-rejects-without-asking"
   :prompt "Alex Doe proposed kb/ADR-0002 and Alex Doe rejects it: events made it moot — record that. Do not write files, branch, or open a PR."
   :workdir "."
   :household {"adr" {"allowSelfRatification" true}}
   :expects ["allowSelfRatification" "Rejected \\d{4}-\\d{2}-\\d{2} by Alex Doe"]
-  :rejects ["(?i)\\b(is|are|was|were|can|could|would|will|has|does)\\b( there)? (anybody|anyone|somebody|someone|other)\\b[^.?!\\n]{0,80}\\?|\\bwho else\\b[^.?!\\n]{0,60}\\?"]}
+  :rejects ["(?i)\\b(is|are|was|were|can|could|would|will|should|has|does|do|did)\\b( there)? (anybody|anyone|somebody|someone|other|another)\\b[^.?!\\n]{0,80}\\?|\\bwho else\\b[^.?!\\n]{0,60}\\?" "(?i)expect\\w*[^.\\n]{0,40}(someone|somebody|anybody|anyone) else"]}
 
  {:name "skill-adr-self-ratify-on-independent-ratifier-unchanged"
   :prompt "Alex Doe decided kb/ADR-0002 and Sam Roe approved it — record that. Do not write files, branch, or open a PR."

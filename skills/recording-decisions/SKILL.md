@@ -91,7 +91,9 @@ there is one home and ids use the local prefix. Numbers are per home and never r
 
 For every action except list, run `node <plugin-root>/scripts/adr-lint.js homes` once and pass its
 JSON verbatim to every agent. A `governedRepo` of `null` means ask which repo the record or path
-belongs to, and a `null` default branch means ask which branch to base on (never assume `main`).
+belongs to, and a `null` default branch means ask which branch to base on (never assume `main`)
+and pass the answer to the knowledge-updater as a `Base branch: <name>` line (per home: a change
+touching two homes asks for each one that has no default branch).
 A repo with `present: false` is not checked out: say so when it matters, never guess its contents.
 
 ## Where a change lands
@@ -100,7 +102,8 @@ Every write is **show** the exact file or edit with its path, tier and where it 
 **confirm**; **apply** by dispatching the knowledge-updater with Type `adr`, the action, the
 file(s), the Home (`shared` or `local:<repo>`), the homes JSON, the line
 `ADR lint: <plugin-root>/scripts/adr-lint.js`, who took the decision (`decided_by`), the ratifier
-or the people who should approve, and whether the user wants to ride along on their branch. The
+or the people who should approve, whether the user wants to ride along on their branch, and the
+`Base branch:` line when the homes JSON has no default branch for the home. The
 updater decides where the change lands. If it returns findings, show them, fix them with the user,
 and apply again. Confirm with what it reports: where the change landed (PR URL or branch), why if
 it fell back from what the user asked, and the next step.

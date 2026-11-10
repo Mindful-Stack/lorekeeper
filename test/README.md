@@ -62,6 +62,10 @@ bb test/run-tests.clj --filter "skill"
 bb test/run-tests.clj --verbose
 ```
 
+Every failing run's output is also saved to a temp file (`lore-scenario-<name>-*.txt`) that
+outlives the run, and the result line names it. With `--runs 3 --min 2`, a scenario that passes
+2/3 still prints the failing run's reason and the path to its output.
+
 ## Test Scenarios
 
 Tests are defined in `scenarios.edn` as pure data:

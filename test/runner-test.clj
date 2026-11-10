@@ -45,5 +45,31 @@
       (finally
         (fs/delete-tree (:temp-dir copy))))))
 
+(deftest a-passing-scenario-keeps-its-failing-runs-output
+  ;; Catches the runner dropping a failing run's output when the scenario passes overall
+  ;; (2/3 with --min 2): the saved file must hold that run's own output, not the passing one's.
+  (let [outcomes (atom [{:name "s" :passed true :output "good run"}
+                        {:name "s" :passed false :output "bad run" :present ["X"]}
+                        {:name "s" :passed true :output "good run"}])
+        r (with-redefs [run-test (fn [_ _] (let [o (first @outcomes)] (swap! outcomes rest) o))]
+            (run-repeated {:name "s"} {} 3 2))]
+    (try
+      (is (true? (:passed r)))
+      (is (= "2/3" (:tally r)))
+      (is (= 1 (count (:failed-outputs r))))
+      (is (= "bad run" (slurp (first (:failed-outputs r)))))
+      (let [printed (with-out-str (print-result r))]
+        ;; the reasons on the PASS line are the failing run's own
+        (is (re-find #"\(a failing run - must not appear: X\)" printed))
+        (is (re-find #"failing run's output: " printed)))
+      (finally
+        (run! fs/delete-if-exists (:failed-outputs r))))))
+
+(deftest an-all-passing-scenario-saves-nothing
+  (let [r (with-redefs [run-test (fn [_ _] {:name "s" :passed true :output "ok"})]
+            (run-repeated {:name "s"} {} 2 2))]
+    (is (true? (:passed r)))
+    (is (empty? (:failed-outputs r)))))
+
 (let [{:keys [fail error]} (run-tests)]
   (System/exit (if (zero? (+ fail error)) 0 1)))

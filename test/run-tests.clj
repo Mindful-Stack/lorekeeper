@@ -118,12 +118,16 @@
         (fs/delete-tree config-dir)
         (when log (fs/delete-if-exists log) (fs/delete-if-exists (str log ".state")))))))
 
-(defn print-result [{:keys [name passed missing present tally]}]
-  (if passed
-    (println (colorize :green "[PASS]") name (or tally ""))
-    (println (colorize :red "[FAIL]") name (or tally "")
-             (str (when (seq missing) (str "- missing: " (str/join ", " missing)))
-                  (when (seq present) (str " - must not appear: " (str/join ", " present)))))))
+(defn print-result [{:keys [name passed missing present tally failed-outputs]}]
+  (let [reasons (str/join " - " (cond-> []
+                                  (seq missing) (conj (str "missing: " (str/join ", " missing)))
+                                  (seq present) (conj (str "must not appear: " (str/join ", " present)))))]
+    (if passed
+      (println (colorize :green "[PASS]") name (or tally "")
+               (if (seq failed-outputs) (str "(a failing run - " reasons ")") ""))
+      (println (colorize :red "[FAIL]") name (or tally "") (str "- " reasons)))
+    (doseq [f failed-outputs]
+      (println "       failing run's output:" f))))
 
 (defn load-scenarios []
   (let [script-dir (-> *file* io/file .getParentFile .getCanonicalPath)
@@ -155,12 +159,21 @@
 
 ;; --runs N runs each scenario N times and passes it when at least --min runs pass (default N),
 ;; so a flaky scenario shows its pass rate instead of hiding behind a lucky retry.
+;; Every failing run's output is saved to a temp file, kept after the run, and named in the
+;; result line, so a scenario that passes overall still leaves the failure to read.
+(defn save-output [name text]
+  (let [f (str (fs/create-temp-file {:prefix (str "lore-scenario-" name "-") :suffix ".txt"}))]
+    (spit f text)
+    f))
+
 (defn run-repeated [s env runs min-pass]
   (let [rs (doall (repeatedly runs #(run-test s env)))
-        k (count (filter :passed rs))]
-    (assoc (or (first (remove :passed rs)) (first rs))
+        failed (remove :passed rs)
+        k (- (count rs) (count failed))]
+    (assoc (or (first failed) (first rs))
            :passed (>= k min-pass)
-           :tally (when (> runs 1) (str k "/" runs)))))
+           :tally (when (> runs 1) (str k "/" runs))
+           :failed-outputs (mapv #(save-output (:name s) (:output %)) failed))))
 
 (defn -main [& args]
   (let [opts (parse-args args)

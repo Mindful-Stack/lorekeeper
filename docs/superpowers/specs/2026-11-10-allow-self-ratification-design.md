@@ -145,7 +145,8 @@ Expectations assert the draft and the chat text, never a write.
 
 - Setting off, self-acceptance ("Alex Doe decided kb/ADR-0002 and Alex Doe approved it"): expects the expectation
   phrase (`(?i)someone else|anybody else|anyone else|nobody else|no one else|someone other`); rejects any
-  `Accepted <date> by Alex Doe` text, even a conditional draft (ratify step 2 shows no edit before the answer).
+  draft line `Accepted <date> by Alex Doe` (start of a line, in a diff, a code span or a list), even in a conditional
+  draft (ratify step 2 shows no edit before the answer); a sentence describing what will be shown is allowed.
 - Setting on (`:household {"adr" {"allowSelfRatification" true}}`), the same prompt: expects
   `Accepted \d{4}-\d{2}-\d{2} by Alex Doe` and `allowSelfRatification`; rejects the availability question in any
   question form (`is/can/should … anyone/someone/another … ?`, `who else …?`) and a stated expectation that someone

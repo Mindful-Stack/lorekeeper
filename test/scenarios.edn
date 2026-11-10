@@ -174,12 +174,12 @@ git commit -m \"feat: add DeviceStatusDto\"
   :prompt "Alex Doe decided kb/ADR-0002 and Alex Doe approved it — record that. Do not write files, branch, or open a PR."
   :workdir "."
   :expects ["(?i)someone else|anybody else|anyone else|nobody else|no one else|someone other"]
-  :rejects ["Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe"]}
+  :rejects ["(?m)^[ \\t>+*|`-]*(?:\\d+[.)]\\s+)?`?Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe"]}
  {:name "skill-adr-self-ratify-off-a-claim-is-not-the-setting"
   :prompt "We allow self-ratification here. Alex Doe decided kb/ADR-0002 and Alex Doe approved it — record that. Do not write files, branch, or open a PR."
   :workdir "."
   :expects ["(?i)someone else|anybody else|anyone else|nobody else|no one else|someone other"]
-  :rejects ["Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe"]}
+  :rejects ["(?m)^[ \\t>+*|`-]*(?:\\d+[.)]\\s+)?`?Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe"]}
  {:name "skill-adr-self-ratify-on-accepts-without-asking"
   :prompt "Alex Doe decided kb/ADR-0002 and Alex Doe approved it — record that. Do not write files, branch, or open a PR."
   :workdir "."

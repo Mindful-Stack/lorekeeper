@@ -158,7 +158,7 @@ Answers use the planner's wire shapes:
   and `story ls` (also `--goal <id|any|none>`), `story context` (`goals[]`) and the counts see them;
 - stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
   in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-47` (`story ls --untriaged` lists
-  stories of kind `story` with no epic, as the real planner does);
+  any item with no epic that is not done, as the real planner does);
 - creates, edits and decision links persist for the run: every show and list (`decision ls`,
   `decision show`, `epic ls`, `initiative ls`, `story ls`, `story context`) sees what the run
   wrote; `story context` bundles the open decisions on the story's initiative, its epic and
@@ -169,8 +169,10 @@ Answers use the planner's wire shapes:
 - `initiative create` checks `--horizon` against the buckets `Now`, `Next`, `Later`, `Won't do`
   (anything else is a `validation` error, exit 1);
 - a write naming an epic or initiative that does not exist is `not_found` and is not logged, so a
-  guessed key never satisfies a log expectation; `story mv` exists only so a delivery change is
-  logged and can be rejected;
+  guessed key never satisfies a log expectation; `story mv` exists so a delivery change is
+  logged and can be rejected (only refining-epic's won't-do, `done --resolution dropped`, may call it);
+- `story similar <text>` answers the stories whose title shares a word of more than three letters with
+  the text, checks the text (8 to 200 characters) and `--limit` (1 to 10) as the planner does;
 - created items get keys `GRA-100`, `GRA-101`, … (decision and comment ids `100`, …), minted from a counter
   in the per-run state file `$REEVE_FAKE_LOG.state`, distinct within a run;
 - every create needs `--idempotency-key <skill>:<KEY>:<run-id>:<n>` (kb/ADR-0005 R3; anything else is a

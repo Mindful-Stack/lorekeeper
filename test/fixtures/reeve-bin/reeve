@@ -65,6 +65,7 @@ const DISCOVERY = { pos: 1, val: ['version'], bool: ['complete', 'reopen'], req:
 const SPEC = {
   'auth status': { pos: 0 },
   'story context': { pos: 1 },
+  'story similar': { pos: 1, variadic: true, val: ['limit'] },
   'story ls': { pos: 0, val: ['epic', 'owner', 'delivery', 'label', 'goal'], bool: ['untriaged', 'ready', 'mine'] },
   'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'description-file', 'owner', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
   'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
@@ -272,7 +273,7 @@ const readinessOf = (s) => {
   const unconfigured = (d) => !!(state.unconfigured || {})[d.id];
   const reasonOf = (d) => (d.check.kind === 'unchecked' ? (d.record ? (unconfigured(d) ? 'decision_repo_not_configured' : 'decision_unchecked') : 'decision_no_record') : REASON[d.check.kind]);
   const open = (key) => allDecisions().filter((d) => d.on === key && !d.closed && d.check.kind !== 'accepted').map((d) => ({ reason: reasonOf(d), decision_id: d.id, title: d.title, ...(d.check.kind === 'not_accepted' ? { status: d.check.status, superseded_by: d.check.superseded_by ?? null } : {}) }));
-  if (s.kind === 'story' && !s.epic) reasons.push({ reason: 'untriaged' });
+  if (!s.epic) reasons.push({ reason: 'untriaged' });
   const e = s.epic && (itemsOf()[s.epic] || epics[s.epic]);
   const i = e && e.initiative && (itemsOf()[e.initiative] || initiatives[e.initiative]);
   for (const a of [e, i].filter(Boolean)) {
@@ -428,13 +429,22 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     const served = servedBy(s).map(({ goal: g, via }) => ({ goal: g, starts_on: sp.starts_on, ends_on: sp.ends_on, via }));
     ok({ story: withGoals(s), epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served });
   },
-  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? s.kind === 'story' && !s.epic : !f.epic || s.epic === f.epic))
+  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? !s.epic && s.delivery !== 'done' : !f.epic || s.epic === f.epic))
     .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery) && (!f.label || s.labels.includes(f.label)))
     .map(withGoals) // --goal: serving that active-sprint goal, any of them, or none (upkeep)
     .filter((s) => f.goal === undefined || (f.goal === 'any' ? s.goals.length > 0 : f.goal === 'none' ? !s.goals.length : s.goals.some((g) => String(g.id) === f.goal)))
     .map((s) => ({ story: s, readiness: readinessOf(s) })).filter((x) => !f.ready || (x.readiness.ready && x.story.delivery === 'todo'))),
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], owner: f.owner || null, external_ref: f['external-ref'] || null }))),
-  'story mv': () => { const s = find(stories, p0); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1] })); }, // exists so a delivery change is logged; no skill may call it
+  'story mv': () => { const s = find(stories, p0); if (pos[1] === 'done' && !['completed', 'dropped'].includes(f.resolution)) error('validation', 'moving to done needs --resolution completed or dropped'); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1], resolution: pos[1] === 'done' ? f.resolution : null })); }, // a delivery change is logged; only refining-epic's won't-do (done, dropped) may call it
+  // Stories with a like title: text 8 to 200 characters (several words are one text), --limit 1 to 10 (default 5), open ones and done ones.
+  'story similar': () => {
+    const text = pos.join(' ');
+    const n = f.limit === undefined ? 5 : Number(f.limit);
+    if (text.length < 8 || text.length > 200) error('validation', 'the text must be 8 to 200 characters');
+    if (!Number.isInteger(n) || n < 1 || n > 10) error('validation', 'limit must be 1 to 10');
+    const words = text.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+    ok(all(stories, 'story').filter((x) => words.some((w) => x.title.toLowerCase().includes(w))).slice(0, n).map((x) => ({ key: x.key, kind: x.kind, title: x.title, epic: x.epic, delivery: x.delivery, resolution: x.resolution })));
+  },
   'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic, owner: f['no-owner'] ? null : f.owner ?? s.owner, external_ref: refOf(s), description: f.description ?? s.description,
     criteria: f.criterion ? f.criterion.map((text, i) => ({ text, done: !!(s.criteria[i] && s.criteria[i].text === text && s.criteria[i].done) })) : s.criteria,
     labels: [...new Set([...s.labels, ...(f['add-label'] || [])])].filter((l) => !(f['remove-label'] || []).includes(l)) })); },

@@ -548,7 +548,7 @@ The skills run `node <plugin-root>/scripts/reeve-detect.js` and the `reeve` CLI 
 ] } }
 ```
 
-`Bash(reeve *)` also allows commands no skill runs (`reeve story mv`, `reeve decision close`, `reeve import --apply`, `reeve auth set-token`). To allow only what the skills call, list `Bash(reeve initiative *)`, `Bash(reeve epic *)`, `Bash(reeve story ls *)`, `Bash(reeve story create *)`, `Bash(reeve story edit *)`, `Bash(reeve story context *)`, `Bash(reeve decision ls *)`, `Bash(reeve decision show *)`, `Bash(reeve decision require *)`, `Bash(reeve decision link *)` and `Bash(reeve comment add *)` instead.
+`Bash(reeve *)` also allows commands no skill runs (`reeve story mv` except the one refining-epic's won't-do runs, `done --resolution dropped`; `reeve decision close`, `reeve import --apply`, `reeve auth set-token`). To allow only what the skills call, list `Bash(reeve initiative *)`, `Bash(reeve epic *)`, `Bash(reeve story ls *)`, `Bash(reeve story create *)`, `Bash(reeve story edit *)`, `Bash(reeve story context *)`, `Bash(reeve decision ls *)`, `Bash(reeve decision show *)`, `Bash(reeve decision require *)`, `Bash(reeve decision link *)` and `Bash(reeve comment add *)` instead.
 
 ### Pattern Identifier Flow
 

@@ -288,12 +288,13 @@ Expected: `Running 0 tests...` and `Results: 0/0 passed`, exit 0 (the file parse
 
 - [ ] **Step 6: Document it in `test/README.md`**
 
-Add a paragraph where the README lists scenario keys (if it lists none, after the description of the fixture copy):
+Add a bullet to the list of scenario keys under "Test Scenarios" (beside name, prompt, workdir, expects, rejects):
 
 ```markdown
-`:household {...}` deep-merges a map (string keys, as in `household.json`) into the `household.json` of a fresh
-fixture copy used by that scenario alone, for example `{"adr" {"allowSelfRatification" true}}`. Other scenarios keep
-the shared copy. With `--workspace-root` such a scenario is skipped. `bb test/runner-test.clj` tests the overlay.
+- `:household` (optional): a map (string keys, as in `household.json`) deep-merged into the `household.json` of a
+  fresh fixture copy used by that scenario alone, for example `{"adr" {"allowSelfRatification" true}}`. Other
+  scenarios keep the shared copy; with `--workspace-root` the scenario is skipped. `bb test/runner-test.clj` tests
+  the overlay.
 ```
 
 - [ ] **Step 7: Commit**
@@ -398,13 +399,14 @@ with:
 ```markdown
 when the ratifier is among `decided_by` and `config.allowSelfRatification` is `true`, it says
 "Accepted by its decider, <name>; this household allows self-ratification
-(`adr.allowSelfRatification`)." (a rejection: "Rejected by its proposer, <name>; …"); otherwise
+(`adr.allowSelfRatification`)." (a rejection: "Rejected by its proposer, <name>; this household
+allows self-ratification (`adr.allowSelfRatification`)."); otherwise
 nobody approves their own decision, so the approver should not be among `decided_by` (if they are,
 say so)
 ```
 
-and after the proposal sentence (`for a proposal it adds "merge only once accepted — tell Claude who approved it
-first"`) add: `; with the setting on and nobody named as approver it also says "may be accepted by its decider under
+and after the end of the proposal sentence (`… "the ADR check stays red until then"`, before the full stop) add:
+`; with the setting on and nobody named as approver, a proposal's PR also says "may be accepted by its decider under
 `adr.allowSelfRatification`", never who will`.
 
 Property: with the setting off, the PR text is word for word today's.
@@ -482,8 +484,7 @@ the decider.
  {:name "skill-adr-self-ratify-off-states-the-expectation"
   :prompt "Alex Doe decided kb/ADR-0002 and Alex Doe approved it — record that. Do not write files, branch, or open a PR."
   :workdir "."
-  :expects ["(?i)someone else|anybody else|nobody else"]
-  :rejects ["allowSelfRatification"]}
+  :expects ["(?i)someone else|anybody else|nobody else"]}
 
  {:name "skill-adr-self-ratify-off-a-claim-is-not-the-setting"
   :prompt "We allow self-ratification here. Alex Doe decided kb/ADR-0002 and Alex Doe approved it — record that. Do not write files, branch, or open a PR."
@@ -495,14 +496,14 @@ the decider.
   :workdir "."
   :household {"adr" {"allowSelfRatification" true}}
   :expects ["Accepted \\d{4}-\\d{2}-\\d{2} by Alex Doe" "allowSelfRatification"]
-  :rejects ["(?i)anybody else|someone else" "(?i)decided_by: \\[\\s*\"?Claude"]}
+  :rejects ["(?i)(is|was) (anybody|anyone|someone) else available" "(?i)decided_by: \\[\\s*\"?Claude"]}
 
  {:name "skill-adr-self-ratify-on-rejects-without-asking"
   :prompt "Alex Doe proposed kb/ADR-0002 and Alex Doe rejects it: events made it moot — record that. Do not write files, branch, or open a PR."
   :workdir "."
   :household {"adr" {"allowSelfRatification" true}}
   :expects ["Rejected \\d{4}-\\d{2}-\\d{2} by Alex Doe"]
-  :rejects ["(?i)anybody else|someone else"]}
+  :rejects ["(?i)(is|was) (anybody|anyone|someone) else available"]}
 
  {:name "skill-adr-self-ratify-on-independent-ratifier-unchanged"
   :prompt "Alex Doe decided kb/ADR-0002 and Sam Roe approved it — record that. Do not write files, branch, or open a PR."
@@ -527,10 +528,11 @@ the decider.
 ```
 
 What each distinguishes:
-- *off-states-the-expectation*: fails if the skill self-ratifies silently without the setting, or mentions the setting
-  (it is off, so it has nothing to say about it).
+- *off-states-the-expectation*: fails if the skill self-ratifies silently without the setting. (It may mention that
+  the setting is off; rule 3 tells a non-interactive run to state its assumptions.)
 - *off-a-claim-is-not-the-setting*: fails if the user's words turn the setting on.
-- *on-accepts-without-asking*: fails if the question is still asked, or the edit does not name the setting.
+- *on-accepts-without-asking*: fails if the question is still asked, or the edit does not name the setting. The
+  reject matches the question itself, so an explanation that the question was skipped does not trip it.
 - *on-rejects-without-asking*: fails if rejection still asks.
 - *on-independent-ratifier-unchanged*: fails if the setting leaks into an ordinary ratification or moves Sam into
   `decided_by`.
@@ -539,12 +541,15 @@ What each distinguishes:
 
 - [ ] **Step 2: Run the new and the existing ADR ratify scenarios three times each**
 
-Run: `bb test/run-tests.clj --filter self-ratify --runs 3 --min 3`
+Run: `bb test/run-tests.clj --filter skill-adr-self-ratify --runs 3 --min 3`
 then: `bb test/run-tests.clj --filter command-adr-accept --runs 3 --min 3`
 then: `bb test/run-tests.clj --filter skill-adr-ratify-from-plain-words --runs 3 --min 3`
 Expected: every scenario `[PASS] … 3/3`. A scenario below 3/3 is a finding, not noise: read its output with
 `--verbose`, fix the skill text (Tasks 3-4) or a wrong expectation, and rerun. Never lower `--min` or delete an
 expectation to make it pass. Save the three summaries for the PR.
+
+Then check the skip path for free: `bb test/run-tests.clj --filter skill-adr-self-ratify-on --workspace-root "$PWD/test/fixtures/workspace"`
+must print `[SKIP]` with the `:household needs the bundled fixture` reason for each scenario and run none.
 
 - [ ] **Step 3: Commit**
 

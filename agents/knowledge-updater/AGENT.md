@@ -94,7 +94,7 @@ wants to ride along on their branch. From the homes JSON: `<repo>` is the home's
 the home is not checked out: stop and say so. A `null` `<default>`: stop and ask the caller which
 branch to base on. `config.allowSelfRatification` also comes from the homes JSON, read here and
 never taken from the caller's words; the caller's note that the ratifier is among `decided_by` is
-checked against `decided_by`.
+checked against `decided_by`, and `decided_by` decides.
 
 **Identity.** `NNNN-<problem-slug>.md`, numbered per home by the caller; `id` is `kb/ADR-NNNN` or
 `<repo>/ADR-NNNN`. Never renumber a record on the default branch; a draft in an unmerged PR may be
@@ -206,16 +206,16 @@ Warnings are reported, not blocking.
 The PR body also carries a `## Decisions` section in the format of the plugin's
 `references/pr-decisions.md`: `Adds: <id>` for a new record, or `Accepts: <id>` for a ratification.
 The PR body names who took the decision (`decided_by`) and the approver (the ratifier) or who
-should approve; when the ratifier is among `decided_by` and `config.allowSelfRatification` is
-`true`, it says "Accepted by its decider, <name>; this household allows self-ratification
+should approve. When the ratifier is among `decided_by` and `config.allowSelfRatification` is
+`true`, the PR says "Accepted by its decider, <name>; this household allows self-ratification
 (`adr.allowSelfRatification`)." (a rejection: "Rejected by its proposer, <name>; this household
-allows self-ratification (`adr.allowSelfRatification`)."); otherwise
-nobody approves their own decision, so the approver should not be among `decided_by` (if they are,
-say so); for a high-tier record it adds "please have the area owners
-review"; for a proposal it adds "merge only once accepted — tell Claude who approved it first",
-and in the shared home or on a ride-along "the ADR check stays red until then"; with the setting on and nobody named as approver, a
-proposal's PR also says "may be accepted by its decider under `adr.allowSelfRatification`", never
-who will. With no new PR
+allows self-ratification (`adr.allowSelfRatification`)."). With the setting off, nobody approves
+their own decision, so the approver should not be among `decided_by` (if they are, say so). For a
+high-tier record it adds "please have the area owners review"; for a proposal it adds "merge only
+once accepted — tell Claude who approved it first", and in the shared home or on a ride-along "the
+ADR check stays red until then". With the setting on and nobody named to ratify, a proposal's PR
+also says "may be accepted by its decider under `adr.allowSelfRatification`", never who will.
+With no new PR
 (`pr-branch`, ride-along), return that text for the user's PR description.
 
 **Report** where the change landed, in words and with its link: "opened PR <url> on

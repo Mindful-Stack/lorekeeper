@@ -173,6 +173,42 @@ test('story ls --untriaged lists any item with no epic that is not done, as the 
   assert.ok(!keys().includes('GRA-46'), 'a done item is not untriaged');
   assert.equal(call(['story', 'mv', 'GRA-47', 'done', '--json']).code, 'validation');
 });
+test('story ls filters by text, kind, initiative, urgency and openness, and sorts by relevance, as the planner does (kb/ADR-0021)', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => {
+    const r = spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } });
+    return { status: r.status, stderr: r.stderr, ...(r.stdout.trim().startsWith('{') ? JSON.parse(r.stdout) : {}) };
+  };
+  const keys = (...flags) => call(['story', 'ls', ...flags, '--json']).value.map((x) => x.story.key);
+  // text: title, description or external reference, any case; a key-shaped text also names that key
+  assert.deepEqual(keys('--text', 'MATCH'), ['GRA-31', 'GRA-32', 'GRA-40', 'GRA-42', 'GRA-45', 'GRA-46']);
+  assert.deepEqual(keys('--text', '  queue '), ['GRA-41', 'GRA-42'], 'the text is trimmed');
+  assert.deepEqual(keys('--text', '44'), ['GRA-44']);
+  assert.deepEqual(keys('--text', '#44'), ['GRA-44']);
+  assert.deepEqual(keys('--text', 'gra-44'), ['GRA-44']);
+  call(['story', 'edit', 'GRA-47', '--version', '1', '--external-ref', 'PIB-9', '--description', 'Mentees asked for it in the match survey', '--json']);
+  assert.ok(keys('--text', 'pib-9').includes('GRA-47'));
+  assert.ok(keys('--text', 'survey').includes('GRA-47'), 'the description matches too');
+  // relevance: the named key, then the equal external reference, then title matches, then the rest
+  call(['story', 'edit', 'GRA-41', '--version', '1', '--external-ref', 'match', '--json']);
+  assert.deepEqual(keys('--text', 'match', '--sort', 'relevance'), ['GRA-41', 'GRA-31', 'GRA-32', 'GRA-40', 'GRA-42', 'GRA-45', 'GRA-46', 'GRA-47']);
+  assert.deepEqual(keys('--text', 'match', '--sort', 'rank'), ['GRA-31', 'GRA-32', 'GRA-40', 'GRA-41', 'GRA-42', 'GRA-45', 'GRA-46', 'GRA-47']);
+  assert.equal(call(['story', 'ls', '--sort', 'relevance', '--json']).code, 'validation');
+  assert.equal(call(['story', 'ls', '--text', ' ', '--json']).code, 'validation');
+  assert.equal(call(['story', 'ls', '--text', 'x'.repeat(201), '--json']).code, 'validation');
+  assert.equal(call(['story', 'ls', '--sort', 'newest', '--json']).status, 1, 'an unknown sort is a usage error');
+  // kind, initiative (through its epics; a ref naming nothing lists nothing), urgent, open
+  call(['story', 'edit', 'GRA-32', '--version', '1', '--kind', 'bug', '--json']);
+  assert.deepEqual(keys('--kind', 'bug'), ['GRA-32']);
+  assert.deepEqual(keys('--initiative', 'GRA-12'), ['GRA-31', 'GRA-32']);
+  assert.deepEqual(keys('--initiative', 'GRA-13'), []);
+  assert.deepEqual(keys('--initiative', 'GRA-999'), []);
+  assert.deepEqual(keys('--urgent'), ['GRA-40']);
+  call(['story', 'mv', 'GRA-46', 'done', '--resolution', 'dropped', '--json']);
+  assert.ok(keys().includes('GRA-46'));
+  assert.ok(!keys('--open').includes('GRA-46'), '--open leaves done stories out');
+  assert.deepEqual(keys('--open', '--text', 'match', '--kind', 'bug', '--initiative', 'GRA-12'), ['GRA-32'], 'the filters combine');
+});
 test('story similar lists stories with a like title and checks its arguments', () => {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
   const call = (args) => JSON.parse(spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } }).stdout);

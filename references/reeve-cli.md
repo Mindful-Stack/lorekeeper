@@ -35,6 +35,10 @@ null: a row from `--promised` whose `story.promise` is null means the filter was
 and go on without promises.
 `attachments` in story context and `reeve attachment get` need `reeve-planner` 0.6.0 or later; an
 older CLI's story context has no `attachments`, and an older server lists none (`attachments` is empty).
+`blocked_by`'s `delivery` and `owner`, and owner-scoped blocking (kb/ADR-0027), need `reeve-planner`
+0.7.0 or later and a planner running it: an older CLI drops the two fields from its output, and an
+older planner judges every unfinished blocker as blocking. Without `delivery`, word the reason as
+*Wording the planner's answers* says and go on.
 
 ## Arguments
 
@@ -137,7 +141,7 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 | `reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json` | `value[]`, `.finding`; empty when there are none (see *Findings*) |
 | `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version`. Untriaged: an item of any kind with no epic that is not done (kb/ADR-0018); it is not ready until placed or closed |
 | `reeve story similar <text> [--limit <n>] --json` | `value[]`: `{key, kind, title, epic, delivery, resolution}`, open stories and recently done ones with a like title (the text is 8 to 200 characters, the limit 1 to 10 with default 5; otherwise a validation error, exit 1); run it before filing or placing an item, to catch a duplicate |
-| `reeve story mv <KEY> <delivery> [--version <n>] [--resolution completed\|dropped] --json` | `value.delivery`, `.resolution`; moving to done needs a resolution; --override is a person's (interactive tokens only), never passed by a skill. Skills use it only to close an item as dropped (a won't-do or duplicate); delivery is otherwise the person's or a pull request's |
+| `reeve story mv <KEY> <delivery> [--version <n>] [--resolution completed\|dropped] --json` | `value.delivery` (todo, in_progress, in_review, testing or done), `.resolution`, `.owner`; moving to done needs a resolution; --override is a person's (interactive tokens only), never passed by a skill. Skills move a story at the moments of work (*Moving stories*) and to close an item as dropped (a won't-do or duplicate) |
 | `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] [--owner <email>] --idempotency-key <key> --json` | `value.key`; an owner who is not an allowed user is a `validation` error |
 | `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] [--owner <email>] --json` | `value.version`; an owner who is not an allowed user is a `validation` error |
 | `reeve apply <plan file> --json` | `value.items[]`: `name`, `item`, `key`, `created`; `value.decisions[]`: `name`, `id`, `created`; `value.blocks[]`: `story`, `blocked_by`, `created` (see *Plans*) |
@@ -185,6 +189,65 @@ being numbered rather than keyed, takes `--decision <id>`. `--story <KEY>` is an
 
 No command lists the planner's configured repositories or horizon buckets (they are in
 `GET /api/v1/config`, which the CLI does not expose): ask for them, or take them from the request.
+
+## Moving stories
+
+A story moves when its work happens, by its owner or the agent working for them (kb/ADR-0028). A
+skill moves it because it just did the work the move records; nothing moves a story from a pull
+request's status on its own (kb/ADR-0002 R4).
+
+| Moment | Command |
+|---|---|
+| Work on a story starts | `reeve story mv <KEY> in-progress --json` |
+| The pull request that completes it is ready for review (opened as ready, or marked ready) | `reeve story mv <KEY> in-review --json`, for each key in its `## Stories` |
+| That pull request merges into the default branch | `reeve story mv <KEY> testing --json`, for each key in its `## Stories` |
+| Its acceptance criteria are verified on the merged code | `reeve story mv <KEY> done --resolution completed --json`; failed: `reeve story mv <KEY> in-progress --json` |
+
+Use the planner only when the detector (*Detection*) printed `present` and `signed_in`; its `email`
+is the signed-in user. Without them, make no moves and say nothing about them (kb/ADR-0005 R1).
+
+**Read before moving.** `reeve story context <KEY> --json` gives `value.story.delivery` and
+`.owner`. Order: `todo`, `in_progress`, `in_review`, `testing`, `done`. A story already at or past
+the target is left where it is and reported as "already <delivery>, left as it is"; so a repeated
+step (a resumed plan, a second advance) changes nothing. The one move back is a failed verification.
+
+**A story behind its moment** (in todo when its pull request merges, say): report it, then make the
+move. The planner gates entry into active work from todo, so this move can be refused like a start.
+
+**Someone else's story.** When `.owner` is set and differs from the detector's `email`, do not start
+it unless the owner has agreed: ask the user "GRA-596 is owned by mia@…: has mia agreed that you
+start it?" and go on only on a yes. Never reassign it (`--owner`) unless the user says to. An
+unowned story becomes the mover's when it starts; never pass `--owner` for that.
+
+**Refused** (exit 2, `outcome: refused`): stop work on that story. Report each reason in the
+*Wording the planner's answers* table's words and, for a person, the override they could run themselves:
+`reeve story mv <KEY> <delivery> --override '<reason>'`. A skill never passes `--override` and never
+works around a refusal (for example by starting another story that builds on the same code). A
+blocker in progress or in review owned by the signed-in user does not block that user's own
+dependents; one owned by someone else does until it merges. A list judges an unowned dependent
+without a mover, so it can read blocked while its blocker's owner may still start it: the move is
+the test, not a readiness check beforehand. Assigning a run of stories to one owner when it is
+refined keeps them visible as ready to that owner.
+
+**Version conflict** (`code: conflict`): read the story again and retry once.
+
+### A pull request's `## Stories`
+
+Whoever opens a pull request writes the section: exactly the stories whose implementation merging
+it completes, one per line, or `No stories.`
+
+```markdown
+## Stories
+- GRA-596
+- GRA-597
+```
+
+A pull request that does part of a story's work does not list it; the story stays in progress until
+the pull request that completes it. A missing or empty section moves nothing: ask the person which
+stories it completes and write the section first. The branch shows which story a pull request
+belongs to, not that it completes it. Branches keep their type prefix and start the last segment
+with the main story's key in lower case (`feat/gra-596-new-structure-shell`), so the planner shows
+the pull request on that story.
 
 ## Other flags
 
@@ -527,7 +590,7 @@ is never open, whatever its record; skills that list open decisions use this def
 | `decision_record_not_found` | decision: record not found — #<decision_id> <title> |
 | `decision_repo_not_configured` | decision: record in an unchecked repository — #<decision_id> <title> (the record is in a repository the planner does not check yet; it is checked once that repository is configured) |
 | `decision_not_accepted` | decision: record <status> — #<decision_id> <title>; with `superseded_by`: decision: record superseded by <superseded_by>, re-point — #<decision_id> <title> |
-| `blocked_by` | blocked by <story> |
+| `blocked_by` | in a list: blocked by <story> (<delivery>); in full: blocked by <story>: todo, not yet started by anyone (todo, no `owner`) / blocked by <story>: todo, owned by <owner> / blocked by <story>: <delivery>, owned by <owner>; it unblocks when merged, or ask its owner / blocked by <story>: <delivery>, no owner; it unblocks when merged. <delivery> is written with a space (`in_review` → in review). Without `delivery` (an older planner): blocked by <story> |
 
 Any other `reason` is a delivery rule; show it verbatim. A story is "ready" when `readiness.ready`
 is true, else "blocked: " and its reasons in these words.

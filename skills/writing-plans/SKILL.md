@@ -139,7 +139,7 @@ record first.
 ````markdown
 ### Task N: [Component Name]
 
-**Story:** GRA-596  ← only when the spec or request names Reeve planner story keys (not other trackers' keys)
+**Story:** GRA-596  ← only when the planner is present (the detector) and the spec or request names Reeve story keys (not other trackers' keys)
 
 **Files:**
 - Create: `exact/path/to/file.py`
@@ -179,7 +179,7 @@ git commit -m "feat: add specific feature"
 ```
 ````
 
-When the spec or the request names Reeve planner story keys (not other trackers' keys), each task that implements one names it in a
+When the planner is present (`node <plugin-root>/scripts/reeve-detect.js`) and the spec or the request names Reeve story keys (not other trackers' keys), each task that implements one names it in a
 `**Story:**` line, and tasks keep the stories' dependency order (a blocker's task first). Executing
 the plan moves each story when its task starts (`<plugin-root>/references/reeve-cli.md`, *Moving
 stories*).

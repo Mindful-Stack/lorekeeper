@@ -541,7 +541,7 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     const to = pos[1].replace('-', '_'); // the CLI argument is kebab, the stored delivery snake_case like the planner's
     // Only REEVE_FAKE_BLOCKED refuses: seeded stories are often not ready (untriaged), and scenarios start them.
     if (process.env.REEVE_FAKE_BLOCKED === s.key && active(to) && !active(s.delivery))
-      emit({ outcome: 'refused', reasons: readinessOf(s).reasons }, 2);
+      emit({ outcome: 'refused', overridable: true, reasons: readinessOf(s).reasons }, 2);
     if (to === 'done' && !['completed', 'dropped'].includes(f.resolution)) error('validation', 'moving to done needs --resolution completed or dropped');
     const owner = s.owner ?? (active(to) ? 'dan@example.com' : null); // the planner's rule; dan is auth status's email
     ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: to, resolution: to === 'done' ? f.resolution : null, owner }));

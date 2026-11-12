@@ -25,7 +25,9 @@ Before starting, create a feature branch from main. Never start implementation o
 ### Step 2: Execute Tasks
 
 For each task:
-1. Mark as in_progress. If the task has a `**Story:**` line, start that story first:
+1. Mark as in_progress. If the task has a `**Story:**` line and `node <plugin-root>/scripts/reeve-detect.js`
+   (once per run) prints `"present":true` and `"signed_in":true`, start that story first (without a
+   planner, skip the move and carry on):
    read it with `reeve story context <KEY> --json`, then `reeve story mv <KEY> in-progress --json`,
    as `<plugin-root>/references/reeve-cli.md` *Moving stories* says
 2. Follow each step exactly (plan has bite-sized steps)

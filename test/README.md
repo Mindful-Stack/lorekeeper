@@ -236,6 +236,12 @@ answer `{"outcome":"refused","reasons":[{"reason":"no_criteria"}]}` with exit 2,
 check that a skill shows the reasons and stops that step. `decision link` never reports
 `accepted`/`not_accepted`: its check is `not_found`, or `proposed_pr_open` when `--pr` is passed.
 
+`REEVE_FAKE_BLOCKED=<KEY>` makes `<KEY>` blocked by GRA-42, in review and owned by mia@example.com,
+in `story context` and `story mv` alike; `story mv` then refuses a start (exit 2, `overridable: true`)
+and every other story moves freely. `story mv` takes the CLI's kebab argument (`in-progress`) and
+stores snake_case `delivery` (`in_progress`) like the planner; a story with no owner gets the signed-in
+user as owner on entering an active state (in progress, in review, testing).
+
 `REEVE_FAKE_SIGNIN=expired` makes every call but `auth status` answer an `unauthenticated` error
 with exit 2, as the real CLI does for an expired or revoked token.
 

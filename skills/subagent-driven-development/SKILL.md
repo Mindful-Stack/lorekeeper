@@ -90,8 +90,10 @@ digraph process {
 exists from an earlier, compacted run, resume at the first task not recorded as
 complete rather than starting over.
 
-**Before dispatching a task's implementer**, if the task has a `**Story:**` line, start its story
-yourself, the controller: read it with `reeve story context <KEY> --json`, then
+**Before dispatching a task's implementer**, if the task has a `**Story:**` line and
+`node <plugin-root>/scripts/reeve-detect.js` (once per run) prints `"present":true` and
+`"signed_in":true`, start its story yourself, the controller (without a planner, skip the move and
+carry on): read it with `reeve story context <KEY> --json`, then
 `reeve story mv <KEY> in-progress --json`, as `<plugin-root>/references/reeve-cli.md` *Moving
 stories* says. On a refusal, stop the run and report the reasons to the developer; do not dispatch
 this task or later tasks that build on that story.

@@ -86,7 +86,7 @@ Given any PR of a sequence (or "where is the stack?"), render the entries in mer
 
 ## Stories
 
-When the planner is present (the detector) or the plan has `**Story:**` lines, each PR body carries a `## Stories` section: the stories that PR completes, or `No stories.`
+When the planner is present (the detector), each PR body carries a `## Stories` section: the stories that PR completes, or `No stories.`
 (`<plugin-root>/references/reeve-cli.md`, *A pull request's `## Stories`*). When the planner is
 present, moves follow that reference's *Moving stories*:
 

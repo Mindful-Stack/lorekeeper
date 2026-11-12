@@ -1,12 +1,13 @@
 ---
 name: delivering-stories
-description: Use when work starts on a Reeve planner story named by its key ("start GRA-596"), when a pull request naming a story key becomes ready for review or merges, or when a story's acceptance criteria were checked ("GRA-596 passed QA"). Moves the story at that moment. Not for planning or refining work.
+description: Use when work starts on a story named by its key in the Reeve planner ("start GRA-596"), when a pull request naming a story key becomes ready for review or merges, or when a story's acceptance criteria were checked ("GRA-596 passed QA"). Moves the story at that moment. Not for planning or refining work.
 ---
 
 # Delivering stories
 
-Announce: "Using the delivering-stories skill." Open the final report with the same sentence, since
-a non-interactive session shows only that.
+Run the detector first (step 1). Without the planner, stop silently (kb/ADR-0005 R1): no
+announcement, no report. With it, announce: "Using the delivering-stories skill." and open the final
+report with the same sentence, since a non-interactive session shows only that.
 
 A story moves when its work happens, by its owner or the agent working for them (kb/ADR-0028).
 `<plugin-root>` is the plugin's root directory, two levels above this skill's base directory (the
@@ -17,7 +18,7 @@ they hold the contract, and this skill does not repeat it.
 Do nothing here when a plan or stack run is already moving these stories.
 
 1. Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints `"present":true` and
-   `"signed_in":true`, stop and say nothing about the planner.
+   `"signed_in":true`, stop and say nothing about the planner (nor the skill).
 2. Find the moment and the stories:
    - work starts: the key the user named;
    - a pull request is ready for review or merged: the keys in its description's `## Stories`.

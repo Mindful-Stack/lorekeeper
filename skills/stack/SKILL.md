@@ -58,8 +58,8 @@ Terms: the **sequence** (full merge order) splits into **segments** (maximal sam
    Each PR body also carries its own `## Decisions` section in the format of
    `<plugin-root>/references/pr-decisions.md` (records followed or added, rule edits, or "No new
    decisions"), copied from the plan's *Governing decisions* when there is one — the `## Stack`
-   checklist coordinates merge order, it does not replace it. Each body also carries a `## Stories`
-   section (*Stories*).
+   checklist coordinates merge order, it does not replace it. With the planner present, each body also
+   carries a `## Stories` section (*Stories*).
 
    GitHub renders every reference with its live state, cross-repo included, so the badges stay current without maintenance — only the ordering is static text, and the ordering never changes. **The checklist is the gate:** merge strictly top to bottom (for a fan-out, root first, then the leaves in any order), and read the Stack section before merging, since each reference's badge shows whether its predecessors have landed. Each PR must be **independently deployable against the currently merged state of the others** — that is what makes a partially-merged stack safe.
 
@@ -86,7 +86,7 @@ Given any PR of a sequence (or "where is the stack?"), render the entries in mer
 
 ## Stories
 
-Each PR body carries a `## Stories` section: the stories that PR completes, or `No stories.`
+When the planner is present (the detector) or the plan has `**Story:**` lines, each PR body carries a `## Stories` section: the stories that PR completes, or `No stories.`
 (`<plugin-root>/references/reeve-cli.md`, *A pull request's `## Stories`*). When the planner is
 present, moves follow that reference's *Moving stories*:
 
@@ -98,10 +98,11 @@ present, moves follow that reference's *Moving stories*:
   A PR has landed in the default branch when its `state` is `MERGED` and its `baseRefName` is the
   default branch, or, in a native stack, when a PR above it in the same stack has landed that way
   (merging a PR lands every unmerged PR below it; GitHub may leave a lower PR's base on its
-  predecessor's branch). Move the stories of every landed PR to testing. A PR merged into another
-  branch with nothing above it landed has not reached the default branch. A story already in testing
-  or done is left as it is, so advancing twice changes nothing.
-- A PR without the section moves nothing: say so in the report.
+  predecessor's branch). Move the stories of every landed PR to testing, with *Moving stories*' rules
+  for a story already further along. A PR merged into another branch with nothing above it landed
+  has not reached the default branch.
+- A PR without the section: the reference's rule (ask which stories it completes, write the section
+  first).
 
 ## Rules
 

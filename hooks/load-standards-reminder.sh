@@ -52,7 +52,7 @@ reeve_version() {
     timeout -k 1 2 sh -c '"$0" --version </dev/null 2>/dev/null | head -n 1' "$bin" 2>/dev/null
 }
 case "$(reeve_version)" in
-    'reeve-planner' | 'reeve-planner '*) REEVE_ROUTER_ROWS='\n\n- PLANNING AN INITIATIVE in the Reeve planner, when the request names Reeve or an initiative key (\"plan initiative GRA-12\", discovery for it)\n  -> Use the planning-initiative skill\n\n- REFINING AN EPIC in the Reeve planner, when the request names Reeve or an epic key (stories with acceptance criteria for GRA-20, placing untriaged stories)\n  -> Use the refining-epic skill\n\n- DELIVERING A STORY in the Reeve planner: starting work on a story key, or a pull request naming one becoming ready, merging, or its criteria being checked\n  -> Use the delivering-stories skill' ;;
+    'reeve-planner' | 'reeve-planner '*) REEVE_ROUTER_ROWS='\n\n- PLANNING AN INITIATIVE in the Reeve planner, when the request names Reeve or an initiative key (\"plan initiative GRA-12\", discovery for it)\n  -> Use the planning-initiative skill\n\n- REFINING AN EPIC in the Reeve planner, when the request names Reeve or an epic key (stories with acceptance criteria for GRA-20, placing untriaged stories)\n  -> Use the refining-epic skill\n\n- DELIVERING A STORY in the Reeve planner: starting work on a story key, or a pull request naming one becoming ready, merging, or the criteria of a story being checked\n  -> Use the delivering-stories skill' ;;
 esac
 SKILL_ROUTER="${SKILL_ROUTER_HEAD}${REEVE_ROUTER_ROWS}${SKILL_ROUTER_TAIL}"
 

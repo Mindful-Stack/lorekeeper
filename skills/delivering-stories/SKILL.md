@@ -14,16 +14,21 @@ path shown when the skill loads); write it out as an absolute path. Read
 `<plugin-root>/references/reeve-cli.md`, *Detection and the binary* and *Moving stories*, first:
 they hold the contract, and this skill does not repeat it.
 
+Do nothing here when a plan or stack run is already moving these stories.
+
 1. Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints `"present":true` and
    `"signed_in":true`, stop and say nothing about the planner.
 2. Find the moment and the stories:
    - work starts: the key the user named;
    - a pull request is ready for review or merged: the keys in its description's `## Stories`.
      Use the description the user gave, else `gh pr view <n> --json body,isDraft,state,baseRefName`.
-     A draft is not ready; merged means `MERGED` into the default branch. A missing or empty
+     A draft is not ready; merged means `MERGED` into the default branch
+     (`gh repo view <owner/repo> --json defaultBranchRef`). A PR in a stack goes through the stack
+     skill's *advance* instead. A missing or empty
      section: ask which stories it completes and write the section (`gh pr edit`) once confirmed;
    - criteria checked: the key the user named, and whether the check passed.
 3. For each story, `reeve story context <KEY> --json`, then the move *Moving stories* gives for that
    moment, with its rules on stories further along, someone else's story, refusals and conflicts.
 4. Report one line per story: its key and from → to, or why it did not move, and for a refusal the
-   reasons in the reference's wording and the override a person could run.
+   reasons in the reference's wording, and the override a person could run only when the reference
+   says to show it (every reason overridable).

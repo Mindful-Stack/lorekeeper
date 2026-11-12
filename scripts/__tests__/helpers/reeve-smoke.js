@@ -334,9 +334,10 @@ function run(side, argv) {
 
 // The seed on both sides, then every entry in file order, then every refusal case. Returns one { row, problems } per
 // failed seed step, one { row, problems, ran } per entry and one per refusal case (its row `refusal: reeve <argv>`). `real` and `fake` are { bin, env }; `scope` holds the seed file's values and run_id; `out` (optional) receives
-// every answer as JSON. PROPERTY: each side binds from its own answers only, so the fake never runs on a planner key.
-function runSmoke({ fixture, real, fake, scope, expect = true, out }) {
-  const scopes = { real: { ...scope }, fake: { ...scope } };
+// every answer as JSON; `fakeScope` (optional) overrides seed values on the fake's side only, for a seed value that is a
+// planner key (`shot.story`). PROPERTY: each side binds from its own answers only, so the fake never runs on a planner key.
+function runSmoke({ fixture, real, fake, scope, fakeScope = {}, expect = true, out }) {
+  const scopes = { real: { ...scope }, fake: { ...scope, ...fakeScope } };
   const record = (name, data) => {
     if (!out) return;
     fs.mkdirSync(out, { recursive: true });

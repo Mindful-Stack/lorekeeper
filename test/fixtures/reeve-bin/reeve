@@ -20,12 +20,16 @@
 // `interactive_only`; goal link|unlink|suggest persist, and stories, story context and the active sprint's counts see them.
 // `story ls` filters as GET /stories does (kb/ADR-0021): --text, --kind, --initiative, --urgent (GRA-40 is seeded urgent),
 // --open and --sort relevance (needs --text, a validation error otherwise).
+// Attachments (Reeve CLI 0.6.0, kb/ADR-0022): one screenshot, on GRA-31; `story context` lists it in `attachments`, and
+// `attachment get <ID> --dir <dir>` (--dir required) creates <dir> (mode 0700)
+// and copies shot.png to `<dir>/<id>.png` (mode 0600).
 // Promises (kb/ADR-0025): GRA-41 carries its own promise, open and due this sprint, epic GRA-22 (migrated from PRM-1) one
 // due next sprint, and every other story and epic a `promise` of null; `story ls --promised` filters on the promise's state and period as GET /stories?promised= does.
 // `story promise` and `epic promise` are a person's commands: the fake stands for an agent's token, so they are refused
 // `interactive_only`, exit 2, after clap's checks (one of --on, --to, --clear; --clear alone; --on a shortcut or a date).
 'use strict';
 const fs = require('node:fs');
+const path = require('node:path');
 
 const argv = process.argv.slice(2);
 const log = process.env.REEVE_FAKE_LOG;
@@ -112,6 +116,7 @@ const SPEC = {
   'goal suggest': { pos: 2, max: 3 },
   'goal link': { pos: 2, variadic: true }, // <ID> <KEYS>...
   'goal unlink': { pos: 2, variadic: true },
+  'attachment get': { pos: 1, val: ['dir'], req: ['dir'] },
 };
 // A command is one word (`search`) or two (`story ls`).
 const cmd = SPEC[words[0]] ? words[0] : words.slice(0, 2).join(' ');
@@ -153,6 +158,8 @@ if (f.ends && !/^\d{4}-\d{2}-\d{2}$/.test(f.ends)) usage(`invalid value '${f.end
 // Sprint and goal ids are integers, a confidence one of three words and a verdict `<goal id>=<met|partly_met|missed>[:<note>]`:
 // clap's to check, so a malformed one is a usage error (exit 1) and reaches nothing.
 if ((cmd.startsWith('goal ') && cmd !== 'goal add') || (cmd === 'sprint show' && pos.length)) if (!/^\d+$/.test(pos[0])) usage(`invalid value '${pos[0]}' for '<ID>': invalid digit found in string`);
+// An attachment id is a UUID: clap's to check.
+if (cmd === 'attachment get' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pos[0])) usage(`invalid value '${pos[0]}' for '<ID>': invalid UUID`);
 if (['goal confidence', 'goal suggest'].includes(cmd) && !['on_track', 'at_risk', 'off_track'].includes(pos[1])) usage(`invalid value '${pos[1]}' for '<CONFIDENCE>'\n  [possible values: on_track, at_risk, off_track]`);
 for (const v of f.verdict || []) if (!/^\d+=(met|partly_met|missed)(:.*)?$/s.test(v)) usage(`invalid value '${v}' for '--verdict <VERDICTS>': \`${v}\`: expected <goal id>=<met|partly_met|missed>[:<note>]`);
 // The CLI spells reversibility one-way|two-way; the wire (and a plan) says one_way|two_way.
@@ -260,6 +267,11 @@ const refOf = (item) => {
 };
 const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`, { current: item.version }));
 const [p0] = pos;
+// The one screenshot (AttachmentDto), on GRA-31.
+const SHOT_ID = '0193a6a2-7b1c-7d2e-9f00-000000000031';
+const attachmentsOf = (s) => (s.key === 'GRA-31'
+  ? [{ id: SHOT_ID, url: `/api/v1/attachments/${SHOT_ID}`, filename: 'match-error.png', content_type: 'image/png', byte_size: fs.statSync(path.join(__dirname, 'shot.png')).size, uploaded_by: 'sam@example.com', uploaded_at: NOW, owner: { item: 'story', key: s.key } }]
+  : []);
 // Goals as last written in this run (links, suggestions), else as seeded; a sprint's goals in id order.
 const allGoals = () => Object.values({ ...goals, ...(state.goals || {}) }).sort((a, b) => a.id - b.id);
 const goalsOfSprint = (id) => allGoals().filter((g) => g.sprint_id === id);
@@ -505,7 +517,7 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
     const sp = activeSprint();
     const served = servedBy(s).map(({ goal: g, via }) => ({ goal: g, starts_on: sp.starts_on, ends_on: sp.ends_on, via }));
-    ok({ story: withGoals(withPromise(s)), epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served });
+    ok({ story: withGoals(withPromise(s)), epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served, attachments: attachmentsOf(s) });
   },
   'story ls': () => ok(all(stories, 'story').map(withPromise).filter((s) => (f.untriaged ? !s.epic && s.delivery !== 'done' : !f.epic || s.epic === f.epic))
     .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery) && (!f.label || s.labels.includes(f.label)))
@@ -714,4 +726,14 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     ok(thread(on));
   },
   'comment ls': () => ok(thread(target())),
+  // GET /attachments/{id}, written to <dir>/<id>.<ext> (the ext from the stored type); an unknown id is not_found.
+  'attachment get': () => {
+    if (p0.toLowerCase() !== SHOT_ID) error('not_found', `no attachment ${p0}`);
+    // --dir is required; the CLI creates it (recursively, mode 0700) and writes the image with mode 0600.
+    fs.mkdirSync(f.dir, { recursive: true, mode: 0o700 });
+    const file = path.join(f.dir, `${SHOT_ID}.png`);
+    fs.copyFileSync(path.join(__dirname, 'shot.png'), file);
+    fs.chmodSync(file, 0o600);
+    ok({ path: file });
+  },
 })[cmd]();

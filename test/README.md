@@ -168,6 +168,13 @@ Answers use the planner's wire shapes:
 - stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
   in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-47` (`story ls --untriaged` lists
   any item with no epic that is not done, as the real planner does);
+- attachments as in Reeve CLI 0.5.0: one screenshot, id `0193a6a2-7b1c-7d2e-9f00-000000000031`
+  (`match-error.png`), listed in `story context` (`attachments[]`) for GRA-31; every other story's
+  `attachments` is empty. `attachment get <ID> --dir <dir>` (`--dir` required; a missing one is a usage
+  error) creates `<dir>` (recursively, mode 0700) and copies `reeve-bin/shot.png` (1x1) to `<dir>/<ID>.png`
+  (mode 0600), answering `{path}`; an id that is not a UUID is a usage error, any other UUID `not_found`. The
+  `reeve-brainstorming-story-context` scenario expects the skill to fetch GRA-31's screenshot
+  (`attachment get … --dir …` in the log), which proves the skill text, not just the commands;
 - creates, edits and decision links persist for the run: every show and list (`decision ls`,
   `decision show`, `epic ls`, `initiative ls`, `story ls`, `story context`) sees what the run
   wrote; `story context` bundles the open decisions on the story's initiative, its epic and
@@ -211,9 +218,10 @@ row has exactly one entry, every command form of the row (`story ls --untriaged`
 --story`) exactly one run, and every field path in the row's Read column a read at or below it, or a
 reasoned `unread` waiver (a command or a Read added to the reference without a matching entry
 fails), and two mutation tests prove that check on the committed files; the seed, the entries and
-the refusals run against the fake on both sides; a copy of the fake with a field renamed is
-reported as the fake's to fix; a copy that lets `story promise` through is too; and every promise
-command in the reference's *Promises* table needs a refusal case. The eighth, the live test, runs
+the refusals run against the fake on both sides (the `story context` entry runs on the screenshot
+story `{{shot.story}}`, which the live run gives the fake as GRA-31 through `fakeScope`); a copy of
+the fake with a field renamed is reported as the fake's to fix; a copy that lets `story promise`
+through is too; and every promise command in the reference's *Promises* table needs a refusal case. The eighth, the live test, runs
 only when `REEVE_SMOKE_SEED` is set, which the Reeve repository's `mise run skill-smoke` does after
 starting a real server: it runs the detector, then the seed and every entry against the real CLI
 (`REEVE_REAL_BIN`, `REEVE_URL`, `REEVE_TOKEN`) and the fake side by side, and fails when a path is

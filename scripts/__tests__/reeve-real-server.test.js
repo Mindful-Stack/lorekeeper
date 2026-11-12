@@ -40,7 +40,7 @@ test("the real fixture fails coverage when its reads stop reaching the reference
   const f = clone();
   Object.assign(entryOf(f, '`reeve story context'), { reads: ['value.story'], types: { 'value.story': 'object' }, may_be_empty: [] });
   const dropped = s.coverageProblems(rows, f).filter((p) => /^`reeve story context .*the reference's Read names/.test(p));
-  assert.deepEqual(dropped.map((p) => p.match(/names (\S+),/)[1]), ['value.epic', 'value.initiative', 'value.required_decisions[]', 'value.blockers[]', 'value.comments[]', 'value.readiness', 'value.goals[]', 'value.goals[].goal', 'value.goals[].starts_on', 'value.goals[].ends_on', 'value.goals[].via']);
+  assert.deepEqual(dropped.map((p) => p.match(/names (\S+),/)[1]), ['value.epic', 'value.initiative', 'value.required_decisions[]', 'value.blockers[]', 'value.comments[]', 'value.readiness', 'value.goals[]', 'value.goals[].goal', 'value.goals[].starts_on', 'value.goals[].ends_on', 'value.goals[].via', 'value.attachments[]', 'value.attachments[].id', 'value.attachments[].owner.item', 'value.attachments[].filename']);
   const grow = (start, extra) => rows.map((x) => (x.row.startsWith(start) ? { ...x, read: `${x.read}, ${extra}` } : x));
   assert.deepEqual(s.coverageProblems(grow('`reeve story context', '`value.links[]`'), fixture),
     ["`reeve story context <KEY> --json`: the reference's Read names value.links[], which no read reaches (read it, or list it in unread with a reason)"]);
@@ -93,7 +93,7 @@ function smokeFiles(dir, { run_id, email }) {
   return { brief, plan };
 }
 function selfScope(dir) {
-  const scope = { run_id: crypto.randomBytes(4).toString('hex'), household: dir, email: 'dan@example.com', repo: 'kb', record: { id: 'kb/ADR-0001', path: 'adrs/0001-x.md' } };
+  const scope = { run_id: crypto.randomBytes(4).toString('hex'), household: dir, email: 'dan@example.com', repo: 'kb', record: { id: 'kb/ADR-0001', path: 'adrs/0001-x.md' }, shot: { story: 'GRA-31' } };
   return { ...scope, files: smokeFiles(dir, scope) };
 }
 
@@ -120,6 +120,7 @@ test("a person's command the fake lets through is reported as the fake's to fix"
   assert.equal(src.split(from).length, 2, 'the break must hit exactly the interactive_only list');
   const dir = tmp(t);
   const broken = path.join(dir, 'reeve');
+  fs.copyFileSync(path.join(path.dirname(FAKE), 'shot.png'), path.join(dir, 'shot.png'));
   fs.writeFileSync(broken, src.replace(from, "'goal confidence', 'epic promise']").replace("  'story ls': () => ok(", "  'story promise': () => ok(story('GRA-1', 'Promised')),\n  'story ls': () => ok("), { mode: 0o755 });
   const results = s.runSmoke({ fixture, real: fakeSide(FAKE, tmp(t)), fake: fakeSide(broken, tmp(t)), scope: selfScope(tmp(t)), expect: false });
   const refusals = results.filter((r) => r.row.startsWith('refusal: reeve story promise '));
@@ -153,6 +154,8 @@ test('every Commands row against a real planner, the fake answering in the same 
     real: { bin: process.env.REEVE_REAL_BIN, env: realEnv },
     fake: fakeSide(FAKE, tmp(t)),
     scope: { ...seed, run_id: detected.run_id, files: smokeFiles(tmp(t), { ...seed, run_id: detected.run_id }) },
+    // shot.story is a planner key: the fake reads its own screenshot story instead
+    fakeScope: { shot: { story: 'GRA-31' } },
     out: process.env.REEVE_SMOKE_OUT,
   });
   // not vacuous: every entry's runs all reached the real planner and got an envelope back

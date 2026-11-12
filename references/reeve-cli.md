@@ -33,6 +33,8 @@ queue read fails on a CLI older than 0.5.0, tell the user to update the CLI. An 
 ignores `--promised` and lists unfiltered, and sends no promises, so every row's `story.promise` is
 null: a row from `--promised` whose `story.promise` is null means the filter was ignored; say so,
 and go on without promises.
+`attachments` in story context and `reeve attachment get` need `reeve-planner` 0.6.0 or later; an
+older CLI's story context has no `attachments`, and an older server lists none (`attachments` is empty).
 
 ## Arguments
 
@@ -139,7 +141,8 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 | `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] [--owner <email>] --idempotency-key <key> --json` | `value.key`; an owner who is not an allowed user is a `validation` error |
 | `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] [--owner <email>] --json` | `value.version`; an owner who is not an allowed user is a `validation` error |
 | `reeve apply <plan file> --json` | `value.items[]`: `name`, `item`, `key`, `created`; `value.decisions[]`: `name`, `id`, `created`; `value.blocks[]`: `story`, `blocked_by`, `created` (see *Plans*) |
-| `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}`; `value.goals[]`: `{goal, starts_on, ends_on, via}`, the active sprint's goals the story serves (empty when none; see *Sprints and goals*) |
+| `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}`; `value.goals[]`: `{goal, starts_on, ends_on, via}`, the active sprint's goals the story serves (empty when none; see *Sprints and goals*); `value.attachments[]`: `id`, `owner.item` (story, epic or initiative), `filename`; the story's screenshots (its comments' included), then its epic's and initiative's (empty when none) |
+| `reeve attachment get <ID> --dir <dir> --json` | `value.path`, the downloaded image (named by the id with a png, jpg or webp extension, in the --dir directory, which is created if missing) |
 | `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `on`, `on_type` (initiative, epic or story: the level of the item it is on), `title`, `decider`, `due`, `reversibility` (one_way or two_way; null = unclassified, treated as two-way), `record` (null = no record), `pr_url`, `check.kind`, `closed` (null, or `{at, by, reason, kind, via}`); closed decisions are listed too |
 | `reeve decision show <id> --json` | `value`: one decision, the same fields |
 | `reeve decision ls --initiative <KEY> --json` | `value[]`: `id`, `on`, `on_type`, `title`, `decider`, `reversibility`, `record` (null = no record), `check.kind`, `closed` (null = not closed); every decision on the initiative, on its epics and on their stories, closed ones too |

@@ -677,3 +677,25 @@ test('goal suggest fills the suggestion, never the confidence, on the active spr
     assert.deepEqual([r.status, r.reasons], [2, [{ reason: 'sprint_closed' }]], args.join(' '));
   }
 });
+test('story context lists the screenshot on GRA-31; attachment get needs --dir, creates it and downloads there', () => {
+  const ID = '0193a6a2-7b1c-7d2e-9f00-000000000031';
+  const ctx = run(['story', 'context', 'GRA-31', '--json']).envelope.value;
+  assert.deepEqual(ctx.attachments.map((a) => [a.id, a.owner.item, a.owner.key, a.content_type]), [[ID, 'story', 'GRA-31', 'image/png']]);
+  assert.deepEqual(run(['story', 'context', 'GRA-32', '--json']).envelope.value.attachments, []);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-'));
+  const nested = path.join(dir, 'a', 'b');
+  const got = run(['attachment', 'get', ID, '--dir', nested, '--json']);
+  assert.deepEqual([got.status, got.envelope.value.path], [0, path.join(nested, `${ID}.png`)]);
+  assert.deepEqual(fs.readFileSync(got.envelope.value.path), fs.readFileSync(path.join(path.dirname(fake), 'shot.png')));
+  assert.equal(fs.statSync(got.envelope.value.path).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(nested).mode & 0o777, 0o700);
+  assert.equal(got.log, `attachment get ${ID} --dir ${nested} --json\n`);
+  const noDir = run(['attachment', 'get', ID, '--json']);
+  assert.deepEqual([noDir.status, noDir.stdout, noDir.log], [1, '', '']);
+  assert.match(noDir.stderr, /required arguments were not provided: --dir/);
+  assert.equal(run(['attachment', 'get', '0193a6a2-7b1c-7d2e-9f00-000000000099', '--dir', dir, '--json']).envelope.code, 'not_found');
+  const bad = run(['attachment', 'get', '7', '--dir', dir, '--json']);
+  assert.deepEqual([bad.status, bad.stdout, bad.log], [1, '', '']);
+  assert.match(bad.stderr, /invalid value '7' for '<ID>'/);
+});

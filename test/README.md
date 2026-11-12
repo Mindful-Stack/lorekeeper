@@ -195,7 +195,11 @@ Answers use the planner's wire shapes:
   the seeded epic promise, so none is excluded as done before it; `story ls --promised this-sprint|next-sprint|overdue|any` filters on the promise's
   state and period as the planner does; `story promise` and `epic promise` get clap's checks (one of
   `--on`, `--to` and `--clear`; `--clear` alone; `--on` a shortcut or a calendar date, else a usage
-  error) and are then refused `interactive_only` (exit 2), since the fake stands for an agent's token.
+  error) and are then refused `interactive_only` (exit 2), since the fake stands for an agent's token;
+  `sprint show` lists the sprint's promises (`promises[]`, the stories whose date is after
+  `promises_after`, the previous sprint's planned end, and up to the sprint's own; GRA-41 in the
+  active sprint, none in the closed first sprint or the draft) and `sprint ls` leaves the active
+  sprint's list empty, as the planner does.
 
 **The real-planner smoke.** `scripts/__tests__/reeve-real-server.test.js` keeps the fake honest.
 `test/fixtures/reeve-real/commands.json` holds a seed and one entry per row of the reference's

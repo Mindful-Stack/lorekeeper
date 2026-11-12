@@ -430,7 +430,23 @@ const countsOf = (sp) => {
   const done = served.filter((x) => x.s.delivery === 'done');
   return { goals: goalsCounts, completed: done.length, upkeep_completed: done.filter((x) => !x.ids.length).length };
 };
-const viewOf = (sp) => ({ sprint: sprintDto(sp), counts: countsOf(sp), upkeep_line: 20, demo: [] });
+// A sprint's promises (kb/ADR-0025 R8), as GET /sprints/{id} derives them: every story whose effective date is after the
+// previous sprint's planned end (`promises_after`; null for the first sprint) and up to this one's, by date then key. A
+// draft has none.
+const promisesOf = (sp) => {
+  if (sp.state === 'draft') return { promises: [], promises_after: null };
+  const prev = Object.values(sprints).filter((x) => x.state !== 'draft' && x.ends_on < sp.ends_on).sort((a, b) => (a.ends_on < b.ends_on ? 1 : -1))[0];
+  const after = prev ? prev.ends_on : null;
+  const promises = all(stories, 'story').map(withPromise).filter((s) => s.promise && (after === null || s.promise.on > after) && s.promise.on <= sp.ends_on)
+    .sort((a, b) => (a.promise.on === b.promise.on ? byKeyNumber(a.key, b.key) : a.promise.on < b.promise.on ? -1 : 1))
+    .map((s) => {
+      const p = s.promise;
+      const fact = p.holder === 'epic' ? p.epic.fact : p.own;
+      return { key: s.key, title: s.title, on: p.on, to: fact.to ?? null, holder: p.holder, epic_key: p.holder === 'epic' ? p.epic.key : null, state: p.state, done_on: s.delivery === 'done' ? NOW.slice(0, 10) : null, days: p.days };
+    });
+  return { promises, promises_after: after };
+};
+const viewOf = (sp) => ({ sprint: sprintDto(sp), counts: countsOf(sp), upkeep_line: 20, demo: [], ...promisesOf(sp) });
 // A goal write: the goal (not_found otherwise) and its sprint's rule, as domain/sprint.rs allow().
 const goalFor = (id, op) => {
   const g = allGoals().find((x) => String(x.id) === id) || error('not_found', `no goal ${id}`);
@@ -466,7 +482,8 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     // `sprint show` adds a closed sprint's counts at close and whether a window number changed since (kb/ADR-0014 R6).
     ok(sp.state === 'closed' ? { ...v, at_close: AT_CLOSE, changed_since_close: false } : v);
   },
-  'sprint ls': () => ok({ active: viewOf(activeSprint()), draft: sprintDto(sprints[3]), closed: [sprintDto(sprints[1])] }),
+  // `sprint ls` leaves the active sprint's promises out, as GET /sprints does: `sprint show` reads them.
+  'sprint ls': () => ok({ active: { ...viewOf(activeSprint()), promises: [], promises_after: null }, draft: sprintDto(sprints[3]), closed: [sprintDto(sprints[1])] }),
   'goal suggest': () => ok(saveGoal({ ...goalFor(p0, 'suggest'), suggested_confidence: pos[1], suggested_note: pos[2] ?? null, suggested_at: NOW, suggested_by: 'dan@example.com' })),
   'goal link': () => {
     const g = goalFor(p0, 'link');

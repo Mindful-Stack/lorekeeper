@@ -27,9 +27,12 @@ subcommand or flag), so tell the user to update the CLI and go on without goals.
 with a usage error, so tell the user to update the CLI and go on without the duplicate check.
 Promises (`story promise`, `epic promise`, `story ls --promised`) need `reeve-planner` 0.5.0 or
 later and a planner with kb/ADR-0025: an older CLI answers them with a usage error (tell the user to
-update the CLI and go on without promises). An older planner ignores `--promised` and lists
-unfiltered, and sends no promises, so every row's `story.promise` is null: a row from `--promised`
-whose `story.promise` is null means the filter was ignored; say so, and go on without promises.
+update the CLI and go on without promises). A CLI older than 0.5.0 also cannot read a decision queue
+that has a promise reason, so `decision ls --queue` fails on it once any story is promised: when a
+queue read fails on a CLI older than 0.5.0, tell the user to update the CLI. An older planner
+ignores `--promised` and lists unfiltered, and sends no promises, so every row's `story.promise` is
+null: a row from `--promised` whose `story.promise` is null means the filter was ignored; say so,
+and go on without promises.
 
 ## Arguments
 
@@ -146,9 +149,9 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 | `reeve decision close <id> --decided <text> --json` / `reeve decision close <id> --withdrawn <text> --json` | `value.closed.reason`, `.kind` (decided or withdrawn), `.via` (interactive or automation: the token that closed it), `.at`, `.by`; see *Closing a decision* |
 | `reeve comment add --item <KEY> --body <text> --idempotency-key <key> --json` (or `--decision <id>`) | `value[]`, the thread |
 | `reeve comment ls --item <KEY> --json` (or `--decision <id>`) | `value[]`: `id`, `author`, `body`, `at`; oldest first, empty when there are none |
-| `reeve sprint show --json` | `value.sprint`: `{id, state, starts_on, ends_on, goals[]: {id, outcome, check, owner, notes, confidence, suggested_confidence, version, links[]}}`; `value.counts`: `{goals[]: {goal_id, completed, in_flight, in_review, todo, blocked_decisions}, completed, upkeep_completed}`; the active sprint, else the draft (see *Sprints and goals*) |
-| `reeve sprint ls --json` | `value.active` (null = no active sprint; else the active sprint as sprint show answers it), `value.draft` (null = none), `value.closed[]`: `id`, `starts_on`, `ends_on`, `goals[].verdict`; closed sprints newest first |
-| `reeve sprint show <id> --json` | `value.sprint`, `value.counts` as above, and for a closed sprint `value.sprint.goals[].verdict` (met, partly_met or missed), `.verdict_note`, `value.at_close` (`{goals[], completed, upkeep_completed}`, its counts when it closed) and `value.changed_since_close` (true when a number now differs from at close) |
+| `reeve sprint show --json` | `value.sprint`: `{id, state, starts_on, ends_on, goals[]: {id, outcome, check, owner, notes, confidence, suggested_confidence, version, links[]}}`; `value.counts`: `{goals[]: {goal_id, completed, in_flight, in_review, todo, blocked_decisions}, completed, upkeep_completed}`; `value.promises[]`: `{key, title, on, to, holder, epic_key, state, done_on, days}`, the stories promised by a date in the sprint's range, and `value.promises_after` (the range starts the day after it; null = every date up to the sprint's end) (see *Promises*); the active sprint, else the draft (see *Sprints and goals*) |
+| `reeve sprint ls --json` | `value.active` (null = no active sprint; else the active sprint as sprint show answers it, but with no promises listed: read those from sprint show), `value.draft` (null = none), `value.closed[]`: `id`, `starts_on`, `ends_on`, `goals[].verdict`; closed sprints newest first |
+| `reeve sprint show <id> --json` | `value.sprint`, `value.counts`, `value.promises[]` and `value.promises_after` as above, and for a closed sprint `value.sprint.goals[].verdict` (met, partly_met or missed), `.verdict_note`, `value.at_close` (`{goals[], completed, upkeep_completed}`, its counts when it closed) and `value.changed_since_close` (true when a number now differs from at close) |
 | `reeve story ls --goal <id\|any\|none> --json` | `value[]`: `{story, readiness}`, as for the other story lists; `story.goals[]` `{id, outcome, via}` (via story, epic or initiative) |
 | `reeve story ls --promised this-sprint\|next-sprint\|overdue\|any --json` | `value[]`: `{story, readiness}`, as for the other story lists; `story.promise` (null = no promise): `{own, epic, on, holder, state, due, days}` (see *Promises*) |
 | `reeve goal link <id> <KEY> [<KEY> …] --json` | `value.links[]` (every key linked to the goal), `value.version` |
@@ -526,8 +529,18 @@ is never open, whatever its record; skills that list open decisions use this def
 Any other `reason` is a delivery rule; show it verbatim. A story is "ready" when `readiness.ready`
 is true, else "blocked: " and its reasons in these words.
 
-A story's promise, from `story.promise` (dates as "20 Nov"): `open` reads "promised 20 Nov", with
+A story's promise, from `story.promise` (dates as "20 Nov"): `open` reads "promised by 20 Nov", with
 "· this sprint" or "· next sprint" by `due`; a `state` of null (a done story without a completion
-time) reads "promised 20 Nov"; `overdue` "overdue <days> d · 20 Nov"; `kept` "kept ·
+time) reads "promised by 20 Nov"; `overdue` "overdue <days> d · 20 Nov"; `kept` "kept ·
 20 Nov"; `late` "done <days> d late · 20 Nov"; `dropped` "dropped · 20 Nov". With `holder` `epic`,
-add "· via <epic.key>". Add "to <to>" when the recipient matters to the answer.
+add "· via <epic.key>". Add "to <to>" when the recipient matters to the answer. In a sentence about a
+promise, give the year ("ABC-12 is promised by 20 Nov 2026 to Acme"): the date stays on a done
+story long after the day. An epic's promise reads "promised by 20 Nov", with the period by `due`,
+or "past 20 Nov" when `past`.
+
+A sprint's promises, from `sprint show`'s `promises[]`, go under "Promises due <range>": the day
+after `promises_after` to the sprint's `ends_on` ("Promises due 11–24 Nov"; "Promises due up to
+24 Nov" when `promises_after` is null). Each row is the key and title, "to <to>" when there is a
+recipient, then the words above for its `state` (no period on a sprint row) and "· via <epic_key>"
+when `holder` is `epic`. Say once under the list: a promise is to a date, so work done after it
+counts as late, even inside the sprint.

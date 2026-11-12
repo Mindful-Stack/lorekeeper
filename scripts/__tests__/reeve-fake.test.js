@@ -579,6 +579,17 @@ test('sprint show answers the active sprint with per-goal counts; a closed one a
   const ls = run(['sprint', 'ls', '--json']).envelope.value;
   assert.deepEqual([ls.active.sprint.id, ls.draft.id, ls.closed.map((x) => x.id)], [2, 3, [1]]);
 });
+test("sprint show lists the promises in the sprint's range after promises_after; sprint ls leaves the active sprint's out", () => {
+  const active = run(['sprint', 'show', '--json']).envelope.value;
+  assert.equal(active.promises_after, '2026-10-20'); // the closed sprint's planned end
+  assert.deepEqual(active.promises, [{ key: 'GRA-41', title: 'Upgrade the queue client library', on: '2026-11-03', to: 'the mentoring board', holder: 'own', epic_key: null, state: 'open', done_on: null, days: null }]);
+  const closed = run(['sprint', 'show', '1', '--json']).envelope.value;
+  assert.deepEqual([closed.promises, closed.promises_after], [[], null]); // the first sprint: every date up to its end
+  const draft = run(['sprint', 'show', '3', '--json']).envelope.value;
+  assert.deepEqual([draft.promises, draft.promises_after], [[], null]);
+  const ls = run(['sprint', 'ls', '--json']).envelope.value;
+  assert.deepEqual([ls.active.promises, ls.active.promises_after], [[], null]);
+});
 test("a person's sprint and goal commands are refused interactive_only, exit 2; a malformed verdict or confidence is a usage error", () => {
   for (const args of [['sprint', 'open', '--ends', '2026-11-20'], ['sprint', 'close', '--verdict', '2=met', '--verdict', '3=partly_met:the checklist: half done'],
     ['goal', 'add', '--outcome', 'O', '--check', 'C', '--idempotency-key', KEY], ['goal', 'edit', '2', '--version', '2', '--notes', 'N'],

@@ -43,9 +43,9 @@ are project context for item 1.
 When `value.attachments` is not empty, fetch the first five of the story's own (`owner.item` is
 `story`) with `reeve attachment get <ID> --dir <dir> --json` (`<ID>` is its `id`; the detector's
 `bin` as the first word; `<dir>` the session's scratchpad, when one is announced, else a new
-`mktemp -d`) and open `value.path` with the Read tool; fetch an epic's or initiative's only when its
+`mktemp -d`) and open `value.path` with your image-reading tool (Read in Claude Code); fetch an epic's or initiative's only when its
 brief links it (`/api/v1/attachments/<ID>`). Say in the spec what each screenshot shows (later steps
-never see the images) and name any story screenshot beyond five by its `filename`.
+never see the images) and name any story screenshot beyond five by its `filename`; if a fetch fails, name the screenshot by its `filename` and go on.
 
 ## Checklist
 

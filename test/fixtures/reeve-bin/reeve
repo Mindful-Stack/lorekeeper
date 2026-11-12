@@ -667,7 +667,7 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
   'attachment get': () => {
     if (p0.toLowerCase() !== SHOT_ID) error('not_found', `no attachment ${p0}`);
     // The CLI creates only its default directory; a --dir that does not exist fails the write.
-    if (f.dir !== undefined && !(fs.statSync(f.dir, { throwIfNoEntry: false }) || { isDirectory: () => false }).isDirectory()) error('internal', `${f.dir}/${SHOT_ID}.png: No such file or directory`);
+    if (f.dir !== undefined && !(fs.statSync(f.dir, { throwIfNoEntry: false }) || { isDirectory: () => false }).isDirectory()) error('internal', `writing ${f.dir}/${SHOT_ID}.png: No such file or directory (os error 2)`);
     const dir = f.dir ?? path.join(log ? path.dirname(log) : os.tmpdir(), 'reeve-attachments');
     if (f.dir === undefined) fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, `${SHOT_ID}.png`);

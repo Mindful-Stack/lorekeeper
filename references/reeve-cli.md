@@ -26,7 +26,7 @@ subcommand or flag), so tell the user to update the CLI and go on without goals.
 `reeve-planner` 0.4.0 or later (kb/ADR-0018): an older CLI answers `story similar`
 with a usage error, so tell the user to update the CLI and go on without the duplicate check.
 `attachments` in story context and `reeve attachment get` need `reeve-planner` 0.5.0 or later; an
-older CLI's story context has no `attachments`.
+older CLI's story context has no `attachments`, and an older server lists none (`attachments` is empty).
 
 ## Arguments
 

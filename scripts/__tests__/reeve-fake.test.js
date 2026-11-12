@@ -629,7 +629,7 @@ test('story context lists the screenshot on GRA-31; attachment get downloads it,
   assert.ok(fs.existsSync(byDefault.envelope.value.path), byDefault.envelope.value.path);
   const missing = path.join(dir, 'missing');
   const noDir = run(['attachment', 'get', ID, '--dir', missing, '--json']);
-  assert.deepEqual([noDir.status, noDir.envelope.code, noDir.envelope.message], [1, 'internal', `${missing}/${ID}.png: No such file or directory`]);
+  assert.deepEqual([noDir.status, noDir.envelope.code, noDir.envelope.message], [1, 'internal', `writing ${missing}/${ID}.png: No such file or directory (os error 2)`]);
   assert.equal(fs.existsSync(missing), false);
   assert.equal(run(['attachment', 'get', '0193a6a2-7b1c-7d2e-9f00-000000000099', '--json']).envelope.code, 'not_found');
   const bad = run(['attachment', 'get', '7', '--json']);

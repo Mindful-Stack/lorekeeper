@@ -623,6 +623,26 @@ test('story ls --promised filters on the promise the planner derived; every stor
   const epic = run(['epic', 'show', 'PRM-1', '--json']).envelope.value;
   assert.deepEqual([epic.key, epic.promise.due, epic.promise.past, epic.promise.fact.on], ['GRA-22', 'next_sprint', false, '2026-11-17']);
 });
+test("a story under a promised epic inherits the epic's promise on read; its own earlier date wins", () => {
+  const call = session();
+  const k = (n) => `refining-epic:GRA-22:0a1b2c3d:${n}`;
+  const a = call(['story', 'create', '--epic', 'GRA-22', '--title', 'Rate a session', '--criterion', 'A rating is saved', '--idempotency-key', k(1), '--json']).value.key;
+  const b = call(['story', 'create', '--epic', 'GRA-22', '--title', 'Remind to rate', '--criterion', 'A reminder is sent', '--idempotency-key', k(2), '--json']).value.key;
+  const promiseOf = (key, ...flags) => (call(['story', 'ls', ...flags, '--json']).value.find((x) => x.story.key === key) || {}).story?.promise;
+  const inherited = { own: null, epic: { key: 'GRA-22', fact: { on: '2026-11-17', by: 'dan@example.com', at: '2026-10-20T09:00:00Z', to: 'the mentoring board' } }, on: '2026-11-17', holder: 'epic', state: 'open', due: 'next_sprint', days: null };
+  assert.deepEqual(promiseOf(a, '--epic', 'GRA-22'), inherited);
+  assert.deepEqual(call(['story', 'context', a, '--json']).value.story.promise, inherited);
+  assert.deepEqual(call(['story', 'ls', '--promised', 'next-sprint', '--json']).value.map((x) => x.story.key), [a, b]);
+  // done in the run, after the epic was promised: still inherited, kept or dropped, and no longer listed by --promised
+  call(['story', 'mv', a, 'done', '--resolution', 'completed', '--json']);
+  call(['story', 'mv', b, 'done', '--resolution', 'dropped', '--json']);
+  assert.deepEqual([promiseOf(a, '--epic', 'GRA-22').state, promiseOf(b, '--epic', 'GRA-22').state, promiseOf(a, '--epic', 'GRA-22').due], ['kept', 'dropped', null]);
+  assert.deepEqual(call(['story', 'ls', '--promised', 'any', '--json']).value.map((x) => x.story.key), ['GRA-41']);
+  // GRA-41's own promise (3 Nov) is earlier than the epic's (17 Nov): its own counts, and the epic's shows beside it
+  call(['story', 'edit', 'GRA-41', '--version', '1', '--epic', 'GRA-22', '--json']);
+  const p = promiseOf('GRA-41', '--promised', 'this-sprint');
+  assert.deepEqual([p.holder, p.on, p.own.on, p.epic.key, p.state, p.due], ['own', '2026-11-03', '2026-11-03', 'GRA-22', 'open', 'this_sprint']);
+});
 test('goal link and unlink persist; a story serves a goal through the nearest link; story context and --goal see it', () => {
   const call = session();
   assert.deepEqual(call(['goal', 'link', '2', 'GRA-31', 'GRA-40', '--json']).value.links, ['GRA-20', 'GRA-31', 'GRA-40']);

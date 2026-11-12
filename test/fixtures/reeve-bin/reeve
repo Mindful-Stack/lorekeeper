@@ -273,6 +273,21 @@ const servedBy = (s) => {
     return hit ? [{ goal: g, via: hit[1] }] : [];
   });
 };
+// A story's promise as the planner derives it on read (kb/ADR-0025 R3): under a promised epic it gets the epic's promise,
+// and the earlier of its own date and the epic's counts (its own wins a tie). Every story the fake knows is done during
+// the run, after the seeded epic promise was set, so each one inherits (a story done before would not); a done story's
+// inherited promise is kept (done at NOW, before the date) or dropped.
+const withPromise = (s) => {
+  const e = s.epic && (itemsOf()[s.epic] || epics[s.epic]);
+  const ep = e && e.promise;
+  if (!ep) return s;
+  const own = (s.promise && s.promise.own) || null;
+  const epicRef = { key: e.key, fact: ep.fact };
+  if (own && own.on <= ep.fact.on) return { ...s, promise: { ...s.promise, epic: epicRef } };
+  const state = s.delivery === 'done' ? (s.resolution === 'dropped' ? 'dropped' : 'kept') : ep.past ? 'overdue' : 'open';
+  const days = state === 'overdue' ? Math.floor((Date.now() - Date.parse(`${ep.fact.on}T00:00:00Z`)) / 864e5) : null;
+  return { ...s, promise: { own, epic: epicRef, on: ep.fact.on, holder: 'epic', state, due: state === 'open' ? ep.due : null, days } };
+};
 const withGoals = (s) => ({ ...s, goals: servedBy(s).map(({ goal: g, via }) => ({ id: g.id, outcome: g.outcome, via })) });
 // Items created in this run, by kind, in creation order (lists show them like the real planner).
 const createdDecisions = () => Object.values(state.creates).filter((v) => !Array.isArray(v) && 'decider' in v);
@@ -473,9 +488,9 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
     const sp = activeSprint();
     const served = servedBy(s).map(({ goal: g, via }) => ({ goal: g, starts_on: sp.starts_on, ends_on: sp.ends_on, via }));
-    ok({ story: withGoals(s), epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served });
+    ok({ story: withGoals(withPromise(s)), epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served });
   },
-  'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? !s.epic && s.delivery !== 'done' : !f.epic || s.epic === f.epic))
+  'story ls': () => ok(all(stories, 'story').map(withPromise).filter((s) => (f.untriaged ? !s.epic && s.delivery !== 'done' : !f.epic || s.epic === f.epic))
     .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery) && (!f.label || s.labels.includes(f.label)))
     .filter((s) => (f.text === undefined || matchesText(s, f.text)) && (!f.kind || s.kind === f.kind) && (f.initiative === undefined || epicsUnder(f.initiative).includes(s.epic))
       && (!f.urgent || s.urgent_sources.length > 0) && (!f.open || s.delivery !== 'done') // --urgent: the rows shown urgent; --open: done=none

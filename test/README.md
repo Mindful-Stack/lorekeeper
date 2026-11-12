@@ -189,7 +189,10 @@ Answers use the planner's wire shapes:
 - an edit or discovery mark with a stale `--version` is a `conflict` (exit 1);
 - promises (kb/ADR-0025): `GRA-41` has its own open promise due this sprint and epic `GRA-22` (migrated
   from `PRM-1`, so `epic show PRM-1` finds it) one due next sprint; every other story and epic has
-  `promise: null`; `story ls --promised this-sprint|next-sprint|overdue|any` filters on the promise's
+  `promise: null`; a story under a promised epic (one created under or moved to GRA-22) inherits the
+  epic's promise on read (`holder: epic`, open while unfinished, kept or dropped once done), unless
+  its own date is earlier (or the same); every story the fake knows is done during the run, after
+  the seeded epic promise, so none is excluded as done before it; `story ls --promised this-sprint|next-sprint|overdue|any` filters on the promise's
   state and period as the planner does; `story promise` and `epic promise` get clap's checks (one of
   `--on`, `--to` and `--clear`; `--clear` alone; `--on` a shortcut or a calendar date, else a usage
   error) and are then refused `interactive_only` (exit 2), since the fake stands for an agent's token.

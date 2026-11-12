@@ -214,6 +214,10 @@ function coverageProblems(rows, fixture) {
       if (!p.endsWith('[]') || !e.reads.some((r) => r === p || r.startsWith(`${p}.`))) problems.push(`${e.row}: may_be_empty ${p} names no array the entry reads`);
     }
   }
+  (fixture.refusals || []).forEach((x, i) => {
+    if (!Array.isArray(x.argv) || x.argv[x.argv.length - 1] !== '--json') problems.push(`refusal ${i + 1} must end with --json`);
+    if (typeof x.reason !== 'string' || !x.reason) problems.push(`refusal ${i + 1} needs the reason it expects`);
+  });
   return problems;
 }
 
@@ -302,6 +306,18 @@ function fakeProblems(entry, realEnvelope, r) {
   return problems;
 }
 
+// One side's answer to a refusal case: exit 2 and a refused envelope whose reasons name `reason`.
+// PROPERTY: an ok answer, another reason or another exit status is a problem; `fix` (the fake's) is appended to each.
+function refusalProblems(reason, r, fix = '') {
+  const env = envelopeOf(r.stdout);
+  const tail = fix ? `; ${fix}` : '';
+  if (!env) return [`no JSON envelope on stdout (exit ${r.status}): ${firstLine(r.stderr)}${tail}`];
+  const reasons = (env.reasons || []).map((x) => x && x.reason);
+  if (env.outcome !== 'refused' || !reasons.includes(reason)) return [`outcome ${env.outcome} (exit ${r.status})${reasons.length ? ` ${reasons.join(', ')}` : ''}, expected refused ${reason}${tail}`];
+  if (r.status !== 2) return [`exit ${r.status} with a refused envelope, expected 2${tail}`];
+  return [];
+}
+
 // Whether the live test runs. PROPERTY: REEVE_SMOKE_SEED alone decides skipping; once it is set, a missing companion
 // variable is a failure (listed), never a skip. (REEVE_URL and REEVE_TOKEN are the CLI's own sign-in variables and
 // REEVE_REAL_BIN drives the reference test, so a developer shell may have them without a smoke run.)
@@ -316,8 +332,8 @@ function run(side, argv) {
   return { status: r.error ? `error ${r.error.code}` : r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
 
-// The seed on both sides, then every entry in file order. Returns one { row, problems } per failed seed step and one per
-// entry. `real` and `fake` are { bin, env }; `scope` holds the seed file's values and run_id; `out` (optional) receives
+// The seed on both sides, then every entry in file order, then every refusal case. Returns one { row, problems } per
+// failed seed step, one { row, problems, ran } per entry and one per refusal case (its row `refusal: reeve <argv>`). `real` and `fake` are { bin, env }; `scope` holds the seed file's values and run_id; `out` (optional) receives
 // every answer as JSON; `fakeScope` (optional) overrides seed values on the fake's side only, for a seed value that is a
 // planner key (`shot.story`). PROPERTY: each side binds from its own answers only, so the fake never runs on a planner key.
 function runSmoke({ fixture, real, fake, scope, fakeScope = {}, expect = true, out }) {
@@ -366,7 +382,23 @@ function runSmoke({ fixture, real, fake, scope, fakeScope = {}, expect = true, o
     });
     results.push({ row: entry.row, problems, ran });
   });
+  // A person's commands with the run's token: the planner and the fake must both refuse them.
+  (fixture.refusals || []).forEach((x, i) => {
+    const row = `refusal: reeve ${x.argv.join(' ')}`;
+    const problems = [];
+    let ran = 0;
+    let rArgv;
+    let fArgv;
+    try { rArgv = bind(x.argv, scopes.real); fArgv = bind(x.argv, scopes.fake); } catch (e) { results.push({ row, problems: [e.message], ran }); return; }
+    const r = run(real, rArgv);
+    const f = run(fake, fArgv);
+    record(`refusal-${String(i + 1).padStart(2, '0')}-${x.argv.slice(0, 2).join('-')}`, { refusal: x, real: { argv: rArgv, ...r }, fake: { argv: fArgv, ...f } });
+    if (envelopeOf(r.stdout)) ran += 1;
+    problems.push(...refusalProblems(x.reason, r).map((p) => `real: ${p}`));
+    problems.push(...refusalProblems(x.reason, f, FIX_FAKE).map((p) => `fake: ${p}`));
+    results.push({ row, problems, ran });
+  });
   return results;
 }
 
-module.exports = { runSmoke, commandWords, typeOf, envelopeOf, commandRows, formsOf, readPaths, coverageProblems, runsOf, bind, walk, realProblems, fakeProblems, liveConfig };
+module.exports = { refusalProblems, runSmoke, commandWords, typeOf, envelopeOf, commandRows, formsOf, readPaths, coverageProblems, runsOf, bind, walk, realProblems, fakeProblems, liveConfig };

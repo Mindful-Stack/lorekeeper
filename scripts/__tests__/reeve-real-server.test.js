@@ -1,7 +1,8 @@
 // scripts/__tests__/reeve-real-server.test.js — node --test
 // Keeps the fake `reeve` honest against the real planner. Always run: every row of references/reeve-cli.md's *Commands*
-// table has exactly one entry in test/fixtures/reeve-real/commands.json; the seed and entries run against the fake on
-// both sides; a broken fake is blamed as the fake. Live, only when REEVE_SMOKE_SEED is set: the same entries against a
+// table has exactly one entry in test/fixtures/reeve-real/commands.json; the seed, entries and refusals (a person's
+// commands, which the run's agent token must be refused) run against the fake on both sides; a broken fake is blamed as
+// the fake. Live, only when REEVE_SMOKE_SEED is set: the same entries against a
 // real planner (REEVE_REAL_BIN, REEVE_URL, REEVE_TOKEN), compared with the fake's answers.
 'use strict';
 const { test } = require('node:test');
@@ -113,6 +114,28 @@ test("a field the fake drops is reported as the fake's to fix", (t) => {
   assert.deepEqual(results.flatMap((r) => r.problems).filter((p) => !p.startsWith('fake: ')), [], 'only the fake is blamed');
 });
 
+test("a person's command the fake lets through is reported as the fake's to fix", (t) => {
+  const src = fs.readFileSync(FAKE, 'utf8');
+  const from = "'goal confidence', 'story promise', 'epic promise']";
+  assert.equal(src.split(from).length, 2, 'the break must hit exactly the interactive_only list');
+  const dir = tmp(t);
+  const broken = path.join(dir, 'reeve');
+  fs.copyFileSync(path.join(path.dirname(FAKE), 'shot.png'), path.join(dir, 'shot.png'));
+  fs.writeFileSync(broken, src.replace(from, "'goal confidence', 'epic promise']").replace("  'story ls': () => ok(", "  'story promise': () => ok(story('GRA-1', 'Promised')),\n  'story ls': () => ok("), { mode: 0o755 });
+  const results = s.runSmoke({ fixture, real: fakeSide(FAKE, tmp(t)), fake: fakeSide(broken, tmp(t)), scope: selfScope(tmp(t)), expect: false });
+  const refusals = results.filter((r) => r.row.startsWith('refusal: reeve story promise '));
+  assert.equal(refusals.length, 4);
+  for (const r of refusals) assert.deepEqual(r.problems, ['fake: outcome ok (exit 0), expected refused interactive_only; fix test/fixtures/reeve-bin/reeve'], r.row);
+  assert.deepEqual(results.filter((r) => !r.row.startsWith('refusal: reeve story promise ')).flatMap((r) => r.problems), [], 'nothing else is blamed');
+});
+test('every promise command the reference gives a person has a refusal case', () => {
+  const text = fs.readFileSync(path.join(root, 'references', 'reeve-cli.md'), 'utf8');
+  const forms = [...text.matchAll(/^\| `reeve ((?:story|epic) promise <KEY> (--[a-z]+))[^`]*` \|/gm)].map((m) => [m[1].split(' ')[0], m[2]]);
+  assert.equal(forms.length, 6, 'the Promises table lists --on, --to and --clear for story and epic');
+  const covered = (item, flag) => fixture.refusals.some((x) => x.argv[0] === item && x.argv[1] === 'promise' && x.argv[3] === flag);
+  assert.deepEqual(forms.filter(([item, flag]) => !covered(item, flag)), []);
+});
+
 const DETECT = path.join(root, 'scripts', 'reeve-detect.js');
 const live = s.liveConfig(process.env);
 test('every Commands row against a real planner, the fake answering in the same shape', { skip: live.skip }, async (t) => {
@@ -140,5 +163,8 @@ test('every Commands row against a real planner, the fake answering in the same 
     const r = results.find((x) => x.row === e.row);
     assert.equal(r && r.ran, s.runsOf(e).length, `${e.row}: runs answered by the real CLI`);
   }
+  const refusals = results.filter((x) => x.row.startsWith('refusal: '));
+  assert.equal(refusals.length, fixture.refusals.length, 'every refusal case ran');
+  for (const r of refusals) assert.equal(r.ran, 1, `${r.row}: answered by the real CLI`);
   for (const r of results) await t.test(r.row, () => assert.deepEqual(r.problems, []));
 });

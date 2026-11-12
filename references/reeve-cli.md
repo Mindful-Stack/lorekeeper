@@ -25,6 +25,9 @@ subcommand or flag), so tell the user to update the CLI and go on without goals.
 `story similar` and the any-kind untriaged filter (an item of any kind with no epic) need
 `reeve-planner` 0.4.0 or later (kb/ADR-0018): an older CLI answers `story similar`
 with a usage error, so tell the user to update the CLI and go on without the duplicate check.
+Promises (`story promise`, `epic promise`, `story ls --promised`) need a CLI and a planner with
+kb/ADR-0025: an older CLI answers them with a usage error (tell the user to update the CLI and go
+on without promises), and an older planner ignores `--promised` and lists unfiltered.
 
 ## Arguments
 
@@ -145,6 +148,7 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 | `reeve sprint ls --json` | `value.active` (null = no active sprint; else the active sprint as sprint show answers it), `value.draft` (null = none), `value.closed[]`: `id`, `starts_on`, `ends_on`, `goals[].verdict`; closed sprints newest first |
 | `reeve sprint show <id> --json` | `value.sprint`, `value.counts` as above, and for a closed sprint `value.sprint.goals[].verdict` (met, partly_met or missed), `.verdict_note`, `value.at_close` (`{goals[], completed, upkeep_completed}`, its counts when it closed) and `value.changed_since_close` (true when a number now differs from at close) |
 | `reeve story ls --goal <id\|any\|none> --json` | `value[]`: `{story, readiness}`, as for the other story lists; `story.goals[]` `{id, outcome, via}` (via story, epic or initiative) |
+| `reeve story ls --promised this-sprint\|next-sprint\|overdue\|any --json` | `value[]`: `{story, readiness}`, as for the other story lists; `story.promise` (null = no promise): `{own, epic, on, holder, state, due, days}` (see *Promises*) |
 | `reeve goal link <id> <KEY> [<KEY> …] --json` | `value.links[]` (every key linked to the goal), `value.version` |
 | `reeve goal unlink <id> <KEY> [<KEY> …] --json` | `value.links[]` |
 | `reeve goal suggest <id> on_track\|at_risk\|off_track [<note>] --json` | `value.suggested_confidence`, `.suggested_note`, `.suggested_at`, `.suggested_by` |
@@ -431,6 +435,59 @@ run.
 | `sprint_active` | a sprint is already active; close it first |
 | `verdict_missing` (with `goals`) | closing needs a verdict for goals <goals> |
 
+## Promises
+
+A promise is a date a person committed a story or an epic to, often to someone outside the team
+(kb/ADR-0025 in the Reeve repository). It is shown, never enforced: no move, readiness, rank or
+progress depends on it. An epic's promise applies to each of its stories that was not done when the
+epic was promised; a story's date is then the earlier of its own and its epic's, and both stay
+visible. Promise state is derived by the planner on every read, never stored.
+
+**What a skill may do.** Agents read promises; people make them.
+
+- **Read** a story's promise in `story.promise` of any story answer (`story ls`, `story context`),
+  null when it has none. `on` is the date that counts and `holder` whose it is (`own` or `epic`);
+  `own` is the story's own promise `{on, by, at, to}` and `epic` the epic's it inherits
+  `{key, fact: {on, by, at, to}}`, each null when absent; `to` is the recipient (null = none).
+  `state` is `open`, `overdue`, `kept` (done on or before the date), `late` (done after it) or
+  `dropped`, null for a done story without a completion time; `due` (only while open) is
+  `this_sprint` (by the active sprint's planned end), `next_sprint` (by the draft's) or `later`;
+  `days` counts the days overdue or late. An epic's own promise is `value.promise` of
+  `reeve epic show <KEY> --json`: `{fact, due, past}`, with no state of its own. Read these
+  values; never compute a state, a period or a day count yourself.
+- **Filter** with `reeve story ls --promised this-sprint|next-sprint|overdue|any --json`: `this-sprint` lists overdue promises
+  and open ones due this sprint, `next-sprint` open ones due next sprint, `overdue` only overdue
+  ones, `any` every open or overdue one. Kept, late and dropped promises never match. It combines
+  with the other `story ls` flags (every flag given must hold).
+- **Suggest** a date, never set one. When a date comes up (the user asks when something will be
+  ready, a brief names a deadline), say it in a comment on the item for a person to promise:
+  `reeve comment add --item <KEY> --body 'Suggested promise: by 2026-12-04, to Acme (their pilot starts then).' --idempotency-key <key> --json`.
+
+**A person's commands.** These exist in the CLI, and a skill never runs them, whatever token it
+holds: with an automation token the planner refuses every one `interactive_only` (exit 2), and with
+a person's token it would promise for them. When the user asks for one, show the command for them to
+run. None takes a `--version`: a promise does not change the item's version.
+
+| Command | What it does |
+|---|---|
+| `reeve story promise <KEY> --on this-sprint\|next-sprint\|YYYY-MM-DD [--to <text>] --json` | promises the story by the date: `this-sprint` and `next-sprint` take that sprint's planned end as it is when saved (a later change to the sprint does not move it); `--to` names who it is promised to, and left out keeps the current recipient; `value.promise` as above |
+| `reeve story promise <KEY> --to <text> --json` | changes only the recipient of the story's own promise (`--to ''` clears it); without a promise it is a `validation` error |
+| `reeve story promise <KEY> --clear --json` | removes the story's own promise (clearing none changes nothing); an epic's promise still applies, as `value.promise` shows; `--clear` takes no other flag (a usage error) |
+| `reeve epic promise <KEY> --on this-sprint\|next-sprint\|YYYY-MM-DD [--to <text>] --json` | promises the epic by the date, as for a story; each of its stories not done now gets the date too; `value.promise`: `{fact, due, past}` |
+| `reeve epic promise <KEY> --to <text> --json` | changes only the recipient of the epic's promise (`--to ''` clears it) |
+| `reeve epic promise <KEY> --clear --json` | removes the epic's promise from the epic and its stories |
+
+One of `--on`, `--to` and `--clear` is required, and an `--on` that is neither a shortcut nor a
+calendar date is a usage error (exit 1, nothing sent).
+
+**Refusals and errors.** `interactive_only` (exit 2): only a person can promise (set, change or
+clear a promise). These are `validation` errors (exit 1), each with the planner's message to show:
+a done story (`<KEY> is done: a done story cannot be promised`), a date before today (`the date
+<date> is past: promise today or later`; keeping an overdue promise's own date while changing its
+recipient is allowed), a shortcut with no such sprint (`there is no active sprint: give a date`,
+`there is no next sprint yet: give a date`) or whose planned end is past, and a recipient over 200
+characters.
+
 ## Wording the planner's answers
 
 Readiness is read, never computed (kb/ADR-0003 R1). A required decision with `closed` set is
@@ -461,3 +518,8 @@ is never open, whatever its record; skills that list open decisions use this def
 
 Any other `reason` is a delivery rule; show it verbatim. A story is "ready" when `readiness.ready`
 is true, else "blocked: " and its reasons in these words.
+
+A story's promise, from `story.promise` (dates as "20 Nov"): `open` reads "promised 20 Nov", with
+"· this sprint" or "· next sprint" by `due`; `overdue` "overdue <days> d · 20 Nov"; `kept` "kept ·
+20 Nov"; `late` "done <days> d late · 20 Nov"; `dropped` "dropped · 20 Nov". With `holder` `epic`,
+add "· via <epic.key>". Add "to <to>" when the recipient matters to the answer.

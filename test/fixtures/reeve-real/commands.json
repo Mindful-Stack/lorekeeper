@@ -1,5 +1,5 @@
 {
-  "about": "The real-planner smoke (scripts/__tests__/reeve-real-server.test.js). The seed runs first on the planner and on the fake; then every entry, one per row of references/reeve-cli.md's Commands table, in file order. bind stores the answer's value under a name for {{name.field}} placeholders. reads are paths into the envelope (x[] = every element of the array x); types gives each read's JSON types (a|b allowed); may_be_empty lists array paths allowed to be empty; unread waives, with a reason, a path the Read cell names that no read can reach; expect is checked on the planner's answer only.",
+  "about": "The real-planner smoke (scripts/__tests__/reeve-real-server.test.js). The seed runs first on the planner and on the fake; then every entry, one per row of references/reeve-cli.md's Commands table, in file order. bind stores the answer's value under a name for {{name.field}} placeholders. reads are paths into the envelope (x[] = every element of the array x); types gives each read's JSON types (a|b allowed); may_be_empty lists array paths allowed to be empty; unread waives, with a reason, a path the Read cell names that no read can reach; expect is checked on the planner's answer only. refusals run after the entries, on both sides with the same token: each must answer exit 2 with a refused envelope naming its reason (a person's command, refused interactive_only to an agent's token).",
   "seed": [
     { "bind": "initiative", "argv": ["initiative", "create", "--title", "Skill smoke initiative", "--horizon", "Now", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:1", "--json"] },
     { "bind": "epic", "argv": ["epic", "create", "--initiative", "{{initiative.key}}", "--title", "Skill smoke epic", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:2", "--json"] },
@@ -249,6 +249,21 @@
       "reads": ["value.suggested_confidence", "value.suggested_note", "value.suggested_at", "value.suggested_by"],
       "types": { "value.suggested_confidence": "string", "value.suggested_note": "string", "value.suggested_at": "string", "value.suggested_by": "string" },
       "expect": { "value.suggested_confidence": "at_risk" }
+    },
+    {
+      "row": "`reeve story ls --promised this-sprint|next-sprint|overdue|any --json`",
+      "argv": ["story", "ls", "--promised", "this-sprint", "--json"],
+      "reads": ["value[].story.key", "value[].readiness.ready", "value[].story.promise.own", "value[].story.promise.epic", "value[].story.promise.on", "value[].story.promise.holder", "value[].story.promise.state", "value[].story.promise.due", "value[].story.promise.days"],
+      "types": { "value[].story.key": "string", "value[].readiness.ready": "boolean", "value[].story.promise.own": "object|null", "value[].story.promise.epic": "object|null", "value[].story.promise.on": "string", "value[].story.promise.holder": "string", "value[].story.promise.state": "string|null", "value[].story.promise.due": "string|null", "value[].story.promise.days": "number|null" }
     }
+  ],
+  "refusals": [
+    { "argv": ["story", "promise", "{{story.key}}", "--on", "this-sprint", "--to", "the skill smoke", "--json"], "reason": "interactive_only" },
+    { "argv": ["story", "promise", "{{story.key}}", "--on", "2027-01-15", "--json"], "reason": "interactive_only" },
+    { "argv": ["story", "promise", "{{story.key}}", "--to", "the skill smoke", "--json"], "reason": "interactive_only" },
+    { "argv": ["story", "promise", "{{story.key}}", "--clear", "--json"], "reason": "interactive_only" },
+    { "argv": ["epic", "promise", "{{epic.key}}", "--on", "next-sprint", "--json"], "reason": "interactive_only" },
+    { "argv": ["epic", "promise", "{{epic.key}}", "--to", "the skill smoke", "--json"], "reason": "interactive_only" },
+    { "argv": ["epic", "promise", "{{epic.key}}", "--clear", "--json"], "reason": "interactive_only" }
   ]
 }

@@ -26,7 +26,7 @@ test('commandRows reads the Commands table only and reads \\| inside a cell as |
 });
 test('commandRows finds the rows of the reference, each with its Read cell', () => {
   const rows = s.commandRows(fs.readFileSync(path.join(__dirname, '..', '..', 'references', 'reeve-cli.md'), 'utf8'));
-  assert.equal(rows.length, 35);
+  assert.equal(rows.length, 36);
   for (const r of rows) {
     assert.match(r.row, /^`reeve [a-z]+( [a-z]+)?[ `]/, r.row);
     assert.match(r.read, /`value/, r.row);
@@ -175,6 +175,19 @@ test('fakeProblems blames the fake for a missing field, a different type set or 
   assert.deepEqual(s.fakeProblems(e2, { outcome: 'ok', value: { items: [] } }, ok({ items: [{ key: 'A' }] })), [`value.items[].key is (nothing: empty) from the planner but string from the fake; ${FIX}`]);
   assert.deepEqual(s.fakeProblems(e, real, { status: 1, stdout: '', stderr: "error: unexpected argument '--household'\n" }),
     [`the fake answered exit 1 without an envelope: error: unexpected argument '--household'; ${FIX}`]);
+});
+
+test('refusalProblems accepts only exit 2 with a refused envelope naming the reason, and blames the side it is told to', () => {
+  const refused = (status, reason) => ({ status, stdout: JSON.stringify({ outcome: 'refused', reasons: [{ reason }] }) + '\n', stderr: '' });
+  assert.deepEqual(s.refusalProblems('interactive_only', refused(2, 'interactive_only')), []);
+  assert.deepEqual(s.refusalProblems('interactive_only', refused(2, 'sprint_closed')), ['outcome refused (exit 2) sprint_closed, expected refused interactive_only']);
+  assert.deepEqual(s.refusalProblems('interactive_only', refused(1, 'interactive_only')), ['exit 1 with a refused envelope, expected 2']);
+  assert.deepEqual(s.refusalProblems('interactive_only', ok({}), 'fix it'), ['outcome ok (exit 0), expected refused interactive_only; fix it']);
+  assert.deepEqual(s.refusalProblems('interactive_only', { status: 1, stdout: '', stderr: 'error: unexpected argument\n' }), ['no JSON envelope on stdout (exit 1): error: unexpected argument']);
+});
+test('coverageProblems: a refusal case ends with --json and names its reason', () => {
+  const fixture = { seed: [], entries: [], refusals: [{ argv: ['story', 'promise', 'GRA-1', '--clear'], reason: 'interactive_only' }, { argv: ['epic', 'promise', 'GRA-2', '--clear', '--json'] }] };
+  assert.deepEqual(s.coverageProblems([], fixture), ['refusal 1 must end with --json', 'refusal 2 needs the reason it expects']);
 });
 
 test('liveConfig skips without REEVE_SMOKE_SEED and lists what else a live run lacks', () => {

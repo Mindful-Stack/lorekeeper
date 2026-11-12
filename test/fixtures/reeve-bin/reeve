@@ -20,8 +20,13 @@
 // `interactive_only`; goal link|unlink|suggest persist, and stories, story context and the active sprint's counts see them.
 // `story ls` filters as GET /stories does (kb/ADR-0021): --text, --kind, --initiative, --urgent (GRA-40 is seeded urgent),
 // --open and --sort relevance (needs --text, a validation error otherwise).
+// Attachments (Reeve CLI 0.5.0, kb/ADR-0022): one screenshot, on GRA-31 and on the story REEVE_FAKE_SHOT_STORY names (the
+// real-planner smoke passes its seeded screenshot story); `story context` lists it in `attachments`, and `attachment get`
+// copies shot.png to `<dir>/<id>.png` (default dir: reeve-attachments next to $REEVE_FAKE_LOG, else in the temp dir).
 'use strict';
 const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const argv = process.argv.slice(2);
 const log = process.env.REEVE_FAKE_LOG;
@@ -105,6 +110,7 @@ const SPEC = {
   'goal suggest': { pos: 2, max: 3 },
   'goal link': { pos: 2, variadic: true }, // <ID> <KEYS>...
   'goal unlink': { pos: 2, variadic: true },
+  'attachment get': { pos: 1, val: ['dir'] },
 };
 // A command is one word (`search`) or two (`story ls`).
 const cmd = SPEC[words[0]] ? words[0] : words.slice(0, 2).join(' ');
@@ -134,6 +140,8 @@ if (f.ends && !/^\d{4}-\d{2}-\d{2}$/.test(f.ends)) usage(`invalid value '${f.end
 // Sprint and goal ids are integers, a confidence one of three words and a verdict `<goal id>=<met|partly_met|missed>[:<note>]`:
 // clap's to check, so a malformed one is a usage error (exit 1) and reaches nothing.
 if ((cmd.startsWith('goal ') && cmd !== 'goal add') || (cmd === 'sprint show' && pos.length)) if (!/^\d+$/.test(pos[0])) usage(`invalid value '${pos[0]}' for '<ID>': invalid digit found in string`);
+// An attachment id is a UUID: clap's to check.
+if (cmd === 'attachment get' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pos[0])) usage(`invalid value '${pos[0]}' for '<ID>': invalid UUID`);
 if (['goal confidence', 'goal suggest'].includes(cmd) && !['on_track', 'at_risk', 'off_track'].includes(pos[1])) usage(`invalid value '${pos[1]}' for '<CONFIDENCE>'\n  [possible values: on_track, at_risk, off_track]`);
 for (const v of f.verdict || []) if (!/^\d+=(met|partly_met|missed)(:.*)?$/s.test(v)) usage(`invalid value '${v}' for '--verdict <VERDICTS>': \`${v}\`: expected <goal id>=<met|partly_met|missed>[:<note>]`);
 // The CLI spells reversibility one-way|two-way; the wire (and a plan) says one_way|two_way.
@@ -238,6 +246,12 @@ const refOf = (item) => {
 };
 const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`, { current: item.version }));
 const [p0] = pos;
+// The one screenshot (AttachmentDto), on GRA-31 and on the story REEVE_FAKE_SHOT_STORY names; owned by the story it is listed on.
+const SHOT_ID = '0193a6a2-7b1c-7d2e-9f00-000000000031';
+const SHOT_STORY = process.env.REEVE_FAKE_SHOT_STORY;
+const attachmentsOf = (s) => (s.key === 'GRA-31' || s.key === SHOT_STORY
+  ? [{ id: SHOT_ID, url: `/api/v1/attachments/${SHOT_ID}`, filename: 'match-error.png', content_type: 'image/png', byte_size: fs.statSync(path.join(__dirname, 'shot.png')).size, uploaded_by: 'sam@example.com', uploaded_at: NOW, owner: { item: 'story', key: s.key } }]
+  : []);
 // Goals as last written in this run (links, suggestions), else as seeded; a sprint's goals in id order.
 const allGoals = () => Object.values({ ...goals, ...(state.goals || {}) }).sort((a, b) => a.id - b.id);
 const goalsOfSprint = (id) => allGoals().filter((g) => g.sprint_id === id);
@@ -434,7 +448,7 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     ok(g);
   },
   'story context': () => {
-    const s = itemsOf()[p0] || stories[p0] || error('not_found', `no story ${p0}`);
+    const s = itemsOf()[p0] || stories[p0] || (p0 === SHOT_STORY ? story(p0, 'Skill smoke story with a screenshot', { kind: 'chore' }) : null) || error('not_found', `no story ${p0}`);
     const e = s.epic ? itemsOf()[s.epic] || epics[s.epic] : null;
     const i = e && e.initiative ? itemsOf()[e.initiative] || initiatives[e.initiative] || null : null;
     // The planner's bundle (story_context): the open decisions on the initiative, then the epic, then the story.
@@ -442,7 +456,7 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
     const sp = activeSprint();
     const served = servedBy(s).map(({ goal: g, via }) => ({ goal: g, starts_on: sp.starts_on, ends_on: sp.ends_on, via }));
-    ok({ story: withGoals(s), epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served });
+    ok({ story: withGoals(s), epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served, attachments: attachmentsOf(s) });
   },
   'story ls': () => ok(all(stories, 'story').filter((s) => (f.untriaged ? !s.epic && s.delivery !== 'done' : !f.epic || s.epic === f.epic))
     .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery) && (!f.label || s.labels.includes(f.label)))
@@ -650,4 +664,13 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     ok(thread(on));
   },
   'comment ls': () => ok(thread(target())),
+  // GET /attachments/{id}, written to <dir>/<id>.<ext> (the ext from the stored type); an unknown id is not_found.
+  'attachment get': () => {
+    if (p0.toLowerCase() !== SHOT_ID) error('not_found', `no attachment ${p0}`);
+    const dir = f.dir ?? path.join(log ? path.dirname(log) : os.tmpdir(), 'reeve-attachments');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${SHOT_ID}.png`);
+    fs.copyFileSync(path.join(__dirname, 'shot.png'), file);
+    ok({ path: file });
+  },
 })[cmd]();

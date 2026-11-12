@@ -614,3 +614,24 @@ test('goal suggest fills the suggestion, never the confidence, on the active spr
     assert.deepEqual([r.status, r.reasons], [2, [{ reason: 'sprint_closed' }]], args.join(' '));
   }
 });
+test('story context lists the screenshot on GRA-31 and on REEVE_FAKE_SHOT_STORY; attachment get downloads it', () => {
+  const ID = '0193a6a2-7b1c-7d2e-9f00-000000000031';
+  const ctx = run(['story', 'context', 'GRA-31', '--json']).envelope.value;
+  assert.deepEqual(ctx.attachments.map((a) => [a.id, a.owner.item, a.owner.key, a.content_type]), [[ID, 'story', 'GRA-31', 'image/png']]);
+  assert.deepEqual(run(['story', 'context', 'GRA-32', '--json']).envelope.value.attachments, []);
+  assert.equal(run(['story', 'context', 'GRA-9', '--json']).envelope.code, 'not_found');
+  const shot = run(['story', 'context', 'GRA-9', '--json'], { REEVE_FAKE_SHOT_STORY: 'GRA-9' }).envelope.value;
+  assert.deepEqual(shot.attachments.map((a) => [a.id, a.owner.key]), [[ID, 'GRA-9']]);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-'));
+  const got = run(['attachment', 'get', ID, '--dir', dir, '--json']);
+  assert.deepEqual([got.status, got.envelope.value.path], [0, path.join(dir, `${ID}.png`)]);
+  assert.deepEqual(fs.readFileSync(got.envelope.value.path), fs.readFileSync(path.join(path.dirname(fake), 'shot.png')));
+  assert.equal(got.log, `attachment get ${ID} --dir ${dir} --json\n`);
+  const byDefault = run(['attachment', 'get', ID, '--json']);
+  assert.ok(fs.existsSync(byDefault.envelope.value.path), byDefault.envelope.value.path);
+  assert.equal(run(['attachment', 'get', '0193a6a2-7b1c-7d2e-9f00-000000000099', '--json']).envelope.code, 'not_found');
+  const bad = run(['attachment', 'get', '7', '--json']);
+  assert.deepEqual([bad.status, bad.stdout, bad.log], [1, '', '']);
+  assert.match(bad.stderr, /invalid value '7' for '<ID>'/);
+});

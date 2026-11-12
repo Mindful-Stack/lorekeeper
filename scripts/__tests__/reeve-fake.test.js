@@ -579,6 +579,17 @@ test('sprint show answers the active sprint with per-goal counts; a closed one a
   const ls = run(['sprint', 'ls', '--json']).envelope.value;
   assert.deepEqual([ls.active.sprint.id, ls.draft.id, ls.closed.map((x) => x.id)], [2, 3, [1]]);
 });
+test("sprint show lists the promises in the sprint's range after promises_after; sprint ls leaves the active sprint's out", () => {
+  const active = run(['sprint', 'show', '--json']).envelope.value;
+  assert.equal(active.promises_after, '2026-10-20'); // the closed sprint's planned end
+  assert.deepEqual(active.promises, [{ key: 'GRA-41', title: 'Upgrade the queue client library', on: '2026-11-03', to: 'the mentoring board', holder: 'own', epic_key: null, state: 'open', done_on: null, days: null }]);
+  const closed = run(['sprint', 'show', '1', '--json']).envelope.value;
+  assert.deepEqual([closed.promises, closed.promises_after], [[], null]); // the first sprint: every date up to its end
+  const draft = run(['sprint', 'show', '3', '--json']).envelope.value;
+  assert.deepEqual([draft.promises, draft.promises_after], [[], null]);
+  const ls = run(['sprint', 'ls', '--json']).envelope.value;
+  assert.deepEqual([ls.active.promises, ls.active.promises_after], [[], null]);
+});
 test("a person's sprint and goal commands are refused interactive_only, exit 2; a malformed verdict or confidence is a usage error", () => {
   for (const args of [['sprint', 'open', '--ends', '2026-11-20'], ['sprint', 'close', '--verdict', '2=met', '--verdict', '3=partly_met:the checklist: half done'],
     ['goal', 'add', '--outcome', 'O', '--check', 'C', '--idempotency-key', KEY], ['goal', 'edit', '2', '--version', '2', '--notes', 'N'],
@@ -590,6 +601,58 @@ test("a person's sprint and goal commands are refused interactive_only, exit 2; 
     const r = run([...args, '--json']);
     assert.deepEqual([r.status, r.envelope, r.log], [1, null, ''], args.join(' '));
   }
+});
+test("a person's promise commands are refused interactive_only, exit 2, after clap's checks", () => {
+  for (const item of [['story', 'GRA-41'], ['epic', 'GRA-20']]) {
+    for (const args of [['--on', 'this-sprint'], ['--on', 'next-sprint', '--to', 'Acme'], ['--on', '2027-01-15'], ['--to', 'Acme'], ['--to', ''], ['--clear']]) {
+      const r = run([item[0], 'promise', item[1], ...args, '--json']);
+      assert.deepEqual([r.status, r.envelope && r.envelope.outcome, r.envelope && r.envelope.reasons], [2, 'refused', [{ reason: 'interactive_only' }]], `${item.join(' ')} ${args.join(' ')}`);
+    }
+    // clap's: one of --on, --to and --clear; --clear alone; --on a shortcut or a calendar date. Nothing is sent or logged.
+    for (const [args, message] of [[[], /required arguments were not provided/], [['--clear', '--on', 'this-sprint'], /'--clear' cannot be used with '--on/],
+      [['--clear', '--to', 'Acme'], /'--clear' cannot be used with '--to/], [['--on', 'tomorrow'], /is neither this-sprint, next-sprint nor a date/],
+      [['--on', '2026-1-5'], /is neither this-sprint, next-sprint nor a date/], [['--on', '2026-02-30'], /is not a calendar date/], [['--version', '1'], /unexpected argument '--version'/]]) {
+      const r = run([item[0], 'promise', item[1], ...args, '--json']);
+      assert.deepEqual([r.status, r.envelope, r.log], [1, null, ''], `${item.join(' ')} ${args.join(' ')}`);
+      assert.match(r.stderr, message, `${item.join(' ')} ${args.join(' ')}`);
+    }
+  }
+});
+test('story ls --promised filters on the promise the planner derived; every story and epic carries a promise, null when none', () => {
+  const keys = (which) => { const r = run(['story', 'ls', '--promised', which, '--json']); assert.equal(r.status, 0, r.stderr); return r.envelope.value.map((x) => x.story.key); };
+  assert.deepEqual(keys('this-sprint'), ['GRA-41']);
+  assert.deepEqual(keys('any'), ['GRA-41']);
+  assert.deepEqual(keys('next-sprint'), []);
+  assert.deepEqual(keys('overdue'), []);
+  const r = run(['story', 'ls', '--promised', 'soon', '--json']);
+  assert.deepEqual([r.status, r.envelope], [1, null]);
+  assert.match(r.stderr, /possible values: this-sprint, next-sprint, overdue, any/);
+  const promised = run(['story', 'ls', '--promised', 'any', '--json']).envelope.value[0].story.promise;
+  assert.deepEqual([promised.holder, promised.state, promised.due, promised.own.to, promised.epic], ['own', 'open', 'this_sprint', 'the mentoring board', null]);
+  assert.equal(run(['story', 'context', 'GRA-31', '--json']).envelope.value.story.promise, null);
+  assert.equal(run(['epic', 'show', 'GRA-20', '--json']).envelope.value.promise, null);
+  const epic = run(['epic', 'show', 'PRM-1', '--json']).envelope.value;
+  assert.deepEqual([epic.key, epic.promise.due, epic.promise.past, epic.promise.fact.on], ['GRA-22', 'next_sprint', false, '2026-11-17']);
+});
+test("a story under a promised epic inherits the epic's promise on read; its own earlier date wins", () => {
+  const call = session();
+  const k = (n) => `refining-epic:GRA-22:0a1b2c3d:${n}`;
+  const a = call(['story', 'create', '--epic', 'GRA-22', '--title', 'Rate a session', '--criterion', 'A rating is saved', '--idempotency-key', k(1), '--json']).value.key;
+  const b = call(['story', 'create', '--epic', 'GRA-22', '--title', 'Remind to rate', '--criterion', 'A reminder is sent', '--idempotency-key', k(2), '--json']).value.key;
+  const promiseOf = (key, ...flags) => (call(['story', 'ls', ...flags, '--json']).value.find((x) => x.story.key === key) || {}).story?.promise;
+  const inherited = { own: null, epic: { key: 'GRA-22', fact: { on: '2026-11-17', by: 'dan@example.com', at: '2026-10-20T09:00:00Z', to: 'the mentoring board' } }, on: '2026-11-17', holder: 'epic', state: 'open', due: 'next_sprint', days: null };
+  assert.deepEqual(promiseOf(a, '--epic', 'GRA-22'), inherited);
+  assert.deepEqual(call(['story', 'context', a, '--json']).value.story.promise, inherited);
+  assert.deepEqual(call(['story', 'ls', '--promised', 'next-sprint', '--json']).value.map((x) => x.story.key), [a, b]);
+  // done in the run, after the epic was promised: still inherited, kept or dropped, and no longer listed by --promised
+  call(['story', 'mv', a, 'done', '--resolution', 'completed', '--json']);
+  call(['story', 'mv', b, 'done', '--resolution', 'dropped', '--json']);
+  assert.deepEqual([promiseOf(a, '--epic', 'GRA-22').state, promiseOf(b, '--epic', 'GRA-22').state, promiseOf(a, '--epic', 'GRA-22').due], ['kept', 'dropped', null]);
+  assert.deepEqual(call(['story', 'ls', '--promised', 'any', '--json']).value.map((x) => x.story.key), ['GRA-41']);
+  // GRA-41's own promise (3 Nov) is earlier than the epic's (17 Nov): its own counts, and the epic's shows beside it
+  call(['story', 'edit', 'GRA-41', '--version', '1', '--epic', 'GRA-22', '--json']);
+  const p = promiseOf('GRA-41', '--promised', 'this-sprint');
+  assert.deepEqual([p.holder, p.on, p.own.on, p.epic.key, p.state, p.due], ['own', '2026-11-03', '2026-11-03', 'GRA-22', 'open', 'this_sprint']);
 });
 test('goal link and unlink persist; a story serves a goal through the nearest link; story context and --goal see it', () => {
   const call = session();

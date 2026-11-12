@@ -482,10 +482,10 @@ does not change the item's version.
 |---|---|
 | `reeve story promise <KEY> --on this-sprint\|next-sprint\|YYYY-MM-DD [--to <text>] --json` | promises the story by the date: `this-sprint` and `next-sprint` take that sprint's planned end as it is when saved (a later change to the sprint does not move it); `--to` names who it is promised to, and left out keeps the current recipient; `value.promise` as above |
 | `reeve story promise <KEY> --to <text> --json` | changes only the recipient of the story's own promise (`--to ''` clears it); without a promise it is a `validation` error |
-| `reeve story promise <KEY> --clear --json` | removes the story's own promise (clearing none changes nothing); an epic's promise still applies, as `value.promise` shows; `--clear` takes no other flag (a usage error) |
+| `reeve story promise <KEY> --clear --json` | removes the story's own promise (clearing none changes nothing); `value.cleared` says whether it removed one (false when the story had none of its own) and `value.story` is the story after it, its epic's promise still applying as `value.story.promise` shows; `--clear` takes no other flag (a usage error) |
 | `reeve epic promise <KEY> --on this-sprint\|next-sprint\|YYYY-MM-DD [--to <text>] --json` | promises the epic by the date, as for a story; each of its stories not done now gets the date too; `value.promise`: `{fact, due, past}` |
 | `reeve epic promise <KEY> --to <text> --json` | changes only the recipient of the epic's promise (`--to ''` clears it) |
-| `reeve epic promise <KEY> --clear --json` | removes the epic's promise from the epic and its stories |
+| `reeve epic promise <KEY> --clear --json` | removes the epic's promise from the epic and its stories; `value.cleared` says whether it removed one and `value.epic` is the epic after it |
 
 One of `--on`, `--to` and `--clear` is required, and an `--on` that is neither a shortcut nor a
 calendar date is a usage error (exit 1, nothing sent).

@@ -699,3 +699,25 @@ test('story context lists the screenshot on GRA-31; attachment get needs --dir, 
   assert.deepEqual([bad.status, bad.stdout, bad.log], [1, '', '']);
   assert.match(bad.stderr, /invalid value '7' for '<ID>'/);
 });
+
+function runIn(log, args, env = {}) {
+  const r = spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log, ...env } });
+  return { status: r.status, envelope: r.stdout.trim().startsWith('{') ? JSON.parse(r.stdout) : null };
+}
+const freshLog = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+
+test('story mv: entering active work assigns the signed-in user to an unowned story and keeps an owner', () => {
+  const log = freshLog();
+  assert.equal(runIn(log, ['story', 'mv', 'GRA-43', 'in-progress', '--json']).envelope.value.owner, 'dan@example.com');
+  runIn(log, ['story', 'edit', 'GRA-44', '--owner', 'sam@example.com', '--version', '1', '--json']);
+  assert.equal(runIn(log, ['story', 'mv', 'GRA-44', 'in-progress', '--json']).envelope.value.owner, 'sam@example.com');
+  assert.equal(runIn(log, ['story', 'mv', 'GRA-45', 'done', '--resolution', 'dropped', '--json']).envelope.value.owner ?? null, null);
+});
+test('blocked_by: a blocker in review owned by someone else refuses a start, with its delivery and owner', () => {
+  const log = freshLog();
+  const r = runIn(log, ['story', 'mv', 'GRA-43', 'in-progress', '--json'], { REEVE_FAKE_BLOCKED: 'GRA-43' });
+  assert.equal(r.status, 2);
+  assert.deepEqual(r.envelope.reasons, [{ reason: 'blocked_by', story: 'GRA-42', delivery: 'in_review', owner: 'mia@example.com' }]);
+  const ctx = runIn(log, ['story', 'context', 'GRA-43', '--json'], { REEVE_FAKE_BLOCKED: 'GRA-43' });
+  assert.deepEqual(ctx.envelope.value.readiness.reasons.filter((x) => x.reason === 'blocked_by'), r.envelope.reasons, 'context and mv agree');
+});

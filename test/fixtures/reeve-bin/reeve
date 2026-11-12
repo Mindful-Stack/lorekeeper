@@ -7,7 +7,7 @@
 // CheckResult, Reason in the Reeve repository's crates/reeve-server/tests/snapshots/openapi.json).
 // REEVE_FAKE_LINK_CHECK=unreadable makes `decision link` behave like a link whose immediate check
 // could not run; REEVE_FAKE_LINK_CHECK=repo_not_configured like a link to a repository the planner does
-// not check yet (GRA-68: stored, no check, readiness reason decision_repo_not_configured). REEVE_FAKE_REFUSE=<text> makes every command whose name contains <text> (e.g.
+// not check yet (GRA-68: stored, no check, readiness reason decision_repo_not_configured). REEVE_FAKE_BLOCKED=<KEY> makes <KEY> blocked by a fixed in-review blocker owned by someone else, in `story context` and `story mv` alike (the latter refuses a start, exit 2). REEVE_FAKE_REFUSE=<text> makes every command whose name contains <text> (e.g.
 // `story create`) answer with a `refused` envelope and exit 2. REEVE_FAKE_SIGNIN=expired makes every
 // call but `auth status` answer an `unauthenticated` error, exit 2. Creates replay by
 // --idempotency-key from the state file $REEVE_FAKE_LOG.state; creates, edits and decision links
@@ -335,7 +335,11 @@ const readinessOf = (s) => {
   }
   reasons.push(...open(s.key));
   if (!s.criteria.length) reasons.push({ reason: 'no_criteria' });
-  for (const b of s.blocked_by) if (((itemsOf()[b] || stories[b]) || {}).delivery !== 'done') reasons.push({ reason: 'blocked_by', story: b });
+  // Owner-scoped blocking (kb/ADR-0027): a blocker in progress or in review owned by the dependent's owner does not block it.
+  const blocking = (b, owner) => b.delivery === 'todo'
+    || (['in-progress', 'in_progress', 'in-review', 'in_review'].includes(b.delivery) && !(b.owner && b.owner === owner));
+  for (const k of s.blocked_by) { const b = (itemsOf()[k] || stories[k]) || {}; if (blocking(b, s.owner)) reasons.push({ reason: 'blocked_by', story: k, delivery: String(b.delivery).replace('-', '_'), owner: b.owner ?? null }); }
+  if (process.env.REEVE_FAKE_BLOCKED === s.key) reasons.push({ reason: 'blocked_by', story: 'GRA-42', delivery: 'in_review', owner: 'mia@example.com' });
   return { ready: !reasons.length, reasons };
 };
 
@@ -529,7 +533,16 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     .filter((s) => f.goal === undefined || (f.goal === 'any' ? s.goals.length > 0 : f.goal === 'none' ? !s.goals.length : s.goals.some((g) => String(g.id) === f.goal)))
     .map((s) => ({ story: s, readiness: readinessOf(s) })).filter((x) => !f.ready || (x.readiness.ready && x.story.delivery === 'todo'))),
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], owner: f.owner || null, external_ref: f['external-ref'] || null }))),
-  'story mv': () => { const s = find(stories, p0); if (pos[1] === 'done' && !['completed', 'dropped'].includes(f.resolution)) error('validation', 'moving to done needs --resolution completed or dropped'); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1], resolution: pos[1] === 'done' ? f.resolution : null })); }, // a delivery change is logged; only refining-epic's won't-do (done, dropped) may call it
+  'story mv': () => {
+    const s = find(stories, p0);
+    const active = (d) => ['in-progress', 'in-review', 'testing'].includes(d);
+    // Only REEVE_FAKE_BLOCKED refuses: seeded stories are often not ready (untriaged), and scenarios start them.
+    if (process.env.REEVE_FAKE_BLOCKED === s.key && active(pos[1]) && !active(s.delivery))
+      emit({ outcome: 'refused', reasons: readinessOf(s).reasons.filter((r) => r.reason === 'blocked_by') }, 2);
+    if (pos[1] === 'done' && !['completed', 'dropped'].includes(f.resolution)) error('validation', 'moving to done needs --resolution completed or dropped');
+    const owner = s.owner ?? (active(pos[1]) ? 'dan@example.com' : null); // the planner's rule; dan is auth status's email
+    ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1], resolution: pos[1] === 'done' ? f.resolution : null, owner }));
+  }, // a delivery change is logged; only refining-epic's won't-do (done, dropped) may call it
   // Stories with a like title: text 8 to 200 characters (several words are one text), --limit 1 to 10 (default 5), open ones and done ones.
   'story similar': () => {
     const text = pos.join(' ');

@@ -23,10 +23,10 @@ Before applying the conventions below, check whether the team's knowledge base a
 Building new work, from the trunk:
 1. `gh stack init <first-branch>` once — **pass the branch name**: bare `gh stack init` prompts for one, so in an agent or CI Bash run (no TTY) it exits 5 with `interactive input required; provide branch names as arguments`. Several names lay out the whole stack up front (`gh stack init auth-layer api-routes ui-components`), and existing branches are adopted rather than recreated.
 2. Then per layer: make changes, `gh stack add --all -m "<message>"` (creates a branch at HEAD on top of the stack). On the first layer the branch `init` created is still empty, so `add` commits *there* and says so instead of creating a branch — a plain `git commit` on it is equivalent.
-3. `gh stack submit --auto --open` — pushes all branches and creates/updates the PRs and the stack on GitHub. An agent or CI Bash run has no TTY, so `submit` skips the interactive editor and behaves as `--auto`, which **defaults new PRs to draft**; passing `--auto --open` makes that explicit and lands them **ready for review** (per `gh stack submit --help`, `--open` = "Mark new and existing PRs as ready for review"). In an interactive terminal the editor already defaults to ready, so `--open` there is harmless. Degrade: if a future CLI rejects `--open`, submit without it and flip with `gh pr ready <n>`.
+3. `gh stack submit --auto --open` — pushes all branches and creates/updates the PRs and the stack on GitHub. An agent or CI Bash run has no TTY, so `submit` skips the interactive editor and behaves as `--auto`, which **defaults new PRs to draft**; passing `--auto --open` makes that explicit and lands them **ready for review** (per `gh stack submit --help`, `--open` = "Mark new and existing PRs as ready for review"). In an interactive terminal the editor already defaults to ready, so `--open` there is harmless. Degrade: if a future CLI rejects `--open`, submit without it and flip with `gh pr ready <n>`. Then move the now-ready PRs' stories (*Stories*).
 
 Adopting PRs/branches created outside gh-stack (by hand, or by an agent without the extension):
-- Branches must chain: each based on its predecessor, each PR targeting the predecessor's branch (first targets main). Retarget existing PRs with `gh pr edit <n> --base <branch>` if needed, then register bottom first: `gh stack link --open <pr-or-branch>...` (`link` touches no local tracking state). Pass `--open` so the stack lands **ready for review** rather than draft — per `gh stack link --help`, `--open` marks *both* newly-created and existing PRs ready. Scope: `link` only *creates* PRs for bare-branch args (and those default to draft); for a `<pr>`-number/URL arg it adopts the existing PR, and `--open` flips that PR from draft to ready if it was one. Draft PRs silently sit unreviewed, so ready is what we want; flip any straggler with `gh pr ready <n>`. Verify each PR's `baseRefName` afterwards.
+- Branches must chain: each based on its predecessor, each PR targeting the predecessor's branch (first targets main). Retarget existing PRs with `gh pr edit <n> --base <branch>` if needed, then register bottom first: `gh stack link --open <pr-or-branch>...` (`link` touches no local tracking state). Pass `--open` so the stack lands **ready for review** rather than draft — per `gh stack link --help`, `--open` marks *both* newly-created and existing PRs ready. Scope: `link` only *creates* PRs for bare-branch args (and those default to draft); for a `<pr>`-number/URL arg it adopts the existing PR, and `--open` flips that PR from draft to ready if it was one. Draft PRs silently sit unreviewed, so ready is what we want; flip any straggler with `gh pr ready <n>`. Verify each PR's `baseRefName` afterwards. Then move the now-ready PRs' stories (*Stories*).
 
 Day-to-day: `gh stack view` for status; after a partial merge or trunk movement, `gh stack sync` (in a checkout that tracks the stack — run `gh stack checkout <pr>` first if it doesn't; `sync` without tracking exits 2); `gh stack modify` to reorder/fold (clean tree required).
 
@@ -58,7 +58,8 @@ Terms: the **sequence** (full merge order) splits into **segments** (maximal sam
    Each PR body also carries its own `## Decisions` section in the format of
    `<plugin-root>/references/pr-decisions.md` (records followed or added, rule edits, or "No new
    decisions"), copied from the plan's *Governing decisions* when there is one — the `## Stack`
-   checklist coordinates merge order, it does not replace it.
+   checklist coordinates merge order, it does not replace it. Each body also carries a `## Stories`
+   section (*Stories*).
 
    GitHub renders every reference with its live state, cross-repo included, so the badges stay current without maintenance — only the ordering is static text, and the ordering never changes. **The checklist is the gate:** merge strictly top to bottom (for a fan-out, root first, then the leaves in any order), and read the Stack section before merging, since each reference's badge shows whether its predecessors have landed. Each PR must be **independently deployable against the currently merged state of the others** — that is what makes a partially-merged stack safe.
 
@@ -74,13 +75,33 @@ Terms: the **sequence** (full merge order) splits into **segments** (maximal sam
 
 ### advance
 Trigger: a stack PR merged, or the user asks to advance/sync.
-1. Read the `## Stack` section from any live PR and resolve each entry's live state. Parse `owner/repo#N` into `gh pr view <N> -R <owner/repo> --json state,mergedAt` — gh selectors don't accept the `owner/repo#N` form directly.
+1. Read the `## Stack` section from any live PR (native stacks: `gh stack view` instead of a `## Stack` section) and resolve each entry's live state. Parse `owner/repo#N` into `gh pr view <N> -R <owner/repo> --json state,mergedAt` — gh selectors don't accept the `owner/repo#N` form directly.
 2. Live PR state is the authority for merged-ness. Regenerate any body section that is missing, mis-ordered, or has stale ticks — each body keeps its *own* `← this PR` marker; bodies already in sync need no write. If two bodies genuinely disagree on ordering, reconcile with the user before writing anything.
 3. Bring native segments current: `gh stack checkout <pr>` then `gh stack sync` per affected repo (skip uncloned repos and say so).
-4. Report the front: the next mergeable PR(s) and what each is waiting on.
+4. Move the stories of every PR that landed in the default branch (*Stories*).
+5. Report the front: the next mergeable PR(s) and what each is waiting on.
 
 ### status
 Given any PR of a sequence (or "where is the stack?"), render the entries in merge order with live state (merged / open / closed, CI via `gh pr checks`; `gh stack view` inside native segments). Flag anomalies: an entry closed without merging (sequence broken — re-plan it), a checklist out of sync with reality, an entry merged ahead of an unmerged predecessor **in a chain** (report it — the fix is usually merging the predecessor promptly). In a fan-out, leaves merging in any order once the root has landed is normal, not an anomaly — only a leaf merged before the root is.
+
+## Stories
+
+Each PR body carries a `## Stories` section: the stories that PR completes, or `No stories.`
+(`<plugin-root>/references/reeve-cli.md`, *A pull request's `## Stories`*). When the planner is
+present, moves follow that reference's *Moving stories*:
+
+- **Ready for review.** After `gh stack submit --open`, `gh stack link --open`, `gh pr ready`, or
+  opening a checklist PR as ready: move the stories of each PR now ready to in review. A draft moves
+  nothing.
+- **Merged.** After a merge, list the stack's PRs (native: `gh stack view`; checklist: the
+  `## Stack` entries) and read each with `gh pr view <N> -R <owner/repo> --json state,baseRefName,body`.
+  A PR has landed in the default branch when its `state` is `MERGED` and its `baseRefName` is the
+  default branch, or, in a native stack, when a PR above it in the same stack has landed that way
+  (merging a PR lands every unmerged PR below it; GitHub may leave a lower PR's base on its
+  predecessor's branch). Move the stories of every landed PR to testing. A PR merged into another
+  branch with nothing above it landed has not reached the default branch. A story already in testing
+  or done is left as it is, so advancing twice changes nothing.
+- A PR without the section moves nothing: say so in the report.
 
 ## Rules
 
@@ -88,3 +109,4 @@ Given any PR of a sequence (or "where is the stack?"), render the entries in mer
 - Merging follows sequence order: total in a chain; root-before-leaves in a fan-out (leaves are parallel). If a step became unnecessary, update every checklist first, then close its PR.
 - Everything runs with the developer's local `gh` auth. Do not create org secrets, CI workflows, or polling for this — the checklist already solves the coordination problem, and automation would add secrets and workflows to maintain for no gain.
 - Soft-degrade over hard failure: feature gates, missing extension, single-PR segments, uncloned repos → the checklist convention alone still carries the coordination; state what was skipped.
+- Stories move because the work happened, in the run that opened or advanced the stack; never on a schedule or from a webhook.

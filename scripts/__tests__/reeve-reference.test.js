@@ -19,7 +19,7 @@ const root = path.join(__dirname, '..', '..');
 const SOURCES = ['references/reeve-cli.md', 'skills/planning-initiative/SKILL.md', 'skills/refining-epic/SKILL.md',
   'skills/brainstorming/SKILL.md', 'skills/recording-decisions/actions/link.md', 'skills/recording-decisions/actions/record.md',
   'references/decision-triage.md', 'skills/executing-plans/SKILL.md', 'skills/subagent-driven-development/SKILL.md',
-  'skills/stack/SKILL.md', 'skills/writing-plans/SKILL.md'];
+  'skills/stack/SKILL.md', 'skills/writing-plans/SKILL.md', 'skills/delivering-stories/SKILL.md'];
 const FAKE = path.join(root, 'test', 'fixtures', 'reeve-bin', 'reeve');
 const PLACEHOLDERS = {
   KEY: 'GRA-12', EPIC: 'GRA-20', INITIATIVE: 'GRA-12', 'COVERING-EPIC': 'GRA-20', 'COVERING-INITIATIVE': 'GRA-12',

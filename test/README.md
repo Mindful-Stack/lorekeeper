@@ -186,7 +186,7 @@ Answers use the planner's wire shapes:
   (anything else is a `validation` error, exit 1);
 - a write naming an epic or initiative that does not exist is `not_found` and is not logged, so a
   guessed key never satisfies a log expectation; `story mv` exists so a delivery change is
-  logged and can be rejected (only refining-epic's won't-do, `done --resolution dropped`, may call it);
+  logged and can be rejected (skills call it at the moments of work, and to close an item as dropped);
 - `story similar <text>` answers the stories whose title shares a word of more than three letters with
   the text, checks the text (8 to 200 characters) and `--limit` (1 to 10) as the planner does;
 - created items get keys `GRA-100`, `GRA-101`, … (decision and comment ids `100`, …), minted from a counter

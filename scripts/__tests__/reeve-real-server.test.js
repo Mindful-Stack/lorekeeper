@@ -71,8 +71,7 @@ function baseEnv() {
   for (const k of Object.keys(env)) if (k.startsWith('REEVE_') || k === 'XDG_CONFIG_HOME') delete env[k];
   return env;
 }
-// extra: the fake's own modes, such as REEVE_FAKE_SHOT_STORY (the seed's screenshot story, which the fake lists one attachment on).
-const fakeSide = (bin, dir, extra = {}) => ({ bin, env: { ...baseEnv(), REEVE_CONFIG_DIR: dir, REEVE_FAKE_LOG: path.join(dir, 'log'), ...extra } });
+const fakeSide = (bin, dir) => ({ bin, env: { ...baseEnv(), REEVE_CONFIG_DIR: dir, REEVE_FAKE_LOG: path.join(dir, 'log') } });
 // The files the entries pass by path (--brief-file, apply), written for the run into dir; {{files.<name>}} names each.
 // The plan is the run's own (its id carries the run id) and creates a small tree of its own, a decision and a blocker.
 function smokeFiles(dir, { run_id, email }) {
@@ -102,12 +101,15 @@ test('the seed and every entry run against the fake on both sides', (t) => {
   assert.deepEqual(results.filter((r) => r.problems.length), []);
 });
 // The attachment get entry downloads an id a story context answer gave: a screenshot story whose context lists no
-// attachment leaves the id unbound, so the entry fails on that side instead of passing on a guessed id.
-test('a screenshot story with no attachments fails the attachment get entry', (t) => {
+// attachment leaves the id unbound, so the entry fails on that side instead of passing on a guessed id. Every failing
+// result is pinned, seed steps included (runSmoke reports a failed seed step as its own result), so a screenshot story
+// that does not exist fails this test rather than passing on the same unbound message.
+test('a screenshot story with no attachments fails the attachment get entry, and only that', (t) => {
   const scope = { ...selfScope(tmp(t)), shot: { story: 'GRA-32' } };
-  const results = s.runSmoke({ fixture, real: fakeSide(FAKE, tmp(t)), fake: fakeSide(FAKE, tmp(t)), scope, expect: false });
-  const get = results.find((r) => r.row.startsWith('`reeve attachment get'));
-  assert.deepEqual(get.problems, ['real: unbound {{shotctx.attachments.0.id}} (an earlier step failed or never bound it)']);
+  const results = s.runSmoke({ fixture, real: fakeSide(FAKE, tmp(t)), fake: fakeSide(FAKE, tmp(t)), scope, fakeScope: { shot: { story: 'GRA-31' } }, expect: false });
+  assert.deepEqual(results.filter((r) => r.problems.length).map((r) => [r.row, r.problems]), [
+    ['`reeve attachment get <ID> [--dir <dir>] --json`', ['real: unbound {{shotctx.attachments.0.id}} (an earlier step failed or never bound it)']],
+  ]);
 });
 test("a field the fake drops is reported as the fake's to fix", (t) => {
   const src = fs.readFileSync(FAKE, 'utf8');
@@ -138,8 +140,10 @@ test('every Commands row against a real planner, the fake answering in the same 
   const results = s.runSmoke({
     fixture,
     real: { bin: process.env.REEVE_REAL_BIN, env: realEnv },
-    fake: fakeSide(FAKE, tmp(t), { REEVE_FAKE_SHOT_STORY: seed.shot.story }),
+    fake: fakeSide(FAKE, tmp(t)),
     scope: { ...seed, run_id: detected.run_id, files: smokeFiles(tmp(t), { ...seed, run_id: detected.run_id }) },
+    // shot.story is a planner key: the fake reads its own screenshot story instead
+    fakeScope: { shot: { story: 'GRA-31' } },
     out: process.env.REEVE_SMOKE_OUT,
   });
   // not vacuous: every entry's runs all reached the real planner and got an envelope back

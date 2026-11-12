@@ -26,7 +26,7 @@ const PLACEHOLDERS = {
   run_id: '0a1b2c3d', key: 'planning-initiative:GRA-12:0a1b2c3d:1', prefix: 'recording-decisions:7', title: 'Title',
   md: 'Brief', text: 'Criterion', email: 'dan@example.com', 'YYYY-MM': '2027-03', ref: 'PIB-30', delivery: 'todo', label: 'migrated', bucket: 'Later', 'qualified id': 'kb/ADR-0002', 'front-matter id': 'kb/ADR-0002',
   repo: 'lore', 'path in repo': 'knowledge/adrs/0002-x.md', path: 'knowledge/adrs/0002-x.md', url: 'https://github.com/example/w/pull/9',
-  household: '.', dir: '.', ID: '0193a6a2-7b1c-7d2e-9f00-000000000031', 'your scratchpad': '.', branch: 'feat/x', note: 'Note', 'goal id': '2', 'its title': 'Match queue stories',
+  household: '.', dir: '.', ID: '0193a6a2-7b1c-7d2e-9f00-000000000031', branch: 'feat/x', note: 'Note', 'goal id': '2', 'its title': 'Match queue stories',
   'brief file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'brief.md'), 'description file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'brief.md'),
   'plan file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'plan.json'), 'the new epic or initiative, its title and where it goes': 'new epic under GRA-13',
 };

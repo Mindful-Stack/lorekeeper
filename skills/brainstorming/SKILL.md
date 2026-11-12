@@ -40,11 +40,12 @@ context. On `ok`, the story's title, description and criteria, the initiative an
 the required decisions, the blockers, the comments and the sprint goals the story serves
 (`value.goals[]`: each goal's outcome, check and notes, whose boundaries the design stays inside)
 are project context for item 1.
-When `value.attachments` is present and not empty, fetch each of the story's own (`owner.item` is
-`story`) with `reeve attachment get <ID> --dir <your scratchpad> --json` (`<ID>` is the
-attachment's `id`) and open `value.path` with the Read tool; fetch an epic's or initiative's only
-when its brief points at it. Say in the spec what each screenshot shows: later steps never see the
-images.
+When `value.attachments` is not empty, fetch the first five of the story's own (`owner.item` is
+`story`) with `reeve attachment get <ID> --dir <dir> --json` (`<ID>` is its `id`; the detector's
+`bin` as the first word; `<dir>` the session's scratchpad, when one is announced, else a new
+`mktemp -d`) and open `value.path` with the Read tool; fetch an epic's or initiative's only when its
+brief links it (`/api/v1/attachments/<ID>`). Say in the spec what each screenshot shows (later steps
+never see the images) and name any story screenshot beyond five by its `filename`.
 
 ## Checklist
 

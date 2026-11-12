@@ -20,9 +20,9 @@
 // `interactive_only`; goal link|unlink|suggest persist, and stories, story context and the active sprint's counts see them.
 // `story ls` filters as GET /stories does (kb/ADR-0021): --text, --kind, --initiative, --urgent (GRA-40 is seeded urgent),
 // --open and --sort relevance (needs --text, a validation error otherwise).
-// Attachments (Reeve CLI 0.5.0, kb/ADR-0022): one screenshot, on GRA-31 and on the story REEVE_FAKE_SHOT_STORY names (the
-// real-planner smoke passes its seeded screenshot story); `story context` lists it in `attachments`, and `attachment get`
-// copies shot.png to `<dir>/<id>.png` (default dir: reeve-attachments next to $REEVE_FAKE_LOG, else in the temp dir).
+// Attachments (Reeve CLI 0.5.0, kb/ADR-0022): one screenshot, on GRA-31; `story context` lists it in `attachments`, and
+// `attachment get` copies shot.png to `<dir>/<id>.png` (a --dir that is not a directory is an `internal` error; the
+// default, reeve-attachments next to $REEVE_FAKE_LOG or in the temp dir, is created).
 'use strict';
 const fs = require('node:fs');
 const os = require('node:os');
@@ -246,10 +246,9 @@ const refOf = (item) => {
 };
 const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`, { current: item.version }));
 const [p0] = pos;
-// The one screenshot (AttachmentDto), on GRA-31 and on the story REEVE_FAKE_SHOT_STORY names; owned by the story it is listed on.
+// The one screenshot (AttachmentDto), on GRA-31.
 const SHOT_ID = '0193a6a2-7b1c-7d2e-9f00-000000000031';
-const SHOT_STORY = process.env.REEVE_FAKE_SHOT_STORY;
-const attachmentsOf = (s) => (s.key === 'GRA-31' || s.key === SHOT_STORY
+const attachmentsOf = (s) => (s.key === 'GRA-31'
   ? [{ id: SHOT_ID, url: `/api/v1/attachments/${SHOT_ID}`, filename: 'match-error.png', content_type: 'image/png', byte_size: fs.statSync(path.join(__dirname, 'shot.png')).size, uploaded_by: 'sam@example.com', uploaded_at: NOW, owner: { item: 'story', key: s.key } }]
   : []);
 // Goals as last written in this run (links, suggestions), else as seeded; a sprint's goals in id order.
@@ -448,7 +447,7 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     ok(g);
   },
   'story context': () => {
-    const s = itemsOf()[p0] || stories[p0] || (p0 === SHOT_STORY ? story(p0, 'Skill smoke story with a screenshot', { kind: 'chore' }) : null) || error('not_found', `no story ${p0}`);
+    const s = itemsOf()[p0] || stories[p0] || error('not_found', `no story ${p0}`);
     const e = s.epic ? itemsOf()[s.epic] || epics[s.epic] : null;
     const i = e && e.initiative ? itemsOf()[e.initiative] || initiatives[e.initiative] || null : null;
     // The planner's bundle (story_context): the open decisions on the initiative, then the epic, then the story.
@@ -667,8 +666,10 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
   // GET /attachments/{id}, written to <dir>/<id>.<ext> (the ext from the stored type); an unknown id is not_found.
   'attachment get': () => {
     if (p0.toLowerCase() !== SHOT_ID) error('not_found', `no attachment ${p0}`);
+    // The CLI creates only its default directory; a --dir that does not exist fails the write.
+    if (f.dir !== undefined && !(fs.statSync(f.dir, { throwIfNoEntry: false }) || { isDirectory: () => false }).isDirectory()) error('internal', `${f.dir}/${SHOT_ID}.png: No such file or directory`);
     const dir = f.dir ?? path.join(log ? path.dirname(log) : os.tmpdir(), 'reeve-attachments');
-    fs.mkdirSync(dir, { recursive: true });
+    if (f.dir === undefined) fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, `${SHOT_ID}.png`);
     fs.copyFileSync(path.join(__dirname, 'shot.png'), file);
     ok({ path: file });

@@ -21,11 +21,10 @@
 // `story ls` filters as GET /stories does (kb/ADR-0021): --text, --kind, --initiative, --urgent (GRA-40 is seeded urgent),
 // --open and --sort relevance (needs --text, a validation error otherwise).
 // Attachments (Reeve CLI 0.5.0, kb/ADR-0022): one screenshot, on GRA-31; `story context` lists it in `attachments`, and
-// `attachment get` copies shot.png to `<dir>/<id>.png` (a --dir that is not a directory is an `internal` error; the
-// default, reeve-attachments next to $REEVE_FAKE_LOG or in the temp dir, is created).
+// `attachment get <ID> --dir <dir>` (--dir required) creates <dir> (mode 0700)
+// and copies shot.png to `<dir>/<id>.png` (mode 0600).
 'use strict';
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 const argv = process.argv.slice(2);
@@ -110,7 +109,7 @@ const SPEC = {
   'goal suggest': { pos: 2, max: 3 },
   'goal link': { pos: 2, variadic: true }, // <ID> <KEYS>...
   'goal unlink': { pos: 2, variadic: true },
-  'attachment get': { pos: 1, val: ['dir'] },
+  'attachment get': { pos: 1, val: ['dir'], req: ['dir'] },
 };
 // A command is one word (`search`) or two (`story ls`).
 const cmd = SPEC[words[0]] ? words[0] : words.slice(0, 2).join(' ');
@@ -666,12 +665,11 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
   // GET /attachments/{id}, written to <dir>/<id>.<ext> (the ext from the stored type); an unknown id is not_found.
   'attachment get': () => {
     if (p0.toLowerCase() !== SHOT_ID) error('not_found', `no attachment ${p0}`);
-    // The CLI creates only its default directory; a --dir that does not exist fails the write.
-    if (f.dir !== undefined && !(fs.statSync(f.dir, { throwIfNoEntry: false }) || { isDirectory: () => false }).isDirectory()) error('internal', `writing ${f.dir}/${SHOT_ID}.png: No such file or directory (os error 2)`);
-    const dir = f.dir ?? path.join(log ? path.dirname(log) : os.tmpdir(), 'reeve-attachments');
-    if (f.dir === undefined) fs.mkdirSync(dir, { recursive: true });
-    const file = path.join(dir, `${SHOT_ID}.png`);
+    // --dir is required; the CLI creates it (recursively, mode 0700) and writes the image with mode 0600.
+    fs.mkdirSync(f.dir, { recursive: true, mode: 0o700 });
+    const file = path.join(f.dir, `${SHOT_ID}.png`);
     fs.copyFileSync(path.join(__dirname, 'shot.png'), file);
+    fs.chmodSync(file, 0o600);
     ok({ path: file });
   },
 })[cmd]();

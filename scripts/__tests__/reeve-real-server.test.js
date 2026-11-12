@@ -100,17 +100,6 @@ test('the seed and every entry run against the fake on both sides', (t) => {
   const results = s.runSmoke({ fixture, real: fakeSide(FAKE, tmp(t)), fake: fakeSide(FAKE, tmp(t)), scope: selfScope(tmp(t)), expect: false });
   assert.deepEqual(results.filter((r) => r.problems.length), []);
 });
-// The attachment get entry downloads an id a story context answer gave: a screenshot story whose context lists no
-// attachment leaves the id unbound, so the entry fails on that side instead of passing on a guessed id. Every failing
-// result is pinned, seed steps included (runSmoke reports a failed seed step as its own result), so a screenshot story
-// that does not exist fails this test rather than passing on the same unbound message.
-test('a screenshot story with no attachments fails the attachment get entry, and only that', (t) => {
-  const scope = { ...selfScope(tmp(t)), shot: { story: 'GRA-32' } };
-  const results = s.runSmoke({ fixture, real: fakeSide(FAKE, tmp(t)), fake: fakeSide(FAKE, tmp(t)), scope, fakeScope: { shot: { story: 'GRA-31' } }, expect: false });
-  assert.deepEqual(results.filter((r) => r.problems.length).map((r) => [r.row, r.problems]), [
-    ['`reeve attachment get <ID> [--dir <dir>] --json`', ['real: unbound {{shotctx.attachments.0.id}} (an earlier step failed or never bound it)']],
-  ]);
-});
 test("a field the fake drops is reported as the fake's to fix", (t) => {
   const src = fs.readFileSync(FAKE, 'utf8');
   const from = 'target_month: null, discovery_complete: null,';

@@ -40,12 +40,14 @@ context. On `ok`, the story's title, description and criteria, the initiative an
 the required decisions, the blockers, the comments and the sprint goals the story serves
 (`value.goals[]`: each goal's outcome, check and notes, whose boundaries the design stays inside)
 are project context for item 1.
-When `value.attachments` is not empty, fetch the first five of the story's own (`owner.item` is
-`story`) with `reeve attachment get <ID> --dir <dir> --json` (`<ID>` is its `id`; the detector's
-`bin` as the first word; `<dir>` the session's scratchpad, when one is announced, else a new
-`mktemp -d`) and open `value.path` with your image-reading tool (Read in Claude Code); fetch an epic's or initiative's only when its
-brief links it (`/api/v1/attachments/<ID>`). Say in the spec what each screenshot shows (later steps
-never see the images) and name any story screenshot beyond five by its `filename`; if a fetch fails, name the screenshot by its `filename` and go on.
+When `value.attachments` is not empty, fetch at most five screenshots: the story's own
+(`owner.item` is `story`) newest first (the list is oldest first), then an epic's or initiative's
+only when its brief links it (`/api/v1/attachments/<ID>`). Run `reeve attachment get <ID> --dir
+<dir> --json` (the detector's `bin` as the first word; `<dir>` the session's scratchpad when one is
+announced, else a new `mktemp -d`) and open each `value.path` with your image-reading tool (Read in
+Claude Code). Say in the spec what each screenshot shows (later steps never see the images), name
+by `filename` any you did not fetch or that failed, and delete the copies once the spec is
+written.
 
 ## Checklist
 

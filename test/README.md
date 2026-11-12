@@ -170,11 +170,9 @@ Answers use the planner's wire shapes:
   any item with no epic that is not done, as the real planner does);
 - attachments as in Reeve CLI 0.5.0: one screenshot, id `0193a6a2-7b1c-7d2e-9f00-000000000031`
   (`match-error.png`), listed in `story context` (`attachments[]`) for GRA-31; every other story's
-  `attachments` is empty. `attachment get <ID> [--dir <dir>]` copies `reeve-bin/shot.png` (1x1) to
-  `<dir>/<ID>.png` and answers `{path}`; a `--dir` that is not an existing directory is an `internal`
-  error, as in the real CLI, which creates only its default (here `reeve-attachments` next to
-  `REEVE_FAKE_LOG`, else in the temp dir); an id that is not a UUID is a usage error, any other UUID
-  `not_found`. The
+  `attachments` is empty. `attachment get <ID> --dir <dir>` (`--dir` required; a missing one is a usage
+  error) creates `<dir>` (recursively, mode 0700) and copies `reeve-bin/shot.png` (1x1) to `<dir>/<ID>.png`
+  (mode 0600), answering `{path}`; an id that is not a UUID is a usage error, any other UUID `not_found`. The
   `reeve-brainstorming-story-context` scenario expects the skill to fetch GRA-31's screenshot
   (`attachment get … --dir …` in the log), which proves the skill text, not just the commands;
 - creates, edits and decision links persist for the run: every show and list (`decision ls`,
@@ -206,10 +204,9 @@ every command form of the row (`story ls --untriaged`, `comment add --story`) ex
 every field path in the row's Read column a read at or below it, or a reasoned `unread` waiver (a
 command or a Read added to the reference without a matching entry fails), and two mutation tests
 prove that check on the committed files; the seed and the entries run against the fake on both
-sides; a screenshot story whose context lists no attachment fails the `attachment get` entry (its id
-is bound from the seed's `story context` on `{{shot.story}}`, so discovery is exercised, never a
-guessed id; the live run gives the fake GRA-31 as `shot.story` through `runSmoke`'s `fakeScope`, since the
-seed's key is the planner's); and a copy of the fake with a field renamed is reported as the fake's to fix. The seventh, the
+sides (the `story context` entry runs on the screenshot story `{{shot.story}}` and binds `shotctx` for
+`attachment get`; the live run gives the fake GRA-31 through `runSmoke`'s `fakeScope`); and a copy of the fake with a
+field renamed is reported as the fake's to fix. The seventh, the
 live test, runs only when `REEVE_SMOKE_SEED` is set, which the Reeve repository's `mise run
 skill-smoke` does after starting a real server: it runs the detector, then the seed and every entry
 against the real CLI (`REEVE_REAL_BIN`, `REEVE_URL`, `REEVE_TOKEN`) and the fake side by side, and

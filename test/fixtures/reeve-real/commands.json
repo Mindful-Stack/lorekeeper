@@ -10,7 +10,9 @@
     { "bind": "blocker", "argv": ["decision", "require", "--on", "{{story.key}}", "--title", "Skill smoke blocking decision", "--decider", "{{email}}", "--reversibility", "one-way", "--due", "2027-01-15", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:6", "--json"] },
     { "bind": "active", "argv": ["sprint", "show", "--json"] },
     { "argv": ["goal", "link", "{{active.sprint.goals.0.id}}", "{{story.key}}", "--json"] },
-    { "bind": "shotctx", "argv": ["story", "context", "{{shot.story}}", "--json"] }
+    { "argv": ["goal", "link", "{{active.sprint.goals.0.id}}", "{{shot.story}}", "--json"] },
+    { "argv": ["decision", "require", "--on", "{{shot.story}}", "--title", "Skill smoke screenshot story decision", "--decider", "{{email}}", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:8", "--json"] },
+    { "argv": ["comment", "add", "--item", "{{shot.story}}", "--body", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:9", "--json"] }
   ],
   "entries": [
     {
@@ -199,13 +201,14 @@
     },
     {
       "row": "`reeve story context <KEY> --json`",
-      "argv": ["story", "context", "{{story.key}}", "--json"],
+      "bind": "shotctx",
+      "argv": ["story", "context", "{{shot.story}}", "--json"],
       "reads": ["value.story", "value.epic", "value.initiative", "value.required_decisions[]", "value.blockers[]", "value.comments[]", "value.readiness", "value.readiness.ready", "value.goals[].goal", "value.goals[].starts_on", "value.goals[].ends_on", "value.goals[].via", "value.attachments[].id", "value.attachments[].owner.item", "value.attachments[].filename"],
       "types": { "value.story": "object", "value.epic": "object|null", "value.initiative": "object|null", "value.required_decisions[]": "object", "value.blockers[]": "object", "value.comments[]": "object", "value.readiness": "object", "value.readiness.ready": "boolean", "value.goals[].goal": "object", "value.goals[].starts_on": "string", "value.goals[].ends_on": "string", "value.goals[].via": "string", "value.attachments[].id": "string", "value.attachments[].owner.item": "string", "value.attachments[].filename": "string" },
-      "may_be_empty": ["value.blockers[]", "value.attachments[]"]
+      "may_be_empty": ["value.blockers[]"]
     },
     {
-      "row": "`reeve attachment get <ID> [--dir <dir>] --json`",
+      "row": "`reeve attachment get <ID> --dir <dir> --json`",
       "argv": ["attachment", "get", "{{shotctx.attachments.0.id}}", "--dir", "{{household}}", "--json"],
       "reads": ["value.path"],
       "types": { "value.path": "string" }

@@ -334,6 +334,26 @@ git commit -m \"feat: add DeviceStatusDto\"
                 "^story mv (?!GRA-46 done --resolution dropped )" "^epic discovery " "^decision require " "^decision link "
                 "^apply .*\"title\":\"(?:Retry failed matches|Show match history)\""
                 "(?s)^(\\w+ create)\\b[^\\n]*--idempotency-key (\\S+) .*^(?!\\1\\b)\\w+ create\\b[^\\n]*--idempotency-key \\2 "]}
+ {:name "reeve-delivering-refused"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)" "Bash(node *)"]
+  :env {"REEVE_FAKE_BLOCKED" "GRA-43"}
+  :prompt "Start work on story GRA-43 in Reeve. Do not ask questions."
+  :workdir "."
+  :expects ["(?i)using the delivering-stories skill"
+            "(?i)blocked by GRA-42: in review, owned by mia@example\\.com"
+            "(?i)--override"]
+  :log-expects ["^story mv GRA-43 in-progress --json$"]
+  :log-rejects ["--override" "^story mv (?!GRA-43 in-progress --json$)"]}
+ {:name "reeve-delivering-merged"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)" "Bash(node *)"]
+  :prompt "Pull request #9 merged into main. Its description is:\n\n## Stories\n- GRA-43\n- GRA-44\n\nMove its stories in Reeve, then do the same again as if the merge were reported twice. Do not ask questions."
+  :workdir "."
+  :expects ["(?i)using the delivering-stories skill" "(?i)GRA-43[^\\n]{0,80}testing" "(?i)already (?:in )?testing"]
+  :log-expects ["(?s)\\A(?:(?!^story mv GRA-43 ).)*^story mv GRA-43 testing --json$(?:(?!^story mv GRA-43 ).)*\\z"
+                "(?s)\\A(?:(?!^story mv GRA-44 ).)*^story mv GRA-44 testing --json$(?:(?!^story mv GRA-44 ).)*\\z"]
+  :log-rejects ["--override" "in-review" "in-progress" "^gh "]}
  {:name "reeve-refining-epic-standalone"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)" "Write"]

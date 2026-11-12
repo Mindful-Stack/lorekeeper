@@ -158,7 +158,7 @@ test('readiness is derived for every story in the planner\'s order; story mv exi
     ['GRA-20', 7, 'GRA-12', 'no_criteria'],
   ]);
   const mv = run(['story', 'mv', 'GRA-31', 'in-progress', '--json']);
-  assert.deepEqual([mv.status, mv.envelope.value.delivery, mv.log], [0, 'in-progress', 'story mv GRA-31 in-progress --json\n']);
+  assert.deepEqual([mv.status, mv.envelope.value.delivery, mv.log], [0, 'in_progress', 'story mv GRA-31 in-progress --json\n']);
 });
 test('story ls --untriaged lists any item with no epic that is not done, as the real planner does', () => {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
@@ -700,8 +700,8 @@ test('story context lists the screenshot on GRA-31; attachment get needs --dir, 
   assert.match(bad.stderr, /invalid value '7' for '<ID>'/);
 });
 
-function runIn(log, args, env = {}) {
-  const r = spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log, ...env } });
+function runIn(log, args, env = {}, input) {
+  const r = spawnSync(fake, args, { encoding: 'utf8', input, env: { ...process.env, REEVE_FAKE_LOG: log, ...env } });
   return { status: r.status, envelope: r.stdout.trim().startsWith('{') ? JSON.parse(r.stdout) : null };
 }
 const freshLog = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
@@ -711,13 +711,30 @@ test('story mv: entering active work assigns the signed-in user to an unowned st
   assert.equal(runIn(log, ['story', 'mv', 'GRA-43', 'in-progress', '--json']).envelope.value.owner, 'dan@example.com');
   runIn(log, ['story', 'edit', 'GRA-44', '--owner', 'sam@example.com', '--version', '1', '--json']);
   assert.equal(runIn(log, ['story', 'mv', 'GRA-44', 'in-progress', '--json']).envelope.value.owner, 'sam@example.com');
-  assert.equal(runIn(log, ['story', 'mv', 'GRA-45', 'done', '--resolution', 'dropped', '--json']).envelope.value.owner ?? null, null);
+  assert.equal(runIn(log, ['story', 'mv', 'GRA-45', 'done', '--resolution', 'dropped', '--json']).envelope.value.owner, null);
 });
 test('blocked_by: a blocker in review owned by someone else refuses a start, with its delivery and owner', () => {
   const log = freshLog();
-  const r = runIn(log, ['story', 'mv', 'GRA-43', 'in-progress', '--json'], { REEVE_FAKE_BLOCKED: 'GRA-43' });
+  const env = { REEVE_FAKE_BLOCKED: 'GRA-43' };
+  const r = runIn(log, ['story', 'mv', 'GRA-43', 'in-progress', '--json'], env);
   assert.equal(r.status, 2);
-  assert.deepEqual(r.envelope.reasons, [{ reason: 'blocked_by', story: 'GRA-42', delivery: 'in_review', owner: 'mia@example.com' }]);
-  const ctx = runIn(log, ['story', 'context', 'GRA-43', '--json'], { REEVE_FAKE_BLOCKED: 'GRA-43' });
-  assert.deepEqual(ctx.envelope.value.readiness.reasons.filter((x) => x.reason === 'blocked_by'), r.envelope.reasons, 'context and mv agree');
+  const want = { reason: 'blocked_by', story: 'GRA-42', delivery: 'in_review', owner: 'mia@example.com' };
+  assert.deepEqual(r.envelope.reasons.filter((x) => x.reason === 'blocked_by'), [want]);
+  const ctx = runIn(log, ['story', 'context', 'GRA-43', '--json'], env).envelope.value;
+  assert.deepEqual(r.envelope.reasons, ctx.readiness.reasons, 'context and mv agree');
+  assert.deepEqual(ctx.blockers.map((b) => [b.key, b.delivery, b.owner]), [['GRA-42', 'in_review', 'mia@example.com']]);
+});
+test('blocked_by is owner-scoped: same-owner active blocker and a testing blocker do not block, another owner\'s does', () => {
+  const log = freshLog();
+  const apply = (blocks) => runIn(log, ['apply', '-', '--json'], {}, JSON.stringify({ id: 'blk', initiatives: [], epics: [], stories: [], decisions: [], blocks }));
+  const blockedBy = (k) => runIn(log, ['story', 'context', k, '--json']).envelope.value.readiness.reasons.filter((x) => x.reason === 'blocked_by');
+  assert.equal(apply([{ story: 'GRA-31', blocked_by: 'GRA-32' }, { story: 'GRA-43', blocked_by: 'GRA-44' }, { story: 'GRA-45', blocked_by: 'GRA-46' }]).status, 0);
+  runIn(log, ['story', 'mv', 'GRA-32', 'in-progress', '--json']); // owner dan
+  runIn(log, ['story', 'edit', 'GRA-31', '--owner', 'dan@example.com', '--version', '1', '--json']);
+  assert.deepEqual(blockedBy('GRA-31'), [], 'same owner, in progress');
+  runIn(log, ['story', 'edit', 'GRA-43', '--owner', 'sam@example.com', '--version', '2', '--json']);
+  runIn(log, ['story', 'mv', 'GRA-44', 'in-progress', '--json']); // owner dan, dependent sam
+  assert.deepEqual(blockedBy('GRA-43'), [{ reason: 'blocked_by', story: 'GRA-44', delivery: 'in_progress', owner: 'dan@example.com' }]);
+  runIn(log, ['story', 'mv', 'GRA-46', 'testing', '--json']);
+  assert.deepEqual(blockedBy('GRA-45'), [], 'testing blocker');
 });

@@ -207,27 +207,32 @@ Use the planner only when the detector (*Detection*) printed `present` and `sign
 is the signed-in user. Without them, make no moves and say nothing about them (kb/ADR-0005 R1).
 
 **Read before moving.** `reeve story context <KEY> --json` gives `value.story.delivery` and
-`.owner`. Order: `todo`, `in_progress`, `in_review`, `testing`, `done`. A story already at or past
-the target is left where it is and reported as "already <delivery>, left as it is"; so a repeated
+`.owner`. Order: `todo`, `in_progress`, `in_review`, `testing`, `done`. The command arguments are
+written with a hyphen (`in-progress`, `in-review`), the stored `delivery` with an underscore
+(`in_progress`, `in_review`). A story already at or past the target is left where it is and
+reported as "already <delivery>, left as it is", with a space ("already in review"); so a repeated
 step (a resumed plan, a second advance) changes nothing. The one move back is a failed verification.
 
 **A story behind its moment** (in todo when its pull request merges, say): report it, then make the
 move. The planner gates entry into active work from todo, so this move can be refused like a start.
 
-**Someone else's story.** When `.owner` is set and differs from the detector's `email`, do not start
-it unless the owner has agreed: ask the user "GRA-596 is owned by mia@…: has mia agreed that you
-start it?" and go on only on a yes. Never reassign it (`--owner`) unless the user says to. An
+**Someone else's story.** When `.owner` is set and differs from the detector's `email` (compared
+case-insensitively), do not move it (start, in review, testing or done) unless the owner has agreed:
+ask the user "GRA-596 is owned by mia@…: has mia agreed that you move it to in progress?" and go on
+only on a yes. Never reassign it (`--owner`) unless the user says to. An
 unowned story becomes the mover's when it starts; never pass `--owner` for that.
 
-**Refused** (exit 2, `outcome: refused`): stop work on that story. Report each reason in the
-*Wording the planner's answers* table's words and, for a person, the override they could run themselves:
-`reeve story mv <KEY> <delivery> --override '<reason>'`. A skill never passes `--override` and never
+**Refused** (exit 2, `outcome: refused`): on a start, stop work on that story; on a move after the
+work (todo to testing at a merge, say), report it and leave the story where it is. Report each
+reason in the *Wording the planner's answers* table's words and, only when every reason is a
+readiness reason (the planner marks delivery rules as not overridable), the override a person could
+run themselves: `reeve story mv <KEY> in-progress --override '<reason>'` (with the target state). A skill never passes `--override` and never
 works around a refusal (for example by starting another story that builds on the same code). A
 blocker in progress or in review owned by the signed-in user does not block that user's own
 dependents; one owned by someone else does until it merges. A list judges an unowned dependent
 without a mover, so it can read blocked while its blocker's owner may still start it: the move is
 the test, not a readiness check beforehand. Assigning a run of stories to one owner when it is
-refined keeps them visible as ready to that owner.
+refined, when the user names that owner, keeps them visible as ready to that owner.
 
 **Version conflict** (`code: conflict`): read the story again and retry once.
 

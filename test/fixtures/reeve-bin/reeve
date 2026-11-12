@@ -319,6 +319,9 @@ const mint = (build) => withState((state) => {
 const allDecisions = () => [decision7, decision8, ...createdDecisions()].map((d) => (state.decisions || {})[d.id] || d);
 // Readiness derived like the planner does (domain/readiness.rs), in its order: untriaged; the epic's
 // discovery and open decisions, then the initiative's; the story's own decisions; no criteria.
+// REEVE_FAKE_BLOCKED=<KEY> adds GRA-42 to <KEY>'s blockers, in review and owned by mia (the dependent's owner is never mia).
+const storyOf = (k) => (process.env.REEVE_FAKE_BLOCKED && k === 'GRA-42' ? { ...stories['GRA-42'], delivery: 'in_review', owner: 'mia@example.com' } : (itemsOf()[k] || stories[k]) || {});
+const blockedByOf = (s) => (process.env.REEVE_FAKE_BLOCKED === s.key && !s.blocked_by.includes('GRA-42') ? [...s.blocked_by, 'GRA-42'] : s.blocked_by);
 const readinessOf = (s) => {
   const reasons = [];
   // Each open decision's reason from its check, as decision_reason does; an accepted record gates nothing.
@@ -337,9 +340,8 @@ const readinessOf = (s) => {
   if (!s.criteria.length) reasons.push({ reason: 'no_criteria' });
   // Owner-scoped blocking (kb/ADR-0027): a blocker in progress or in review owned by the dependent's owner does not block it.
   const blocking = (b, owner) => b.delivery === 'todo'
-    || (['in-progress', 'in_progress', 'in-review', 'in_review'].includes(b.delivery) && !(b.owner && b.owner === owner));
-  for (const k of s.blocked_by) { const b = (itemsOf()[k] || stories[k]) || {}; if (blocking(b, s.owner)) reasons.push({ reason: 'blocked_by', story: k, delivery: String(b.delivery).replace('-', '_'), owner: b.owner ?? null }); }
-  if (process.env.REEVE_FAKE_BLOCKED === s.key) reasons.push({ reason: 'blocked_by', story: 'GRA-42', delivery: 'in_review', owner: 'mia@example.com' });
+    || (['in_progress', 'in_review'].includes(b.delivery) && !(b.owner && b.owner === owner));
+  for (const k of blockedByOf(s)) { const b = storyOf(k); if (blocking(b, s.owner)) reasons.push({ reason: 'blocked_by', story: k, delivery: b.delivery, owner: b.owner ?? null }); }
   return { ready: !reasons.length, reasons };
 };
 
@@ -440,8 +442,8 @@ const countsOf = (sp) => {
   const goalsCounts = goalsOfSprint(sp.id).map((g) => {
     const mine = served.filter((x) => x.ids.includes(g.id)).map((x) => x.s);
     const d = new Set(mine.filter((s) => s.delivery !== 'done').flatMap((s) => readinessOf(s).reasons.map((r) => r.decision_id).filter((x) => x !== undefined)));
-    return { goal_id: g.id, completed: mine.filter((s) => s.delivery === 'done').length, in_flight: mine.filter((s) => ['in-progress', 'in-review', 'testing'].includes(s.delivery)).length,
-      todo: mine.filter((s) => s.delivery === 'todo').length, in_review: mine.filter((s) => ['in-review', 'testing'].includes(s.delivery)).length, blocked_decisions: d.size };
+    return { goal_id: g.id, completed: mine.filter((s) => s.delivery === 'done').length, in_flight: mine.filter((s) => ['in_progress', 'in_review', 'testing'].includes(s.delivery)).length,
+      todo: mine.filter((s) => s.delivery === 'todo').length, in_review: mine.filter((s) => ['in_review', 'testing'].includes(s.delivery)).length, blocked_decisions: d.size };
   });
   const done = served.filter((x) => x.s.delivery === 'done');
   return { goals: goalsCounts, completed: done.length, upkeep_completed: done.filter((x) => !x.ids.length).length };
@@ -521,10 +523,10 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
     const sp = activeSprint();
     const served = servedBy(s).map(({ goal: g, via }) => ({ goal: g, starts_on: sp.starts_on, ends_on: sp.ends_on, via }));
-    ok({ story: withGoals(withPromise(s)), epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served, attachments: attachmentsOf(s) });
+    ok({ story: withGoals(withPromise(s)), epic: e, initiative: i, required_decisions: required, blockers: blockedByOf(s).map((k) => { const b = storyOf(k); return { key: k, title: b.title, delivery: b.delivery, owner: b.owner ?? null }; }), comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served, attachments: attachmentsOf(s) });
   },
   'story ls': () => ok(all(stories, 'story').map(withPromise).filter((s) => (f.untriaged ? !s.epic && s.delivery !== 'done' : !f.epic || s.epic === f.epic))
-    .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery) && (!f.label || s.labels.includes(f.label)))
+    .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery.replace('-', '_')) && (!f.label || s.labels.includes(f.label)))
     .filter((s) => (f.text === undefined || matchesText(s, f.text)) && (!f.kind || s.kind === f.kind) && (f.initiative === undefined || epicsUnder(f.initiative).includes(s.epic))
       && (!f.urgent || s.urgent_sources.length > 0) && (!f.open || s.delivery !== 'done') // --urgent: the rows shown urgent; --open: done=none
       && (f.promised === undefined || promisedMatches(f.promised, s.promise)))
@@ -535,14 +537,15 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], owner: f.owner || null, external_ref: f['external-ref'] || null }))),
   'story mv': () => {
     const s = find(stories, p0);
-    const active = (d) => ['in-progress', 'in-review', 'testing'].includes(d);
+    const active = (d) => ['in_progress', 'in_review', 'testing'].includes(d);
+    const to = pos[1].replace('-', '_'); // the CLI argument is kebab, the stored delivery snake_case like the planner's
     // Only REEVE_FAKE_BLOCKED refuses: seeded stories are often not ready (untriaged), and scenarios start them.
-    if (process.env.REEVE_FAKE_BLOCKED === s.key && active(pos[1]) && !active(s.delivery))
-      emit({ outcome: 'refused', reasons: readinessOf(s).reasons.filter((r) => r.reason === 'blocked_by') }, 2);
-    if (pos[1] === 'done' && !['completed', 'dropped'].includes(f.resolution)) error('validation', 'moving to done needs --resolution completed or dropped');
-    const owner = s.owner ?? (active(pos[1]) ? 'dan@example.com' : null); // the planner's rule; dan is auth status's email
-    ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1], resolution: pos[1] === 'done' ? f.resolution : null, owner }));
-  }, // a delivery change is logged; only refining-epic's won't-do (done, dropped) may call it
+    if (process.env.REEVE_FAKE_BLOCKED === s.key && active(to) && !active(s.delivery))
+      emit({ outcome: 'refused', reasons: readinessOf(s).reasons }, 2);
+    if (to === 'done' && !['completed', 'dropped'].includes(f.resolution)) error('validation', 'moving to done needs --resolution completed or dropped');
+    const owner = s.owner ?? (active(to) ? 'dan@example.com' : null); // the planner's rule; dan is auth status's email
+    ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: to, resolution: to === 'done' ? f.resolution : null, owner }));
+  },
   // Stories with a like title: text 8 to 200 characters (several words are one text), --limit 1 to 10 (default 5), open ones and done ones.
   'story similar': () => {
     const text = pos.join(' ');

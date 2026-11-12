@@ -139,6 +139,8 @@ record first.
 ````markdown
 ### Task N: [Component Name]
 
+**Story:** GRA-596  ← only when the spec or request names planner stories
+
 **Files:**
 - Create: `exact/path/to/file.py`
 - Modify: `exact/path/to/existing.py:123-145`
@@ -176,6 +178,11 @@ git add tests/path/test.py src/path/file.py
 git commit -m "feat: add specific feature"
 ```
 ````
+
+When the spec or the request names planner stories, each task that implements one names it in a
+`**Story:**` line, and tasks keep the stories' dependency order (a blocker's task first). Executing
+the plan moves each story when its task starts (`<plugin-root>/references/reeve-cli.md`, *Moving
+stories*).
 
 ## No Placeholders
 

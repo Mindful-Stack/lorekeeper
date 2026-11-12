@@ -90,6 +90,12 @@ digraph process {
 exists from an earlier, compacted run, resume at the first task not recorded as
 complete rather than starting over.
 
+**Before dispatching a task's implementer**, if the task has a `**Story:**` line, start its story
+yourself, the controller: `reeve story mv <KEY> in-progress --json`, as
+`<plugin-root>/references/reeve-cli.md` *Moving stories* says. A story already further along is
+left as it is, so a resumed run changes nothing. On a refusal, do not dispatch that task: report the
+reasons to the developer.
+
 When dispatching an implementer subagent, include relevant knowledge from **knowledge-reader** results (already loaded during planning) in the implementer's prompt so they have domain context and standards.
 
 For spec compliance review, dispatch the **plan-compliance-reviewer** agent instead of a generic reviewer.
@@ -102,7 +108,7 @@ After all tasks pass review, completion is handled inline:
 1. Run final verification (full test suite)
 2. Summarise what was implemented
 3. Present the result to the developer
-Does not invoke `finishing-a-development-branch`. Tell the developer the PR description should carry a `## Decisions` section in the format of `<plugin-root>/references/pr-decisions.md` (records followed or added, rule edits, or "No new decisions"), copied from the plan's *Governing decisions* when there is one.
+Does not invoke `finishing-a-development-branch`. Tell the developer the PR description should carry a `## Decisions` section in the format of `<plugin-root>/references/pr-decisions.md` (records followed or added, rule edits, or "No new decisions"), copied from the plan's *Governing decisions* when there is one, and a `## Stories` section (the reference's *A pull request's `## Stories`*); whoever opens the pull request moves its stories then (the delivering-stories skill).
 
 ## Model Selection
 

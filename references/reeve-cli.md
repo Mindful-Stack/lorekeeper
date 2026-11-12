@@ -226,8 +226,8 @@ unowned story becomes the mover's when it starts; never pass `--owner` for that.
 work (todo to testing at a merge, say), report it and leave the story where it is. Report each
 reason in the *Wording the planner's answers* table's words and, only when every reason is a
 readiness reason (the planner marks delivery rules as not overridable), the override a person could
-run themselves: `reeve story mv <KEY> in-progress --override '<reason>'` (with the target state). A skill never passes `--override` and never
-works around a refusal (for example by starting another story that builds on the same code). A
+run themselves: `reeve story mv <KEY> <state> --override '<reason>'`, with the state the move was
+to. A skill never passes `--override` and never works around a refusal (for example by starting another story that builds on the same code). A
 blocker in progress or in review owned by the signed-in user does not block that user's own
 dependents; one owned by someone else does until it merges. A list judges an unowned dependent
 without a mover, so it can read blocked while its blocker's owner may still start it: the move is

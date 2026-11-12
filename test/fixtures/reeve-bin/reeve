@@ -20,8 +20,8 @@
 // `interactive_only`; goal link|unlink|suggest persist, and stories, story context and the active sprint's counts see them.
 // `story ls` filters as GET /stories does (kb/ADR-0021): --text, --kind, --initiative, --urgent (GRA-40 is seeded urgent),
 // --open and --sort relevance (needs --text, a validation error otherwise).
-// Promises (kb/ADR-0025): GRA-41 carries its own promise, open and due this sprint, and every story and epic a `promise`
-// (null when none); `story ls --promised` filters on the promise's state and period as GET /stories?promised= does.
+// Promises (kb/ADR-0025): GRA-41 carries its own promise, open and due this sprint, epic GRA-22 (migrated from PRM-1) one
+// due next sprint, and every other story and epic a `promise` of null; `story ls --promised` filters on the promise's state and period as GET /stories?promised= does.
 // `story promise` and `epic promise` are a person's commands: the fake stands for an agent's token, so they are refused
 // `interactive_only`, exit 2, after clap's checks (one of --on, --to, --clear; --clear alone; --on a shortcut or a date).
 'use strict';
@@ -205,7 +205,9 @@ const initiatives = {
 const epics = {
   'GRA-20': epic('GRA-20', 'Matching queue', { brief: 'Match mentors through a queue.', initiative: 'GRA-12', version: 2 }),
   'GRA-21': epic('GRA-21', 'Mentor profiles', { brief: 'Mentors describe their skills and availability.', initiative: 'GRA-13' }),
-  'GRA-22': epic('GRA-22', 'Session feedback', { brief: 'Mentees rate each mentoring session after it ends.' }), // standalone: no initiative
+  // Standalone (no initiative); migrated from PRM-1 and promised by the draft sprint's end (kb/ADR-0025), so `epic show
+  // PRM-1` reads an epic's promise, as the Reeve skill smoke's seeded epic does.
+  'GRA-22': epic('GRA-22', 'Session feedback', { brief: 'Mentees rate each mentoring session after it ends.', external_ref: 'PRM-1', promise: { fact: { on: '2026-11-17', by: 'dan@example.com', at: NOW, to: 'the mentoring board' }, due: 'next_sprint', past: false } }),
 };
 const decision7 = { id: 7, on: 'GRA-20', on_type: 'epic', title: 'Queue or cron', decider: 'dan@example.com', due: null, reversibility: null, record: null, pr_url: null, check: { kind: 'unchecked' }, checked_at: null, closed: null, created_at: NOW, version: 1 };
 // Closed without a record: listed by `decision ls`, never open, never a readiness reason (kb/ADR-0003 R3).

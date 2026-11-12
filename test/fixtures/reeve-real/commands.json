@@ -1,5 +1,5 @@
 {
-  "about": "The real-planner smoke (scripts/__tests__/reeve-real-server.test.js). The seed runs first on the planner and on the fake; then every entry, one per row of references/reeve-cli.md's Commands table, in file order. bind stores the answer's value under a name for {{name.field}} placeholders. reads are paths into the envelope (x[] = every element of the array x); types gives each read's JSON types (a|b allowed); may_be_empty lists array paths allowed to be empty; unread waives, with a reason, a path the Read cell names that no read can reach; expect is checked on the planner's answer only. refusals run after the entries, on both sides with the same token: each must answer exit 2 with a refused envelope naming its reason (a person's command, refused interactive_only to an agent's token).",
+  "about": "The real-planner smoke (scripts/__tests__/reeve-real-server.test.js). The seed runs first on the planner and on the fake; then every entry, one per row of references/reeve-cli.md's Commands table, in file order. bind stores the answer's value under a name for {{name.field}} placeholders. reads are paths into the envelope (x[] = every element of the array x); types gives each read's JSON types (a|b allowed); may_be_empty lists array paths allowed to be empty; unread waives, with a reason, a path the Read cell names that no read can reach; expect is checked on the planner's answer only. The epic show entry reads PRM-1: the planner's epic the Reeve smoke seeds promised (seed_promise, by its external reference), the fake's GRA-22. refusals run after the entries, on both sides with the same token: each must answer exit 2 with a refused envelope naming its reason (a person's command, refused interactive_only to an agent's token).",
   "seed": [
     { "bind": "initiative", "argv": ["initiative", "create", "--title", "Skill smoke initiative", "--horizon", "Now", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:1", "--json"] },
     { "bind": "epic", "argv": ["epic", "create", "--initiative", "{{initiative.key}}", "--title", "Skill smoke epic", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:2", "--json"] },
@@ -53,10 +53,9 @@
     },
     {
       "row": "`reeve epic show <KEY> --json`",
-      "bind": "epic",
-      "argv": ["epic", "show", "{{epic.key}}", "--json"],
-      "reads": ["value.brief", "value.initiative", "value.discovery_complete", "value.version"],
-      "types": { "value.brief": "string", "value.initiative": "string|null", "value.discovery_complete": "object|null", "value.version": "number" }
+      "argv": ["epic", "show", "PRM-1", "--json"],
+      "reads": ["value.brief", "value.initiative", "value.discovery_complete", "value.promise", "value.promise.fact", "value.promise.due", "value.promise.past", "value.version"],
+      "types": { "value.brief": "string", "value.initiative": "string|null", "value.discovery_complete": "object|null", "value.promise": "object|null", "value.promise.fact": "object", "value.promise.due": "string|null", "value.promise.past": "boolean", "value.version": "number" }
     },
     {
       "row": "`reeve epic ls [--initiative <KEY>] --json`",

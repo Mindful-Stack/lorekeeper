@@ -332,8 +332,8 @@ function run(side, argv) {
   return { status: r.error ? `error ${r.error.code}` : r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
 
-// The seed on both sides, then every entry in file order. Returns one { row, problems } per failed seed step and one per
-// entry. `real` and `fake` are { bin, env }; `scope` holds the seed file's values and run_id; `out` (optional) receives
+// The seed on both sides, then every entry in file order, then every refusal case. Returns one { row, problems } per
+// failed seed step, one { row, problems, ran } per entry and one per refusal case (its row `refusal: reeve <argv>`). `real` and `fake` are { bin, env }; `scope` holds the seed file's values and run_id; `out` (optional) receives
 // every answer as JSON. PROPERTY: each side binds from its own answers only, so the fake never runs on a planner key.
 function runSmoke({ fixture, real, fake, scope, expect = true, out }) {
   const scopes = { real: { ...scope }, fake: { ...scope } };

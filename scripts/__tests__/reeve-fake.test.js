@@ -620,6 +620,8 @@ test('story ls --promised filters on the promise the planner derived; every stor
   assert.deepEqual([promised.holder, promised.state, promised.due, promised.own.to, promised.epic], ['own', 'open', 'this_sprint', 'the mentoring board', null]);
   assert.equal(run(['story', 'context', 'GRA-31', '--json']).envelope.value.story.promise, null);
   assert.equal(run(['epic', 'show', 'GRA-20', '--json']).envelope.value.promise, null);
+  const epic = run(['epic', 'show', 'PRM-1', '--json']).envelope.value;
+  assert.deepEqual([epic.key, epic.promise.due, epic.promise.past, epic.promise.fact.on], ['GRA-22', 'next_sprint', false, '2026-11-17']);
 });
 test('goal link and unlink persist; a story serves a goal through the nearest link; story context and --goal see it', () => {
   const call = session();

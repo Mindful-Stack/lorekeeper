@@ -186,24 +186,35 @@ Answers use the planner's wire shapes:
   in the per-run state file `$REEVE_FAKE_LOG.state`, distinct within a run;
 - every create needs `--idempotency-key <skill>:<KEY>:<run-id>:<n>` (kb/ADR-0005 R3; anything else is a
   `validation` error) and replays by key: the same key again returns the first item, it never mints a second;
-- an edit or discovery mark with a stale `--version` is a `conflict` (exit 1).
+- an edit or discovery mark with a stale `--version` is a `conflict` (exit 1);
+- promises (kb/ADR-0025): `GRA-41` has its own open promise due this sprint and epic `GRA-22` (migrated
+  from `PRM-1`, so `epic show PRM-1` finds it) one due next sprint; every other story and epic has
+  `promise: null`; `story ls --promised this-sprint|next-sprint|overdue|any` filters on the promise's
+  state and period as the planner does; `story promise` and `epic promise` get clap's checks (one of
+  `--on`, `--to` and `--clear`; `--clear` alone; `--on` a shortcut or a calendar date, else a usage
+  error) and are then refused `interactive_only` (exit 2), since the fake stands for an agent's token.
 
 **The real-planner smoke.** `scripts/__tests__/reeve-real-server.test.js` keeps the fake honest.
 `test/fixtures/reeve-real/commands.json` holds a seed and one entry per row of the reference's
 *Commands* table: the argv (placeholders `{{name.field}}`), the envelope paths the skills read
 (`x[]` is every element), each path's JSON types, the arrays that may be empty and, for `decision
-link`, the planner's expected `check.kind`. Five tests always run: every row has exactly one entry,
-every command form of the row (`story ls --untriaged`, `comment add --story`) exactly one run, and
-every field path in the row's Read column a read at or below it, or a reasoned `unread` waiver (a
-command or a Read added to the reference without a matching entry fails), and two mutation tests
-prove that check on the committed files; the seed and the entries run against the fake on both
-sides; and a copy of the fake with a field renamed is reported as the fake's to fix. The sixth, the
-live test, runs only when `REEVE_SMOKE_SEED` is set, which the Reeve repository's `mise run
-skill-smoke` does after starting a real server: it runs the detector, then the seed and every entry
-against the real CLI (`REEVE_REAL_BIN`, `REEVE_URL`, `REEVE_TOKEN`) and the fake side by side, and
-fails when a path is missing on the planner, an array the skills read is empty, or the fake answers
-a path with a different set of JSON types (the message names the side to fix). `REEVE_SMOKE_OUT`
-names a directory for every answer.
+link`, the planner's expected `check.kind`, and a list of `refusals`: a person's commands (each
+promise form) with the reason the run's agent token must be refused. Seven tests always run: every
+row has exactly one entry, every command form of the row (`story ls --untriaged`, `comment add
+--story`) exactly one run, and every field path in the row's Read column a read at or below it, or a
+reasoned `unread` waiver (a command or a Read added to the reference without a matching entry
+fails), and two mutation tests prove that check on the committed files; the seed, the entries and
+the refusals run against the fake on both sides; a copy of the fake with a field renamed is
+reported as the fake's to fix; a copy that lets `story promise` through is too; and every promise
+command in the reference's *Promises* table needs a refusal case. The eighth, the live test, runs
+only when `REEVE_SMOKE_SEED` is set, which the Reeve repository's `mise run skill-smoke` does after
+starting a real server: it runs the detector, then the seed and every entry against the real CLI
+(`REEVE_REAL_BIN`, `REEVE_URL`, `REEVE_TOKEN`) and the fake side by side, and fails when a path is
+missing on the planner, an array the skills read is empty, or the fake answers a path with a
+different set of JSON types (the message names the side to fix). Then it runs the refusals, after
+the entries, on both sides: each must answer exit 2 with a `refused` envelope naming the expected
+reason, and a fake that answers otherwise is blamed with "fix test/fixtures/reeve-bin/reeve".
+`REEVE_SMOKE_OUT` names a directory for every answer.
 
 `REEVE_FAKE_REFUSE=<text>` makes every command whose name contains `<text>` (e.g. `story create`)
 answer `{"outcome":"refused","reasons":[{"reason":"no_criteria"}]}` with exit 2, so a scenario can

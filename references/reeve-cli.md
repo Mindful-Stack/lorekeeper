@@ -25,9 +25,11 @@ subcommand or flag), so tell the user to update the CLI and go on without goals.
 `story similar` and the any-kind untriaged filter (an item of any kind with no epic) need
 `reeve-planner` 0.4.0 or later (kb/ADR-0018): an older CLI answers `story similar`
 with a usage error, so tell the user to update the CLI and go on without the duplicate check.
-Promises (`story promise`, `epic promise`, `story ls --promised`) need a CLI and a planner with
-kb/ADR-0025: an older CLI answers them with a usage error (tell the user to update the CLI and go
-on without promises), and an older planner ignores `--promised` and lists unfiltered.
+Promises (`story promise`, `epic promise`, `story ls --promised`) need `reeve-planner` 0.5.0 or
+later and a planner with kb/ADR-0025: an older CLI answers them with a usage error (tell the user to
+update the CLI and go on without promises). An older planner ignores `--promised` and lists
+unfiltered, and sends no promises, so every row's `story.promise` is null: a row from `--promised`
+whose `story.promise` is null means the filter was ignored; say so, and go on without promises.
 
 ## Arguments
 
@@ -122,7 +124,7 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 | `reeve initiative create --title <title> --horizon <bucket> --brief-file <brief file> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json` | `value.key`, `value.version`; a bucket the planner does not have is a `validation` error |
 | `reeve initiative edit <KEY> [--brief-file <brief file>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json` | `value.version` |
 | `reeve initiative discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
-| `reeve epic show <KEY> --json` | `value.brief`, `.initiative`, `.discovery_complete`, `.version` |
+| `reeve epic show <KEY> --json` | `value.brief`, `.initiative`, `.discovery_complete`, `.promise` (null = none): `{fact, due, past}` (see *Promises*), `.version` |
 | `reeve epic ls [--initiative <KEY>] --json` | `value[]`: `key`, `title`, `initiative` |
 | `reeve epic create --initiative <KEY> --title <title> --brief-file <brief file> --idempotency-key <key> --json` | `value.key`, `value.version` |
 | `reeve epic edit <KEY> --brief-file <brief file> --version <n> --json` | `value.version` |
@@ -413,7 +415,7 @@ zero.
 **A person's commands.** These exist in the CLI, and a skill never runs them, whatever token it
 holds: with an automation token the planner refuses every one `interactive_only` (exit 2), and with
 a person's token it would act for them. When the user asks for one, show the command for them to
-run.
+run, without `--json` (a person reads the CLI's text answer).
 
 | Command | What it does |
 |---|---|
@@ -428,7 +430,7 @@ run.
 
 | `reason` | Words |
 |---|---|
-| `interactive_only` | only a person can do this (open or close a sprint, write a goal, record a confidence) |
+| `interactive_only` | only a person can do this (open or close a sprint, write a goal, record a confidence, or set, change or clear a promise: see *Promises*) |
 | `sprint_closed` | the sprint is closed: its goals, links and confidence are read-only |
 | `sprint_not_active` | the sprint is not active (a confidence, recorded or suggested, needs the active sprint) |
 | `sprint_not_draft` | only a draft's goal can be removed |
@@ -459,14 +461,19 @@ visible. Promise state is derived by the planner on every read, never stored.
   and open ones due this sprint, `next-sprint` open ones due next sprint, `overdue` only overdue
   ones, `any` every open or overdue one. Kept, late and dropped promises never match. It combines
   with the other `story ls` flags (every flag given must hold).
-- **Suggest** a date, never set one. When a date comes up (the user asks when something will be
-  ready, a brief names a deadline), say it in a comment on the item for a person to promise:
+- **Suggest** a date, never set one, and only a date the user, a brief or a ticket states; never
+  estimate one. When such a date comes up (a brief names a deadline, a ticket says the customer's
+  pilot starts on a day), say it in a comment on the item for a person to promise:
   `reeve comment add --item <KEY> --body 'Suggested promise: by 2026-12-04, to Acme (their pilot starts then).' --idempotency-key <key> --json`.
+  The comment is a write: show it and write it under *Confirmation*. When nobody has stated a date
+  (the user asks when something will be ready), ask the person for one; never pick a date to fill
+  the gap.
 
 **A person's commands.** These exist in the CLI, and a skill never runs them, whatever token it
 holds: with an automation token the planner refuses every one `interactive_only` (exit 2), and with
 a person's token it would promise for them. When the user asks for one, show the command for them to
-run. None takes a `--version`: a promise does not change the item's version.
+run, without `--json` (a person reads the CLI's text answer). None takes a `--version`: a promise
+does not change the item's version.
 
 | Command | What it does |
 |---|---|
@@ -520,6 +527,7 @@ Any other `reason` is a delivery rule; show it verbatim. A story is "ready" when
 is true, else "blocked: " and its reasons in these words.
 
 A story's promise, from `story.promise` (dates as "20 Nov"): `open` reads "promised 20 Nov", with
-"· this sprint" or "· next sprint" by `due`; `overdue` "overdue <days> d · 20 Nov"; `kept` "kept ·
+"· this sprint" or "· next sprint" by `due`; a `state` of null (a done story without a completion
+time) reads "promised 20 Nov"; `overdue` "overdue <days> d · 20 Nov"; `kept` "kept ·
 20 Nov"; `late` "done <days> d late · 20 Nov"; `dropped` "dropped · 20 Nov". With `holder` `epic`,
 add "· via <epic.key>". Add "to <to>" when the recipient matters to the answer.

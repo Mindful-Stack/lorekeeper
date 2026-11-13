@@ -334,6 +334,33 @@ git commit -m \"feat: add DeviceStatusDto\"
                 "^story mv (?!GRA-46 done --resolution dropped )" "^epic discovery " "^decision require " "^decision link "
                 "^apply .*\"title\":\"(?:Retry failed matches|Show match history)\""
                 "(?s)^(\\w+ create)\\b[^\\n]*--idempotency-key (\\S+) .*^(?!\\1\\b)\\w+ create\\b[^\\n]*--idempotency-key \\2 "]}
+ {:name "reeve-triage-queue-headless"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)" "Write"]
+  :env {"REEVE_FAKE_TRIAGE" "1"}
+  :prompt "Triage the whole untriaged queue in Reeve. Nobody can answer questions in this session. Place the untriaged stories; I confirm every write to the planner."
+  :workdir "."
+  :expects ["(?i)using the refining-epic skill" "(?i)run id:? *`?[0-9a-f]{8}"
+            "(?i)nothing was written"
+            "(?i)GRA-48[^\\n]{0,200}duplicate of GRA-46"
+            "GRA-40" "GRA-41" "GRA-42" "GRA-43" "GRA-44" "GRA-45" "GRA-47"]
+  :rejects ["(?im)^\\W*(GRA-\\d+)\\b[^\\n]{0,200}duplicate of \\1\\b"
+            "(?im)^\\W*GRA-46\\b[^\\n]{0,200}duplicate of GRA-48"
+            "(?im)^\\W*Stopped: missing the epic key"]
+  :log-expects ["^story ls --untriaged --json$"
+                "^story show GRA-40 --json$" "^story show GRA-44 --json$" "^story show GRA-48 --json$"
+                "^story similar .*--limit 6 --json$"
+                "^epic ls --json$"
+                "^initiative ls --json$"]
+  :log-rejects ["^story (?:edit|mv|create) " "^comment add " "^apply " "^(?:epic|initiative) (?:create|edit) "]}
+ {:name "reeve-refining-epic-no-epic-headless"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "Refine an epic in Reeve. Nobody can answer questions in this session."
+  :workdir "."
+  :expects ["(?im)^\\W*Stopped: missing the epic key"]
+  :log-expects ["^auth status --json$"]
+  :log-rejects ["^story show " "^story similar " "^story (?:edit|mv|create) " "^comment add " "^apply "]}
  {:name "reeve-refining-epic-standalone"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)" "Write"]

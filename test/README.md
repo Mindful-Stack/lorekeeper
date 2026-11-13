@@ -254,6 +254,35 @@ bb test/run-tests.clj --with reeve-fake --filter reeve-   # the planner scenario
 bb test/run-tests.clj                                     # everything else; reeve-fake scenarios print [SKIP]
 ```
 
+### Interactive evals: whole-queue triage
+
+`claude --print` has no AskUserQuestion tool, so the runner can only reach refining-epic's
+non-interactive whole-queue run (`reeve-triage-queue-headless`: the table, a self-match left out, the
+duplicate pair GRA-48/GRA-46 with one canonical item, nothing written). The confirmations and a
+stale version need a session that can ask; run these by hand from a fresh copy of
+`test/fixtures/workspace/`:
+
+```bash
+log=$(mktemp); PATH="$PWD/test/fixtures/reeve-bin:$PATH" REEVE_FAKE_LOG=$log REEVE_FAKE_TRIAGE=1 \
+  REEVE_FAKE_STALE=GRA-42 claude --plugin-dir "$PWD"     # from the workspace copy, $PWD this checkout
+```
+
+Prompt: `Triage the whole untriaged queue in Reeve.` Then check `$log`:
+
+1. **Confirmation 1.** One table of GRA-40 … GRA-48 and one question. Answer by striking GRA-47 and
+   changing GRA-41's kind to bug. Pass: only the changed rows are shown again, no second table
+   question, and no `story edit GRA-47` or `story mv GRA-47` in the log.
+2. **Confirmation 2.** The rows with drafted criteria come back in AskUserQuestion multi-select
+   questions of at most 4 rows each. Tick some, leave one unticked. Pass: each ticked row's
+   `story edit` carries `--criterion`, the unticked one's does not, and the report names it under
+   criteria left unchanged.
+3. **Duplicate pair.** `comment add --item GRA-48 --body Duplicate of GRA-46. --idempotency-key triage-dup:GRA-48:GRA-46 --json`,
+   then `story mv GRA-48 done --version 1 --resolution dropped --json`; nothing dropped for GRA-46.
+4. **Stale version.** `story edit GRA-42 --version 1 …` answers `conflict`; Pass: the log then has
+   `story show GRA-42 --json` and no second `story edit GRA-42`, and the report lists GRA-42 as
+   conflicted, placed under GRA-21 meanwhile.
+5. **No epic created.** No `epic create`, `initiative create` or `apply` in the log.
+
 ## How It Works
 
 1. Runs Claude CLI with `--print` flag for each prompt

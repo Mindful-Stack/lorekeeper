@@ -325,13 +325,13 @@ git commit -m \"feat: add DeviceStatusDto\"
                 "^story edit GRA-43 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
                 "^story edit GRA-45 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
                 "^story edit GRA-44 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
-                "^story mv GRA-46 done --resolution dropped --json$"
+                "^story mv GRA-46 done --version 1 --resolution dropped --json$"
                 "^comment add (?=.*--item GRA-47\\b)(?=.*Proposed home)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "(?s)^apply .*^story ls --epic GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add|apply) )"
                 "(?s)^story edit .*^decision ls --on GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add|apply) )"]
   :log-rejects ["--brief " "^story edit GRA-42 .*--kind" "^story edit GRA-45 .*--epic GRA-20\\b" "^story edit GRA-46 "
                 "^story (?:edit|mv) GRA-47 " "^(?:story|epic|initiative) create " "(?s)^apply .*^apply "
-                "^story mv (?!GRA-46 done --resolution dropped )" "^epic discovery " "^decision require " "^decision link "
+                "^story mv (?!GRA-46 done --version 1 --resolution dropped )" "^epic discovery " "^decision require " "^decision link "
                 "^apply .*\"title\":\"(?:Retry failed matches|Show match history)\""
                 "(?s)^(\\w+ create)\\b[^\\n]*--idempotency-key (\\S+) .*^(?!\\1\\b)\\w+ create\\b[^\\n]*--idempotency-key \\2 "]}
  {:name "reeve-triage-queue-headless"
@@ -342,17 +342,23 @@ git commit -m \"feat: add DeviceStatusDto\"
   :workdir "."
   :expects ["(?i)using the refining-epic skill" "(?i)run id:? *`?[0-9a-f]{8}"
             "(?i)nothing was written"
-            "(?i)GRA-48[^\\n]{0,200}duplicate of GRA-46"
-            "GRA-40" "GRA-41" "GRA-42" "GRA-43" "GRA-44" "GRA-45" "GRA-47"]
+            "(?i)GRA-48[^\\n]{0,300}duplicate of GRA-46"
+            "(?i)GRA-40\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?i)GRA-41\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?i)GRA-42\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?i)GRA-43\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?i)GRA-44\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?i)GRA-45\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?i)GRA-46\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?i)GRA-47\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"]
   :rejects ["(?im)^\\W*(GRA-\\d+)\\b[^\\n]{0,200}duplicate of \\1\\b"
             "(?im)^\\W*GRA-46\\b[^\\n]{0,200}duplicate of GRA-48"
             "(?im)^\\W*Stopped: missing the epic key"]
   :log-expects ["^story ls --untriaged --json$"
-                "^story show GRA-40 --json$" "^story show GRA-44 --json$" "^story show GRA-48 --json$"
-                "^story similar .*--limit 6 --json$"
+                "(?s)(?:^story similar .*?){9}"
                 "^epic ls --json$"
                 "^initiative ls --json$"]
-  :log-rejects ["^story (?:edit|mv|create) " "^comment add " "^apply " "^(?:epic|initiative) (?:create|edit) "]}
+  :log-rejects ["^story show " "^story (?:edit|mv|create) " "^comment add " "^apply " "^(?:epic|initiative) (?:create|edit) "]}
  {:name "reeve-refining-epic-no-epic-headless"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)"]

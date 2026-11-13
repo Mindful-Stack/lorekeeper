@@ -77,6 +77,19 @@
 (defn log-matches [patterns text]
   (filter #(re-find (re-pattern (str "(?m)" %)) text) patterns))
 
+;; The CLI takes its global flags anywhere (`--json story edit …`, `story --json mv …`); a reject is
+;; also matched against each line with them moved to the end, so no placement escapes it.
+(defn normalize-global-flags [text]
+  (->> (str/split-lines text)
+       (map (fn [line]
+              (let [words (str/split line #" ")
+                    global? #{"--json" "--ascii"}]
+                (str/join " " (concat (remove global? words) (filter global? words))))))
+       (str/join "\n")))
+
+(defn log-rejected [patterns text]
+  (distinct (concat (log-matches patterns text) (log-matches patterns (normalize-global-flags text)))))
+
 ;; Scenarios assert on what a command prints before it writes. Pin the permission mode (the
 ;; user's own default may auto-approve), allow only reading tools and node (every adr-lint and
 ;; doctor call), and deny writes, git and gh outright. Node can still write, which is why the
@@ -108,7 +121,7 @@
                             (map #(str "log: " %)
                                  (remove (set (log-matches log-expects log-text)) log-expects)))
             present (concat (filter #(re-find (re-pattern %) output) (or rejects []))
-                            (map #(str "log: " %) (log-matches log-rejects log-text)))]
+                            (map #(str "log: " %) (log-rejected log-rejects log-text)))]
         {:name name
          :passed (and (empty? missing) (empty? present))
          :missing missing

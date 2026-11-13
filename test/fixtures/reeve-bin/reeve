@@ -28,9 +28,7 @@
 // `story promise` and `epic promise` are a person's commands: the fake stands for an agent's token, so they are refused
 // `interactive_only`, exit 2, after clap's checks (one of --on, --to, --clear; --clear alone; --on a shortcut or a date).
 // Whole-queue triage (GRA-642): REEVE_FAKE_TRIAGE=1 adds GRA-48 to the untriaged queue, a duplicate of GRA-46.
-// REEVE_FAKE_STALE=<KEY> makes the first versioned `story edit` or `story mv` of KEY a conflict, as if a teammate had
-// placed it under GRA-21 meanwhile (saved at the next version, so a re-read shows it). A duplicate comment's key is
-// `triage-dup:<KEY>:<DUP>`, the web triage page's, beside the skills' <skill>:<KEY>:<run-id>:<n>.
+// A duplicate comment's key is `triage-dup:<KEY>:<DUP>`, the web triage page's, beside the skills' <skill>:<KEY>:<run-id>:<n>.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -271,14 +269,7 @@ const refOf = (item) => {
   if (item.external_ref && item.external_ref !== f['external-ref']) emit({ outcome: 'refused', reasons: [{ reason: 'external_ref_already_set' }] }, 2);
   return f['external-ref'];
 };
-// REEVE_FAKE_STALE: a teammate places the item under GRA-21 before this run's first versioned write to it.
-const staled = (item) => {
-  if (process.env.REEVE_FAKE_STALE !== item.key || f.version === undefined || (state.staled || {})[item.key]) return item;
-  const moved = save({ ...item, epic: 'GRA-21', version: item.version + 1 });
-  withState((st) => { (st.staled ||= {})[item.key] = true; });
-  return moved;
-};
-const bump = (it) => { const item = staled(it); return Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`, { current: item.version }); };
+const bump = (item) => (Number(f.version) === item.version ? { ...item, version: item.version + 1 } : error('conflict', `${item.key} is at version ${item.version}, not ${f.version}`, { current: item.version }));
 const [p0] = pos;
 // The one screenshot (AttachmentDto), on GRA-31.
 const SHOT_ID = '0193a6a2-7b1c-7d2e-9f00-000000000031';

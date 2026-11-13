@@ -71,5 +71,11 @@
     (is (true? (:passed r)))
     (is (empty? (:failed-outputs r)))))
 
+(deftest a-log-reject-sees-global-flags-anywhere
+  (let [log "--json story edit GRA-40 --version 1\nstory --json mv GRA-48 done\nstory ls --untriaged --json\n"]
+    (is (= ["^story (?:edit|mv) "] (log-rejected ["^story (?:edit|mv) "] log)))
+    (is (= ["^story ls --untriaged --json$"] (log-rejected ["^story ls --untriaged --json$"] log)))
+    (is (empty? (log-rejected ["^comment add "] log)))))
+
 (let [{:keys [fail error]} (run-tests)]
   (System/exit (if (zero? (+ fail error)) 0 1)))

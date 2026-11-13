@@ -25,7 +25,11 @@ Before starting, create a feature branch from main. Never start implementation o
 ### Step 2: Execute Tasks
 
 For each task:
-1. Mark as in_progress
+1. Mark as in_progress. If the task has a `**Story:**` line and `node <plugin-root>/scripts/reeve-detect.js`
+   (once per run) prints `"present":true` and `"signed_in":true`, start that story first (without a
+   planner, skip the move and carry on):
+   read it with `reeve story context <KEY> --json`, then `reeve story mv <KEY> in-progress --json`,
+   as `<plugin-root>/references/reeve-cli.md` *Moving stories* says
 2. Follow each step exactly (plan has bite-sized steps)
    - If the task involves a different domain/tech than previously loaded, dispatch **knowledge-reader** with implementation hints
    - After completing the task, dispatch **plan-compliance-reviewer** with the task text and the plan path, to verify the implementation matches the plan and its *Governing decisions*
@@ -39,6 +43,9 @@ After all tasks complete and verified:
 2. Summarise what was implemented
 3. Present the result to the developer
 4. If the work is delivered as a pull request, its description carries a `## Decisions` section in the format of `<plugin-root>/references/pr-decisions.md` (records followed or added, rule edits, or "No new decisions"), copied from the plan's *Governing decisions* when there is one.
+5. When the planner is present (the detector) or the plan has `**Story:**` lines, a pull request for this work carries a `## Stories` section (`<plugin-root>/references/reeve-cli.md`,
+   *A pull request's `## Stories`*). When you open it ready for review, move its stories as *Moving
+   stories* says.
 
 ## When to Stop and Ask for Help
 

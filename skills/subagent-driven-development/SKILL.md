@@ -90,6 +90,14 @@ digraph process {
 exists from an earlier, compacted run, resume at the first task not recorded as
 complete rather than starting over.
 
+**Before dispatching a task's implementer**, if the task has a `**Story:**` line and
+`node <plugin-root>/scripts/reeve-detect.js` (once per run) prints `"present":true` and
+`"signed_in":true`, start its story yourself, the controller (without a planner, skip the move and
+carry on): read it with `reeve story context <KEY> --json`, then
+`reeve story mv <KEY> in-progress --json`, as `<plugin-root>/references/reeve-cli.md` *Moving
+stories* says. On a refusal, stop the run and report the reasons to the developer; do not dispatch
+this task or later tasks that build on that story.
+
 When dispatching an implementer subagent, include relevant knowledge from **knowledge-reader** results (already loaded during planning) in the implementer's prompt so they have domain context and standards.
 
 For spec compliance review, dispatch the **plan-compliance-reviewer** agent instead of a generic reviewer.
@@ -102,7 +110,7 @@ After all tasks pass review, completion is handled inline:
 1. Run final verification (full test suite)
 2. Summarise what was implemented
 3. Present the result to the developer
-Does not invoke `finishing-a-development-branch`. Tell the developer the PR description should carry a `## Decisions` section in the format of `<plugin-root>/references/pr-decisions.md` (records followed or added, rule edits, or "No new decisions"), copied from the plan's *Governing decisions* when there is one.
+Does not invoke `finishing-a-development-branch`. Tell the developer the PR description should carry a `## Decisions` section in the format of `<plugin-root>/references/pr-decisions.md` (records followed or added, rule edits, or "No new decisions"), copied from the plan's *Governing decisions* when there is one, and, when the planner is present (the detector) or the plan has `**Story:**` lines, a `## Stories` section (the reference's *A pull request's `## Stories`*); whoever opens the pull request moves its stories then (the delivering-stories skill).
 
 ## Model Selection
 

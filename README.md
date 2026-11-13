@@ -535,6 +535,7 @@ These skills trigger automatically when relevant:
 | `recording-decisions` | A hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) |
 | `planning-initiative` | Planning a Reeve initiative, named by Reeve or its key: discovery, brief, required decisions, epics (only with the Reeve planner) |
 | `refining-epic` | Refining a Reeve epic, named by Reeve or its key: stories with acceptance criteria, placing untriaged stories; or triaging the whole untriaged queue with one confirmation (only with the Reeve planner) |
+| `delivering-stories` | Moving a Reeve story at the moments of work: start, pull request ready, merged, criteria checked (only with the Reeve planner) |
 | `writing-plans` | Multi-step tasks with spec/requirements |
 | `executing-plans` | Executing a written implementation plan |
 | `test-driven-development` | Implementing any feature or bugfix |
@@ -545,7 +546,7 @@ These skills trigger automatically when relevant:
 | `dispatching-parallel-agents` | Multiple independent problems |
 | `cultivating-domains` / `cultivate-discovery` | Domain cultivation via `/lore:cultivate` |
 
-**Reeve planner.** Optional. When a `reeve` CLI on the path reports `reeve-planner` and you are signed in (`reeve auth login`), the two skills above write into the planner, brainstorming reads a named story's context first, and `/lore:adr link` links a record to a required decision. Without it every skill behaves as before, and the session's skill router does not list the two planner skills.
+**Reeve planner.** Optional. When a `reeve` CLI on the path reports `reeve-planner` and you are signed in (`reeve auth login`), the three skills above write into the planner, brainstorming reads a named story's context first, and `/lore:adr link` links a record to a required decision. Without it every skill behaves as before, and the session's skill router does not list the three planner skills.
 
 The skills run `node <plugin-root>/scripts/reeve-detect.js` and the `reeve` CLI through Bash, so without allow rules every call asks for permission (20 to 25 prompts in one epic refinement), and a non-interactive run (`claude -p`, CI) is refused outright. Add to `.claude/settings.json` (`<plugin-root>` is the absolute path the plugin is installed at):
 
@@ -556,7 +557,7 @@ The skills run `node <plugin-root>/scripts/reeve-detect.js` and the `reeve` CLI 
 ] } }
 ```
 
-`Bash(reeve *)` also allows commands no skill runs (`reeve story mv` except the one refining-epic's won't-do and duplicates run, `done --resolution dropped`; `reeve decision close`, `reeve import --apply`, `reeve auth set-token`). To allow only what the skills call, list `Bash(reeve initiative *)`, `Bash(reeve epic *)`, `Bash(reeve story ls *)`, `Bash(reeve story show *)`, `Bash(reeve story similar *)`, `Bash(reeve story mv * done *)`, `Bash(reeve story create *)`, `Bash(reeve story edit *)`, `Bash(reeve story context *)`, `Bash(reeve decision ls *)`, `Bash(reeve decision show *)`, `Bash(reeve decision require *)`, `Bash(reeve decision link *)` and `Bash(reeve comment add *)`, `Bash(reeve comment ls *)`, `Bash(reeve search *)` and `Bash(reeve apply *)` instead.
+`Bash(reeve *)` also allows commands no skill runs (`reeve story mv … --override`, `reeve decision close`, `reeve import --apply`, `reeve auth set-token`). To allow only what the skills call, list `Bash(reeve initiative *)`, `Bash(reeve epic *)`, `Bash(reeve story ls *)`, `Bash(reeve story show *)`, `Bash(reeve story similar *)`, `Bash(reeve story create *)`, `Bash(reeve story edit *)`, `Bash(reeve story context *)`, `Bash(reeve story mv *)`, `Bash(reeve decision ls *)`, `Bash(reeve decision show *)`, `Bash(reeve decision require *)`, `Bash(reeve decision link *)`, `Bash(reeve comment add *)`, `Bash(reeve comment ls *)`, `Bash(reeve search *)` and `Bash(reeve apply *)` instead. `Bash(reeve story mv *)` also allows `--override`; on a person's interactive session the planner accepts it, so add a deny rule `Bash(reeve story mv *--override*)` if agents run under your token (Bash argument patterns are best-effort, not a guarantee).
 
 ### Pattern Identifier Flow
 

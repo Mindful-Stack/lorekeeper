@@ -130,8 +130,8 @@
     {
       "row": "`reeve story mv <KEY> <delivery> [--version <n>] [--resolution completed|dropped] --json`",
       "argv": ["story", "mv", "{{closable.key}}", "done", "--resolution", "dropped", "--json"],
-      "reads": ["value.delivery", "value.resolution"],
-      "types": { "value.delivery": "string", "value.resolution": "string|null" }
+      "reads": ["value.delivery", "value.resolution", "value.owner"],
+      "types": { "value.delivery": "string", "value.resolution": "string|null", "value.owner": "string|null" }
     },
     {
       "row": "`reeve decision require --on <KEY> --title <title> --decider <email> --reversibility one-way|two-way [--due YYYY-MM-DD] --idempotency-key <key> --json`",

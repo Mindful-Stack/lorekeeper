@@ -189,7 +189,7 @@ Answers use the planner's wire shapes:
   (anything else is a `validation` error, exit 1);
 - a write naming an epic or initiative that does not exist is `not_found` and is not logged, so a
   guessed key never satisfies a log expectation; `story mv` exists so a delivery change is
-  logged and can be rejected (only refining-epic's won't-do, `done --resolution dropped`, may call it);
+  logged and can be rejected (skills call it at the moments of work, and to close an item as dropped);
 - `story similar <text>` answers the stories whose title shares a word of more than three letters with
   the text, most shared words first (the item itself among them, as on the planner), checks the text (8 to 200 characters) and `--limit` (1 to 10) as the planner does;
 - created items get keys `GRA-100`, `GRA-101`, … (decision and comment ids `100`, …), minted from a counter
@@ -238,6 +238,12 @@ reason, and a fake that answers otherwise is blamed with "fix test/fixtures/reev
 answer `{"outcome":"refused","reasons":[{"reason":"no_criteria"}]}` with exit 2, so a scenario can
 check that a skill shows the reasons and stops that step. `decision link` never reports
 `accepted`/`not_accepted`: its check is `not_found`, or `proposed_pr_open` when `--pr` is passed.
+
+`REEVE_FAKE_BLOCKED=<KEY>` makes `<KEY>` blocked by GRA-42, in review and owned by mia@example.com,
+in `story context` and `story mv` alike; `story mv` then refuses a start (exit 2, `overridable: true`)
+and every other story moves freely. `story mv` takes the CLI's kebab argument (`in-progress`) and
+stores snake_case `delivery` (`in_progress`) like the planner; a story with no owner gets the signed-in
+user as owner on entering an active state (in progress, in review, testing).
 
 `REEVE_FAKE_SIGNIN=expired` makes every call but `auth status` answer an `unauthenticated` error
 with exit 2, as the real CLI does for an expired or revoked token.

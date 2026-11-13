@@ -313,7 +313,7 @@ test('schema gate: degrades silently when node is non-functional (valid JSON, no
 
 // --- Reeve planner router rows: only when a reeve-planner CLI answers (kb/ADR-0005 R1) ----
 const REEVE_FAKE = path.resolve(__dirname, '../../test/fixtures/reeve-bin/reeve');
-const PLANNER_ROWS = /PLANNING AN INITIATIVE[\s\S]*REFINING AN EPIC/;
+const PLANNER_ROWS = /PLANNING AN INITIATIVE[\s\S]*REFINING AN EPIC[\s\S]*DELIVERING A STORY/;
 
 test('reeve router rows: present when the reeve CLI reports reeve-planner', () =>
     withTmp((tmp) => {

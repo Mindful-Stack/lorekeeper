@@ -90,6 +90,14 @@
 (defn log-rejected [patterns text]
   (distinct (concat (log-matches patterns text) (log-matches patterns (normalize-global-flags text)))))
 
+;; A scenario's patterns against a run's output and fake log: what is missing, what must not appear.
+(defn check [{:keys [expects rejects log-expects log-rejects]} output log-text]
+  {:missing (concat (filter #(not (re-find (re-pattern %) output)) expects)
+                    (map #(str "log: " %)
+                         (remove (set (log-matches log-expects log-text)) log-expects)))
+   :present (concat (filter #(re-find (re-pattern %) output) (or rejects []))
+                    (map #(str "log: " %) (log-rejected log-rejects log-text)))})
+
 ;; Scenarios assert on what a command prints before it writes. Pin the permission mode (the
 ;; user's own default may auto-approve), allow only reading tools and node (every adr-lint and
 ;; doctor call), and deny writes, git and gh outright. Node can still write, which is why the
@@ -99,7 +107,7 @@
 
 ;; --plugin-dir loads this checkout's plugin code rather than the installed copy; the run starts
 ;; from the workspace root, where settings.json has plugins enabled.
-(defn run-test [{:keys [name prompt workdir expects rejects log-expects log-rejects] :as scenario}
+(defn run-test [{:keys [name prompt workdir] :as scenario}
                 {:keys [workspace-root plugin-dir]}]
   (let [{:keys [env log config-dir]} (scenario-env scenario)]
     (try
@@ -117,11 +125,7 @@
                                              ["--" prompt]))
             output (str out err)
             log-text (if log (slurp log) "")
-            missing (concat (filter #(not (re-find (re-pattern %) output)) expects)
-                            (map #(str "log: " %)
-                                 (remove (set (log-matches log-expects log-text)) log-expects)))
-            present (concat (filter #(re-find (re-pattern %) output) (or rejects []))
-                            (map #(str "log: " %) (log-rejected log-rejects log-text)))]
+            {:keys [missing present]} (check scenario output log-text)]
         {:name name
          :passed (and (empty? missing) (empty? present))
          :missing missing

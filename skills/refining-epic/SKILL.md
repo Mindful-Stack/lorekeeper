@@ -126,8 +126,9 @@ single-quoted argument on one line, as the reference's Arguments section says.
 7. **Placement tree.** For each item from `story ls --untriaged` (any kind with no epic that is
    not done), first look for a duplicate: `reeve story similar '<its title>' --json` (the title must
    be 8 to 200 characters; shorter, skip this) lists open stories and recently done ones with a like
-   title, the item itself among them: never count its own key as a hit. A hit that is the same work is a duplicate: propose "Won't do" for the item and name the
-   key it duplicates. Then classify it, propose its home
+   title, the item itself among them: never count its own key as a hit. A hit that is done (any resolution) is never a duplicate:
+   name it in the item's reason (`like GRA-48, done (dropped)`). An open hit that is the same work is
+   a duplicate: propose "Won't do" for the item and name the key it duplicates (`<DUP>`). Then classify it, propose its home
    with the branch that led there, and write it on a confirmation as rule 1 says ("place the
    untriaged stories" names the `story edit`s; `<v>` is the story's `version` from the listing;
    covering epics and initiatives come from `epic ls` and `initiative ls`):
@@ -168,8 +169,9 @@ single-quoted argument on one line, as the reference's Arguments section says.
    - **Won't do** (including a duplicate): close it as dropped, on a confirmation as rule 1 says.
      A duplicate first gets the comment the web triage page writes,
      `reeve comment add --item <KEY> --body 'Duplicate of <DUP>.' --idempotency-key triage-dup:<KEY>:<DUP> --json`;
-     then `reeve story mv <KEY> done --version <v> --resolution dropped --json` (a move that fails
-     after the comment is reported as "commented, not dropped"). If the user says "leave it
+     then `reeve story mv <KEY> done --version <v> --resolution dropped --json` (a failed comment
+     stops that item's move; a move that fails after the comment is reported as "commented, not
+     dropped"). If the user says "leave it
      untriaged", write nothing for it.
    - **Write.** Everything step 6 and this step confirmed for creating goes into ONE plan, as the
      reference's *Plans* section says: write it as JSON to a file with the Write tool, its `id`
@@ -223,16 +225,17 @@ T0. **Asking.** The table (T3) and the criteria questions (T4) are the only conf
 T1. **Read.** `reeve story ls --untriaged --json`: keep each `story.version`, `.delivery`, `.owner`
     and `.criteria`. Then `reeve epic ls --json` and `reeve initiative ls --json`. A failed read
     stops the run, as step 1 says. An empty queue: say `The untriaged queue is empty.` and stop.
-    More than 25 items: take the 25 with the lowest key numbers and say how many remain.
+    More than 25 items: take the 25 with the lowest key numbers and say how many remain; the rest
+    are outside this pass (no row, and never canonical in T2).
 T2. **Propose** one row per item:
     - **Duplicate.** `reeve story similar '<its title>' --json`, as step 7 says (a failed call is
       said and the item goes on without the check). A hit other than the item itself that is the
-      same work is a twin. Of each group, the canonical item `<DUP>` is the twin outside the queue
-      (the lowest key number when there are several), else the lowest key number among the
-      group's untriaged items; every other untriaged item in todo is
-      `won't do: duplicate of <DUP>`. So no item duplicates itself and no two items duplicate each
-      other. An item not in todo is never proposed as won't do: its row is
-      `<its delivery state>: left untriaged`.
+      same work and not done is a twin; a done hit never is (name it in the row's reason, as step 7
+      says). Of each group, the canonical item `<DUP>` is the open twin outside the queue (the
+      lowest key number when there are several), else the lowest key number among the group's
+      items in this pass; every other item of the pass in todo is `won't do: duplicate of <DUP>`.
+      So no item duplicates itself and no two items duplicate each other. A twin that is not in
+      todo is never dropped: its row is `left untriaged: <its delivery state>, duplicate of <DUP>`.
     - **Home.** Otherwise classify it by step 7's *Broken behaviour*, *Internal work* or
       *Product change* 1 only (none of step 7's commands, questions or comments apply here): the
       row is the epic, its title, the kind and why. Anything else (a new epic or initiative, no
@@ -241,17 +244,21 @@ T2. **Propose** one row per item:
 T3. **Confirmation 1: the table.** One table, a row per item: key, title (for an item not in todo,
     add `<delivery>, owned by <owner or nobody>`) and its row from T2. Ask once, with two options,
     `Write all rows as shown` and `Write nothing`; the user may instead strike rows or change a
-    row's epic or kind. An answer that changes rows confirms the rows it leaves unchanged: show
+    row's epic or kind. An answer that changes rows confirms every row left standing, the changed ones as changed
+    and a struck one not at all: show
     the changed rows and go on without asking again (ask only about a change that names no
     existing epic or kind). `Write nothing` goes to the report.
 T4. **Confirmation 2: criteria.** For each confirmed placement whose item has no criteria, draft 2
     to 6 and ask one yes/no question for that row, the criteria in the question, with the
-    multiple-choice question tool where the session has one. A no places the row without them.
+    multiple-choice question tool where the session has one (up to 4 rows' questions in one
+    call). A no places the row without them; criteria the user types instead are that row's
+    criteria, confirmed as typed.
     Existing criteria are never changed in this pass.
 T5. **Write** each confirmed row with the `version` T1 read:
     - a placement: `reeve story edit <KEY> --version <v> --epic <EPIC> --kind <kind> [--criterion <text> …] --json`,
       the row's kind (`story`, `bug` or `chore`), with one `--criterion` per criterion of a yes in T4;
-    - a duplicate: as step 7's *Won't do* writes it.
+    - a duplicate: step 7's two *Won't do* commands (the comment, then the move), with no further
+      question.
 
     A `conflict` is never retried: re-read the item (`reeve story show <KEY> --json`) and say
     what changed. Any other failure is rule 3's.
@@ -260,4 +267,5 @@ T6. **Report.** After the last write, re-read `reeve story ls --untriaged --json
     kind, criteria written or not), dropped (duplicate of), or left untriaged with why (the home
     it needs, its delivery state, struck, a failed write, a conflict and what changed, commented
     but not dropped). Then the queue from the re-read, and the next step: `triage the untriaged
-    queue again` when a row failed or conflicted, otherwise `refine an epic`.
+    queue again` when a row failed or conflicted or items remain beyond the 25, otherwise `refine an
+    epic`.

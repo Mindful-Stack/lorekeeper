@@ -95,11 +95,18 @@
       "may_be_empty": ["value[]"]
     },
     {
+      "row": "`reeve story show <KEY> --json`",
+      "argv": ["story", "show", "{{story.key}}", "--json"],
+      "reads": ["value.key", "value.title", "value.kind", "value.epic", "value.delivery", "value.owner", "value.criteria[].text", "value.criteria[].done", "value.version"],
+      "types": { "value.key": "string", "value.title": "string", "value.kind": "string", "value.epic": "string|null", "value.delivery": "string", "value.owner": "string|null", "value.criteria[].text": "string", "value.criteria[].done": "boolean", "value.version": "number" }
+    },
+    {
       "row": "`reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json`",
       "argv": ["story", "ls", "--epic", "{{epic.key}}", "--json"],
       "alternates": [["story", "ls", "--untriaged", "--json"]],
-      "reads": ["value[].story.key", "value[].story.title", "value[].story.kind", "value[].story.version", "value[].readiness.ready", "value[].readiness.reasons[].reason"],
-      "types": { "value[].story.key": "string", "value[].story.title": "string", "value[].story.kind": "string", "value[].story.version": "number", "value[].readiness.ready": "boolean", "value[].readiness.reasons[].reason": "string" }
+      "reads": ["value[].story.key", "value[].story.title", "value[].story.kind", "value[].story.delivery", "value[].story.owner", "value[].story.criteria[]", "value[].story.version", "value[].readiness.ready", "value[].readiness.reasons[].reason"],
+      "types": { "value[].story.key": "string", "value[].story.title": "string", "value[].story.kind": "string", "value[].story.delivery": "string", "value[].story.owner": "string|null", "value[].story.criteria[]": "object", "value[].story.version": "number", "value[].readiness.ready": "boolean", "value[].readiness.reasons[].reason": "string" },
+      "may_be_empty": ["value[].story.criteria[]"]
     },
     {
       "row": "`reeve story similar <text> [--limit <n>] --json`",

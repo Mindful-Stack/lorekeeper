@@ -738,3 +738,27 @@ test('blocked_by is owner-scoped: same-owner active blocker and a testing blocke
   runIn(log, ['story', 'mv', 'GRA-46', 'testing', '--json']);
   assert.deepEqual(blockedBy('GRA-45'), [], 'testing blocker');
 });
+test('story show answers one story with its version, delivery, owner and criteria; an unknown key is not_found', () => {
+  const r = run(['story', 'show', 'GRA-31', '--json']);
+  assert.equal(r.status, 0);
+  const s = r.envelope.value;
+  assert.deepEqual([s.key, s.version, s.delivery, s.owner, s.epic], ['GRA-31', 1, 'todo', null, 'GRA-20']);
+  assert.deepEqual(s.criteria[0], { text: 'A failed match is retried up to three times', done: false });
+  assert.equal(r.log, 'story show GRA-31 --json\n');
+  assert.equal(run(['story', 'show', 'GRA-999', '--json']).envelope.code, 'not_found');
+});
+test('REEVE_FAKE_TRIAGE=1 adds GRA-48 to the untriaged queue, a duplicate of GRA-46; unset, the queue is unchanged', () => {
+  const keys = (env) => run(['story', 'ls', '--untriaged', '--json'], env).envelope.value.map((x) => x.story.key);
+  assert.ok(!keys({}).includes('GRA-48'));
+  assert.ok(keys({ REEVE_FAKE_TRIAGE: '1' }).includes('GRA-48'));
+  const hits = run(['story', 'similar', 'Fax match summaries to the coordinators', '--limit', '6', '--json'], { REEVE_FAKE_TRIAGE: '1' }).envelope.value.map((x) => x.key);
+  assert.ok(hits.includes('GRA-46') && hits.includes('GRA-48'), 'the item itself is a hit, as on the real planner');
+});
+test('a duplicate comment takes triage-dup:<KEY>:<DUP> and replays by it', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const add = () => JSON.parse(spawnSync(fake, ['comment', 'add', '--item', 'GRA-48', '--body', 'Duplicate of GRA-46.', '--idempotency-key', 'triage-dup:GRA-48:GRA-46', '--json'],
+    { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log, REEVE_FAKE_TRIAGE: '1' } }).stdout);
+  assert.equal(add().value.length, 1);
+  assert.equal(add().value.length, 1, 'the same key adds nothing');
+  assert.equal(run(['comment', 'add', '--item', 'GRA-42', '--body', 'B', '--idempotency-key', 'triage-dup:GRA-48', '--json']).envelope.code, 'validation');
+});

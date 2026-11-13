@@ -63,7 +63,8 @@ reeve epic create --initiative GRA-12 --title 'Matching queue' --brief-file /tmp
 **Other values are one line, inline.** A title, a criterion, a comment body or a reason is one
 single-quoted argument on one line, `'\''` for an apostrophe, with no backticks and no `$(`. No
 value starts with `-` (the real CLI reads it as a flag; only `comment add --body` accepts one):
-open a title or criterion with a word, not a bullet. `--brief <md>` and `--description <text>`
+open a title or criterion with a word, not a bullet. `story similar` takes the title as written, so
+skip the duplicate check for a title that starts with `-`. `--brief <md>` and `--description <text>`
 inline (*Other flags*) are for one line of plain text under these same rules; anything longer goes
 through the file.
 
@@ -88,7 +89,7 @@ Exceptions: `code: conflict` (the `--version` is stale; the envelope carries `cu
 version to re-read from, so read it instead of parsing the message; `-1` means the planner gave up on
 a concurrent update, so re-read the item for its version) — re-read the item, fold what changed into
 your text (a teammate's edit is kept, never overwritten), show it, and retry once with the new
-`version`. Exit status stays 1. `code: rate_limited` (the planner answered HTTP 429; the envelope carries
+`version`, except where a skill says a conflict is reported, not retried. Exit status stays 1. `code: rate_limited` (the planner answered HTTP 429; the envelope carries
 `retry_after_secs` when the server sent a Retry-After, and text output says to retry after N
 seconds) — wait that many seconds (a few seconds when none is given), then run the SAME command
 again, with the SAME `--idempotency-key` for a create: a create retried with its key answers the
@@ -107,8 +108,10 @@ Show each write (the command and the text it carries) before running it.
   horizon, a home you chose for a story): show it and write it only on a confirmation for that
   write. A blanket "I confirm every write" does not cover it. In a session that cannot ask, write
   it only when the request names that write ("write the brief from these answers", "place the
-  untriaged stories", "create the new epic for GRA-43"); otherwise leave it as a proposal and list
-  it in the report.
+  untriaged stories" while refining a named epic, "create the new epic for GRA-43"); otherwise
+  leave it as a proposal and list it in the report.
+- **Whole-queue triage** (refining-epic, a request to triage the whole untriaged queue): confirmed
+  as that skill's *Whole-queue triage* says.
 - **A question nobody can answer.** In a session that cannot ask, a question the request does not
   answer stops the run with the line `Stopped: missing <what>.`, on its own line; nothing after it
   is written. Never fill the gap yourself (a decider, a due date, a repository name).
@@ -122,6 +125,9 @@ of the run). A skill called by another (recording-decisions from a planning skil
 caller's skill name, `<KEY>`, `run_id` and next `<n>`. A retry within the run reuses its key; a new
 run never reuses an old one, so only reading first keeps it from duplicating an earlier run's
 items; never derive a key from a title. A plan's `id` (*Plans*) is built the same way and takes the next `<n>`. Print the run id in the report.
+
+One exception: the comment that marks a duplicate, `Duplicate of <DUP>.` on item `<KEY>`, takes
+`--idempotency-key triage-dup:<KEY>:<DUP>`, the key the planner's web triage page sends too.
 
 ## Commands
 
@@ -139,7 +145,8 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 | `reeve epic edit <KEY> --brief-file <brief file> --version <n> --json` | `value.version` |
 | `reeve epic discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
 | `reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json` | `value[]`, `.finding`; empty when there are none (see *Findings*) |
-| `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version`. Untriaged: an item of any kind with no epic that is not done (kb/ADR-0018); it is not ready until placed or closed |
+| `reeve story show <KEY> --json` | `value.key`, `.title`, `.kind`, `.epic` (null = untriaged), `.delivery`, `.owner` (null = none), `.criteria[]` (each `{text, done}`), `.version` |
+| `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.delivery`, `.owner` (null = none), `.criteria[]`, `.version`. Untriaged: an item of any kind with no epic that is not done (kb/ADR-0018); it is not ready until placed or closed |
 | `reeve story similar <text> [--limit <n>] --json` | `value[]`: `{key, kind, title, epic, delivery, resolution}`, open stories and recently done ones with a like title (the text is 8 to 200 characters, the limit 1 to 10 with default 5; otherwise a validation error, exit 1); run it before filing or placing an item, to catch a duplicate |
 | `reeve story mv <KEY> <delivery> [--version <n>] [--resolution completed\|dropped] --json` | `value.delivery` (todo, in_progress, in_review, testing or done), `.resolution`, `.owner`; moving to done needs a resolution; --override is a person's (interactive tokens only), never passed by a skill. Skills move a story at the moments of work (*Moving stories*) and to close an item as dropped (a won't-do or duplicate) |
 | `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] [--owner <email>] --idempotency-key <key> --json` | `value.key`; an owner who is not an allowed user is a `validation` error |

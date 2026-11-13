@@ -71,5 +71,22 @@
     (is (true? (:passed r)))
     (is (empty? (:failed-outputs r)))))
 
+(deftest a-log-reject-sees-global-flags-anywhere
+  (let [log "--json story edit GRA-40 --version 1\nstory --json mv GRA-48 done\nstory ls --untriaged --json\n"]
+    (is (= ["^story (?:edit|mv) "] (log-rejected ["^story (?:edit|mv) "] log)))
+    (is (= ["^story ls --untriaged --json$"] (log-rejected ["^story ls --untriaged --json$"] log)))
+    (is (empty? (log-rejected ["^comment add "] log)))))
+
+(deftest triage-headless-needs-a-row-and-a-similar-call-per-item
+  ;; Catches TEST-2's false pass: all nine keys on one line and one `story similar` query nine times.
+  (let [s (first (filter #(= "reeve-triage-queue-headless" (:name %)) (load-scenarios)))
+        output (str "Using the refining-epic skill.\nRun id: 0123abcd\nNothing was written.\n"
+                    "GRA-40 GRA-41 GRA-42 GRA-43 GRA-44 GRA-45 GRA-46 GRA-47 GRA-48 duplicate of GRA-46\n")
+        log-text (str "story ls --untriaged --json\nepic ls --json\ninitiative ls --json\n"
+                      (apply str (repeat 9 "story similar Fax match summaries to coordinators --json\n")))
+        {:keys [missing]} (check s output log-text)]
+    (is (some #(re-find #"GRA-41" %) missing))
+    (is (some #(re-find #"^log: \^story similar Upgrade" %) missing))))
+
 (let [{:keys [fail error]} (run-tests)]
   (System/exit (if (zero? (+ fail error)) 0 1)))

@@ -27,6 +27,8 @@
 // due next sprint, and every other story and epic a `promise` of null; `story ls --promised` filters on the promise's state and period as GET /stories?promised= does.
 // `story promise` and `epic promise` are a person's commands: the fake stands for an agent's token, so they are refused
 // `interactive_only`, exit 2, after clap's checks (one of --on, --to, --clear; --clear alone; --on a shortcut or a date).
+// Whole-queue triage (GRA-642): REEVE_FAKE_TRIAGE=1 adds GRA-48 to the untriaged queue, a duplicate of GRA-46.
+// A duplicate comment's key is `triage-dup:<KEY>:<DUP>`, the web triage page's, beside the skills' <skill>:<KEY>:<run-id>:<n>.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -59,7 +61,7 @@ function withState(fn) {
     return result;
   } finally { fs.unlinkSync(lock); }
 }
-const KEY_SHAPE = /^[a-z][a-z0-9-]*:(?:[A-Z][A-Z0-9]*-[0-9]+|[0-9]+):[0-9a-f]{8}:[0-9]+$/; // <skill>:<KEY>:<run-id>:<n>; KEY an item key or a decision id
+const KEY_SHAPE = /^(?:[a-z][a-z0-9-]*:(?:[A-Z][A-Z0-9]*-[0-9]+|[0-9]+):[0-9a-f]{8}:[0-9]+|triage-dup:[A-Z][A-Z0-9]*-[0-9]+:[A-Z][A-Z0-9]*-[0-9]+)$/; // <skill>:<KEY>:<run-id>:<n>; KEY an item key or a decision id; or triage-dup:<KEY>:<DUP>
 
 const emit = (envelope, code) => { process.stdout.write(JSON.stringify(envelope) + '\n'); process.exit(code); };
 const ok = (value) => emit({ outcome: 'ok', value }, 0);
@@ -76,6 +78,7 @@ const PROMISE = { pos: 1, val: ['on', 'to'], bool: ['clear'] };
 const SPEC = {
   'auth status': { pos: 0 },
   'story context': { pos: 1 },
+  'story show': { pos: 1 },
   'story similar': { pos: 1, variadic: true, val: ['limit'] },
   'story ls': { pos: 0, val: ['epic', 'owner', 'delivery', 'label', 'goal', 'text', 'kind', 'initiative', 'sort', 'promised'], bool: ['untriaged', 'ready', 'mine', 'urgent', 'open'] },
   'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'description-file', 'owner', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
@@ -233,7 +236,8 @@ const stories = {
   'GRA-44': story('GRA-44', 'Invoice employers for programme fees'),
   'GRA-45': story('GRA-45', 'Coordinators match a mentee by hand in one click'),
   'GRA-46': story('GRA-46', 'Fax match summaries to coordinators'),
-  'GRA-47': story('GRA-47', 'Translate the mentee app into Spanish'),
+  'GRA-47': story('GRA-47', 'Translate the mentee app into Spanish', { criteria: [{ text: 'The app shows Spanish when the phone is set to Spanish', done: false }] }),
+  ...(process.env.REEVE_FAKE_TRIAGE === '1' ? { 'GRA-48': story('GRA-48', 'Fax match summaries to the coordinators') } : {}),
 };
 // Sprints (kb/ADR-0014): #1 closed, #2 active (opened at NOW), #3 the draft opening when #2 ends. Goal 1 is the closed
 // sprint's (met, no links), 2 and 3 the active one's (linked to epic GRA-20 and initiative GRA-13), 4 the draft's (no links).
@@ -519,6 +523,7 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     const served = servedBy(s).map(({ goal: g, via }) => ({ goal: g, starts_on: sp.starts_on, ends_on: sp.ends_on, via }));
     ok({ story: withGoals(withPromise(s)), epic: e, initiative: i, required_decisions: required, blockers: [], comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served, attachments: attachmentsOf(s) });
   },
+  'story show': () => ok(withGoals(withPromise(find(stories, p0)))),
   'story ls': () => ok(all(stories, 'story').map(withPromise).filter((s) => (f.untriaged ? !s.epic && s.delivery !== 'done' : !f.epic || s.epic === f.epic))
     .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery) && (!f.label || s.labels.includes(f.label)))
     .filter((s) => (f.text === undefined || matchesText(s, f.text)) && (!f.kind || s.kind === f.kind) && (f.initiative === undefined || epicsUnder(f.initiative).includes(s.epic))
@@ -530,14 +535,15 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     .map((s) => ({ story: s, readiness: readinessOf(s) })).filter((x) => !f.ready || (x.readiness.ready && x.story.delivery === 'todo'))),
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], owner: f.owner || null, external_ref: f['external-ref'] || null }))),
   'story mv': () => { const s = find(stories, p0); if (pos[1] === 'done' && !['completed', 'dropped'].includes(f.resolution)) error('validation', 'moving to done needs --resolution completed or dropped'); ok(save({ ...(f.version ? bump(s) : { ...s, version: s.version + 1 }), delivery: pos[1], resolution: pos[1] === 'done' ? f.resolution : null })); }, // a delivery change is logged; only refining-epic's won't-do (done, dropped) may call it
-  // Stories with a like title: text 8 to 200 characters (several words are one text), --limit 1 to 10 (default 5), open ones and done ones.
+  // Stories with a like title, most alike first: text 8 to 200 characters (several words are one text), --limit 1 to 10 (default 5), open ones and done ones.
   'story similar': () => {
     const text = pos.join(' ');
     const n = f.limit === undefined ? 5 : Number(f.limit);
     if (text.length < 8 || text.length > 200) error('validation', 'the text must be 8 to 200 characters');
     if (!Number.isInteger(n) || n < 1 || n > 10) error('validation', 'limit must be 1 to 10');
     const words = text.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
-    ok(all(stories, 'story').filter((x) => words.some((w) => x.title.toLowerCase().includes(w))).slice(0, n).map((x) => ({ key: x.key, kind: x.kind, title: x.title, epic: x.epic, delivery: x.delivery, resolution: x.resolution })));
+    const score = (x) => words.filter((w) => x.title.toLowerCase().includes(w)).length; // most alike first, as the planner orders by similarity
+    ok(all(stories, 'story').filter((x) => score(x) > 0).sort((a, b) => score(b) - score(a)).slice(0, n).map((x) => ({ key: x.key, kind: x.kind, title: x.title, epic: x.epic, delivery: x.delivery, resolution: x.resolution })));
   },
   'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic, owner: f['no-owner'] ? null : f.owner ?? s.owner, external_ref: refOf(s), description: f.description ?? s.description,
     criteria: f.criterion ? f.criterion.map((text, i) => ({ text, done: !!(s.criteria[i] && s.criteria[i].text === text && s.criteria[i].done) })) : s.criteria,

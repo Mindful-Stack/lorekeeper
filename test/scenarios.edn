@@ -325,15 +325,56 @@ git commit -m \"feat: add DeviceStatusDto\"
                 "^story edit GRA-43 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
                 "^story edit GRA-45 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
                 "^story edit GRA-44 (?=.*--epic GRA-1\\d\\d\\b).*--json$"
-                "^story mv GRA-46 done --resolution dropped --json$"
+                "^story mv GRA-46 done --version 1 --resolution dropped --json$"
                 "^comment add (?=.*--item GRA-47\\b)(?=.*Proposed home)(?=.*--idempotency-key refining-epic:GRA-20:[0-9a-f]{8}:\\d+\\b).*--json$"
                 "(?s)^apply .*^story ls --epic GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add|apply) )"
                 "(?s)^story edit .*^decision ls --on GRA-20 --json$(?!.*^(?:epic edit|story create|story edit|epic create|initiative create|epic discovery|decision require|comment add|apply) )"]
   :log-rejects ["--brief " "^story edit GRA-42 .*--kind" "^story edit GRA-45 .*--epic GRA-20\\b" "^story edit GRA-46 "
                 "^story (?:edit|mv) GRA-47 " "^(?:story|epic|initiative) create " "(?s)^apply .*^apply "
-                "^story mv (?!GRA-46 done --resolution dropped )" "^epic discovery " "^decision require " "^decision link "
+                "^story mv (?!GRA-46 done --version 1 --resolution dropped )" "^epic discovery " "^decision require " "^decision link "
                 "^apply .*\"title\":\"(?:Retry failed matches|Show match history)\""
                 "(?s)^(\\w+ create)\\b[^\\n]*--idempotency-key (\\S+) .*^(?!\\1\\b)\\w+ create\\b[^\\n]*--idempotency-key \\2 "]}
+ {:name "reeve-triage-queue-headless"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)" "Write"]
+  :env {"REEVE_FAKE_TRIAGE" "1"}
+  :prompt "Triage the whole untriaged queue in Reeve. Nobody can answer questions in this session. Place the untriaged stories; I confirm every write to the planner."
+  :workdir "."
+  :expects ["(?i)using the refining-epic skill" "(?i)run id:? *`?[0-9a-f]{8}"
+            "(?i)nothing was written"
+            "(?im)^\\W*GRA-48\\b[^\\n]{0,300}duplicate of GRA-46"
+            "(?im)^\\W*GRA-40\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?im)^\\W*GRA-41\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?im)^\\W*GRA-42\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?im)^\\W*GRA-43\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?im)^\\W*GRA-44\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?im)^\\W*GRA-45\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?im)^\\W*GRA-46\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"
+            "(?im)^\\W*GRA-47\\b[^\\n]{0,300}(?:\\bGRA-2\\d\\b|left untriaged|duplicate of)"]
+  :rejects ["(?im)^\\W*(GRA-\\d+)\\b[^\\n]{0,200}duplicate of \\1\\b"
+            "(?im)^\\W*GRA-46\\b[^\\n]{0,200}duplicate of GRA-48"
+            "(?im)^\\W*Stopped: missing the epic key"]
+  :log-expects ["^story ls --untriaged --json$"
+                "^story similar Matching crashes when a mentor has no timezone --json$"
+                "^story similar Upgrade the queue client library --json$"
+                "^story similar Drop a match request the mentee withdrew from the queue --json$"
+                "^story similar Welcome email with an onboarding checklist for new mentors --json$"
+                "^story similar Invoice employers for programme fees --json$"
+                "^story similar Coordinators match a mentee by hand in one click --json$"
+                "^story similar Fax match summaries to coordinators --json$"
+                "^story similar Translate the mentee app into Spanish --json$"
+                "^story similar Fax match summaries to the coordinators --json$"
+                "^epic ls --json$"
+                "^initiative ls --json$"]
+  :log-rejects ["^story show " "^story (?:edit|mv|create) " "^comment add " "^apply " "^(?:epic|initiative) (?:create|edit) "]}
+ {:name "reeve-refining-epic-no-epic-headless"
+  :requires ["reeve-fake"]
+  :allowed-tools ["Bash(reeve *)"]
+  :prompt "Refine an epic in Reeve. Nobody can answer questions in this session."
+  :workdir "."
+  :expects ["(?im)^\\W*Stopped: missing the epic key"]
+  :log-expects ["^auth status --json$"]
+  :log-rejects ["^story show " "^story similar " "^story (?:edit|mv|create) " "^comment add " "^apply "]}
  {:name "reeve-refining-epic-standalone"
   :requires ["reeve-fake"]
   :allowed-tools ["Bash(reeve *)" "Write"]

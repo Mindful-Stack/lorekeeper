@@ -111,7 +111,7 @@ Skills that drive the Reeve planner are tested against a fake `reeve` CLI,
 | `:requires ["reeve-fake"]` | Runs only when the runner is invoked with `--with reeve-fake`; otherwise printed as `[SKIP]` and not counted. Such a scenario gets `<checkout>/test/fixtures/reeve-bin` first on `PATH` and a fresh empty `REEVE_FAKE_LOG` file for each run (also each `--runs` repeat). |
 | `:env {"NAME" "value"}` | Merged last into the child's environment (the link scenario sets `REEVE_FAKE_LINK_CHECK`). |
 | `:allowed-tools [...]` | Added to the base allow-list, and lifts the base deny-list's entry for the same tool; reeve scenarios that write add `"Bash(reeve *)"` and `"Write"` (the skills write briefs and plans to a temporary file and pass it by path; `Bash(node *)` is already in the base list). |
-| `:log-expects [...]` / `:log-rejects [...]` | Regexes matched, multiline (`(?m)` prepended), against the fake log after the run; failures print as `log: <regex>`. Positive evidence that a command was executed, which a transcript match cannot give. |
+| `:log-expects [...]` / `:log-rejects [...]` | Regexes matched, multiline (`(?m)` prepended), against the fake log after the run; failures print as `log: <regex>`. A reject is also matched with each line's global flags (`--json`, `--ascii`) moved to the end, so `--json story edit …` cannot escape `^story edit `. Positive evidence that a command was executed, which a transcript match cannot give. |
 
 **Environment.** Every scenario, fake or not, runs with a fresh empty `REEVE_CONFIG_DIR` and
 without `REEVE_URL`, `REEVE_TOKEN` and `REEVE_BIN`, so a real `reeve` on the `PATH` can never
@@ -167,7 +167,10 @@ Answers use the planner's wire shapes:
   and `story ls` (also `--goal <id|any|none>`), `story context` (`goals[]`) and the counts see them;
 - stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
   in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-47` (`story ls --untriaged` lists
-  any item with no epic that is not done, as the real planner does);
+  any item with no epic that is not done, as the real planner does); `story show <KEY>` answers one
+  story as it was last written;
+- whole-queue triage (refining-epic): `REEVE_FAKE_TRIAGE=1` adds untriaged `GRA-48` "Fax match
+  summaries to the coordinators", a duplicate of GRA-46;
 - attachments as in Reeve CLI 0.5.0: one screenshot, id `0193a6a2-7b1c-7d2e-9f00-000000000031`
   (`match-error.png`), listed in `story context` (`attachments[]`) for GRA-31; every other story's
   `attachments` is empty. `attachment get <ID> --dir <dir>` (`--dir` required; a missing one is a usage
@@ -188,11 +191,11 @@ Answers use the planner's wire shapes:
   guessed key never satisfies a log expectation; `story mv` exists so a delivery change is
   logged and can be rejected (only refining-epic's won't-do, `done --resolution dropped`, may call it);
 - `story similar <text>` answers the stories whose title shares a word of more than three letters with
-  the text, checks the text (8 to 200 characters) and `--limit` (1 to 10) as the planner does;
+  the text, most shared words first (the item itself among them, as on the planner), checks the text (8 to 200 characters) and `--limit` (1 to 10) as the planner does;
 - created items get keys `GRA-100`, `GRA-101`, … (decision and comment ids `100`, …), minted from a counter
   in the per-run state file `$REEVE_FAKE_LOG.state`, distinct within a run;
-- every create needs `--idempotency-key <skill>:<KEY>:<run-id>:<n>` (kb/ADR-0005 R3; anything else is a
-  `validation` error) and replays by key: the same key again returns the first item, it never mints a second;
+- every create needs `--idempotency-key <skill>:<KEY>:<run-id>:<n>` (kb/ADR-0005 R3), or for a duplicate
+  comment `triage-dup:<KEY>:<DUP>` (anything else is a `validation` error), and replays by key: the same key again returns the first item, it never mints a second;
 - an edit or discovery mark with a stale `--version` is a `conflict` (exit 1);
 - promises (kb/ADR-0025): `GRA-41` has its own open promise due this sprint and epic `GRA-22` (migrated
   from `PRM-1`, so `epic show PRM-1` finds it) one due next sprint; every other story and epic has
@@ -247,6 +250,42 @@ check could not run: exit 1 with an `ok` envelope (the decision, check `unchecke
 bb test/run-tests.clj --with reeve-fake --filter reeve-   # the planner scenarios
 bb test/run-tests.clj                                     # everything else; reeve-fake scenarios print [SKIP]
 ```
+
+### Interactive evals: whole-queue triage
+
+`claude --print` cannot ask, so the runner reaches only refining-epic's non-interactive
+whole-queue run (`reeve-triage-queue-headless`: a row per item, a self-match left out, the
+duplicate pair GRA-48/GRA-46 with one canonical item, nothing written). The confirmations and a
+stale version need a session that can ask; run these by hand, from this checkout:
+
+```bash
+plugin=$PWD; ws=$(mktemp -d); cp -r test/fixtures/workspace/. "$ws"; log=$(mktemp)
+echo "plugin=$plugin log=$log"   # paste this line into the second terminal of step 4
+cd "$ws" && PATH="$plugin/test/fixtures/reeve-bin:$PATH" REEVE_FAKE_LOG=$log REEVE_FAKE_TRIAGE=1 \
+  claude --plugin-dir "$plugin"
+```
+
+Prompt: `Triage the whole untriaged queue in Reeve.` Then check `$log`:
+
+1. **Confirmation 1.** One table of GRA-40 … GRA-48 and one question with the options
+   `Write all rows as shown` and `Write nothing`. Answer by striking GRA-40 and changing GRA-41's
+   kind to bug. Pass: only the changed rows are shown again, no second table question, no
+   `story edit GRA-40` in the log, and `story edit GRA-41 … --kind bug` in it.
+2. **Confirmation 2.** Each placed row without criteria comes back as its own yes/no question.
+   Say yes to some and no to one. Pass: each yes row's `story edit` carries `--criterion`, the no
+   row's does not, and the report says which rows got criteria.
+3. **Duplicate pair.** `comment add --item GRA-48 --body Duplicate of GRA-46. --idempotency-key triage-dup:GRA-48:GRA-46 --json`,
+   then `story mv GRA-48 done --version 1 --resolution dropped --json`; nothing dropped for GRA-46.
+   Then ask for the pass again: GRA-48 (now done, dropped) is named in GRA-46's reason, and GRA-46
+   is not proposed as a duplicate of it.
+4. **Stale version.** While the table question is open, paste the echoed `plugin=… log=…` line
+   into a second terminal and run
+   `REEVE_FAKE_LOG=$log $plugin/test/fixtures/reeve-bin/reeve story edit GRA-42 --version 1 --epic GRA-21 --json`
+   there, then confirm the table. Pass: the run's
+   `story edit GRA-42 --version 1 …` answers `conflict`, the log then has `story show GRA-42 --json`
+   and no further `story edit GRA-42`, and the report lists GRA-42 as left untriaged by a conflict,
+   placed under GRA-21 meanwhile.
+5. **No epic created.** No `epic create`, `initiative create` or `apply` in the log.
 
 ## How It Works
 

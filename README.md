@@ -534,7 +534,7 @@ These skills trigger automatically when relevant:
 | `brainstorming` | Creative work — features, components, new functionality |
 | `recording-decisions` | A hard-to-reverse choice surfaces (framework, storage, auth, API contract, integration, data model) |
 | `planning-initiative` | Planning a Reeve initiative, named by Reeve or its key: discovery, brief, required decisions, epics (only with the Reeve planner) |
-| `refining-epic` | Refining a Reeve epic, named by Reeve or its key: stories with acceptance criteria, placing untriaged stories (only with the Reeve planner) |
+| `refining-epic` | Refining a Reeve epic, named by Reeve or its key: stories with acceptance criteria, placing untriaged stories; or triaging the whole untriaged queue with one confirmation (only with the Reeve planner) |
 | `writing-plans` | Multi-step tasks with spec/requirements |
 | `executing-plans` | Executing a written implementation plan |
 | `test-driven-development` | Implementing any feature or bugfix |
@@ -556,7 +556,7 @@ The skills run `node <plugin-root>/scripts/reeve-detect.js` and the `reeve` CLI 
 ] } }
 ```
 
-`Bash(reeve *)` also allows commands no skill runs (`reeve story mv` except the one refining-epic's won't-do runs, `done --resolution dropped`; `reeve decision close`, `reeve import --apply`, `reeve auth set-token`). To allow only what the skills call, list `Bash(reeve initiative *)`, `Bash(reeve epic *)`, `Bash(reeve story ls *)`, `Bash(reeve story create *)`, `Bash(reeve story edit *)`, `Bash(reeve story context *)`, `Bash(reeve decision ls *)`, `Bash(reeve decision show *)`, `Bash(reeve decision require *)`, `Bash(reeve decision link *)` and `Bash(reeve comment add *)` instead.
+`Bash(reeve *)` also allows commands no skill runs (`reeve story mv` except the one refining-epic's won't-do and duplicates run, `done --resolution dropped`; `reeve decision close`, `reeve import --apply`, `reeve auth set-token`). To allow only what the skills call, list `Bash(reeve initiative *)`, `Bash(reeve epic *)`, `Bash(reeve story ls *)`, `Bash(reeve story show *)`, `Bash(reeve story similar *)`, `Bash(reeve story mv * done *)`, `Bash(reeve story create *)`, `Bash(reeve story edit *)`, `Bash(reeve story context *)`, `Bash(reeve decision ls *)`, `Bash(reeve decision show *)`, `Bash(reeve decision require *)`, `Bash(reeve decision link *)` and `Bash(reeve comment add *)`, `Bash(reeve comment ls *)`, `Bash(reeve search *)` and `Bash(reeve apply *)` instead.
 
 ### Pattern Identifier Flow
 

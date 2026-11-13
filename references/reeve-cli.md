@@ -84,7 +84,8 @@ Exceptions: `code: conflict` (the `--version` is stale; the envelope carries `cu
 version to re-read from, so read it instead of parsing the message; `-1` means the planner gave up on
 a concurrent update, so re-read the item for its version) — re-read the item, fold what changed into
 your text (a teammate's edit is kept, never overwritten), show it, and retry once with the new
-`version`. Exit status stays 1. `code: rate_limited` (the planner answered HTTP 429; the envelope carries
+`version`. Exception: refining-epic's whole-queue triage never retries a conflict (its confirmation
+was for the version it showed): it re-reads the item and reports it. Exit status stays 1. `code: rate_limited` (the planner answered HTTP 429; the envelope carries
 `retry_after_secs` when the server sent a Retry-After, and text output says to retry after N
 seconds) — wait that many seconds (a few seconds when none is given), then run the SAME command
 again, with the SAME `--idempotency-key` for a create: a create retried with its key answers the
@@ -103,8 +104,12 @@ Show each write (the command and the text it carries) before running it.
   horizon, a home you chose for a story): show it and write it only on a confirmation for that
   write. A blanket "I confirm every write" does not cover it. In a session that cannot ask, write
   it only when the request names that write ("write the brief from these answers", "place the
-  untriaged stories", "create the new epic for GRA-43"); otherwise leave it as a proposal and list
-  it in the report.
+  untriaged stories" while refining a named epic, "create the new epic for GRA-43"); otherwise
+  leave it as a proposal and list it in the report.
+- **Whole-queue triage** (refining-epic, no epic named): the placements are confirmed once, as one
+  table the user may strike rows from or change first, and new or changed criteria row by row with
+  the AskUserQuestion tool. A session that cannot ask shows the table and writes nothing, whatever
+  the request says.
 - **A question nobody can answer.** In a session that cannot ask, a question the request does not
   answer stops the run with the line `Stopped: missing <what>.`, on its own line; nothing after it
   is written. Never fill the gap yourself (a decider, a due date, a repository name).
@@ -118,6 +123,10 @@ of the run). A skill called by another (recording-decisions from a planning skil
 caller's skill name, `<KEY>`, `run_id` and next `<n>`. A retry within the run reuses its key; a new
 run never reuses an old one, so only reading first keeps it from duplicating an earlier run's
 items; never derive a key from a title. A plan's `id` (*Plans*) is built the same way and takes the next `<n>`. Print the run id in the report.
+
+One exception: the comment that marks a duplicate, `Duplicate of <DUP>.` on item `<KEY>`, takes
+`--idempotency-key triage-dup:<KEY>:<DUP>`, the key the planner's web triage page sends too, so the
+comment is written once per item and duplicate whichever run or client writes it.
 
 ## Commands
 
@@ -135,6 +144,7 @@ items; never derive a key from a title. A plan's `id` (*Plans*) is built the sam
 | `reeve epic edit <KEY> --brief-file <brief file> --version <n> --json` | `value.version` |
 | `reeve epic discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
 | `reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json` | `value[]`, `.finding`; empty when there are none (see *Findings*) |
+| `reeve story show <KEY> --json` | `value.key`, `.title`, `.kind`, `.epic` (null = untriaged), `.delivery`, `.owner` (null = none), `.criteria[]` (each `{text, done}`), `.version` |
 | `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.version`. Untriaged: an item of any kind with no epic that is not done (kb/ADR-0018); it is not ready until placed or closed |
 | `reeve story similar <text> [--limit <n>] --json` | `value[]`: `{key, kind, title, epic, delivery, resolution}`, open stories and recently done ones with a like title (the text is 8 to 200 characters, the limit 1 to 10 with default 5; otherwise a validation error, exit 1); run it before filing or placing an item, to catch a duplicate |
 | `reeve story mv <KEY> <delivery> [--version <n>] [--resolution completed\|dropped] --json` | `value.delivery`, `.resolution`; moving to done needs a resolution; --override is a person's (interactive tokens only), never passed by a skill. Skills use it only to close an item as dropped (a won't-do or duplicate); delivery is otherwise the person's or a pull request's |
@@ -198,7 +208,7 @@ the user asks for what it does, with the command written as shown.
 | `reeve epic edit <KEY> --version <n> [--title <title>] [--initiative <KEY>] --json` | renames the epic or moves it to another initiative; `--no-initiative` in place of `--initiative` detaches it (a standalone epic) |
 | `reeve story ls [--owner <email>] [--delivery <delivery>] [--label <label>] [--ready] [--mine] [--text <text>] [--kind story\|bug\|chore] [--initiative <KEY>] [--urgent] [--open] [--sort rank\|relevance] --json` | filters the list (every flag given must hold): owner, delivery state (`todo`, `in-progress`, `in-review`, `testing`, `done`), label, `--ready` (ready stories still in todo), `--mine` (owned by the signed-in user; a refused token answers the `unauthenticated` or `forbidden` envelope, exit 2, as any call does), `--text` (title, description or external reference contains the text, any case, 1 to 200 characters; a key-shaped text such as `12`, `#12` or `GRA-12` also finds that key), `--kind`, `--initiative` (stories in that initiative's epics, by key or external reference; one that names nothing lists nothing), `--urgent` (only stories shown urgent), `--open` (no done stories), `--sort relevance` (needs `--text`, else a `validation` error, exit 1: the story whose key or external reference equals the text first, then title matches, then the rest; `rank`, the default, is the backlog order). A planner server without kb/ADR-0021 ignores the last six and lists unfiltered |
 | `reeve story create --epic <KEY> --title <title> --kind story --description-file <description file> --label <label> --criterion <text> --idempotency-key <key> --json` | a story with a longer description (Markdown, through a file as *Arguments* says) and labels (`--label` repeats, one per label) |
-| `reeve story edit <KEY> --version <n> [--title <title>] [--criterion <text> …] [--rank <n>] --json` | renames the story, replaces ALL its criteria (one `--criterion` each; a criterion unchanged at the same position keeps its done flag) or sets its rank; `--no-epic` in place of `--epic` detaches it (it becomes untriaged) |
+| `reeve story edit <KEY> --version <n> [--title <title>] [--criterion <text> …] [--rank <n>] --json` | renames the story, replaces ALL its criteria (one `--criterion` each; a criterion unchanged at the same position keeps its done flag) or sets its rank (refining-epic's whole-queue triage also passes `--criterion` for a row whose criteria the user ticked); `--no-epic` in place of `--epic` detaches it (it becomes untriaged) |
 | `reeve story edit <KEY> --version <n> [--description-file <description file>] [--add-label <label> …] [--remove-label <label> …] --json` | replaces the whole description (through a file), or adds and removes labels (each repeats; a label the story already has is kept once) |
 | `reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key <key> --json` / `reeve initiative edit <KEY> --brief <md> --version <n> --json` / `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key <key> --json` / `reeve epic edit <KEY> --brief <md> --version <n> --json` | a one-line brief inline, in place of `--brief-file` (one line, single-quoted, as *Arguments* says) |
 | `reeve story create --epic <KEY> --title <title> --kind story --description <text> --idempotency-key <key> --json` / `reeve story edit <KEY> --version <n> --description <text> --json` | a one-line description inline, in place of `--description-file` |

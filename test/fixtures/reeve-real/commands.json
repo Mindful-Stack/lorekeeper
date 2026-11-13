@@ -95,6 +95,12 @@
       "may_be_empty": ["value[]"]
     },
     {
+      "row": "`reeve story show <KEY> --json`",
+      "argv": ["story", "show", "{{story.key}}", "--json"],
+      "reads": ["value.key", "value.title", "value.kind", "value.epic", "value.delivery", "value.owner", "value.criteria[].text", "value.criteria[].done", "value.version"],
+      "types": { "value.key": "string", "value.title": "string", "value.kind": "string", "value.epic": "string|null", "value.delivery": "string", "value.owner": "string|null", "value.criteria[].text": "string", "value.criteria[].done": "boolean", "value.version": "number" }
+    },
+    {
       "row": "`reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json`",
       "argv": ["story", "ls", "--epic", "{{epic.key}}", "--json"],
       "alternates": [["story", "ls", "--untriaged", "--json"]],

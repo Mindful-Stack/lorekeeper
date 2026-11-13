@@ -26,6 +26,8 @@ single-quoted argument on one line, as the reference's Arguments section says.
    What you composed — the rewritten brief, a home you chose, a new epic or initiative with its
    title, brief and horizon — needs its own yes, or, in a session that cannot ask, a request that
    names that write ("place the untriaged stories", "create the new epic for GRA-43").
+   *Whole-queue triage* below is the exception: one confirmation of its table, the criteria row
+   by row, and nothing written in a session that cannot ask.
 2. **One question at a time**, skipping every question the request already answers. In a session
    that cannot ask, a question the request does not answer stops the run with
    `Stopped: missing <what>.` on its own line: nothing after it is written, and the report (step
@@ -51,11 +53,11 @@ single-quoted argument on one line, as the reference's Arguments section says.
    Reeve planner." Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints
    `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this
    session: <reason>." and stop; this skill has no fallback. Keep `bin` and `run_id`.
-   **No epic named** (for example "triage the untriaged stories"): run
-   `reeve story ls --untriaged --json`, show the stories, say that this skill works on one epic,
-   ask which epic to refine (or which epic a story should go to), and stop until the user
-   answers. In a session that cannot ask, end with `Stopped: missing the epic key.` Never pick an
-   epic yourself.
+   **No epic named.** A request to triage the whole untriaged queue ("triage the untriaged
+   stories in Reeve") follows *Whole-queue triage* below instead of steps 1 to 10. Any other
+   request that names no epic ("refine an epic in Reeve") asks which epic to refine and stops
+   until the user answers; in a session that cannot ask, end with `Stopped: missing the epic key.`
+   Never write an epic without the user's confirmation.
 1. **Read.** `reeve epic show <EPIC> --json` (keep `value.brief`, `value.version` and
    `value.initiative`), `reeve epic findings <EPIC> --json`, then
    `reeve initiative show <INITIATIVE> --json` only when `value.initiative` is not null (a standalone epic has no initiative: skip that read and go on
@@ -127,7 +129,7 @@ single-quoted argument on one line, as the reference's Arguments section says.
 7. **Placement tree.** For each item from `story ls --untriaged` (any kind with no epic that is
    not done), first look for a duplicate: `reeve story similar '<its title>' --json` (the title must
    be 8 to 200 characters; shorter, skip this) lists open stories and recently done ones with a like
-   title. A hit that is the same work is a duplicate: propose "Won't do" for the item and name the
+   title, the item itself among them: never count its own key as a hit. A hit that is the same work is a duplicate: propose "Won't do" for the item and name the
    key it duplicates. Then classify it, propose its home
    with the branch that led there, and write it on a confirmation as rule 1 says ("place the
    untriaged stories" names the `story edit`s; `<v>` is the story's `version` from the listing;
@@ -206,3 +208,58 @@ single-quoted argument on one line, as the reference's Arguments section says.
 `<n>` is one counter for the whole run, from 1, shared by decisions, comments, the plan and any
 single create: every create (and the plan, as one) takes the next number, and a retry of the same
 create or plan reuses its number.
+
+## Whole-queue triage
+
+For a request to triage the whole untriaged queue. It replaces steps 1 to 10; *The rule* holds
+except where this section says otherwise. It needs `reeve-planner` 0.4.0 or later (`story similar`).
+
+T0. **Can this session ask?** The confirmations below use the AskUserQuestion tool. Without it
+    (`claude --print`, CI) the run reads and proposes (T1, T2), shows the table (T3), says
+    `Nothing was written: whole-queue triage needs a session that can ask.` and reports (T6). No
+    request licenses a write here: not "place the untriaged stories", not "I confirm every write".
+T1. **Read.** `reeve story ls --untriaged --json`, then `reeve story show <KEY> --json` for each
+    item: keep `value.version`, `.delivery`, `.owner`, `.kind` and `.criteria`. Then
+    `reeve epic ls --json` and `reeve initiative ls --json`. A failed read stops the run, as step 1
+    says. An empty queue: say `The untriaged queue is empty.` and stop.
+T2. **Propose**, for each item:
+    - **Duplicates.** `reeve story similar '<its title>' --limit 6 --json` (a title of 8 to 200
+      characters; shorter, skip it), with the item's own key removed from the hits. A hit that is
+      the same work is a duplicate. Items that duplicate each other form one group with one
+      canonical item: the oldest open one (the lowest key number), else the newest done one. Every
+      other open item of the group is "won't do: duplicate of <canonical>". Never propose an item
+      as its own duplicate, nor two items as duplicates of each other.
+    - **Home.** Otherwise step 7's placement tree gives its epic and kind, from the epics that
+      exist. Where the tree would propose a new epic or initiative, or no standing epic is obvious,
+      the row is "no covering epic: left untriaged", with the home it would need in words. No epic
+      or initiative is created in this pass; creating one is a separate request.
+    - **Criteria.** Existing criteria are kept. Draft 2 to 6 for an item with none; change an
+      item's existing criteria only as a proposal shown before and after.
+    - **State.** An item that is not in todo is flagged "<its delivery state>, owned by <owner>"
+      ("in progress, owned by sam@example.com"; "nobody" when `owner` is null).
+T3. **Confirmation 1: placements.** Show one table, a row per item: key, title, state (with its
+    flag), the proposed home (epic key and title) and why, and the kind; or "won't do: duplicate
+    of <KEY>", or "no covering epic: left untriaged". Ask once, with AskUserQuestion, whether to
+    write the table as shown; the user may first strike rows or change a row's epic or kind. Fold
+    their changes in and show the changed rows; that answer is the confirmation. A struck row is
+    left as it is.
+T4. **Confirmation 2: criteria, row by row.** For the confirmed placements with new or changed
+    criteria, ask with AskUserQuestion, `multiSelect` true: one question per batch of at most 4
+    rows (each option the key and title, its description the criteria, or before and after), at
+    most 4 questions per call. A ticked row's criteria are written; an unticked row is placed
+    without the criteria change.
+T5. **Write** each confirmed row with the `version` T1 read:
+    - a placement: `reeve story edit <KEY> --version <v> --epic <EPIC> --kind story|bug|chore [--criterion <text> …] --json`,
+      one `--criterion` per criterion and only for a row ticked in T4 (it replaces them all, so
+      pass the kept ones too);
+    - a duplicate: `reeve comment add --item <KEY> --body 'Duplicate of <DUP>.' --idempotency-key triage-dup:<KEY>:<DUP> --json`,
+      then `reeve story mv <KEY> done --version <v> --resolution dropped --json`.
+
+    A `conflict` is never retried: re-read the item (`reeve story show <KEY> --json`), say what
+    changed, and list the row as conflicted. A comment that landed with a move that failed is
+    reported as "commented, not dropped". Any other failure is rule 3's.
+T6. **Report.** Open with the step 0 sentence and the plain line `Run id: <run_id>`. After the last
+    write, re-read `reeve story ls --untriaged --json`. Then list, a line per item: placed (epic and
+    kind), dropped (duplicate of), skipped (struck, or a failed write with its reason), conflicted
+    (what changed), left untriaged (with the home it would need), and whose criteria were left
+    unchanged; then the queue from the re-read. Without writes (T0), the table is the report.

@@ -236,7 +236,7 @@ const stories = {
   'GRA-44': story('GRA-44', 'Invoice employers for programme fees'),
   'GRA-45': story('GRA-45', 'Coordinators match a mentee by hand in one click'),
   'GRA-46': story('GRA-46', 'Fax match summaries to coordinators'),
-  'GRA-47': story('GRA-47', 'Translate the mentee app into Spanish'),
+  'GRA-47': story('GRA-47', 'Translate the mentee app into Spanish', { criteria: [{ text: 'The app shows Spanish when the phone is set to Spanish', done: false }] }),
   ...(process.env.REEVE_FAKE_TRIAGE === '1' ? { 'GRA-48': story('GRA-48', 'Fax match summaries to the coordinators') } : {}),
 };
 // Sprints (kb/ADR-0014): #1 closed, #2 active (opened at NOW), #3 the draft opening when #2 ends. Goal 1 is the closed

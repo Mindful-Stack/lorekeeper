@@ -167,7 +167,13 @@ Answers use the planner's wire shapes:
   and `story ls` (also `--goal <id|any|none>`), `story context` (`goals[]`) and the counts see them;
 - stories `GRA-31` "Retry failed matches" (two criteria) and `GRA-32` "Show match history", both
   in GRA-20 and blocked; untriaged stories `GRA-40` … `GRA-47` (`story ls --untriaged` lists
-  any item with no epic that is not done, as the real planner does);
+  any item with no epic that is not done, as the real planner does); `story show <KEY>` answers one
+  story (`version`, `delivery`, `owner`, `criteria`) as it was last written;
+- whole-queue triage (refining-epic): `REEVE_FAKE_TRIAGE=1` adds untriaged `GRA-48` "Fax match
+  summaries to the coordinators", a duplicate of GRA-46; `REEVE_FAKE_STALE=<KEY>` makes the first
+  versioned `story edit` or `story mv` of KEY a `conflict`, as if a teammate had placed it under
+  GRA-21 meanwhile (saved at the next version, so a re-read shows it, and a write with that version
+  succeeds);
 - attachments as in Reeve CLI 0.5.0: one screenshot, id `0193a6a2-7b1c-7d2e-9f00-000000000031`
   (`match-error.png`), listed in `story context` (`attachments[]`) for GRA-31; every other story's
   `attachments` is empty. `attachment get <ID> --dir <dir>` (`--dir` required; a missing one is a usage
@@ -188,11 +194,11 @@ Answers use the planner's wire shapes:
   guessed key never satisfies a log expectation; `story mv` exists so a delivery change is
   logged and can be rejected (only refining-epic's won't-do, `done --resolution dropped`, may call it);
 - `story similar <text>` answers the stories whose title shares a word of more than three letters with
-  the text, checks the text (8 to 200 characters) and `--limit` (1 to 10) as the planner does;
+  the text, most shared words first (the item itself among them, as on the planner), checks the text (8 to 200 characters) and `--limit` (1 to 10) as the planner does;
 - created items get keys `GRA-100`, `GRA-101`, … (decision and comment ids `100`, …), minted from a counter
   in the per-run state file `$REEVE_FAKE_LOG.state`, distinct within a run;
-- every create needs `--idempotency-key <skill>:<KEY>:<run-id>:<n>` (kb/ADR-0005 R3; anything else is a
-  `validation` error) and replays by key: the same key again returns the first item, it never mints a second;
+- every create needs `--idempotency-key <skill>:<KEY>:<run-id>:<n>` (kb/ADR-0005 R3), or for a duplicate
+  comment `triage-dup:<KEY>:<DUP>` (anything else is a `validation` error), and replays by key: the same key again returns the first item, it never mints a second;
 - an edit or discovery mark with a stale `--version` is a `conflict` (exit 1);
 - promises (kb/ADR-0025): `GRA-41` has its own open promise due this sprint and epic `GRA-22` (migrated
   from `PRM-1`, so `epic show PRM-1` finds it) one due next sprint; every other story and epic has

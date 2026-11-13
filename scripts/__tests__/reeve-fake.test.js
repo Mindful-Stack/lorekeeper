@@ -699,3 +699,41 @@ test('story context lists the screenshot on GRA-31; attachment get needs --dir, 
   assert.deepEqual([bad.status, bad.stdout, bad.log], [1, '', '']);
   assert.match(bad.stderr, /invalid value '7' for '<ID>'/);
 });
+test('story show answers one story with its version, delivery, owner and criteria; an unknown key is not_found', () => {
+  const r = run(['story', 'show', 'GRA-31', '--json']);
+  assert.equal(r.status, 0);
+  const s = r.envelope.value;
+  assert.deepEqual([s.key, s.version, s.delivery, s.owner, s.epic], ['GRA-31', 1, 'todo', null, 'GRA-20']);
+  assert.deepEqual(s.criteria[0], { text: 'A failed match is retried up to three times', done: false });
+  assert.equal(r.log, 'story show GRA-31 --json\n');
+  assert.equal(run(['story', 'show', 'GRA-999', '--json']).envelope.code, 'not_found');
+});
+test('REEVE_FAKE_TRIAGE=1 adds GRA-48 to the untriaged queue, a duplicate of GRA-46; unset, the queue is unchanged', () => {
+  const keys = (env) => run(['story', 'ls', '--untriaged', '--json'], env).envelope.value.map((x) => x.story.key);
+  assert.ok(!keys({}).includes('GRA-48'));
+  assert.ok(keys({ REEVE_FAKE_TRIAGE: '1' }).includes('GRA-48'));
+  const hits = run(['story', 'similar', 'Fax match summaries to the coordinators', '--limit', '6', '--json'], { REEVE_FAKE_TRIAGE: '1' }).envelope.value.map((x) => x.key);
+  assert.ok(hits.includes('GRA-46') && hits.includes('GRA-48'), 'the item itself is a hit, as on the real planner');
+});
+test('a duplicate comment takes triage-dup:<KEY>:<DUP> and replays by it', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const add = () => JSON.parse(spawnSync(fake, ['comment', 'add', '--item', 'GRA-48', '--body', 'Duplicate of GRA-46.', '--idempotency-key', 'triage-dup:GRA-48:GRA-46', '--json'],
+    { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log, REEVE_FAKE_TRIAGE: '1' } }).stdout);
+  assert.equal(add().value.length, 1);
+  assert.equal(add().value.length, 1, 'the same key adds nothing');
+  for (const bad of ['triage-dup:GRA-48', 'triage-dup:GRA-48:gra-46', 'triage-dup:GRA-48:GRA-46:1']) {
+    assert.equal(run(['comment', 'add', '--item', 'GRA-42', '--body', 'B', '--idempotency-key', bad, '--json']).envelope.code, 'validation', bad);
+  }
+});
+test('REEVE_FAKE_STALE=<KEY>: the first versioned write to KEY is a conflict, as if a teammate had placed it; the re-read shows the change', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const call = (args) => JSON.parse(spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log, REEVE_FAKE_STALE: 'GRA-42' } }).stdout);
+  assert.equal(call(['story', 'show', 'GRA-42', '--json']).value.version, 1);
+  const r = call(['story', 'edit', 'GRA-42', '--version', '1', '--epic', 'GRA-20', '--json']);
+  assert.deepEqual([r.code, r.current], ['conflict', 2]);
+  const after = call(['story', 'show', 'GRA-42', '--json']).value;
+  assert.deepEqual([after.version, after.epic], [2, 'GRA-21']);
+  assert.equal(call(['story', 'mv', 'GRA-42', 'done', '--version', '1', '--resolution', 'dropped', '--json']).code, 'conflict', 'still stale');
+  assert.equal(call(['story', 'edit', 'GRA-42', '--version', '2', '--epic', 'GRA-20', '--json']).value.epic, 'GRA-20', 'the re-read version writes');
+  assert.equal(call(['story', 'edit', 'GRA-40', '--version', '1', '--epic', 'GRA-20', '--json']).value.version, 2, 'other keys are not stale');
+});

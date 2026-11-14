@@ -20,6 +20,8 @@
 // `interactive_only`; goal link|unlink|suggest persist, and stories, story context and the active sprint's counts see them.
 // `story ls` filters as GET /stories does (kb/ADR-0021): --text, --kind, --initiative, --urgent (GRA-40 is seeded urgent),
 // --open and --sort relevance (needs --text, a validation error otherwise).
+// `story ls --limit <n> --offset <n>` (GRA-667) answers the slice [offset, offset + limit) of the filtered list, as
+// GET /stories does: limit 1 to 100, offset only with limit (validation errors otherwise); the envelope is the same.
 // Attachments (Reeve CLI 0.6.0, kb/ADR-0022): one screenshot, on GRA-31; `story context` lists it in `attachments`, and
 // `attachment get <ID> --dir <dir>` (--dir required) creates <dir> (mode 0700)
 // and copies shot.png to `<dir>/<id>.png` (mode 0600).
@@ -80,7 +82,7 @@ const SPEC = {
   'story context': { pos: 1 },
   'story show': { pos: 1 },
   'story similar': { pos: 1, variadic: true, val: ['limit'] },
-  'story ls': { pos: 0, val: ['epic', 'owner', 'delivery', 'label', 'goal', 'text', 'kind', 'initiative', 'sort', 'promised'], bool: ['untriaged', 'ready', 'mine', 'urgent', 'open'] },
+  'story ls': { pos: 0, val: ['epic', 'owner', 'delivery', 'label', 'goal', 'text', 'kind', 'initiative', 'sort', 'promised', 'limit', 'offset'], bool: ['untriaged', 'ready', 'mine', 'urgent', 'open'] },
   'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'description-file', 'owner', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
   'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
   'story promise': PROMISE,
@@ -432,6 +434,9 @@ if (cmd === 'story ls' && f.goal !== undefined && !/^(\d+|any|none)$/.test(f.goa
 // GET /stories?q= (kb/ADR-0021 R2): the text trimmed, 1 to 200 characters; sort=relevance needs it.
 if (cmd === 'story ls' && f.text !== undefined) { f.text = f.text.trim(); if (!f.text || [...f.text].length > 200) error('validation', 'story text must be 1..=200 characters'); }
 if (cmd === 'story ls' && f.sort === 'relevance' && f.text === undefined) error('validation', 'sort=relevance needs text (q)');
+// GET /stories?limit=&offset= (GRA-667): limit is 1 to 100, and offset is valid only with it.
+if (cmd === 'story ls' && f.offset !== undefined && f.limit === undefined) error('validation', 'offset needs limit');
+if (cmd === 'story ls' && f.limit !== undefined && (Number(f.limit) < 1 || Number(f.limit) > 100)) error('validation', 'limit must be 1..=100');
 
 // GET /sprints/{id}: the sprint with its goals, and its numbers over its window (none for a draft).
 const sprintDto = (sp) => {
@@ -482,6 +487,8 @@ const saveGoal = (g) => withState((st) => { (st.goals ||= {})[g.id] = g; return 
 const keyNamedBy = (q) => { const n = q.replace(/^#/, ''); return /^\d+$/.test(n) ? `GRA-${n}` : /^[A-Z][A-Z0-9]*-[0-9]+$/.test(q.toUpperCase()) ? q.toUpperCase() : null; };
 // --text: title, description or external reference containing it (any case), or the key it names exactly.
 const matchesText = (s, q) => [s.title, s.description, s.external_ref].some((v) => v && v.toLowerCase().includes(q.toLowerCase())) || s.key === keyNamedBy(q);
+// --limit and --offset: one page, cut from the filtered list; without --limit the whole list.
+const page = (rows) => (f.limit === undefined ? rows : rows.slice(Number(f.offset || 0), Number(f.offset || 0) + Number(f.limit)));
 // --sort relevance: the named key, then the external reference equal to the text (any case), then title matches, then the rest, each in list order.
 const relevanceTier = (s, q) => (s.key === keyNamedBy(q) ? 0 : s.external_ref && s.external_ref.toLowerCase() === q.toLowerCase() ? 1 : s.title.toLowerCase().includes(q.toLowerCase()) ? 2 : 3);
 // --initiative: the stories in that initiative's epics; a key or external reference that names no initiative lists nothing.
@@ -530,7 +537,7 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     ok({ story: withGoals(withPromise(s)), epic: e, initiative: i, required_decisions: required, blockers: blockedByOf(s).map((k) => { const b = storyOf(k); return { key: k, title: b.title, delivery: b.delivery, owner: b.owner ?? null }; }), comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served, attachments: attachmentsOf(s) });
   },
   'story show': () => ok(withGoals(withPromise(find(stories, p0)))),
-  'story ls': () => ok(all(stories, 'story').map(withPromise).filter((s) => (f.untriaged ? !s.epic && s.delivery !== 'done' : !f.epic || s.epic === f.epic))
+  'story ls': () => ok(page(all(stories, 'story').map(withPromise).filter((s) => (f.untriaged ? !s.epic && s.delivery !== 'done' : !f.epic || s.epic === f.epic))
     .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery.replace('-', '_')) && (!f.label || s.labels.includes(f.label)))
     .filter((s) => (f.text === undefined || matchesText(s, f.text)) && (!f.kind || s.kind === f.kind) && (f.initiative === undefined || epicsUnder(f.initiative).includes(s.epic))
       && (!f.urgent || s.urgent_sources.length > 0) && (!f.open || s.delivery !== 'done') // --urgent: the rows shown urgent; --open: done=none
@@ -538,7 +545,7 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     .sort((a, b) => (f.sort === 'relevance' ? relevanceTier(a, f.text) - relevanceTier(b, f.text) : 0))
     .map(withGoals) // --goal: serving that active-sprint goal, any of them, or none (upkeep)
     .filter((s) => f.goal === undefined || (f.goal === 'any' ? s.goals.length > 0 : f.goal === 'none' ? !s.goals.length : s.goals.some((g) => String(g.id) === f.goal)))
-    .map((s) => ({ story: s, readiness: readinessOf(s) })).filter((x) => !f.ready || (x.readiness.ready && x.story.delivery === 'todo'))),
+    .map((s) => ({ story: s, readiness: readinessOf(s) })).filter((x) => !f.ready || (x.readiness.ready && x.story.delivery === 'todo')))),
   'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], owner: f.owner || null, external_ref: f['external-ref'] || null }))),
   'story mv': () => {
     const s = find(stories, p0);

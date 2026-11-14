@@ -209,6 +209,30 @@ test('story ls filters by text, kind, initiative, urgency and openness, and sort
   assert.ok(!keys('--open').includes('GRA-46'), '--open leaves done stories out');
   assert.deepEqual(keys('--open', '--text', 'match', '--kind', 'bug', '--initiative', 'GRA-12'), ['GRA-32'], 'the filters combine');
 });
+test('story ls --limit and --offset answer one page of the list, as GET /stories does (GRA-667)', () => {
+  const ls = (...flags) => run(['story', 'ls', ...flags, '--json']);
+  const keys = (...flags) => { const r = ls(...flags); assert.equal(r.status, 0, r.stderr); return r.envelope.value.map((x) => x.story.key); };
+  const all = keys();
+  assert.ok(all.length >= 5, `the fake seeds ${all.length} stories`);
+  // pages of 2 are the list, every story once and in order; a page that starts at or past the end is empty
+  const pages = [];
+  for (let offset = 0; offset < all.length + 2; offset += 2) pages.push(keys('--limit', '2', '--offset', String(offset)));
+  assert.deepEqual(pages.flat(), all);
+  assert.deepEqual(pages.at(-1), []);
+  assert.deepEqual(keys('--limit', '3'), all.slice(0, 3), '--offset defaults to 0');
+  assert.deepEqual(keys('--limit', '100'), all);
+  // the page is cut after the filters
+  const matching = keys('--text', 'match');
+  assert.ok(matching.length >= 3 && matching.length < all.length, `the text filter keeps ${matching.length} of ${all.length}`);
+  assert.deepEqual(keys('--text', 'match', '--limit', '2', '--offset', '1'), matching.slice(1, 3));
+  // the envelope is the same
+  assert.deepEqual(Object.keys(ls('--limit', '2').envelope), ['outcome', 'value']);
+  // the planner's refusals: validation errors, exit 1
+  for (const [flags, message] of [[['--offset', '2'], 'offset needs limit'], [['--offset', '0'], 'offset needs limit'], [['--limit', '0'], 'limit must be 1..=100'], [['--limit', '101'], 'limit must be 1..=100']]) {
+    const r = ls(...flags);
+    assert.deepEqual([r.status, r.envelope && r.envelope.code, r.envelope && r.envelope.message], [1, 'validation', message], flags.join(' '));
+  }
+});
 test('story similar lists stories with a like title and checks its arguments', () => {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
   const call = (args) => JSON.parse(spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } }).stdout);

@@ -224,7 +224,10 @@ test('story ls --limit and --offset answer one page of the list, as GET /stories
   // the page is cut after the filters
   const matching = keys('--text', 'match');
   assert.ok(matching.length >= 3 && matching.length < all.length, `the text filter keeps ${matching.length} of ${all.length}`);
-  assert.deepEqual(keys('--text', 'match', '--limit', '2', '--offset', '1'), matching.slice(1, 3));
+  // (offset 2: the unfiltered list's third and fourth stories are GRA-40 and GRA-41, and GRA-41 does not match, so a
+  // slice cut before the filter would answer one story, not the two the filtered list has there)
+  assert.notDeepEqual(all.slice(2, 4).filter((k) => matching.includes(k)), matching.slice(2, 4), 'the seed tells the two orders apart');
+  assert.deepEqual(keys('--text', 'match', '--limit', '2', '--offset', '2'), matching.slice(2, 4));
   // the envelope is the same
   assert.deepEqual(Object.keys(ls('--limit', '2').envelope), ['outcome', 'value']);
   // the planner's refusals: validation errors, exit 1
@@ -232,6 +235,14 @@ test('story ls --limit and --offset answer one page of the list, as GET /stories
     const r = ls(...flags);
     assert.deepEqual([r.status, r.envelope && r.envelope.code, r.envelope && r.envelope.message], [1, 'validation', message], flags.join(' '));
   }
+  // what the real CLI's parser refuses (a whole number that fits 32 unsigned bits): a usage error, nothing logged
+  for (const flag of ['--limit', '--offset']) for (const v of ['x', '1.5', '4294967296']) {
+    const r = ls(...(flag === '--offset' ? ['--limit', '2'] : []), flag, v);
+    assert.deepEqual([r.status, r.envelope, r.log], [1, null, ''], `${flag} ${v}`);
+    assert.match(r.stderr, new RegExp(`invalid value '${v}' for '${flag} <${flag.slice(2).toUpperCase()}>'`), `${flag} ${v}`);
+  }
+  assert.deepEqual(keys('--limit', '+1'), all.slice(0, 1), 'a leading + parses, as in the real CLI');
+  assert.deepEqual(keys('--limit', '2', '--offset', '+1'), all.slice(1, 3));
 });
 test('story similar lists stories with a like title and checks its arguments', () => {
   const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');

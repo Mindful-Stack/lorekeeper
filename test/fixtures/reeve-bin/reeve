@@ -160,6 +160,8 @@ if (f.sort !== undefined && !['rank', 'relevance'].includes(f.sort)) usage(`inva
 if (f.version && !/^\d+$/.test(f.version)) usage(`invalid value '${f.version}' for '--version'`);
 if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}' for '--due'`);
 if (f.ends && !/^\d{4}-\d{2}-\d{2}$/.test(f.ends)) usage(`invalid value '${f.ends}' for '--ends <ENDS>'`);
+// `story ls --limit` and `--offset` are u32 in the real CLI: a whole number up to 4294967295, or a usage error.
+if (cmd === 'story ls') for (const n of ['limit', 'offset']) if (f[n] !== undefined && (!/^\+?\d+$/.test(f[n]) || Number(f[n]) > 4294967295)) usage(`invalid value '${f[n]}' for '--${n} <${n.toUpperCase()}>'`);
 // Sprint and goal ids are integers, a confidence one of three words and a verdict `<goal id>=<met|partly_met|missed>[:<note>]`:
 // clap's to check, so a malformed one is a usage error (exit 1) and reaches nothing.
 if ((cmd.startsWith('goal ') && cmd !== 'goal add') || (cmd === 'sprint show' && pos.length)) if (!/^\d+$/.test(pos[0])) usage(`invalid value '${pos[0]}' for '<ID>': invalid digit found in string`);

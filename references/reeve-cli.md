@@ -41,17 +41,17 @@ older CLI's story context has no `attachments`, and an older server lists none (
 0.7.0 or later and a planner running it: an older CLI drops the two fields from its output, and an
 older planner judges every unfinished blocker as blocking. Without `delivery`, word the reason as
 *Wording the planner's answers* says and go on.
-Item links and web links (`reeve link`, `links` and `web_links` in a plan and on an item) need a
-`reeve-planner` CLI and a planner with kb/ADR-0031. The version number does not tell which CLI that
-is: Reeve has not raised it, so a CLI with `reeve link` reports 0.7.0, as the one before it does. An
-older CLI answers `reeve link` with a usage error (an unrecognized subcommand), refuses a plan that
-has `links` or `web_links` before sending it (an `internal` error naming the field) and drops both
-lists from an item's answer: tell the user to update the CLI and go on without them. An older
-planner answers `reeve link` with a `not_found` error (exit 1) and a plan in which `links` or
-`web_links` holds at least one entry with a `validation` error naming the unknown field, nothing
-written (the CLI does not send an empty list, so an older planner takes a plan whose two lists are
-empty or left out), and its items carry neither list: say that the planner has no item links or
-web links yet, and go on without them.
+Item links and web links (`reeve link`, `links` and `web_links` in a plan and on an item) need
+`reeve-planner` 0.8.0 or later and a planner running it (kb/ADR-0031): an older CLI answers
+`reeve link` with a usage error (an unrecognized subcommand), refuses a plan that has `links` or
+`web_links` before sending it (an `internal` error naming the field) and drops both lists from an
+item's answer: tell the user to update the CLI and go on without them. An older planner answers
+`reeve link` with a `not_found` error (exit 1) and a plan in which `links` or `web_links` holds at
+least one entry with a `validation` error naming the unknown field, nothing written (the CLI does
+not send an empty list, so an older planner takes a plan whose two lists are empty or left out),
+and its items carry neither list: say that the planner has no item links or web links yet, and go
+on without them. A `not_found` from `reeve link` for a key another command of this run has just
+read means the planner is older, not that the item is missing.
 
 ## Updating the CLI
 
@@ -765,9 +765,10 @@ a `validation` error (exit 1) with its message to show:
   `value.story.web_links[]` of `story context`, each empty when there are none. An answer that
   lists items (`story ls`, `epic ls`, `initiative ls`, `search`) carries neither list, and nor do
   the epic and the initiative inside `story context`: there, absent means not loaded, never
-  "none". Read those with `reeve link ls <KEY> --json`. Take them as context (what the work comes
-  after, what it duplicates, which pages describe it); whether a story may start is `readiness`
-  alone.
+  "none". Read those with `reeve link ls <KEY> --json`. A single-item answer with no `links` field
+  at all (an older CLI or planner) means not known, never "none". Take them as context (what the
+  work comes after, what it duplicates, which pages describe it); whether a story may start is
+  `readiness` alone.
 - **Add or remove** one when the user names it, or confirms one you proposed (*Confirmation*).
   Several additions at once go in a plan (*Plans*), as several creates do. A plan only adds: it
   has no way to remove an item link or a web link, and leaving one out of a plan applied again

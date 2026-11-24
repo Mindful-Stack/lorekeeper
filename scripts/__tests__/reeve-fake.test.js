@@ -21,7 +21,7 @@ test('every call is one log line, newlines flattened', () => {
 });
 test('--version names the fake planner and is not logged (the SessionStart hook probes it too)', () => {
   const r = run(['--version']);
-  assert.equal(r.stdout, 'reeve-planner 0.3.0-fake\n');
+  assert.equal(r.stdout, 'reeve-planner 0.8.0-fake\n');
   assert.equal(r.log, '');
 });
 test('a flag the real CLI lacks is a usage error: no envelope, text on stderr, exit 1', () => {

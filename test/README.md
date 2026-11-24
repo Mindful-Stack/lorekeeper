@@ -121,7 +121,7 @@ per run; the log is appended to the output shown by `--verbose` and deleted afte
 **The log.** One line per call that passed the fake's validation (a malformed call is not logged, so it never satisfies a log expectation; a valid call the planner refuses is), except `--version`, which the SessionStart hook also runs to decide whether to list the planner skills in its router (a skill's detection shows as `auth status --json`): the argv joined by spaces, newlines inside an argument
 flattened to spaces, e.g. `epic create --initiative GRA-12 --title A --brief one two --idempotency-key planning-initiative:GRA-12:0a1b2c3d:1 --json`.
 
-**What the fake answers.** `--version` prints `reeve-planner 0.3.0-fake`; every other call must
+**What the fake answers.** `--version` prints `reeve-planner 0.8.0-fake`; every other call must
 include `--json` (anywhere, as the real CLI's global flag) and uses only flags the real CLI has.
 What the real CLI's parser rejects (an unknown command or flag, a missing value, a value starting
 with `-` except `comment add --body`, a flag given twice unless it repeats, a key of `reeve link` or

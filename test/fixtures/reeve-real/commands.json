@@ -1,5 +1,5 @@
 {
-  "about": "The real-planner smoke (scripts/__tests__/reeve-real-server.test.js). The seed runs first on the planner and on the fake; then every entry, one per row of references/reeve-cli.md's Commands table, in file order. bind stores the answer's value under a name for {{name.field}} placeholders. reads are paths into the envelope (x[] = every element of the array x); types gives each read's JSON types (a|b allowed); may_be_empty lists array paths allowed to be empty; unread waives, with a reason, a path the Read cell names that no read can reach; expect is checked on the planner's answer only. The epic show entry reads PRM-1: the planner's epic the Reeve smoke seeds promised (seed_promise, by its external reference), the fake's GRA-22. refusals run after the entries, on both sides with the same token: each must answer exit 2 with a refused envelope naming its reason (a person's command, refused interactive_only to an agent's token). The seed's last steps give the seeded story, its initiative and the screenshot story item links and web links (kb/ADR-0031), so the reads of `links` and `web_links` check elements and the two link rm entries leave something behind; the epic PRM-1 has none (may_be_empty).",
+  "about": "The real-planner smoke (scripts/__tests__/reeve-real-server.test.js). The seed runs first on the planner and on the fake; then every entry, one per row of references/reeve-cli.md's Commands table, in file order. bind stores the answer's value under a name for {{name.field}} placeholders. reads are paths into the envelope (x[] = every element of the array x); types gives each read's JSON types (a|b allowed); may_be_empty lists array paths allowed to be empty; unread waives, with a reason, a path the Read cell names that no read can reach; expect is checked on the planner's answer only. The epic show entry reads PRM-1: the planner's epic the Reeve smoke seeds promised (seed_promise, by its external reference), the fake's GRA-22. refusals run after the entries, on both sides with the same token: each must answer exit 2 with a refused envelope naming its reason (a person's command, refused interactive_only to an agent's token). The seed's last steps give the seeded story, its initiative and the screenshot story item links and web links (kb/ADR-0031), so the reads of `links` and `web_links` check elements and the two link rm entries leave something behind; the epic PRM-1 has none (may_be_empty). checks are judged on each side's own answer (the planner's and the fake's, placeholders bound from that side): each names an array (at) and fields of its elements, and wants some element with them, none, or all (every element, at least one). So a link rm that answers the removed link, or drops one that should stay, fails where the types alone pass. replay runs the entry's argv a second time on each side: its same paths must reach the values the first run's did, and its own checks hold (reeve apply: the same keys, ids and ends, every created false).",
   "seed": [
     { "bind": "initiative", "argv": ["initiative", "create", "--title", "Skill smoke initiative", "--horizon", "Now", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:1", "--json"] },
     { "bind": "epic", "argv": ["epic", "create", "--initiative", "{{initiative.key}}", "--title", "Skill smoke epic", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:2", "--json"] },
@@ -210,6 +210,26 @@
     {
       "row": "`reeve apply <plan file> --json`",
       "argv": ["apply", "{{files.plan}}", "--json"],
+      "checks": [
+        { "at": "value.items[]", "all": { "created": true } },
+        { "at": "value.decisions[]", "all": { "created": true } },
+        { "at": "value.blocks[]", "all": { "created": true } },
+        { "at": "value.links[]", "all": { "created": true } },
+        { "at": "value.web_links[]", "all": { "created": true } },
+        { "at": "value.links[]", "some": { "type": "follows", "from_level": "story", "to_level": "story" } },
+        { "at": "value.links[]", "some": { "type": "relates_to", "from_level": "initiative", "to_level": "epic" } },
+        { "at": "value.web_links[]", "some": { "level": "initiative", "title": "Skill smoke plan page", "url": "https://example.com/skill-smoke/plan" } }
+      ],
+      "replay": {
+        "same": ["value.items[].name", "value.items[].item", "value.items[].key", "value.decisions[].name", "value.decisions[].id", "value.blocks[].story", "value.blocks[].blocked_by", "value.links[].from", "value.links[].from_level", "value.links[].type", "value.links[].to", "value.links[].to_level", "value.web_links[].on", "value.web_links[].level", "value.web_links[].id", "value.web_links[].title", "value.web_links[].url"],
+        "checks": [
+          { "at": "value.items[]", "all": { "created": false } },
+          { "at": "value.decisions[]", "all": { "created": false } },
+          { "at": "value.blocks[]", "all": { "created": false } },
+          { "at": "value.links[]", "all": { "created": false } },
+          { "at": "value.web_links[]", "all": { "created": false } }
+        ]
+      },
       "reads": ["value.items[].name", "value.items[].item", "value.items[].key", "value.items[].created", "value.decisions[].name", "value.decisions[].id", "value.decisions[].created", "value.blocks[].story", "value.blocks[].blocked_by", "value.blocks[].created", "value.links[].from", "value.links[].from_level", "value.links[].type", "value.links[].to", "value.links[].to_level", "value.links[].created", "value.web_links[].on", "value.web_links[].level", "value.web_links[].id", "value.web_links[].title", "value.web_links[].url", "value.web_links[].created"],
       "types": { "value.items[].name": "string", "value.items[].item": "string", "value.items[].key": "string", "value.items[].created": "boolean", "value.decisions[].name": "string", "value.decisions[].id": "number", "value.decisions[].created": "boolean", "value.blocks[].story": "string", "value.blocks[].blocked_by": "string", "value.blocks[].created": "boolean", "value.links[].from": "string", "value.links[].from_level": "string", "value.links[].type": "string", "value.links[].to": "string", "value.links[].to_level": "string", "value.links[].created": "boolean", "value.web_links[].on": "string", "value.web_links[].level": "string", "value.web_links[].id": "number", "value.web_links[].title": "string", "value.web_links[].url": "string", "value.web_links[].created": "boolean" }
     },
@@ -283,30 +303,49 @@
     {
       "row": "`reeve link ls <KEY> --json`",
       "argv": ["link", "ls", "{{story.key}}", "--json"],
+      "checks": [
+        { "at": "value.links[]", "some": { "type": "relates_to", "direction": "out", "label": "relates to", "item.key": "{{initiative.key}}", "item.level": "initiative" } },
+        { "at": "value.links[]", "some": { "type": "relates_to", "direction": "out", "item.key": "{{epic.key}}", "item.level": "epic" } },
+        { "at": "value.links[]", "some": { "type": "relates_to", "direction": "out", "item.key": "{{shot.story}}", "item.level": "story" } },
+        { "at": "value.web_links[]", "some": { "title": "Skill smoke story page", "url": "https://example.com/skill-smoke/story" } },
+        { "at": "value.web_links[]", "some": { "title": "Skill smoke extra page", "url": "https://example.com/skill-smoke/extra" } }
+      ],
       "reads": ["value.links[].type", "value.links[].direction", "value.links[].label", "value.links[].item.key", "value.links[].item.level", "value.links[].item.title", "value.web_links[].id", "value.web_links[].title", "value.web_links[].url"],
       "types": { "value.links[].type": "string", "value.links[].direction": "string", "value.links[].label": "string", "value.links[].item.key": "string", "value.links[].item.level": "string", "value.links[].item.title": "string", "value.web_links[].id": "number", "value.web_links[].title": "string", "value.web_links[].url": "string" }
     },
     {
       "row": "`reeve link add <KEY> follows|duplicates|relates-to <OTHER> --json`",
       "argv": ["link", "add", "{{untriaged.key}}", "follows", "{{story.key}}", "--json"],
+      "checks": [{ "at": "value[]", "some": { "type": "follows", "direction": "out", "label": "follows", "item.key": "{{story.key}}", "item.level": "story" } }],
       "reads": ["value[].type", "value[].direction", "value[].label", "value[].item.key", "value[].item.level", "value[].item.title"],
       "types": { "value[].type": "string", "value[].direction": "string", "value[].label": "string", "value[].item.key": "string", "value[].item.level": "string", "value[].item.title": "string" }
     },
     {
       "row": "`reeve link rm <KEY> follows|duplicates|relates-to <OTHER> --json`",
       "argv": ["link", "rm", "{{story.key}}", "relates-to", "{{epic.key}}", "--json"],
+      "checks": [
+        { "at": "value[]", "none": { "type": "relates_to", "item.key": "{{epic.key}}" } },
+        { "at": "value[]", "some": { "type": "relates_to", "direction": "out", "item.key": "{{initiative.key}}" } },
+        { "at": "value[]", "some": { "type": "relates_to", "direction": "out", "item.key": "{{shot.story}}" } },
+        { "at": "value[]", "some": { "type": "follows", "direction": "in", "label": "is followed by", "item.key": "{{untriaged.key}}" } }
+      ],
       "reads": ["value[].type", "value[].direction", "value[].label", "value[].item.key", "value[].item.level", "value[].item.title"],
       "types": { "value[].type": "string", "value[].direction": "string", "value[].label": "string", "value[].item.key": "string", "value[].item.level": "string", "value[].item.title": "string" }
     },
     {
       "row": "`reeve link add <KEY> --url <url> --title <title> --json`",
       "argv": ["link", "add", "{{untriaged.key}}", "--url", "https://example.com/skill-smoke/untriaged", "--title", "Skill smoke untriaged page", "--json"],
+      "checks": [{ "at": "value[]", "some": { "title": "Skill smoke untriaged page", "url": "https://example.com/skill-smoke/untriaged" } }],
       "reads": ["value[].id", "value[].title", "value[].url"],
       "types": { "value[].id": "number", "value[].title": "string", "value[].url": "string" }
     },
     {
       "row": "`reeve link rm <KEY> --url <url> --json`",
       "argv": ["link", "rm", "{{story.key}}", "--url", "https://example.com/skill-smoke/extra", "--json"],
+      "checks": [
+        { "at": "value[]", "none": { "url": "https://example.com/skill-smoke/extra" } },
+        { "at": "value[]", "some": { "title": "Skill smoke story page", "url": "https://example.com/skill-smoke/story" } }
+      ],
       "reads": ["value[].id", "value[].title", "value[].url"],
       "types": { "value[].id": "number", "value[].title": "string", "value[].url": "string" }
     }

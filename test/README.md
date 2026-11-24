@@ -248,7 +248,12 @@ Answers use the planner's wire shapes:
 link`, the planner's expected `check.kind`, and a list of `refusals`: a person's commands (each
 promise form) with the reason the run's agent token must be refused. The seed's last steps add
 item links and web links to the seeded story, its initiative and the screenshot story, so the
-entries that read `links` and `web_links` check their elements. Seven tests always run: every
+entries that read `links` and `web_links` check their elements. An entry may also say what its
+answer holds, judged on the planner's answer and on the fake's, each with its own keys: `checks`
+(an array `at`, and fields of its elements that `some` element, `none` or `all` of them have) and
+`replay` (the same argv once more: the `same` paths answer what the first run's did, and its own
+`checks` hold). The two `link rm` entries check that the removed one is gone and the others stay,
+and `apply` that a second apply answers the same keys, ids and ends with every `created` false. Seven tests always run: every
 row has exactly one entry, every command form of the row (`story ls --untriaged`, `comment add
 --story`) exactly one run, and every field path in the row's Read column a read at or below it, or a
 reasoned `unread` waiver (a command or a Read added to the reference without a matching entry

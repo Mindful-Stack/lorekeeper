@@ -134,6 +134,48 @@ test("a person's command the fake lets through is reported as the fake's to fix"
   for (const r of refusals) assert.deepEqual(r.problems, ['fake: outcome ok (exit 0), expected refused interactive_only; fix test/fixtures/reeve-bin/reeve'], r.row);
   assert.deepEqual(results.filter((r) => !r.row.startsWith('refusal: reeve story promise ')).flatMap((r) => r.problems), [], 'nothing else is blamed');
 });
+// The content checks (`checks`, `replay`) keep the fake honest where the types alone would pass it.
+function brokenFake(t, from, to) {
+  const src = fs.readFileSync(FAKE, 'utf8');
+  assert.equal(src.split(from).length, 2, `the break must hit exactly one place: ${from}`);
+  const dir = tmp(t);
+  const broken = path.join(dir, 'reeve');
+  fs.copyFileSync(path.join(path.dirname(FAKE), 'shot.png'), path.join(dir, 'shot.png'));
+  fs.writeFileSync(broken, src.replace(from, to), { mode: 0o755 });
+  return s.runSmoke({ fixture, real: fakeSide(FAKE, tmp(t)), fake: fakeSide(broken, tmp(t)), scope: selfScope(tmp(t)), expect: false });
+}
+const FIX = 'fix test/fixtures/reeve-bin/reeve';
+test('a fake whose link rm removes nothing is reported: the removed item link and web link must be gone', (t) => {
+  const kept = brokenFake(t, 'st.links = (st.links || []).filter((l) => !(l.from === from && l.type === type && l.to === to)); return st;', 'return st;');
+  const rm = kept.find((r) => r.row.startsWith('`reeve link rm <KEY> follows'));
+  assert.equal(rm.problems.length, 1, rm.problems.join('\n'));
+  assert.match(rm.problems[0], new RegExp(`^fake: 1 element\\(s\\) of value\\[\\] have \\{type: "relates_to", item\\.key: "GRA-\\d+"\\}, expected none; ${FIX}$`));
+  assert.deepEqual(kept.filter((r) => r !== rm).flatMap((r) => r.problems), [], 'nothing else is blamed');
+  const web = brokenFake(t, 'webLinksOf(x.key, st).filter((w) => w.url !== url)', 'webLinksOf(x.key, st)');
+  assert.deepEqual(web.flatMap((r) => r.problems.map((p) => `${r.row.slice(0, 26)}: ${p}`)), [`\`reeve link rm <KEY> --url: fake: 1 element(s) of value[] have {url: "https://example.com/skill-smoke/extra"}, expected none; ${FIX}`]);
+});
+test('a fake whose link rm drops a survivor is reported', (t) => {
+  const results = brokenFake(t, "st.links = (st.links || []).filter((l) => !(l.from === from && l.type === type && l.to === to)); return st;", "st.links = (st.links || []).filter((l) => l.type !== type); return st;");
+  const rm = results.find((r) => r.row.startsWith('`reeve link rm <KEY> follows'));
+  assert.equal(rm.problems.length, 2, rm.problems.join('\n'));
+  for (const p of rm.problems) assert.match(p, /^fake: no element of value\[\] has \{type: "relates_to", direction: "out", item\.key: "GRA-\d+"\}; fix /);
+});
+test('a fake that creates a plan again on a second apply is reported: a replay keeps keys, ids and ends, every created false', (t) => {
+  // the plan's items are found again, but its item links are answered as new
+  const links = brokenFake(t, 'return { from, type, to, created };', 'return { from, type, to, created: true };');
+  const apply = links.find((r) => r.row.startsWith('`reeve apply'));
+  assert.deepEqual(apply.problems, [`fake: the second run: 0 of 2 element(s) of value.links[] have {created: false}, expected every one of at least one; ${FIX}`]);
+  // every apply mints its items anew
+  const items = brokenFake(t, 'const k = `plan:${id}:${name}`;', 'const k = `plan:${id}:${name}:${st.next}`;');
+  const again = items.find((r) => r.row.startsWith('`reeve apply')).problems;
+  assert.ok(again.some((p) => /^fake: the second run's value\.items\[\]\.key is \[.*\], the first run's \[.*\]; fix /.test(p)), again.join('\n'));
+  assert.ok(again.some((p) => p.startsWith('fake: the second run: 0 of 4 element(s) of value.items[] have {created: false}')), again.join('\n'));
+  // a replay that leaves the lists out passes no `all`
+  const dropped = brokenFake(t, 'ok({ items, decisions, blocks, links, web_links: webLinks });', 'ok(items.some((i) => i.created) ? { items, decisions, blocks, links, web_links: webLinks } : { items, decisions, blocks, links: [], web_links: [] });');
+  const lost = dropped.find((r) => r.row.startsWith('`reeve apply')).problems;
+  assert.ok(lost.some((p) => p.startsWith('fake: the second run: 0 of 0 element(s) of value.links[] have {created: false}')), lost.join('\n'));
+  assert.ok(lost.some((p) => p.startsWith("fake: the second run's value.web_links[].id is [], the first run's [")), lost.join('\n'));
+});
 test('every promise command the reference gives a person has a refusal case', () => {
   const text = fs.readFileSync(path.join(root, 'references', 'reeve-cli.md'), 'utf8');
   const forms = [...text.matchAll(/^\| `reeve ((?:story|epic) promise <KEY> (--[a-z]+))[^`]*` \|/gm)].map((m) => [m[1].split(' ')[0], m[2]]);

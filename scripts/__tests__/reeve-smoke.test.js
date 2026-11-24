@@ -194,6 +194,50 @@ test('coverageProblems: a refusal case ends with --json and names its reason', (
   assert.deepEqual(s.coverageProblems([], fixture), ['refusal 1 must end with --json', 'refusal 2 needs the reason it expects']);
 });
 
+test('checkProblems: some, none and all on the elements of an array, their values bound from the scope', () => {
+  const env = { outcome: 'ok', value: [{ type: 'relates_to', item: { key: 'SKS-2' } }, { type: 'follows', item: { key: 'SKS-3' } }] };
+  const scope = { epic: { key: 'SKS-2' }, story: { key: 'SKS-9' } };
+  assert.deepEqual(s.checkProblems(env, undefined, scope), []);
+  assert.deepEqual(s.checkProblems(env, [{ at: 'value[]', some: { type: 'relates_to', 'item.key': '{{epic.key}}' } }, { at: 'value[]', none: { 'item.key': '{{story.key}}' } }], scope), []);
+  // a removed element that is still answered, and a survivor that is not
+  assert.deepEqual(s.checkProblems(env, [{ at: 'value[]', none: { type: 'relates_to', 'item.key': '{{epic.key}}' } }], scope), ['1 element(s) of value[] have {type: "relates_to", item.key: "SKS-2"}, expected none']);
+  assert.deepEqual(s.checkProblems(env, [{ at: 'value[]', some: { type: 'follows', 'item.key': '{{story.key}}' } }], scope), ['no element of value[] has {type: "follows", item.key: "SKS-9"}']);
+  // every field of one element, not one field each from two
+  assert.deepEqual(s.checkProblems(env, [{ at: 'value[]', some: { type: 'follows', 'item.key': 'SKS-2' } }], scope).length, 1);
+  // all: every element, and never an empty list (a dropped list must not pass)
+  const made = { value: { items: [{ created: true }, { created: false }], links: [] } };
+  assert.deepEqual(s.checkProblems(made, [{ at: 'value.items[]', all: { created: true } }], {}), ['1 of 2 element(s) of value.items[] have {created: true}, expected every one of at least one']);
+  assert.deepEqual(s.checkProblems(made, [{ at: 'value.links[]', all: { created: false } }], {}), ['0 of 0 element(s) of value.links[] have {created: false}, expected every one of at least one']);
+  assert.deepEqual(s.checkProblems({ value: {} }, [{ at: 'value.links[]', all: { created: false } }], {}).length, 1, 'a missing list is no list');
+  assert.deepEqual(s.checkProblems({ value: { items: [{ created: true }] } }, [{ at: 'value.items[]', all: { created: true } }], {}), []);
+  assert.throws(() => s.checkProblems(env, [{ at: 'value[]', some: { 'item.key': '{{nobody.key}}' } }], scope), /unbound \{\{nobody\.key\}\}/);
+});
+test('replayProblems: the second run answers the same keys, ids and ends, with every created false', () => {
+  const entry = { replay: { same: ['value.items[].key', 'value.links[].from', 'value.web_links[].id'], checks: [{ at: 'value.items[]', all: { created: false } }, { at: 'value.links[]', all: { created: false } }] } };
+  const first = { outcome: 'ok', value: { items: [{ key: 'A-1', created: true }], links: [{ from: 'A-1', created: true }], web_links: [{ id: 4 }] } };
+  const second = (value) => ok(value);
+  assert.deepEqual(s.replayProblems(entry, first, second({ items: [{ key: 'A-1', created: false }], links: [{ from: 'A-1', created: false }], web_links: [{ id: 4 }] }), {}), []);
+  // a second item under the same name, a web link stored twice, and `created` true on a replay
+  assert.deepEqual(s.replayProblems(entry, first, second({ items: [{ key: 'A-2', created: true }], links: [{ from: 'A-1', created: false }], web_links: [{ id: 5 }] }), {}), [
+    'the second run\'s value.items[].key is ["A-2"], the first run\'s ["A-1"]', 'the second run\'s value.web_links[].id is [5], the first run\'s [4]',
+    'the second run: 0 of 1 element(s) of value.items[] have {created: false}, expected every one of at least one']);
+  // a replay that drops a list entirely
+  assert.deepEqual(s.replayProblems(entry, first, second({ items: [{ key: 'A-1', created: false }], web_links: [{ id: 4 }] }), {}), [
+    'the second run\'s value.links[].from is [], the first run\'s ["A-1"]', 'the second run: 0 of 0 element(s) of value.links[] have {created: false}, expected every one of at least one']);
+  assert.deepEqual(s.replayProblems(entry, first, { status: 1, stdout: '{"outcome":"error","code":"validation","message":"m"}', stderr: '' }, {}), ['the second run answered exit 1, outcome error validation m']);
+});
+test('coverageProblems: a check names an array the entry reads and one way to judge it; a replay names what must stay the same', () => {
+  const rows = [r('`reeve link ls <KEY> --json`', '`value.links[]`: `type`')];
+  const e = (o) => ({ seed: [], entries: [entry({ row: rows[0].row, argv: ['link', 'ls', 'X', '--json'], reads: ['value.links[].type'], types: { 'value.links[].type': 'string' }, ...o })] });
+  assert.deepEqual(s.coverageProblems(rows, e({ checks: [{ at: 'value.links[]', some: { type: 'follows' } }], replay: { same: ['value.links[].type'], checks: [{ at: 'value.links[]', all: { type: 'follows' } }] } })), []);
+  assert.deepEqual(s.coverageProblems(rows, e({ checks: [{ at: 'value.links', some: { type: 'follows' } }, { at: 'value.web_links[]', none: { id: 1 } }, { at: 'value.links[]' }, { at: 'value.links[]', some: { type: 'x' }, none: { type: 'y' } }, { at: 'value.links[]', all: {} }] })), [
+    `${rows[0].row}: checks[0] needs \`at\`, the array it reads (a path ending in [])`, `${rows[0].row}: checks[1]: value.web_links[] names no array the entry reads`,
+    `${rows[0].row}: checks[2] needs exactly one of some, none, all`, `${rows[0].row}: checks[3] needs exactly one of some, none, all`, `${rows[0].row}: checks[4]: all needs at least one field to compare`]);
+  assert.deepEqual(s.coverageProblems(rows, e({ replay: { same: [] } })), [`${rows[0].row}: replay needs \`same\`, the paths a second run must answer unchanged`]);
+  assert.deepEqual(s.coverageProblems(rows, e({ replay: { same: ['value.links[].label'], checks: [{ at: 'value.links[]', every: { type: 'x' } }] } })), [
+    `${rows[0].row}: replay.checks[0] needs exactly one of some, none, all`, `${rows[0].row}: replay.same value.links[].label is not read`]);
+});
+
 test('liveConfig skips without REEVE_SMOKE_SEED and lists what else a live run lacks', () => {
   assert.match(s.liveConfig({}).skip, /REEVE_SMOKE_SEED is not set/);
   assert.deepEqual(s.liveConfig({ REEVE_SMOKE_SEED: 'seed.json', REEVE_URL: 'http://127.0.0.1:7476' }), { skip: false, missing: ['REEVE_REAL_BIN', 'REEVE_TOKEN'] });

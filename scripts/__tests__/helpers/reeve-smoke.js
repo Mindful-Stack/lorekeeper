@@ -92,7 +92,7 @@ function braced(text, base) {
 // A path with no field after the base (`value`, `value[]`) is its own parent: `.x` after it is `value.x`.
 const parentOf = (p) => (p.includes('.') ? p.slice(0, p.lastIndexOf('.')) : p);
 // Backticked words in a Read cell that are prose, not fields. Any other span that is not classified is an error.
-const PROSE = new Set(['validation', 'story', 'reeve link ls']); // the last: a command a Read cell points at, never a field
+const PROSE = new Set(['validation', 'story', 'reeve link ls', 'relates-to']); // 'reeve link ls': a command a Read cell points at; 'relates-to': an item link name; never a field
 // The field paths a Read cell names, nesting and relative fields kept. Spans are read left to right:
 // - `value…` followed by ":" is a base (`value[]`: …): later bare names and `{…}` right after the ":" are under it;
 // - `value…` otherwise is an absolute path; `.x` replaces the last path's final field (`value.brief`, `.owner`);

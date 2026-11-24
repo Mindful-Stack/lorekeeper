@@ -42,6 +42,10 @@ test('a value starting with - is a usage error, except comment add --body', () =
 });
 test('a call without --json is refused; --json may stand anywhere (the real global flag)', () => {
   assert.equal(run(['epic', 'show', 'GRA-20']).status, 1);
+  // a global flag taken once: a second --json is clap's usage error, nothing sent
+  const twice = run(['link', 'ls', 'GRA-31', '--json', '--json']);
+  assert.deepEqual([twice.status, twice.stdout, twice.log], [1, '', '']);
+  assert.match(twice.stderr, /the argument '--json' cannot be used multiple times/);
   const r = run(['story', 'ls', '--json', '--epic', 'GRA-20']);
   assert.equal(r.status, 0);
   assert.deepEqual(r.envelope.value.map((x) => x.story.key), ['GRA-31', 'GRA-32']);
@@ -1076,6 +1080,12 @@ test('a plan is read as the real CLI reads it: required fields, list shapes and 
   const made = JSON.parse(runIn(log, ['story', 'show', read.value.items[0].key, '--json']).stdout).value;
   assert.deepEqual([made.title, made.kind, made.epic, made.description, made.labels, made.criteria.map((c) => c.text)], ['42', 'story', null, '', ['2'], ['1', 'true', 'null']]);
   assert.match(fs.readFileSync(log, 'utf8'), /^apply - --json \{"id":"7",.*"title":"42"/m, 'the log holds the plan as it was sent');
+  // a number keeps its spelling, as serde_yaml reads the scalar's text: `1e3` is "1e3", a long integer keeps its digits
+  const spelled = applyIn(log, '{"id": 1e3, "stories": [{"name": "n", "title": 1.50, "criteria": [12345678901234567890, -0]}]}');
+  assert.equal(spelled.status, 0, spelled.message);
+  const n = JSON.parse(runIn(log, ['story', 'show', spelled.value.items[0].key, '--json']).stdout).value;
+  assert.deepEqual([n.title, n.criteria.map((c) => c.text)], ['1.50', ['12345678901234567890', '-0']]);
+  assert.match(fs.readFileSync(log, 'utf8'), /^apply - --json \{"id":"1e3",/m);
   // a web link's title that is not text is no title: the planner's rule, not a crash
   const untitled = applyIn(log, { id: 'q', web_links: [{ on: 'GRA-31', title: '', url: 'https://example.com/' }] });
   assert.deepEqual([untitled.code, untitled.message], ['validation', "web link \"\" on \"GRA-31\": a web link's title must be 1 to 200 characters on one line, with no tab or other control character"]);

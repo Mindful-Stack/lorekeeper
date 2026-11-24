@@ -176,6 +176,29 @@ test('a fake that creates a plan again on a second apply is reported: a replay k
   assert.ok(lost.some((p) => p.startsWith('fake: the second run: 0 of 0 element(s) of value.links[] have {created: false}')), lost.join('\n'));
   assert.ok(lost.some((p) => p.startsWith("fake: the second run's value.web_links[].id is [], the first run's [")), lost.join('\n'));
 });
+test('a replay with an element more is reported, though every compared field matches', (t) => {
+  // the second apply appends a bare `{ created: false }`: no field of it reaches a `same` path, and `all` holds for it
+  const extra = brokenFake(t, 'ok({ items, decisions, blocks, links, web_links: webLinks });', 'ok({ items, decisions, blocks, links: items.some((i) => i.created) ? links : [...links, { created: false }], web_links: webLinks });');
+  const apply = extra.find((r) => r.row.startsWith('`reeve apply'));
+  for (const field of ['from', 'from_level', 'type', 'to', 'to_level']) assert.ok(apply.problems.includes(`fake: the second run's answer has no value.links[2].${field}; ${FIX}`), apply.problems.join('\n'));
+  assert.ok(apply.problems.includes(`fake: the second run's value.links[] has 3 element(s), the first run's 2; ${FIX}`), apply.problems.join('\n'));
+  assert.deepEqual(extra.filter((r) => r !== apply).flatMap((r) => r.problems), [], 'nothing else is blamed');
+});
+test("an apply whose ends are consistently reversed is reported: the ends are tied to the answer's own item names", (t) => {
+  // the plan's item links stored the wrong way round, on both applies alike: levels and the replay alone pass it
+  const links = brokenFake(t, 'const r = addLink(st, resolve(l.from, null), l.type, resolve(l.to, null));', 'const r = addLink(st, resolve(l.to, null), l.type, resolve(l.from, null));');
+  const apply = links.find((r) => r.row.startsWith('`reeve apply'));
+  assert.equal(apply.problems.length, 1, apply.problems.join('\n'));
+  assert.match(apply.problems[0], new RegExp(`^fake: no element of value\\.links\\[\\] has \\{type: "follows", from: "GRA-\\d+", from_level: "story", to: "GRA-\\d+", to_level: "story"\\}; ${FIX}$`));
+  // the blocker the wrong way round: smoke-first blocked by smoke-second
+  const blocks = brokenFake(t, "const [sk, bk] = [resolve(b.story, 'story'), resolve(b.blocked_by, 'story')];", "const [bk, sk] = [resolve(b.story, 'story'), resolve(b.blocked_by, 'story')];");
+  const blocked = blocks.find((r) => r.row.startsWith('`reeve apply')).problems;
+  assert.ok(blocked.some((p) => /^fake: no element of value\.blocks\[\] has \{story: "GRA-\d+", blocked_by: "GRA-\d+"\}; fix /.test(p)), blocked.join('\n'));
+  // the web link put on another of the plan's items
+  const web = brokenFake(t, 'const on = resolve(w.on, null);\n      const r = addWeb(', "const on = resolve('smoke-epic', null);\n      const r = addWeb(");
+  const moved = web.find((r) => r.row.startsWith('`reeve apply')).problems;
+  assert.ok(moved.some((p) => /^fake: no element of value\.web_links\[\] has \{on: "GRA-\d+", level: "initiative", /.test(p)), moved.join('\n'));
+});
 test('every promise command the reference gives a person has a refusal case', () => {
   const text = fs.readFileSync(path.join(root, 'references', 'reeve-cli.md'), 'utf8');
   const forms = [...text.matchAll(/^\| `reeve ((?:story|epic) promise <KEY> (--[a-z]+))[^`]*` \|/gm)].map((m) => [m[1].split(' ')[0], m[2]]);

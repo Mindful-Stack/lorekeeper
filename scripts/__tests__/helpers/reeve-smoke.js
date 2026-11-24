@@ -290,12 +290,17 @@ function valuesAt(root, spec) {
 // values bound from the side's own scope like an argv): `some`, an element has every field so; `none`, no element
 // has; `all`, every element has, and there is at least one. PROPERTY: an answer that returns a removed element, drops
 // a survivor or reports `created` the wrong way is a problem, where the type checks alone pass it.
+// `{{named.<name>}}` is the key the same answer's `value.items[]` gives that plan name, so a check can tie an apply's
+// ends to the items it made: an answer whose ends are all consistently reversed fails, where levels alone pass it.
 const CHECK_KINDS = ['some', 'none', 'all'];
 function checkProblems(env, checks, scope) {
   const problems = [];
+  const items = valueAt(env, 'value.items');
+  const named = Object.fromEntries((Array.isArray(items) ? items : []).filter((i) => i && typeof i.name === 'string').map((i) => [i.name, i.key]));
+  const own = { ...scope, named };
   for (const c of checks || []) {
     const kind = CHECK_KINDS.find((k) => k in c);
-    const want = Object.entries(c[kind]).map(([field, v]) => [field, typeof v === 'string' ? bind([v], scope)[0] : v]);
+    const want = Object.entries(c[kind]).map(([field, v]) => [field, typeof v === 'string' ? bind([v], own)[0] : v]);
     const shown = `{${want.map(([field, v]) => `${field}: ${JSON.stringify(v)}`).join(', ')}}`;
     const elements = valuesAt(env, c.at);
     const hits = elements.filter((x) => want.every(([field, v]) => valueAt(x, field) === v)).length;
@@ -305,17 +310,42 @@ function checkProblems(env, checks, scope) {
   }
   return problems;
 }
-// The second run of an entry with `replay`: an ok answer whose `same` paths reach exactly the values the first run's
-// did, in the same order, and that holds the replay's own checks.
+// The second run of an entry with `replay`: an ok answer that reaches every read with its declared type (as the first
+// run's must), whose `same` paths reach exactly the values the first run's did, in the same order, whose arrays under
+// them hold as many elements and the same complete records (`created` aside), and that holds the replay's own checks.
+// PROPERTY: an extra or a missing element is a problem even where every compared field matches (`valuesAt` alone
+// skips an element that lacks the field).
+const withoutCreated = (x) => {
+  if (x === null || typeof x !== 'object' || Array.isArray(x)) return x;
+  const { created, ...rest } = x;
+  return rest;
+};
 function replayProblems(entry, first, r, scope) {
   const env = envelopeOf(r.stdout);
   if (!env || env.outcome !== 'ok' || r.status !== 0) return [`the second run answered exit ${r.status}${env ? `, outcome ${env.outcome} ${env.code || ''} ${env.message || ''}`.trimEnd() : ' without an envelope'}`];
   const problems = [];
+  for (const p of entry.reads) {
+    const w = walk(env, p);
+    for (const at of w.missing) problems.push(`the second run's answer has no ${at}`);
+    for (const at of w.notArray) problems.push(`the second run's ${at} is not an array`);
+    const declared = entry.types[p].split('|');
+    for (const t of w.types) if (!declared.includes(t)) problems.push(`the second run's ${p} is ${t}, the fixture declares ${entry.types[p]}`);
+  }
+  const differs = new Set();
   for (const p of entry.replay.same) {
     const [a, b] = [valuesAt(first, p), valuesAt(env, p)];
-    if (JSON.stringify(a) !== JSON.stringify(b)) problems.push(`the second run's ${p} is ${JSON.stringify(b)}, the first run's ${JSON.stringify(a)}`);
+    if (JSON.stringify(a) !== JSON.stringify(b)) { problems.push(`the second run's ${p} is ${JSON.stringify(b)}, the first run's ${JSON.stringify(a)}`); differs.add(p); }
   }
-  return [...problems, ...checkProblems(env, entry.replay.checks, scope).map((x) => `the second run: ${x}`)];
+  // Each array a `same` path runs through, compared whole: its length, then (where no field above differed) its records.
+  const arrays = [...new Set(entry.replay.same.filter((p) => p.includes('[]')).map((p) => p.slice(0, p.indexOf('[]') + 2)))];
+  for (const at of arrays) {
+    const [a, b] = [valuesAt(first, at), valuesAt(env, at)];
+    if (a.length !== b.length) problems.push(`the second run's ${at} has ${b.length} element(s), the first run's ${a.length}`);
+    else if (![...differs].some((p) => p.startsWith(at)) && JSON.stringify(a.map(withoutCreated)) !== JSON.stringify(b.map(withoutCreated))) {
+      problems.push(`the second run's ${at} is ${JSON.stringify(b.map(withoutCreated))}, the first run's ${JSON.stringify(a.map(withoutCreated))} (created aside)`);
+    }
+  }
+  return [...new Set(problems), ...checkProblems(env, entry.replay.checks, scope).map((x) => `the second run: ${x}`)];
 }
 
 // The planner's side of one run: exit 0, an ok envelope, every read present with a declared type, arrays non-empty

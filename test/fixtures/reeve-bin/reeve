@@ -90,6 +90,8 @@ const usage = (message) => { process.stderr.write(`error: ${message}\n\nFor more
 
 if (argv[0] === '--version') { process.stdout.write('reeve-planner 0.8.0-fake\n'); process.exit(0); }
 if (!argv.includes('--json')) error('validation', 'the fake planner answers --json calls only');
+// `--json` is a global flag taken once (crates/reeve/src/lib.rs): check it before it is filtered out of the words.
+if (argv.filter((a) => a === '--json').length > 1) usage("the argument '--json' cannot be used multiple times");
 const words = argv.filter((a) => a !== '--json');
 
 const DISCOVERY = { pos: 1, val: ['version'], bool: ['complete', 'reopen'], req: ['version'] };
@@ -253,7 +255,17 @@ if (cmd === 'apply') {
   const text = readText(pos[0]);
   const reading = `reading the plan in ${pos[0]}`;
   let raw;
-  try { raw = JSON.parse(text); } catch (e) { error('internal', `${reading}: the fake planner reads JSON plans only: ${e.message}`); }
+  // A number's own text, kept by holder and key: a string field given a number reads its spelling (serde_yaml visits
+  // the scalar's text), so `1e3` stays `1e3` and a long integer keeps its digits.
+  const numText = new WeakMap();
+  const keepNumber = function (k, v, c) {
+    if (typeof v === 'number' && c && typeof c.source === 'string') {
+      if (!numText.has(this)) numText.set(this, {});
+      numText.get(this)[k] = c.source;
+    }
+    return v;
+  };
+  try { raw = JSON.parse(text, keepNumber); } catch (e) { error('internal', `${reading}: the fake planner reads JSON plans only: ${e.message}`); }
   // A plan that does not parse and writes a blocking word as a link's `type` gets the CLI's pointer at `blocks`
   // (kb/ADR-0031 R2) in place of the parser's message, whatever else is wrong with it.
   const refuse = (message) => {
@@ -266,12 +278,17 @@ if (cmd === 'apply') {
   const quoted = (names) => names.map((x) => `\`${x}\``);
   const oneOf = (names) => (names.length === 2 ? quoted(names).join(' or ') : `one of ${quoted(names).join(', ')}`);
   const unknown = (o, names, at) => { for (const k of Object.keys(o)) if (!names.includes(k)) refuse(`${at}unknown field \`${k}\`, expected one of ${quoted(names).join(', ')}`); };
-  const scalar = (v, at) => (v !== null && typeof v === 'object' ? refuse(`${at}: invalid type: ${shown(v)}, expected a string`) : String(v));
+  // The string a scalar field reads: `holder[k]`, a number by its text in the plan.
+  const scalar = (holder, k, at) => {
+    const v = holder[k];
+    if (v !== null && typeof v === 'object') return refuse(`${at}: invalid type: ${shown(v)}, expected a string`);
+    return typeof v === 'number' ? (numText.get(holder) || {})[k] ?? String(v) : String(v);
+  };
   const calendar = (d) => { const t = Date.parse(`${d}T00:00:00Z`); return /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === d; };
   if (!isMap(raw)) refuse(`invalid type: ${shown(raw)}, expected struct ApplyPlan`);
   unknown(raw, ['id', ...Object.keys(PLAN_FIELDS)], '');
   if (!('id' in raw)) refuse('missing field `id`');
-  plan = { id: scalar(raw.id, 'id') };
+  plan = { id: scalar(raw, 'id', 'id') };
   for (const [list, fields] of Object.entries(PLAN_FIELDS)) {
     const entries = list in raw ? raw[list] : [];
     if (!Array.isArray(entries)) refuse(`${list}: invalid type: ${shown(entries)}, expected a sequence`);
@@ -291,16 +308,17 @@ if (cmd === 'apply') {
           out[k] = v;
         } else if (type === 'string') {
           if (!(k in x)) refuse(`${at}: missing field \`${k}\``);
-          out[k] = scalar(v, here);
+          out[k] = scalar(x, k, here);
         } else if (type === 'string?') {
-          if (v != null) out[k] = scalar(v, here);
+          if (v != null) out[k] = scalar(x, k, here);
         } else if (type === 'strings') {
           if (!(k in x)) { out[k] = []; continue; }
           if (!Array.isArray(v)) refuse(`${here}: invalid type: ${shown(v)}, expected a sequence`);
-          out[k] = v.map((y, j) => scalar(y, `${here}[${j}]`));
+          out[k] = v.map((y, j) => scalar(v, String(j), `${here}[${j}]`));
         } else if (v != null) { // 'date?'
-          if (!calendar(scalar(v, here))) refuse(`${here}: \`${v}\` is not a date (YYYY-MM-DD)`);
-          out[k] = String(v);
+          const d = scalar(x, k, here);
+          if (!calendar(d)) refuse(`${here}: \`${d}\` is not a date (YYYY-MM-DD)`);
+          out[k] = d;
         }
       }
       return out;

@@ -212,8 +212,10 @@ test('checkProblems: some, none and all on the elements of an array, their value
   assert.deepEqual(s.checkProblems({ value: { items: [{ created: true }] } }, [{ at: 'value.items[]', all: { created: true } }], {}), []);
   assert.throws(() => s.checkProblems(env, [{ at: 'value[]', some: { 'item.key': '{{nobody.key}}' } }], scope), /unbound \{\{nobody\.key\}\}/);
 });
-test('replayProblems: the second run answers the same keys, ids and ends, with every created false', () => {
-  const entry = { replay: { same: ['value.items[].key', 'value.links[].from', 'value.web_links[].id'], checks: [{ at: 'value.items[]', all: { created: false } }, { at: 'value.links[]', all: { created: false } }] } };
+test('replayProblems: the second run answers the same keys, ids and ends, the same records, with every created false', () => {
+  const reads = ['value.items[].key', 'value.items[].created', 'value.links[].from', 'value.links[].created', 'value.web_links[].id'];
+  const types = { 'value.items[].key': 'string', 'value.items[].created': 'boolean', 'value.links[].from': 'string', 'value.links[].created': 'boolean', 'value.web_links[].id': 'number' };
+  const entry = { reads, types, replay: { same: ['value.items[].key', 'value.links[].from', 'value.web_links[].id'], checks: [{ at: 'value.items[]', all: { created: false } }, { at: 'value.links[]', all: { created: false } }] } };
   const first = { outcome: 'ok', value: { items: [{ key: 'A-1', created: true }], links: [{ from: 'A-1', created: true }], web_links: [{ id: 4 }] } };
   const second = (value) => ok(value);
   assert.deepEqual(s.replayProblems(entry, first, second({ items: [{ key: 'A-1', created: false }], links: [{ from: 'A-1', created: false }], web_links: [{ id: 4 }] }), {}), []);
@@ -223,8 +225,25 @@ test('replayProblems: the second run answers the same keys, ids and ends, with e
     'the second run: 0 of 1 element(s) of value.items[] have {created: false}, expected every one of at least one']);
   // a replay that drops a list entirely
   assert.deepEqual(s.replayProblems(entry, first, second({ items: [{ key: 'A-1', created: false }], web_links: [{ id: 4 }] }), {}), [
-    'the second run\'s value.links[].from is [], the first run\'s ["A-1"]', 'the second run: 0 of 0 element(s) of value.links[] have {created: false}, expected every one of at least one']);
+    "the second run's answer has no value.links",
+    'the second run\'s value.links[].from is [], the first run\'s ["A-1"]', "the second run's value.links[] has 0 element(s), the first run's 1",
+    'the second run: 0 of 0 element(s) of value.links[] have {created: false}, expected every one of at least one']);
+  // an element more that no compared field reaches, and `all` holds for it: its shape and the length catch it
+  assert.deepEqual(s.replayProblems(entry, first, second({ items: [{ key: 'A-1', created: false }], links: [{ from: 'A-1', created: false }, { created: false }], web_links: [{ id: 4 }] }), {}), [
+    "the second run's answer has no value.links[1].from", "the second run's value.links[] has 2 element(s), the first run's 1"]);
+  // a record that changed outside the compared fields, and a read of another type
+  assert.deepEqual(s.replayProblems(entry, first, second({ items: [{ key: 'A-1', created: false }], links: [{ from: 'A-1', to: 'B-9', created: false }], web_links: [{ id: '4' }] }), {}), [
+    "the second run's value.web_links[].id is string, the fixture declares number", 'the second run\'s value.web_links[].id is ["4"], the first run\'s [4]',
+    'the second run\'s value.links[] is [{"from":"A-1","to":"B-9"}], the first run\'s [{"from":"A-1"}] (created aside)']);
   assert.deepEqual(s.replayProblems(entry, first, { status: 1, stdout: '{"outcome":"error","code":"validation","message":"m"}', stderr: '' }, {}), ['the second run answered exit 1, outcome error validation m']);
+});
+test('checkProblems: {{named.<name>}} is the key the same answer gives that plan name', () => {
+  const env = { outcome: 'ok', value: { items: [{ name: 'a', key: 'A-1' }, { name: 'b', key: 'A-2' }], links: [{ from: 'A-2', type: 'follows', to: 'A-1' }] } };
+  const check = [{ at: 'value.links[]', some: { from: '{{named.b}}', type: 'follows', to: '{{named.a}}' } }];
+  assert.deepEqual(s.checkProblems(env, check, {}), []);
+  const reversed = { outcome: 'ok', value: { ...env.value, links: [{ from: 'A-1', type: 'follows', to: 'A-2' }] } };
+  assert.deepEqual(s.checkProblems(reversed, check, {}), ['no element of value.links[] has {from: "A-2", type: "follows", to: "A-1"}']);
+  assert.throws(() => s.checkProblems(env, [{ at: 'value.links[]', some: { from: '{{named.c}}' } }], {}), /unbound \{\{named\.c\}\}/);
 });
 test('coverageProblems: a check names an array the entry reads and one way to judge it; a replay names what must stay the same', () => {
   const rows = [r('`reeve link ls <KEY> --json`', '`value.links[]`: `type`')];

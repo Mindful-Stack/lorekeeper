@@ -122,9 +122,9 @@ per run; the log is appended to the output shown by `--verbose` and deleted afte
 flattened to spaces, e.g. `epic create --initiative GRA-12 --title A --brief one two --idempotency-key planning-initiative:GRA-12:0a1b2c3d:1 --json`.
 
 **What the fake answers.** `--version` prints `reeve-planner 0.8.0-fake`; every other call must
-include `--json` (anywhere, as the real CLI's global flag) and uses only flags the real CLI has.
+include `--json` once (anywhere, as the real CLI's global flag) and uses only flags the real CLI has.
 What the real CLI's parser rejects (an unknown command or flag, a missing value, a value starting
-with `-` except `comment add --body`, a flag given twice unless it repeats, a key of `reeve link` or
+with `-` except `comment add --body`, a flag given twice unless it repeats, `--json` included, a key of `reeve link` or
 `reeve story block|unblock` that is not shaped like a key or an external reference) is a usage
 error as there: the text on stderr, nothing on
 stdout, exit 1. `scripts/__tests__/reeve-reference.test.js` runs every `reeve … --json` command of

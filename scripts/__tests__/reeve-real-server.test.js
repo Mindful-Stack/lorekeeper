@@ -40,7 +40,9 @@ test("the real fixture fails coverage when its reads stop reaching the reference
   const f = clone();
   Object.assign(entryOf(f, '`reeve story context'), { reads: ['value.story'], types: { 'value.story': 'object' }, may_be_empty: [] });
   const dropped = s.coverageProblems(rows, f).filter((p) => /^`reeve story context .*the reference's Read names/.test(p));
-  assert.deepEqual(dropped.map((p) => p.match(/names (\S+),/)[1]), ['value.epic', 'value.initiative', 'value.required_decisions[]', 'value.blockers[]', 'value.comments[]', 'value.readiness', 'value.goals[]', 'value.goals[].goal', 'value.goals[].starts_on', 'value.goals[].ends_on', 'value.goals[].via', 'value.attachments[]', 'value.attachments[].id', 'value.attachments[].owner.item', 'value.attachments[].filename']);
+  assert.deepEqual(dropped.map((p) => p.match(/names (\S+),/)[1]), ['value.epic', 'value.initiative', 'value.required_decisions[]', 'value.blockers[]', 'value.comments[]', 'value.readiness', 'value.goals[]', 'value.goals[].goal', 'value.goals[].starts_on', 'value.goals[].ends_on', 'value.goals[].via', 'value.attachments[]', 'value.attachments[].id', 'value.attachments[].owner.item', 'value.attachments[].filename',
+    'value.story.links[]', 'value.story.links[].type', 'value.story.links[].direction', 'value.story.links[].label', 'value.story.links[].item', 'value.story.links[].item.key', 'value.story.links[].item.level', 'value.story.links[].item.title',
+    'value.story.web_links[]', 'value.story.web_links[].id', 'value.story.web_links[].title', 'value.story.web_links[].url']);
   const grow = (start, extra) => rows.map((x) => (x.row.startsWith(start) ? { ...x, read: `${x.read}, ${extra}` } : x));
   assert.deepEqual(s.coverageProblems(grow('`reeve story context', '`value.links[]`'), fixture),
     ["`reeve story context <KEY> --json`: the reference's Read names value.links[], which no read reaches (read it, or list it in unread with a reason)"]);
@@ -74,7 +76,8 @@ function baseEnv() {
 }
 const fakeSide = (bin, dir) => ({ bin, env: { ...baseEnv(), REEVE_CONFIG_DIR: dir, REEVE_FAKE_LOG: path.join(dir, 'log') } });
 // The files the entries pass by path (--brief-file, apply), written for the run into dir; {{files.<name>}} names each.
-// The plan is the run's own (its id carries the run id) and creates a small tree of its own, a decision and a blocker.
+// The plan is the run's own (its id carries the run id) and creates a small tree of its own, a decision, a blocker,
+// two item links and a web link.
 function smokeFiles(dir, { run_id, email }) {
   const brief = path.join(dir, 'brief.md');
   fs.writeFileSync(brief, "## Vision\n\nWritten by the skill smoke's brief file: it isn't quoted.\n\n- a bullet\n");
@@ -89,6 +92,9 @@ function smokeFiles(dir, { run_id, email }) {
     ],
     decisions: [{ name: 'smoke-decision', on: 'smoke-epic', title: 'Skill smoke plan decision', decider: email }],
     blocks: [{ story: 'smoke-second', blocked_by: 'smoke-first' }],
+    // informational (kb/ADR-0031): the blocker above is what holds smoke-second back, never the item link
+    links: [{ from: 'smoke-second', type: 'follows', to: 'smoke-first' }, { from: 'smoke-epic', type: 'relates_to', to: 'smoke-initiative' }],
+    web_links: [{ on: 'smoke-initiative', title: 'Skill smoke plan page', url: 'https://example.com/skill-smoke/plan' }],
   }, null, 2));
   return { brief, plan };
 }

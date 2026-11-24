@@ -41,6 +41,15 @@ older CLI's story context has no `attachments`, and an older server lists none (
 0.7.0 or later and a planner running it: an older CLI drops the two fields from its output, and an
 older planner judges every unfinished blocker as blocking. Without `delivery`, word the reason as
 *Wording the planner's answers* says and go on.
+Item links and web links (`reeve link`, `links` and `web_links` in a plan and on an item) need a
+`reeve-planner` CLI and a planner with kb/ADR-0031. The version number does not tell which CLI that
+is: Reeve has not raised it, so a CLI with `reeve link` reports 0.7.0, as the one before it does. An
+older CLI answers `reeve link` with a usage error (an unrecognized subcommand), refuses a plan that
+has `links` or `web_links` before sending it (an `internal` error naming the field) and drops both
+lists from an item's answer: tell the user to update the CLI and go on without the links. An older
+planner answers `reeve link` with a `not_found` error (exit 1) and a plan that has either list with
+a `validation` error naming the unknown field, nothing written, and its items carry neither list:
+say that the planner has no item links or web links yet, and go on without them.
 
 ## Updating the CLI
 
@@ -175,26 +184,26 @@ One exception: the comment that marks a duplicate, `Duplicate of <DUP>.` on item
 
 | Command | Read |
 |---|---|
-| `reeve initiative show <KEY> --json` | `value.brief`, `.horizon`, `.owner` (null = none), `.target_month` (a month such as 2027-03, null = none), `.external_ref` (null = none), `.discovery_complete` (null = not complete), `.version` |
+| `reeve initiative show <KEY> --json` | `value.brief`, `.horizon`, `.owner` (null = none), `.target_month` (a month such as 2027-03, null = none), `.external_ref` (null = none), `.discovery_complete` (null = not complete), `.version`, `.links[]`, `.web_links[]` (its item links and web links, as link ls answers them; see *Item links and web links*) |
 | `reeve initiative ls --json` | `value[]`: `key`, `title`, `horizon` |
 | `reeve search <text> --json` | `value[]`: `key`, `item` (initiative, epic or story), `kind` (null = not a story), `title`, `matched[]` (which of title, brief, description and external_ref contain the text); newest first, at most 50, empty when nothing matches |
 | `reeve initiative create --title <title> --horizon <bucket> --brief-file <brief file> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json` | `value.key`, `value.version`; a bucket the planner does not have is a `validation` error |
 | `reeve initiative edit <KEY> [--brief-file <brief file>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json` | `value.version` |
 | `reeve initiative discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
-| `reeve epic show <KEY> --json` | `value.brief`, `.initiative`, `.discovery_complete`, `.promise` (null = none): `{fact, due, past}` (see *Promises*), `.version` |
+| `reeve epic show <KEY> --json` | `value.brief`, `.initiative`, `.discovery_complete`, `.promise` (null = none): `{fact, due, past}` (see *Promises*), `.version`, `.links[]`, `.web_links[]` (its item links and web links, as link ls answers them) |
 | `reeve epic ls [--initiative <KEY>] --json` | `value[]`: `key`, `title`, `initiative` |
 | `reeve epic create --initiative <KEY> --title <title> --brief-file <brief file> --idempotency-key <key> --json` | `value.key`, `value.version` |
 | `reeve epic edit <KEY> --brief-file <brief file> --version <n> --json` | `value.version` |
 | `reeve epic discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
 | `reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json` | `value[]`, `.finding`; empty when there are none (see *Findings*) |
-| `reeve story show <KEY> --json` | `value.key`, `.title`, `.kind`, `.epic` (null = untriaged), `.delivery`, `.owner` (null = none), `.criteria[]` (each `{text, done}`), `.version` |
+| `reeve story show <KEY> --json` | `value.key`, `.title`, `.kind`, `.epic` (null = untriaged), `.delivery`, `.owner` (null = none), `.criteria[]` (each `{text, done}`), `.version`, `.links[]` (each `{type, direction, label, item: {key, level, title}}`) and `.web_links[]` (each `{id, title, url}`), both empty when there are none (see *Item links and web links*) |
 | `reeve story ls --epic <KEY> --json` / `reeve story ls --untriaged --json` | `value[]`: `{story, readiness: {ready, reasons[]}}`; `story.key`, `.title`, `.kind`, `.delivery`, `.owner` (null = none), `.criteria[]`, `.version`. Untriaged: an item of any kind with no epic that is not done (kb/ADR-0018); it is not ready until placed or closed |
 | `reeve story similar <text> [--limit <n>] --json` | `value[]`: `{key, kind, title, epic, delivery, resolution}`, open stories and recently done ones with a like title (the text is 8 to 200 characters, the limit 1 to 10 with default 5; otherwise a validation error, exit 1); run it before filing or placing an item, to catch a duplicate |
 | `reeve story mv <KEY> <delivery> [--version <n>] [--resolution completed\|dropped] --json` | `value.delivery` (todo, in_progress, in_review, testing or done), `.resolution`, `.owner`; moving to done needs a resolution; --override is a person's (interactive tokens only), never passed by a skill. Skills move a story at the moments of work (*Moving stories*) and to close an item as dropped (a won't-do or duplicate) |
 | `reeve story create --epic <KEY> --title <title> --kind story\|bug\|chore --criterion <text> [--criterion <text> …] [--owner <email>] --idempotency-key <key> --json` | `value.key`; an owner who is not an allowed user is a `validation` error |
 | `reeve story edit <KEY> --version <n> [--epic <KEY>] [--kind story\|bug\|chore] [--owner <email>] --json` | `value.version`; an owner who is not an allowed user is a `validation` error |
-| `reeve apply <plan file> --json` | `value.items[]`: `name`, `item`, `key`, `created`; `value.decisions[]`: `name`, `id`, `created`; `value.blocks[]`: `story`, `blocked_by`, `created` (see *Plans*) |
-| `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}`; `value.goals[]`: `{goal, starts_on, ends_on, via}`, the active sprint's goals the story serves (empty when none; see *Sprints and goals*); `value.attachments[]`: `id`, `owner.item` (story, epic or initiative), `filename`; the story's screenshots (its comments' included), then its epic's and initiative's (empty when none) |
+| `reeve apply <plan file> --json` | `value.items[]`: `name`, `item`, `key`, `created`; `value.decisions[]`: `name`, `id`, `created`; `value.blocks[]`: `story`, `blocked_by`, `created`; `value.links[]`: `from`, `from_level`, `type`, `to`, `to_level`, `created`; `value.web_links[]`: `on`, `level`, `id`, `title`, `url`, `created` (see *Plans*) |
+| `reeve story context <KEY> --json` | `value`: `{story, epic, initiative, required_decisions[], blockers[], comments[], readiness}`; `value.goals[]`: `{goal, starts_on, ends_on, via}`, the active sprint's goals the story serves (empty when none; see *Sprints and goals*); `value.attachments[]`: `id`, `owner.item` (story, epic or initiative), `filename`; the story's screenshots (its comments' included), then its epic's and initiative's (empty when none); `value.story.links[]`: `{type, direction, label, item: {key, level, title}}` and `value.story.web_links[]`: `{id, title, url}`, the story's own item links and web links (empty when none; the epic and initiative in this answer carry neither: see *Item links and web links*) |
 | `reeve attachment get <ID> --dir <dir> --json` | `value.path`, the downloaded image (named by the id with a png, jpg or webp extension, in the --dir directory, which is created if missing) |
 | `reeve decision ls --on <KEY> --json` | `value[]`: `id`, `on`, `on_type` (initiative, epic or story: the level of the item it is on), `title`, `decider`, `due`, `reversibility` (one_way or two_way; null = unclassified, treated as two-way), `record` (null = no record), `pr_url`, `check.kind`, `closed` (null, or `{at, by, reason, kind, via}`); closed decisions are listed too |
 | `reeve decision show <id> --json` | `value`: one decision, the same fields |
@@ -213,6 +222,11 @@ One exception: the comment that marks a duplicate, `Duplicate of <DUP>.` on item
 | `reeve goal link <id> <KEY> [<KEY> …] --json` | `value.links[]` (every key linked to the goal), `value.version` |
 | `reeve goal unlink <id> <KEY> [<KEY> …] --json` | `value.links[]` |
 | `reeve goal suggest <id> on_track\|at_risk\|off_track [<note>] --json` | `value.suggested_confidence`, `.suggested_note`, `.suggested_at`, `.suggested_by` |
+| `reeve link ls <KEY> --json` | `value.links[]`: `{type, direction, label, item: {key, level, title}}`, the item's item links, each read from its side; `value.web_links[]`: `{id, title, url}`, its web links, oldest first; both empty when there are none (see *Item links and web links*) |
+| `reeve link add <KEY> follows\|duplicates\|relates-to <OTHER> --json` | `value[]`: `{type, direction, label, item: {key, level, title}}`, the item links of the first item after the add; informational, never a blocker |
+| `reeve link rm <KEY> follows\|duplicates\|relates-to <OTHER> --json` | `value[]`: `{type, direction, label, item: {key, level, title}}`, the item links the first item has left (empty when none); the link is named as it was added |
+| `reeve link add <KEY> --url <url> --title <title> --json` | `value[]`: `{id, title, url}`, the item's web links after the add, oldest first |
+| `reeve link rm <KEY> --url <url> --json` | `value[]`: `{id, title, url}`, the web links the item has left (empty when none) |
 
 `decision require` without `--due` writes `no decide-by date; the queue will flag it` to stderr,
 also with `--json`; the envelope is `ok` and the exit status 0. It is a reminder, not an error: pass
@@ -323,16 +337,17 @@ the user asks for what it does, with the command written as shown.
 | `reeve story create --epic <KEY> --title <title> --kind story --description <text> --idempotency-key <key> --json` / `reeve story edit <KEY> --version <n> --description <text> --json` | a one-line description inline, in place of `--description-file` |
 | `reeve story edit <KEY> --version <n> --no-owner --json` | clears the story's owner (`--no-owner` in place of `--owner`) |
 | `reeve initiative edit <KEY> --version <n> --no-owner --no-target-month --json` | clears the initiative's owner and target month (each in place of its setter; either alone is allowed) |
+| `reeve story block <KEY> --by <OTHER> --json` / `reeve story unblock <KEY> --by <OTHER> --json` | records that story `<OTHER>` blocks story `<KEY>`, or takes that back: the blocker is the one relation between items that holds a story back (kb/ADR-0027; an item link never does, see *Item links and web links*). Both are stories (any other item is `not_found`); `value` is empty, and the story's `blocked_by[]` (`reeve story show <KEY> --json`) lists its blockers. Blocking what is blocked, or unblocking what is not, changes nothing |
 | `reeve decision ls --mine --json` | the decisions the signed-in user is the decider of (a refused token answers as for `story ls --mine`; not with `--queue`, a usage error) |
 | `reeve decision edit <id> --version <n> [--title <title>] [--decider <email>] [--due YYYY-MM-DD] [--reversibility one-way\|two-way] --json` | changes an open decision's title, decider, due date or reversibility (at least one of them; `--no-due` and `--no-reversibility` clear, each in place of its setter); a closed decision is a `validation` error, a stale `--version` a `conflict`. The record is changed with `decision link`, never here |
 
 ## Plans: reeve apply
 
-`reeve apply <plan file> --json` creates initiatives, epics, stories, required decisions and
-blockers in one request. A run that creates two or more items sends them as one plan: the
-planner's edge rate-limits more than 5 API POSTs in 10 seconds, so a run of single creates is
-answered `rate_limited` part-way. A run that creates exactly one item uses that item's single
-create (*Commands*).
+`reeve apply <plan file> --json` creates initiatives, epics, stories, required decisions,
+blockers, item links and web links in one request. A run that creates two or more items sends
+them as one plan: the planner's edge rate-limits more than 5 API POSTs in 10 seconds, so a run of
+single creates is answered `rate_limited` part-way. A run that creates exactly one item uses that
+item's single create (*Commands*).
 
 Write the plan as JSON to a file with the Write tool, as a brief is (*Arguments*); `-` in place of
 the path reads standard input. The CLI also reads YAML; the skills write JSON.
@@ -347,7 +362,9 @@ the path reads standard input. The CLI also reads YAML; the skills write JSON.
     {"name": "retry-match", "title": "Retry failed matches", "epic": "GRA-20", "description": "## Why\n\nCoordinators retry by hand today.", "criteria": ["A failed match is retried"], "labels": ["matching"]}
   ],
   "decisions": [{"name": "provider", "on": "invoices", "title": "Which invoicing provider", "decider": "dan@example.com", "reversibility": "one_way", "due": "2026-11-15"}],
-  "blocks": [{"story": "send-invoice", "blocked_by": "GRA-31"}]
+  "blocks": [{"story": "send-invoice", "blocked_by": "GRA-31"}],
+  "links": [{"from": "send-invoice", "type": "follows", "to": "retry-match"}, {"from": "invoices", "type": "relates_to", "to": "GRA-12"}],
+  "web_links": [{"on": "billing", "title": "Billing scenario", "url": "https://example.com/wiki/billing-scenario"}]
 }
 ```
 
@@ -357,27 +374,54 @@ the path reads standard input. The CLI also reads YAML; the skills write JSON.
   (a story when left out), `epic`, `description`, `labels`, `external_ref`; a decision `name`,
   `on`, `title`, `decider`, and optionally `reversibility` (`one_way` or `two_way`, with an underscore
   as on the wire, where the CLI flag says `one-way`) and `due` (`YYYY-MM-DD`); a block `story` and `blocked_by`
-  (`blocked_by` blocks `story`). Any other field is refused by the CLI before anything is sent (an
-  `internal` error naming the field). A story's owner, a comment and an edit of an existing item
-  are not in a plan: run them after it.
+  (`blocked_by` blocks `story`); an item link `from`, `type` and `to` (`from` follows, duplicates
+  or relates to `to`: `{"from": "step-2", "type": "follows", "to": "step-1"}` says step-2 comes
+  after step-1), the `type` one of `follows`, `duplicates` and `relates_to` (with an underscore as
+  on the wire, where the command line says `relates-to`); a web link `on`, `title` and `url`, under
+  the rules of *Item links and web links*. Any other field is refused by the CLI before anything
+  is sent (an `internal` error naming the field). A story's owner, a comment and an edit of an
+  existing item are not in a plan: run them after it.
 - **Names.** Each item and decision has a local `name`, unique in the plan: lower-case words with
   hyphens (`send-invoice`), never shaped like a key (`GRA-31` is refused).
 - **References.** `initiative`, `epic`, `on`, `story` and `blocked_by` name an item of the plan by
   its name, or else an existing item by its key (`GRA-20`) or external reference. `on` may name an
-  initiative, an epic or a story.
+  initiative, an epic or a story. So may an item link's `from` and `to` and a web link's `on`: an
+  item of any level, and among existing items a key is tried before an external reference. `story`
+  and `blocked_by` name stories only: a blocker is between two stories.
+- **Links are not blockers.** `links` are item links: informational, they hold nothing back
+  (*Item links and web links*). What must hold a story back goes under `blocks`. A plan written
+  from another tool's data (a Jira export, a spreadsheet) puts a blocking relation ("blocks", "is
+  blocked by", "depends on") under `blocks` when both ends are stories, or leaves it out; never
+  under `links`, as `follows` or under any other name (kb/ADR-0031 R2). A blocking word as a
+  link's `type` (`blocks`, `blocked_by`, `depends_on`) is refused by the CLI before anything is
+  sent: an `internal` error whose message points at `blocks`.
+- **At most 500 item links and 500 web links** in one plan; one more is a problem of the whole
+  plan (below). Put the rest in another plan, with the run's next `<n>`, that names the items by
+  key: a name is local to one plan id.
 - **The id.** `<skill>:<KEY>:<run_id>:<n>`, built like an idempotency key, the plan taking the run's
   next `<n>`. Applying the same id again creates nothing and answers every name with `created`
   false, so a retry (`rate_limited`, a lost answer) sends the same file again. A second plan in a
   run takes a new `<n>`.
-- **All or nothing.** The planner validates the whole plan before writing anything and reports
+- **Checked whole.** The planner validates the whole plan before writing anything and reports
   every problem at once: a `validation` error whose message lists them, separated by `; `. Nothing
   was written. Show every problem; fix what is the plan's own mistake (a name, a reference, a
   field) and apply again under the same id, at most once; content the user gave (a title, a
-  horizon, a decider) is the user's to correct, never yours.
+  horizon, a decider, a web link's title or URL) is the user's to correct, never yours.
+- **Written piece by piece.** After the check each write commits on its own (the items, the
+  decisions, the blockers, then each item link and each web link): a plan is not one transaction.
+  An apply that fails after the check (an error other than `validation`) may have written part of
+  the plan. Finish it by applying the same file under the same id again, once the cause is
+  corrected: what is there is answered `created` false and the rest is written. Never send the
+  rest under a new id: its names would create the items a second time.
 
 Read the answer by name: `value.items[]` gives each item's `key` (`item` is initiative, epic or
 story), `value.decisions[]` each decision's `id`, and `value.blocks[]` each blocker edge, each with
 `created`. Report each name with its key, and say which already existed (`created` false).
+`value.links[]` gives each item link as stored (`from`, `from_level`, `type`, `to`, `to_level`:
+keys, not names, and a `relates_to` may come back with its two ends swapped, being one link
+whichever end names it) and `value.web_links[]` each web link (`on`, `level`, `id`, and `title` and
+`url` as stored), one entry per entry of the plan, in its order, each with `created`: false when
+the link was already there.
 
 ## Findings
 
@@ -620,6 +664,76 @@ recipient is allowed), a shortcut with no such sprint (`there is no active sprin
 `there is no next sprint yet: give a date`) or whose planned end is past, and a recipient over 200
 characters.
 
+## Item links and web links
+
+An item link says how two items relate (kb/ADR-0031 in the Reeve repository): one **follows** the
+other (it comes after it in a sequence), **duplicates** it (it covers the same work) or **relates
+to** it. The two are different items of any level: an initiative, an epic or a story. A web link is
+a title and a URL on one item: a page kept elsewhere, such as a scenario page or a board. Both are
+shown, never enforced, and neither changes an item's version, so no command here takes `--version`
+or an idempotency key.
+
+**An item link never holds a story back.** Readiness, moves, rank, progress and goals do not read
+it. `follows` is an order people read, not a blocker: a story may start before the one it follows
+is done. So never record a dependency as `follows`, and never word an item link as "blocked by",
+"depends on" or "waits for". A dependency that must hold a story back is a blocker, between two
+stories: `blocks` in a plan (*Plans*), or `reeve story block <KEY> --by <OTHER> --json` (*Other
+flags*). No item link name means blocking: `blocks`, `blocked-by` or `depends-on` where the name
+goes is a usage error (exit 1, nothing sent) whose text points at `reeve story block`.
+
+**Which item comes first.** In `reeve link add <KEY> follows|duplicates|relates-to <OTHER> --json`,
+`<KEY>` is always the item that follows, duplicates or relates; the reverse cannot be written. From
+the other item the same link is listed with `direction` `in` and the `label` "is followed by" or
+"is duplicated by". `relates-to` is the same from both sides: one link whichever end added it,
+listed as `out` on both. A link is removed as it was added: the one GRA-31 lists as "is followed by
+GRA-32" is removed with `reeve link rm GRA-32 follows GRA-31 --json`, GRA-32 first. Removing what
+is not there succeeds and changes nothing, so a removal named the wrong way round answers `ok` and
+removes nothing: check the answer.
+
+**Spelling.** The command line writes the names with a hyphen (`relates-to`); the wire, so `type`
+in every answer and in a plan file, with an underscore (`relates_to`). `follows` and `duplicates`
+are the same in both. `relates_to` on the command line is a usage error, and `relates-to` in a plan
+is refused by the CLI before anything is sent.
+
+**The answers.** `link add` and `link rm` answer the lists the item has after the call (`value[]`:
+its item links, or with `--url` its web links), `link ls` both. An item link is `{type, direction,
+label, item}`: `direction` is `out` when this item is the one that follows, duplicates or relates
+and `in` when the other one is; `label` is the wording for this side ("follows", "is followed by",
+"duplicates", "is duplicated by", "relates to"); `item` is the other item, `{key, level, title}`
+(`level` is initiative, epic or story), without its delivery state on purpose. A web link is
+`{id, title, url}`, the title and the URL as stored. Adding what is already there succeeds and
+changes nothing. A key that names no item is `not_found`, and a link from an item to itself a
+`validation` error (both exit 1).
+
+**A web link's title and URL.** Compose them inside these rules; outside them the planner answers
+a `validation` error (exit 1) with its message to show:
+
+- The title is 1 to 200 characters on one line: no line break, tab or other control character. It
+  is stored trimmed.
+- The URL is `http` or `https`, at most 1 000 characters, with no user name or password in it
+  (`https://user:secret@…` is refused: the planner's activity log keeps the URL after the web link
+  is removed).
+- An item has the same URL once. The same URL with the same title again changes nothing; with
+  another title it is refused ("this item already has a web link to that URL, titled …"): a web
+  link is not edited. Remove it with `reeve link rm <KEY> --url <url> --json`, then add it with the
+  new title.
+- The URL is stored as the planner's URL parser writes it (`HTTPS://Example.com/a` is
+  `https://example.com/a`), and two spellings of one address are the same URL; `link rm --url`
+  finds it by either. A URL the item does not have removes nothing and answers `ok`.
+
+**What a skill may do.**
+
+- **Read** them wherever an answer holds one item: `value.links[]` and `value.web_links[]` of
+  `story show`, `initiative show` and `epic show`, `value.story.links[]` and
+  `value.story.web_links[]` of `story context`, each empty when there are none. An answer that
+  lists items (`story ls`, `epic ls`, `initiative ls`, `search`) carries neither list, and nor do
+  the epic and the initiative inside `story context`: there, absent means not loaded, never
+  "none". Read those with `reeve link ls <KEY> --json`. Take them as context (what the work comes
+  after, what it duplicates, which pages describe it); whether a story may start is `readiness`
+  alone.
+- **Add or remove** one when the user names it, or confirms one you proposed (*Confirmation*).
+  Several at once go in a plan (*Plans*), as several creates do.
+
 ## Wording the planner's answers
 
 Readiness is read, never computed (kb/ADR-0003 R1). A required decision with `closed` set is
@@ -659,6 +773,12 @@ add "· via <epic.key>". Add "to <to>" when the recipient matters to the answer.
 promise, give the year ("ABC-12 is promised by 20 Nov 2026 to Acme"): the date stays on a done
 story long after the day. An epic's promise reads "promised by 20 Nov", with the period by `due`,
 or "past 20 Nov" when `past`.
+
+An item link, from `links[]`, reads as its `label`, then the other item's key and title: "follows
+GRA-31 Retry failed matches", "is followed by GRA-32 Show match history", "relates to GRA-12 Faster
+mentor matching". Use the label as given, and never word an item link as blocking ("blocked by",
+"depends on", "waits for"): only a `blocked_by` reason says that a story is held back. A web link
+reads as its title and its URL, the URL whole.
 
 A sprint's promises, from `sprint show`'s `promises[]`, go under "Promises due <range>": the day
 after `promises_after` to the sprint's `ends_on` ("Promises due 11–24 Nov"; "Promises due up to

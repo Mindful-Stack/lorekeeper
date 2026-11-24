@@ -209,14 +209,28 @@ Answers use the planner's wire shapes:
   `sprint show` lists the sprint's promises (`promises[]`, the stories whose date is after
   `promises_after`, the previous sprint's planned end, and up to the sprint's own; GRA-41 in the
   active sprint, none in the closed first sprint or the draft) and `sprint ls` leaves the active
-  sprint's list empty, as the planner does.
+  sprint's list empty, as the planner does;
+- item links and web links (kb/ADR-0031): nothing seeded has one; `link add|rm <KEY>
+  <follows|duplicates|relates-to> <OTHER>`, `link add <KEY> --url <URL> --title <TITLE>`, `link rm
+  <KEY> --url <URL>` and `link ls <KEY>` persist in the state file and answer the item's lists as
+  the planner does (an item link read from each side, a `relates_to` stored once; a web link with
+  its trimmed title and the URL in the parser's form, once per item); a blocking word or another
+  unknown name where the name goes is a usage error, as are an incomplete form and the two forms
+  together; a link from an item to itself and a title or URL outside the planner's rules are
+  `validation` errors with the planner's messages; an answer that holds one item (`story show`,
+  the story in `story context`, `initiative show`, `epic show`) carries `links` and `web_links`
+  and a list carries neither; readiness never reads them; a plan takes `links` and `web_links`
+  (at most 500 each, a blocking word as a `type` refused before it is sent) and answers each with
+  `created`; `story block|unblock <KEY> --by <OTHER>` writes the blocker that readiness does read.
 
 **The real-planner smoke.** `scripts/__tests__/reeve-real-server.test.js` keeps the fake honest.
 `test/fixtures/reeve-real/commands.json` holds a seed and one entry per row of the reference's
 *Commands* table: the argv (placeholders `{{name.field}}`), the envelope paths the skills read
 (`x[]` is every element), each path's JSON types, the arrays that may be empty and, for `decision
 link`, the planner's expected `check.kind`, and a list of `refusals`: a person's commands (each
-promise form) with the reason the run's agent token must be refused. Seven tests always run: every
+promise form) with the reason the run's agent token must be refused. The seed's last steps add
+item links and web links to the seeded story, its initiative and the screenshot story, so the
+entries that read `links` and `web_links` check their elements. Seven tests always run: every
 row has exactly one entry, every command form of the row (`story ls --untriaged`, `comment add
 --story`) exactly one run, and every field path in the row's Read column a read at or below it, or a
 reasoned `unread` waiver (a command or a Read added to the reference without a matching entry

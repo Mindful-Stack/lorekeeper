@@ -797,3 +797,174 @@ test('a duplicate comment takes triage-dup:<KEY>:<DUP> and replays by it', () =>
   assert.equal(add().value.length, 1, 'the same key adds nothing');
   assert.equal(run(['comment', 'add', '--item', 'GRA-42', '--body', 'B', '--idempotency-key', 'triage-dup:GRA-48', '--json']).envelope.code, 'validation');
 });
+
+// Item links and web links (kb/ADR-0031). `linkSession` shares one state file between calls, as one run does,
+// and passes standard input (a plan).
+function linkSession() {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  return (args, input) => {
+    const r = spawnSync(fake, args, { encoding: 'utf8', input, env: { ...process.env, REEVE_FAKE_LOG: log } });
+    return { status: r.status, envelope: r.stdout.trim().startsWith('{') ? JSON.parse(r.stdout) : null, stdout: r.stdout, stderr: r.stderr };
+  };
+}
+test('link add, ls and rm: an item link is read from each side, stored once, and removed as it was added', () => {
+  const call = linkSession();
+  const added = call(['link', 'add', 'GRA-32', 'follows', 'GRA-31', '--json']);
+  assert.equal(added.status, 0);
+  assert.deepEqual(added.envelope.value, [{ type: 'follows', direction: 'out', label: 'follows', item: { key: 'GRA-31', level: 'story', title: 'Retry failed matches' } }]);
+  assert.deepEqual(call(['link', 'add', 'GRA-32', 'follows', 'GRA-31', '--json']).envelope.value, added.envelope.value, 'a repeat changes nothing');
+  // relates-to is one link whichever end adds it, `out` from both sides, and an item of any level takes one
+  call(['link', 'add', 'GRA-31', 'relates-to', 'GRA-12', '--json']);
+  assert.deepEqual(call(['link', 'add', 'GRA-12', 'relates-to', 'GRA-31', '--json']).envelope.value, [{ type: 'relates_to', direction: 'out', label: 'relates to', item: { key: 'GRA-31', level: 'story', title: 'Retry failed matches' } }]);
+  call(['link', 'add', 'GRA-46', 'duplicates', 'GRA-31', '--json']);
+  const listed = call(['link', 'ls', 'GRA-31', '--json']).envelope.value;
+  assert.deepEqual(listed.links.map((l) => [l.type, l.direction, l.label, l.item.key, l.item.level]), [
+    ['follows', 'in', 'is followed by', 'GRA-32', 'story'], ['duplicates', 'in', 'is duplicated by', 'GRA-46', 'story'], ['relates_to', 'out', 'relates to', 'GRA-12', 'initiative']]);
+  assert.deepEqual(listed.web_links, []);
+  // named the wrong way round, a removal answers ok and removes nothing; named as it was added, it removes the link
+  assert.equal(call(['link', 'rm', 'GRA-31', 'follows', 'GRA-32', '--json']).envelope.value.length, 3);
+  assert.deepEqual(call(['link', 'rm', 'GRA-32', 'follows', 'GRA-31', '--json']).envelope, { outcome: 'ok', value: [] });
+  assert.deepEqual(call(['link', 'rm', 'GRA-32', 'follows', 'GRA-31', '--json']).envelope, { outcome: 'ok', value: [] }, 'removing what is not there changes nothing');
+  assert.deepEqual(call(['link', 'ls', 'GRA-31', '--json']).envelope.value.links.map((l) => l.label), ['is duplicated by', 'relates to']);
+});
+test('an item link holds nothing back: follows leaves readiness and blocked_by alone; story block is the blocker', () => {
+  const call = linkSession();
+  const before = call(['story', 'context', 'GRA-31', '--json']).envelope.value.readiness;
+  call(['link', 'add', 'GRA-31', 'follows', 'GRA-32', '--json']);
+  const linked = call(['story', 'context', 'GRA-31', '--json']).envelope.value;
+  assert.deepEqual(linked.readiness, before);
+  assert.deepEqual([linked.story.blocked_by, linked.blockers, linked.story.links.map((l) => l.label)], [[], [], ['follows']]);
+  assert.deepEqual(call(['story', 'block', 'GRA-31', '--by', 'GRA-32', '--json']).envelope, { outcome: 'ok', value: {} });
+  assert.deepEqual(call(['story', 'block', 'GRA-31', '--by', 'GRA-32', '--json']).envelope, { outcome: 'ok', value: {} }, 'a repeat changes nothing');
+  const blocked = call(['story', 'context', 'GRA-31', '--json']).envelope.value;
+  assert.deepEqual(blocked.story.blocked_by, ['GRA-32']);
+  assert.ok(blocked.readiness.reasons.some((r) => r.reason === 'blocked_by' && r.story === 'GRA-32'));
+  call(['story', 'unblock', 'GRA-31', '--by', 'GRA-32', '--json']);
+  assert.deepEqual(call(['story', 'show', 'GRA-31', '--json']).envelope.value.blocked_by, []);
+  // a blocker is between two stories
+  assert.equal(call(['story', 'block', 'GRA-20', '--by', 'GRA-31', '--json']).envelope.code, 'not_found');
+  assert.equal(call(['story', 'block', 'GRA-31', '--json']).stdout, '', '--by is required');
+});
+test('a blocking word or another unknown name where the item link name goes is a usage error; an incomplete form is too', () => {
+  for (const word of ['blocks', 'blocked-by', 'blocked_by', 'depends-on', 'depends_on']) {
+    for (const verb of ['add', 'rm']) {
+      const r = run(['link', verb, 'GRA-32', word, 'GRA-31', '--json']);
+      assert.deepEqual([r.status, r.stdout, r.log], [1, '', ''], `${verb} ${word}`);
+      assert.match(r.stderr, /blocking is not an item link: use `reeve story block <KEY> --by <OTHER>`/);
+    }
+  }
+  const underscore = run(['link', 'add', 'GRA-32', 'relates_to', 'GRA-31', '--json']);
+  assert.deepEqual([underscore.status, underscore.stdout], [1, '']);
+  assert.match(underscore.stderr, /`relates_to` is not an item link name: use follows, duplicates or relates-to/);
+  for (const args of [
+    ['link', 'add', 'GRA-32', '--json'], ['link', 'add', 'GRA-32', 'follows', '--json'], ['link', 'rm', 'GRA-32', '--json'],
+    ['link', 'add', 'GRA-32', '--url', 'https://example.com/a', '--json'], ['link', 'add', 'GRA-32', '--title', 'A', '--json'],
+    ['link', 'add', 'GRA-32', 'follows', 'GRA-31', '--url', 'https://example.com/a', '--title', 'A', '--json'],
+    ['link', 'rm', 'GRA-32', '--url', 'https://example.com/a', '--title', 'A', '--json'], ['link', 'ls', '--json'],
+  ]) {
+    const r = run(args);
+    assert.deepEqual([r.status, r.stdout, r.log], [1, '', ''], args.join(' '));
+  }
+  // the planner's own answers: an item cannot link to itself, and a key that names nothing is not_found
+  assert.deepEqual(run(['link', 'add', 'GRA-32', 'follows', 'GRA-32', '--json']).envelope, { outcome: 'error', code: 'validation', message: 'an item cannot have an item link to itself' });
+  for (const args of [['link', 'add', 'GRA-32', 'follows', 'GRA-999', '--json'], ['link', 'add', 'GRA-999', 'follows', 'GRA-32', '--json'], ['link', 'ls', 'GRA-999', '--json']]) {
+    assert.equal(run(args).envelope.code, 'not_found', args.join(' '));
+  }
+});
+test('web links: a titled URL on an item, stored trimmed and in the parser\'s form, once per item, removed by its URL', () => {
+  const call = linkSession();
+  const first = call(['link', 'add', 'GRA-20', '--url', 'HTTPS://Example.com/wiki/Scenario', '--title', '  Scenario page ', '--json']);
+  assert.deepEqual(first.envelope, { outcome: 'ok', value: [{ id: 1, title: 'Scenario page', url: 'https://example.com/wiki/Scenario' }] });
+  assert.deepEqual(call(['link', 'add', 'GRA-20', '--url', 'https://example.com/wiki/Scenario', '--title', 'Scenario page', '--json']).envelope, first.envelope, 'a repeat changes nothing');
+  const other = call(['link', 'add', 'GRA-20', '--url', 'https://example.com/wiki/Scenario', '--title', 'Another title', '--json']);
+  assert.deepEqual([other.status, other.envelope.code], [1, 'validation']);
+  assert.equal(other.envelope.message, 'this item already has a web link to that URL, titled "Scenario page": remove it first, then add it with the new title');
+  assert.deepEqual(call(['link', 'add', 'GRA-20', '--url', 'http://example.com/board', '--title', 'Board', '--json']).envelope.value.map((w) => [w.id, w.title, w.url]),
+    [[1, 'Scenario page', 'https://example.com/wiki/Scenario'], [2, 'Board', 'http://example.com/board']]);
+  // another item may have the same URL, under any title
+  assert.equal(call(['link', 'add', 'GRA-31', '--url', 'https://example.com/wiki/Scenario', '--title', 'Another title', '--json']).status, 0);
+  for (const [url, title, message] of [
+    ['ftp://example.com/a', 'A', /URL must start with http:\/\/ or https:\/\//], ['https://user:secret@example.com/a', 'A', /no user name or password/],
+    ['example.com/a', 'A', /URL must start with/], [`https://example.com/${'a'.repeat(1000)}`, 'A', /at most 1000 characters/],
+    ['https://example.com/a', '   ', /title must be 1 to 200 characters on one line/], ['https://example.com/a', 'a'.repeat(201), /title must be 1 to 200/],
+    ['https://example.com/a', 'two\nlines', /on one line/], ['https://example.com/a', 'a\ttab', /no tab or other control character/],
+  ]) {
+    const r = call(['link', 'add', 'GRA-20', '--url', url, '--title', title, '--json']);
+    assert.deepEqual([r.status, r.envelope.code], [1, 'validation'], `${url} ${JSON.stringify(title)}`);
+    assert.match(r.envelope.message, message);
+  }
+  assert.equal(call(['link', 'add', 'GRA-20', '--url', 'https://example.com/a', '--title', 'å'.repeat(200), '--json']).status, 0, '200 characters, not bytes');
+  // one item's answers carry both lists; a list of items carries neither
+  const shown = call(['epic', 'show', 'GRA-20', '--json']).envelope.value;
+  assert.deepEqual([shown.links, shown.web_links.length], [[], 3]);
+  assert.ok(call(['epic', 'ls', '--json']).envelope.value.every((e) => !('links' in e) && !('web_links' in e)));
+  assert.ok(call(['story', 'ls', '--epic', 'GRA-20', '--json']).envelope.value.every((x) => !('links' in x.story) && !('web_links' in x.story)));
+  const ctx = call(['story', 'context', 'GRA-31', '--json']).envelope.value;
+  assert.deepEqual([ctx.story.links, ctx.story.web_links.length, 'links' in ctx.epic, 'web_links' in ctx.epic, 'links' in ctx.initiative], [[], 1, false, false, false]);
+  assert.deepEqual(Object.keys(call(['initiative', 'show', 'GRA-12', '--json']).envelope.value).slice(-2), ['links', 'web_links']);
+  // removed by the URL in either spelling; a URL the item does not have removes nothing
+  assert.equal(call(['link', 'rm', 'GRA-20', '--url', 'https://example.com/nothing', '--json']).envelope.value.length, 3);
+  assert.deepEqual(call(['link', 'rm', 'GRA-20', '--url', 'https://EXAMPLE.com/wiki/Scenario', '--json']).envelope.value.map((w) => w.id), [2, 4]); // ids are the planner's, not the item's: 3 is GRA-31's
+  assert.deepEqual(call(['link', 'ls', 'GRA-20', '--json']).envelope.value.web_links.map((w) => w.title), ['Board', 'å'.repeat(200)]);
+});
+test('a plan takes links and web_links: any level by name or key, created once, a relates_to stored lower key first', () => {
+  const call = linkSession();
+  const plan = {
+    id: 'refining-epic:GRA-20:0a1b2c3d:1',
+    stories: [{ name: 'step-1', title: 'Step one', epic: 'GRA-20', criteria: ['a'] }, { name: 'step-2', title: 'Step two', epic: 'GRA-20', criteria: ['b'] }],
+    links: [{ from: 'step-2', type: 'follows', to: 'step-1' }, { from: 'step-1', type: 'relates_to', to: 'GRA-12' }, { from: 'GRA-32', type: 'relates_to', to: 'GRA-31' }],
+    web_links: [{ on: 'step-1', title: ' Scenario page ', url: 'https://example.com/wiki/scenario' }, { on: 'GRA-20', title: 'Board', url: 'https://example.com/board' }],
+  };
+  const first = call(['apply', '-', '--json'], JSON.stringify(plan));
+  assert.equal(first.status, 0, first.stdout);
+  const [s1, s2] = first.envelope.value.items.map((i) => i.key);
+  assert.deepEqual(first.envelope.value.links, [
+    { from: s2, from_level: 'story', type: 'follows', to: s1, to_level: 'story', created: true },
+    { from: s1, from_level: 'story', type: 'relates_to', to: 'GRA-12', to_level: 'initiative', created: true },
+    { from: 'GRA-31', from_level: 'story', type: 'relates_to', to: 'GRA-32', to_level: 'story', created: true }, // the lower key first, whichever end the plan named
+  ]);
+  assert.deepEqual(first.envelope.value.web_links, [
+    { on: s1, level: 'story', id: 1, title: 'Scenario page', url: 'https://example.com/wiki/scenario', created: true },
+    { on: 'GRA-20', level: 'epic', id: 2, title: 'Board', url: 'https://example.com/board', created: true },
+  ]);
+  // follows is no blocker: the plan listed none, so the story has none
+  assert.deepEqual(first.envelope.value.blocks, []);
+  const shown = call(['story', 'show', s2, '--json']).envelope.value;
+  assert.deepEqual([shown.blocked_by, shown.links.map((l) => `${l.label} ${l.item.key}`)], [[], [`follows ${s1}`]]);
+  const again = call(['apply', '-', '--json'], JSON.stringify(plan)).envelope.value;
+  assert.ok([...again.items, ...again.links, ...again.web_links].every((x) => x.created === false));
+  assert.deepEqual(again.web_links.map((w) => w.id), [1, 2]);
+});
+test('a plan with a bad link is refused whole; a blocking word as a type never reaches the planner', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'reeve-fake-')), 'log');
+  const apply = (plan) => { const r = spawnSync(fake, ['apply', '-', '--json'], { encoding: 'utf8', input: JSON.stringify(plan), env: { ...process.env, REEVE_FAKE_LOG: log } }); return { status: r.status, ...JSON.parse(r.stdout) }; };
+  const logged = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '');
+  for (const type of ['blocks', 'blocked_by', 'depends_on']) {
+    const r = apply({ id: 'p', links: [{ from: 'GRA-31', type: 'follows', to: 'GRA-32' }, { from: 'GRA-32', type, to: 'GRA-31' }] });
+    assert.deepEqual([r.status, r.code], [1, 'internal'], type);
+    assert.match(r.message, /blocking is not an item link: list it under `blocks` as `\{story, blocked_by\}` \(stories only; otherwise leave it out\)/);
+  }
+  assert.match(apply({ id: 'p', links: [{ from: 'GRA-31', type: 'relates-to', to: 'GRA-32' }] }).message, /links\[0\]\.type: unknown variant `relates-to`, expected one of `follows`, `duplicates`, `relates_to`/);
+  assert.match(apply({ id: 'p', links: [{ from: 'GRA-31', type: 'follows', to: 'GRA-32', direction: 'in' }] }).message, /unknown field `direction`/);
+  assert.match(apply({ id: 'p', web_links: [{ on: 'GRA-31', title: 'T', url: 'https://example.com/', note: 'x' }] }).message, /unknown field `note`/);
+  assert.equal(logged(), '', 'none of them was sent');
+  const bad = apply({
+    id: 'p',
+    stories: [{ name: 'a', title: 'A' }],
+    links: [{ from: 'a', type: 'follows', to: 'GRA-999' }, { from: 'GRA-31', type: 'duplicates', to: 'GRA-31' }, { from: 'a', type: 'relates_to', to: 'a' }],
+    web_links: [{ on: 'a', title: 'One', url: 'https://example.com/x' }, { on: 'a', title: 'Two', url: 'https://EXAMPLE.com/x' }, { on: 'GRA-31', title: '', url: 'ftp://example.com/' }, { on: 'nobody', title: 'T', url: 'https://example.com/' }],
+  });
+  assert.deepEqual([bad.status, bad.code], [1, 'validation']);
+  for (const want of [/item link "a" follows "GRA-999": to "GRA-999" is neither a name in the plan nor an existing item/, /item link "GRA-31" duplicates "GRA-31": an item cannot have an item link to itself/,
+    /item link "a" relates_to "a": an item cannot have an item link to itself/, /web link "Two" on "a": the plan gives "a" that URL under two titles \("One" and "Two"\); an item has a URL once/,
+    /web link "" on "GRA-31": a web link's title must be/, /web link "" on "GRA-31": a web link's URL must start with/, /web link "T" on "nobody": on "nobody" is neither a name in the plan nor an existing item/]) assert.match(bad.message, want);
+  const many = (n, make) => Array.from({ length: n }, (_, i) => make(i));
+  const big = apply({ id: 'p', links: many(501, () => ({ from: 'GRA-31', type: 'relates_to', to: 'GRA-32' })), web_links: many(501, (i) => ({ on: 'GRA-31', title: `T${i}`, url: `https://example.com/${i}` })) });
+  assert.equal(big.message, 'a plan holds at most 500 item links; this one has 501; a plan holds at most 500 web links; this one has 501');
+  // nothing was written by any of them
+  const r = spawnSync(fake, ['link', 'ls', 'GRA-31', '--json'], { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: log } });
+  assert.deepEqual(JSON.parse(r.stdout).value, { links: [], web_links: [] });
+  // a URL the item already has under another title is a problem of the plan too
+  spawnSync(fake, ['link', 'add', 'GRA-31', '--url', 'https://example.com/b', '--title', 'B', '--json'], { env: { ...process.env, REEVE_FAKE_LOG: log } });
+  assert.match(apply({ id: 'p', web_links: [{ on: 'GRA-31', title: 'Other', url: 'https://example.com/b' }] }).message, /web link "Other" on "GRA-31": this item already has a web link to that URL, titled "B": remove it first/);
+});

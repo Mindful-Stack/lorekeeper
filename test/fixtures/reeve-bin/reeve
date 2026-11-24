@@ -31,6 +31,14 @@
 // `interactive_only`, exit 2, after clap's checks (one of --on, --to, --clear; --clear alone; --on a shortcut or a date).
 // Whole-queue triage (GRA-642): REEVE_FAKE_TRIAGE=1 adds GRA-48 to the untriaged queue, a duplicate of GRA-46.
 // A duplicate comment's key is `triage-dup:<KEY>:<DUP>`, the web triage page's, beside the skills' <skill>:<KEY>:<run-id>:<n>.
+// Item links and web links (kb/ADR-0031): `link add|rm <KEY> <follows|duplicates|relates-to> <OTHER>`, `link add <KEY>
+// --url <URL> --title <TITLE>`, `link rm <KEY> --url <URL>` and `link ls <KEY>` persist in the state file, with clap's
+// checks (a blocking word or another unknown name is a usage error) and the planner's rules (no link to itself; a title
+// of 1 to 200 characters on one line; an http or https URL of at most 1 000 characters without user name or password;
+// a URL once per item). Nothing seeded has one. An answer holding one item (`story show`, `story context`'s story,
+// `initiative show`, `epic show`) carries `links` and `web_links`; lists do not. Readiness never reads them. A plan
+// takes `links` and `web_links` (at most 500 each) and answers them with `created`. `story block|unblock <KEY> --by
+// <OTHER>` writes the blocker, the relation readiness does read.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -86,6 +94,11 @@ const SPEC = {
   'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'description-file', 'owner', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
   'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
   'story promise': PROMISE,
+  'story block': { pos: 1, val: ['by'], req: ['by'] },
+  'story unblock': { pos: 1, val: ['by'], req: ['by'] },
+  'link add': { pos: 1, max: 3, val: ['url', 'title'] }, // <KEY> [follows|duplicates|relates-to] [OTHER], or --url with --title
+  'link rm': { pos: 1, max: 3, val: ['url'] },
+  'link ls': { pos: 1 },
   'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank', 'owner', 'external-ref', 'description', 'description-file'], bool: ['no-epic', 'no-owner'], rep: ['criterion', 'add-label', 'remove-label'], req: ['version'] },
   'initiative show': { pos: 1 },
   'initiative ls': { pos: 0 },
@@ -157,6 +170,18 @@ if (spec === PROMISE) {
     if (!calendar(f.on)) usage(`invalid value '${f.on}' for '${ON}': \`${f.on}\` is not a calendar date`);
   }
 }
+// clap's rules on `link add` and `link rm` (kb/ADR-0031): the name is parsed first (a blocking word is answered with
+// where blocking lives, R2), then each form must be complete and the two exclude each other.
+const LINK_NAMES = { follows: 'follows', duplicates: 'duplicates', 'relates-to': 'relates_to' }; // command line -> wire
+const BLOCKING_WORDS = ['blocks', 'blocked-by', 'blocked_by', 'depends-on', 'depends_on'];
+if (cmd === 'link add' || cmd === 'link rm') {
+  const NAME = '[follows|duplicates|relates-to]';
+  if (pos.length > 1 && BLOCKING_WORDS.includes(pos[1])) usage(`invalid value '${pos[1]}' for '${NAME}': blocking is not an item link: use \`reeve story block <KEY> --by <OTHER>\``);
+  if (pos.length > 1 && !(pos[1] in LINK_NAMES)) usage(`invalid value '${pos[1]}' for '${NAME}': \`${pos[1]}\` is not an item link name: use follows, duplicates or relates-to`);
+  if ('url' in f && pos.length > 1) usage(`the argument '${NAME}' cannot be used with '--url <URL>'`);
+  if (!('url' in f) && pos.length < 3) usage(`the following required arguments were not provided:\n  <${pos.length < 2 ? 'follows|duplicates|relates-to' : 'OTHER'}>`);
+  if (cmd === 'link add' && ('url' in f) !== ('title' in f)) usage(`the following required arguments were not provided:\n  --${'url' in f ? 'title <TITLE>' : 'url <URL>'}`);
+}
 if (f.sort !== undefined && !['rank', 'relevance'].includes(f.sort)) usage(`invalid value '${f.sort}' for '--sort <SORT>'\n  [possible values: rank, relevance]`);
 if (f.version && !/^\d+$/.test(f.version)) usage(`invalid value '${f.version}' for '--version'`);
 if (f.due && !/^\d{4}-\d{2}-\d{2}$/.test(f.due)) usage(`invalid value '${f.due}' for '--due'`);
@@ -189,12 +214,14 @@ const readText = (file) => {
 for (const name of ['brief', 'description']) if (f[`${name}-file`] !== undefined) f[name] = readText(f[`${name}-file`]);
 // The CLI parses the plan into the wire type before sending it: a misspelt field is its own error, never sent.
 const PLAN_FIELDS = {
-  '': ['id', 'initiatives', 'epics', 'stories', 'decisions', 'blocks'],
+  '': ['id', 'initiatives', 'epics', 'stories', 'decisions', 'blocks', 'links', 'web_links'],
   initiatives: ['name', 'title', 'horizon', 'brief', 'target_month', 'owner', 'external_ref'],
   epics: ['name', 'title', 'initiative', 'brief', 'external_ref'],
   stories: ['name', 'title', 'kind', 'epic', 'description', 'criteria', 'labels', 'external_ref'],
   decisions: ['name', 'on', 'title', 'decider', 'due', 'reversibility'],
   blocks: ['story', 'blocked_by'],
+  links: ['from', 'type', 'to'],
+  web_links: ['on', 'title', 'url'],
 };
 let plan = null;
 if (cmd === 'apply') {
@@ -205,6 +232,10 @@ if (cmd === 'apply') {
   if (typeof plan.id !== 'string') error('internal', `reading the plan in ${pos[0]}: missing field \`id\``);
   for (const list of Object.keys(PLAN_FIELDS).filter(Boolean)) (plan[list] ||= []).forEach((x, i) => unknown(x, list, `${list}[${i}]: `));
   plan.decisions.forEach((d, i) => { if (d.reversibility != null && !['one_way', 'two_way'].includes(d.reversibility)) error('internal', `reading the plan in ${pos[0]}: decisions[${i}].reversibility: unknown variant \`${d.reversibility}\`, expected \`one_way\` or \`two_way\``); });
+  // A link's `type` is the wire name, a closed enum: a blocking word gets the CLI's pointer at `blocks` (kb/ADR-0031
+  // R2), any other unknown name the parser's own message. Neither plan is sent.
+  if (plan.links.some((l) => BLOCKING_WORDS.includes(l.type))) error('internal', `reading the plan in ${pos[0]}: blocking is not an item link: list it under \`blocks\` as \`{story, blocked_by}\` (stories only; otherwise leave it out)`);
+  plan.links.forEach((l, i) => { if (!Object.values(LINK_NAMES).includes(l.type)) error('internal', `reading the plan in ${pos[0]}: links[${i}].type: unknown variant \`${l.type}\`, expected one of \`follows\`, \`duplicates\`, \`relates_to\``); });
   logged = () => `${argv.join(' ')} ${JSON.stringify(plan)}`;
 }
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
@@ -356,6 +387,57 @@ const readinessOf = (s) => {
 
 // The level of the item a key names (a decision's on_type).
 const typeOfKey = (key) => { const x = itemsOf()[key] || initiatives[key] || epics[key] || stories[key]; return x ? kindOf(x) : error('not_found', `no item ${key}`); };
+// Item links and web links (kb/ADR-0031). An item link is stored once as { from, type, to }: `from` follows, duplicates
+// or relates to `to`, and a relates_to has the lower key in `from`, whichever end named it. Web links are kept per
+// item, oldest first, with ids of their own. `st` is the state to read: the run's as read at the start, or the one a
+// write just returned.
+const anyItem = (ref) => {
+  const known = { ...initiatives, ...epics, ...stories, ...itemsOf() };
+  return known[ref] || Object.values(known).find((x) => x.external_ref === ref) || error('not_found', 'not found');
+};
+const LINK_LABELS = { follows: ['follows', 'is followed by'], duplicates: ['duplicates', 'is duplicated by'], relates_to: ['relates to', 'relates to'] }; // read from `from`, read from `to`
+const linksOf = (key, st = state) => (st.links || []).filter((l) => l.from === key || l.to === key)
+  .sort((a, b) => Object.keys(LINK_LABELS).indexOf(a.type) - Object.keys(LINK_LABELS).indexOf(b.type))
+  .map((l) => {
+    const out = l.from === key || l.type === 'relates_to';
+    const other = anyItem(l.from === key ? l.to : l.from);
+    return { type: l.type, direction: out ? 'out' : 'in', label: LINK_LABELS[l.type][out ? 0 : 1], item: { key: other.key, level: kindOf(other), title: other.title } };
+  });
+const webLinksOf = (key, st = state) => (st.web || {})[key] || [];
+// An answer that holds one item carries both lists, possibly empty; an answer that lists items carries neither.
+const withLinks = (x) => ({ ...x, links: linksOf(x.key), web_links: webLinksOf(x.key) });
+const stored = (from, type, to) => (type === 'relates_to' && to < from ? [to, from] : [from, to]);
+// Both adds change the state they are given and never exit (the caller holds the state's lock).
+const addLink = (st, a, type, b) => {
+  const [from, to] = stored(a, type, b);
+  const created = !(st.links ||= []).some((l) => l.from === from && l.type === type && l.to === to);
+  if (created) st.links.push({ from, type, to });
+  return { from, type, to, created };
+};
+// A URL the item has under the same title is a repeat; under another title the add is refused (`other`: that title).
+const addWeb = (st, key, title, url) => {
+  const list = ((st.web ||= {})[key] ||= []);
+  const had = list.find((w) => w.url === url);
+  if (had) return had.title === title ? { link: had, created: false, list } : { other: had.title };
+  const link = { id: (st.next_web = (st.next_web || 0) + 1), title, url };
+  list.push(link);
+  return { link, created: true, list };
+};
+const WEB_TITLE = "a web link's title must be 1 to 200 characters on one line, with no tab or other control character";
+const WEB_URL = "a web link's URL must start with http:// or https://, be at most 1000 characters and hold no user name or password";
+const webSameUrl = (titled) => `this item already has a web link to that URL, titled ${JSON.stringify(titled)}: remove it first, then add it with the new title`;
+const SELF_LINK = 'an item cannot have an item link to itself';
+// The title as stored (trimmed), or null: 1 to 200 characters, none a control character or a line or paragraph separator.
+const webTitle = (raw) => { const t = String(raw ?? '').trim(); const n = [...t].length; return n >= 1 && n <= 200 && !/[\p{Cc}\u2028\u2029]/u.test(t) ? t : null; };
+// The URL as stored (the parser's serialisation), or null: http or https with a host, no user name or password, at
+// most 1 000 characters.
+const webUrl = (raw) => {
+  let u;
+  try { u = new URL(String(raw ?? '').trim()); } catch { return null; }
+  return ['http:', 'https:'].includes(u.protocol) && u.hostname && !u.username && !u.password && [...u.href].length <= 1000 ? u.href : null;
+};
+// A blocker is between two stories: any other item is not_found.
+const storyNamed = (ref) => { const x = find(stories, ref); return kindOf(x) === 'story' ? x : error('not_found', 'not found'); };
 // Comments made in this run, stored by idempotency key like any create, in the planner's CommentDto shape.
 const comment = (id, author, body, on) => ({ id, on_story: null, on_decision: null, on_initiative: null, on_epic: null, author, body, at: NOW, external_ref: null, ...on });
 const thread = (on) => {
@@ -547,9 +629,39 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
     const sp = activeSprint();
     const served = servedBy(s).map(({ goal: g, via }) => ({ goal: g, starts_on: sp.starts_on, ends_on: sp.ends_on, via }));
-    ok({ story: withGoals(withPromise(s)), epic: e, initiative: i, required_decisions: required, blockers: blockedByOf(s).map((k) => { const b = storyOf(k); return { key: k, title: b.title, delivery: b.delivery, owner: b.owner ?? null }; }), comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served, attachments: attachmentsOf(s) });
+    ok({ story: withLinks(withGoals(withPromise(s))), epic: e, initiative: i, required_decisions: required, blockers: blockedByOf(s).map((k) => { const b = storyOf(k); return { key: k, title: b.title, delivery: b.delivery, owner: b.owner ?? null }; }), comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served, attachments: attachmentsOf(s) });
   },
-  'story show': () => ok(withGoals(withPromise(find(stories, p0)))),
+  'story show': () => ok(withLinks(withGoals(withPromise(find(stories, p0))))),
+  // POST and DELETE /stories/<key>/blocks: the answer is empty; a block that is there, or one that is not, changes nothing.
+  'story block': () => { const s = storyNamed(p0); const b = storyNamed(f.by); if (!s.blocked_by.includes(b.key)) save({ ...s, blocked_by: [...s.blocked_by, b.key] }); ok({}); },
+  'story unblock': () => { const s = storyNamed(p0); const b = storyNamed(f.by); if (s.blocked_by.includes(b.key)) save({ ...s, blocked_by: s.blocked_by.filter((k) => k !== b.key) }); ok({}); },
+  // GET /items/<key>/links: both lists, the item links read from this item's side.
+  'link ls': () => { const x = anyItem(p0); ok({ links: linksOf(x.key), web_links: webLinksOf(x.key) }); },
+  // POST /items/<key>/links and /web-links: the answer is the item's list after the add; a repeat changes nothing.
+  'link add': () => {
+    const x = anyItem(p0);
+    if ('url' in f) {
+      const title = webTitle(f.title) ?? error('validation', WEB_TITLE);
+      const url = webUrl(f.url) ?? error('validation', WEB_URL);
+      const r = withState((st) => addWeb(st, x.key, title, url));
+      ok(r.other === undefined ? r.list : error('validation', webSameUrl(r.other)));
+    }
+    const o = anyItem(pos[2]);
+    if (o.key === x.key) error('validation', SELF_LINK);
+    ok(linksOf(x.key, withState((st) => { addLink(st, x.key, LINK_NAMES[pos[1]], o.key); return st; })));
+  },
+  // DELETE: the link named as it was added (the reverse order names another link), or the web link with that URL in
+  // either spelling; removing what is not there changes nothing. The answer is the list the item has left.
+  'link rm': () => {
+    const x = anyItem(p0);
+    if ('url' in f) {
+      const url = webUrl(f.url) || f.url.trim();
+      ok(withState((st) => ((st.web ||= {})[x.key] = webLinksOf(x.key, st).filter((w) => w.url !== url))));
+    }
+    const type = LINK_NAMES[pos[1]];
+    const [from, to] = stored(x.key, type, anyItem(pos[2]).key);
+    ok(linksOf(x.key, withState((st) => { st.links = (st.links || []).filter((l) => !(l.from === from && l.type === type && l.to === to)); return st; })));
+  },
   'story ls': () => ok(page(all(stories, 'story').map(withPromise).filter((s) => (f.untriaged ? !s.epic && s.delivery !== 'done' : !f.epic || s.epic === f.epic))
     .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery.replace('-', '_')) && (!f.label || s.labels.includes(f.label)))
     .filter((s) => (f.text === undefined || matchesText(s, f.text)) && (!f.kind || s.kind === f.kind) && (f.initiative === undefined || epicsUnder(f.initiative).includes(s.epic))
@@ -584,13 +696,13 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
   'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic, owner: f['no-owner'] ? null : f.owner ?? s.owner, external_ref: refOf(s), description: f.description ?? s.description,
     criteria: f.criterion ? f.criterion.map((text, i) => ({ text, done: !!(s.criteria[i] && s.criteria[i].text === text && s.criteria[i].done) })) : s.criteria,
     labels: [...new Set([...s.labels, ...(f['add-label'] || [])])].filter((l) => !(f['remove-label'] || []).includes(l)) })); },
-  'initiative show': () => ok(find(initiatives, p0)),
+  'initiative show': () => ok(withLinks(find(initiatives, p0))),
   'initiative findings': () => { const i = find(initiatives, p0); const own = all(epics, 'epic').filter((e) => e.initiative === i.key).map((e) => e.key); ok(findingsOf(i, [], all(stories, 'story').filter((x) => own.includes(x.epic)).length)); },
   'initiative ls': () => ok(all(initiatives, 'initiative')),
   'initiative create': () => ok(mint((id) => initiative(`GRA-${id}`, f.title, { brief: f.brief || '', horizon: f.horizon, owner: f.owner || null, target_month: f['target-month'] || null, external_ref: f['external-ref'] || null }))),
   'initiative edit': () => { const i = find(initiatives, p0); ok(save({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon, owner: f['no-owner'] ? null : f.owner ?? i.owner, target_month: f['no-target-month'] ? null : f['target-month'] ?? i.target_month, external_ref: refOf(i) })); },
   'initiative discovery': () => ok(save({ ...bump(find(initiatives, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
-  'epic show': () => ok(find(epics, p0)),
+  'epic show': () => ok(withLinks(find(epics, p0))),
   'epic findings': () => { const e = find(epics, p0); ok(findingsOf(e, [e.initiative], all(stories, 'story').filter((x) => x.epic === e.key).length)); },
   'epic ls': () => ok(all(epics, 'epic').filter((e) => !f.initiative || e.initiative === f.initiative)),
   'epic create': () => ok(mint((id) => epic(`GRA-${id}`, f.title, { brief: f.brief || '', initiative: f.initiative || null, external_ref: f['external-ref'] || null }))),
@@ -714,6 +826,31 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
       check(b.story, 'story', `${at}: story ${JSON.stringify(b.story)}`);
       check(b.blocked_by, 'story', `${at}: story ${JSON.stringify(b.blocked_by)}`);
     }
+    // Item links and web links (kb/ADR-0031): at most 500 of each; each end an item of any level; no link from an item
+    // to itself; a web link's title and URL under the planner's rules, and a URL once per item, in the plan and stored.
+    if (plan.links.length > 500) errors.push(`a plan holds at most 500 item links; this one has ${plan.links.length}`);
+    if (plan.web_links.length > 500) errors.push(`a plan holds at most 500 web links; this one has ${plan.web_links.length}`);
+    const same = (r) => existing(r, null) || r; // one item, however it is spelled: its key, else its plan name
+    for (const l of plan.links) {
+      const at = `item link ${JSON.stringify(l.from)} ${l.type} ${JSON.stringify(l.to)}`;
+      check(l.from, null, `${at}: from ${JSON.stringify(l.from)}`);
+      check(l.to, null, `${at}: to ${JSON.stringify(l.to)}`);
+      if (same(l.from) === same(l.to)) errors.push(`${at}: ${SELF_LINK}`);
+    }
+    const planned = {}; // item -> the web links the plan's earlier entries give it
+    for (const w of plan.web_links) {
+      const at = `web link ${JSON.stringify(w.title)} on ${JSON.stringify(w.on)}`;
+      check(w.on, null, `${at}: on ${JSON.stringify(w.on)}`);
+      const [title, url] = [webTitle(w.title), webUrl(w.url)];
+      if (title === null) errors.push(`${at}: ${WEB_TITLE}`);
+      if (url === null) errors.push(`${at}: ${WEB_URL}`);
+      if (title === null || url === null) continue;
+      const earlier = (planned[same(w.on)] ||= []).find((x) => x.url === url);
+      const had = webLinksOf(same(w.on)).find((x) => x.url === url);
+      if (earlier && earlier.title !== title) errors.push(`${at}: the plan gives ${JSON.stringify(w.on)} that URL under two titles (${JSON.stringify(earlier.title)} and ${JSON.stringify(title)}); an item has a URL once`);
+      else if (had && had.title !== title) errors.push(`${at}: ${webSameUrl(had.title)}`);
+      planned[same(w.on)].push({ title, url });
+    }
     if (errors.length) error('validation', errors.join('; '));
     const keys = {};
     const resolve = (r) => keys[r] || existing(r, null);
@@ -748,7 +885,18 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
       if (created) (st.items ||= {})[sk] = { ...s, blocked_by: [...s.blocked_by, bk] };
       return { story: sk, blocked_by: bk, created };
     }));
-    ok({ items, decisions, blocks });
+    // Each item link and web link is its own write, after the items exist; one that is there answers `created` false.
+    const levelIn = (st, k) => kindOf((st.items || {})[k] || initiatives[k] || epics[k] || stories[k]);
+    const links = plan.links.map((l) => withState((st) => {
+      const r = addLink(st, resolve(l.from), l.type, resolve(l.to));
+      return { from: r.from, from_level: levelIn(st, r.from), type: r.type, to: r.to, to_level: levelIn(st, r.to), created: r.created };
+    }));
+    const webLinks = plan.web_links.map((w) => withState((st) => {
+      const on = resolve(w.on);
+      const r = addWeb(st, on, webTitle(w.title), webUrl(w.url));
+      return { on, level: levelIn(st, on), id: r.link.id, title: r.link.title, url: r.link.url, created: r.created };
+    }));
+    ok({ items, decisions, blocks, links, web_links: webLinks });
   },
   // GET /search (GRA-73): title, brief or description, or external reference containing the text (case-insensitive,
   // literal), newest first, at most 50, each with the fields that matched.

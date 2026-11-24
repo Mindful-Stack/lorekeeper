@@ -26,7 +26,7 @@ test('commandRows reads the Commands table only and reads \\| inside a cell as |
 });
 test('commandRows finds the rows of the reference, each with its Read cell', () => {
   const rows = s.commandRows(fs.readFileSync(path.join(__dirname, '..', '..', 'references', 'reeve-cli.md'), 'utf8'));
-  assert.equal(rows.length, 38);
+  assert.equal(rows.length, 43);
   for (const r of rows) {
     assert.match(r.row, /^`reeve [a-z]+( [a-z]+)?[ `]/, r.row);
     assert.match(r.read, /`value/, r.row);
@@ -112,7 +112,10 @@ test('readPaths throws on a span it cannot classify and pins the real reference'
   const rows = s.commandRows(fs.readFileSync(path.join(__dirname, '..', '..', 'references', 'reeve-cli.md'), 'utf8'));
   for (const x of rows) assert.ok(s.readPaths(x.read).every((p) => p.startsWith('value')), x.row);
   const of = (prefix) => s.readPaths(rows.find((x) => x.row.startsWith(prefix)).read);
-  assert.deepEqual(of('`reeve story context'), ['value', 'value.story', 'value.epic', 'value.initiative', 'value.required_decisions[]', 'value.blockers[]', 'value.comments[]', 'value.readiness', 'value.goals[]', 'value.goals[].goal', 'value.goals[].starts_on', 'value.goals[].ends_on', 'value.goals[].via', 'value.attachments[]', 'value.attachments[].id', 'value.attachments[].owner.item', 'value.attachments[].filename']);
+  assert.deepEqual(of('`reeve story context'), ['value', 'value.story', 'value.epic', 'value.initiative', 'value.required_decisions[]', 'value.blockers[]', 'value.comments[]', 'value.readiness', 'value.goals[]', 'value.goals[].goal', 'value.goals[].starts_on', 'value.goals[].ends_on', 'value.goals[].via', 'value.attachments[]', 'value.attachments[].id', 'value.attachments[].owner.item', 'value.attachments[].filename',
+    'value.story.links[]', 'value.story.links[].type', 'value.story.links[].direction', 'value.story.links[].label', 'value.story.links[].item', 'value.story.links[].item.key', 'value.story.links[].item.level', 'value.story.links[].item.title',
+    'value.story.web_links[]', 'value.story.web_links[].id', 'value.story.web_links[].title', 'value.story.web_links[].url']);
+  assert.deepEqual(of('`reeve link add <KEY> --url'), ['value[]', 'value[].id', 'value[].title', 'value[].url']);
   assert.deepEqual(of('`reeve attachment get'), ['value.path']);
   assert.ok(of('`reeve sprint show <id>').includes('value.at_close.goals[]'));
   assert.ok(of('`reeve decision ls').includes('value[].closed.reason'));

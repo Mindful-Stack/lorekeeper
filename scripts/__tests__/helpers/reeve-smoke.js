@@ -1,6 +1,7 @@
 // scripts/__tests__/helpers/reeve-smoke.js — the real-planner smoke's pure parts (reeve-real-server.test.js runs it):
 // the Commands table of references/reeve-cli.md, the coverage of test/fixtures/reeve-real/commands.json, placeholder
-// binding, and the shape checks on the planner's and the fake's answers.
+// binding, the shape checks on the planner's and the fake's answers, and the content checks an entry may add (`checks`,
+// and `replay` for a command that must answer the same when run again).
 'use strict';
 
 const { spawnSync } = require('node:child_process');
@@ -91,7 +92,7 @@ function braced(text, base) {
 // A path with no field after the base (`value`, `value[]`) is its own parent: `.x` after it is `value.x`.
 const parentOf = (p) => (p.includes('.') ? p.slice(0, p.lastIndexOf('.')) : p);
 // Backticked words in a Read cell that are prose, not fields. Any other span that is not classified is an error.
-const PROSE = new Set(['validation', 'story']);
+const PROSE = new Set(['validation', 'story', 'reeve link ls', 'relates-to']); // 'reeve link ls': a command a Read cell points at; 'relates-to': an item link name; never a field
 // The field paths a Read cell names, nesting and relative fields kept. Spans are read left to right:
 // - `value…` followed by ":" is a base (`value[]`: …): later bare names and `{…}` right after the ":" are under it;
 // - `value…` otherwise is an absolute path; `.x` replaces the last path's final field (`value.brief`, `.owner`);
@@ -214,6 +215,21 @@ function coverageProblems(rows, fixture) {
       if (!p.endsWith('[]') || !e.reads.some((r) => r === p || r.startsWith(`${p}.`))) problems.push(`${e.row}: may_be_empty ${p} names no array the entry reads`);
     }
   }
+  for (const e of fixture.entries) {
+    const replay = e.replay || {};
+    for (const [where, list] of [['checks', e.checks], ['replay.checks', replay.checks]]) {
+      (list || []).forEach((c, i) => {
+        const at = `${e.row}: ${where}[${i}]`;
+        const kinds = CHECK_KINDS.filter((k) => c && k in c);
+        if (!c || typeof c.at !== 'string' || !c.at.endsWith('[]')) { problems.push(`${at} needs \`at\`, the array it reads (a path ending in [])`); return; }
+        if (!e.reads.some((r) => r === c.at || r.startsWith(`${c.at}.`))) problems.push(`${at}: ${c.at} names no array the entry reads`);
+        if (kinds.length !== 1) problems.push(`${at} needs exactly one of ${CHECK_KINDS.join(', ')}`);
+        else if (!c[kinds[0]] || typeof c[kinds[0]] !== 'object' || !Object.keys(c[kinds[0]]).length) problems.push(`${at}: ${kinds[0]} needs at least one field to compare`);
+      });
+    }
+    if ('replay' in e && (!Array.isArray(replay.same) || !replay.same.length)) problems.push(`${e.row}: replay needs \`same\`, the paths a second run must answer unchanged`);
+    for (const p of replay.same || []) if (!e.reads.includes(p)) problems.push(`${e.row}: replay.same ${p} is not read`);
+  }
   (fixture.refusals || []).forEach((x, i) => {
     if (!Array.isArray(x.argv) || x.argv[x.argv.length - 1] !== '--json') problems.push(`refusal ${i + 1} must end with --json`);
     if (typeof x.reason !== 'string' || !x.reason) problems.push(`refusal ${i + 1} needs the reason it expects`);
@@ -256,6 +272,81 @@ function walk(root, spec) {
   return out;
 }
 const valueAt = (root, spec) => spec.split('.').reduce((o, k) => (o === null || typeof o !== 'object' ? undefined : o[k]), root);
+
+// Every value a path reaches, in order (`x[]`: every element); a missing key contributes nothing.
+function valuesAt(root, spec) {
+  let nodes = [root];
+  for (const seg of spec.split('.')) {
+    const many = seg.endsWith('[]');
+    const key = many ? seg.slice(0, -2) : seg;
+    nodes = nodes.flatMap((v) => {
+      if (v === null || typeof v !== 'object' || Array.isArray(v) || !Object.hasOwn(v, key)) return [];
+      return many ? (Array.isArray(v[key]) ? v[key] : []) : [v[key]];
+    });
+  }
+  return nodes;
+}
+// What an answer holds, beyond its shape. A check names an array (`at`) and fields of its elements (dotted paths, their
+// values bound from the side's own scope like an argv): `some`, an element has every field so; `none`, no element
+// has; `all`, every element has, and there is at least one. PROPERTY: an answer that returns a removed element, drops
+// a survivor or reports `created` the wrong way is a problem, where the type checks alone pass it.
+// `{{named.<name>}}` is the key the same answer's `value.items[]` gives that plan name, so a check can tie an apply's
+// ends to the items it made: an answer whose ends are all consistently reversed fails, where levels alone pass it.
+const CHECK_KINDS = ['some', 'none', 'all'];
+function checkProblems(env, checks, scope) {
+  const problems = [];
+  const items = valueAt(env, 'value.items');
+  const named = Object.fromEntries((Array.isArray(items) ? items : []).filter((i) => i && typeof i.name === 'string').map((i) => [i.name, i.key]));
+  const own = { ...scope, named };
+  for (const c of checks || []) {
+    const kind = CHECK_KINDS.find((k) => k in c);
+    const want = Object.entries(c[kind]).map(([field, v]) => [field, typeof v === 'string' ? bind([v], own)[0] : v]);
+    const shown = `{${want.map(([field, v]) => `${field}: ${JSON.stringify(v)}`).join(', ')}}`;
+    const elements = valuesAt(env, c.at);
+    const hits = elements.filter((x) => want.every(([field, v]) => valueAt(x, field) === v)).length;
+    if (kind === 'some' && hits === 0) problems.push(`no element of ${c.at} has ${shown}`);
+    if (kind === 'none' && hits > 0) problems.push(`${hits} element(s) of ${c.at} have ${shown}, expected none`);
+    if (kind === 'all' && (hits !== elements.length || !elements.length)) problems.push(`${hits} of ${elements.length} element(s) of ${c.at} have ${shown}, expected every one of at least one`);
+  }
+  return problems;
+}
+// The second run of an entry with `replay`: an ok answer that reaches every read with its declared type (as the first
+// run's must), whose `same` paths reach exactly the values the first run's did, in the same order, whose arrays under
+// them hold as many elements and the same complete records (`created` aside), and that holds the replay's own checks.
+// PROPERTY: an extra or a missing element is a problem even where every compared field matches (`valuesAt` alone
+// skips an element that lacks the field).
+const withoutCreated = (x) => {
+  if (x === null || typeof x !== 'object' || Array.isArray(x)) return x;
+  const { created, ...rest } = x;
+  return rest;
+};
+function replayProblems(entry, first, r, scope) {
+  const env = envelopeOf(r.stdout);
+  if (!env || env.outcome !== 'ok' || r.status !== 0) return [`the second run answered exit ${r.status}${env ? `, outcome ${env.outcome} ${env.code || ''} ${env.message || ''}`.trimEnd() : ' without an envelope'}`];
+  const problems = [];
+  for (const p of entry.reads) {
+    const w = walk(env, p);
+    for (const at of w.missing) problems.push(`the second run's answer has no ${at}`);
+    for (const at of w.notArray) problems.push(`the second run's ${at} is not an array`);
+    const declared = entry.types[p].split('|');
+    for (const t of w.types) if (!declared.includes(t)) problems.push(`the second run's ${p} is ${t}, the fixture declares ${entry.types[p]}`);
+  }
+  const differs = new Set();
+  for (const p of entry.replay.same) {
+    const [a, b] = [valuesAt(first, p), valuesAt(env, p)];
+    if (JSON.stringify(a) !== JSON.stringify(b)) { problems.push(`the second run's ${p} is ${JSON.stringify(b)}, the first run's ${JSON.stringify(a)}`); differs.add(p); }
+  }
+  // Each array a `same` path runs through, compared whole: its length, then (where no field above differed) its records.
+  const arrays = [...new Set(entry.replay.same.filter((p) => p.includes('[]')).map((p) => p.slice(0, p.indexOf('[]') + 2)))];
+  for (const at of arrays) {
+    const [a, b] = [valuesAt(first, at), valuesAt(env, at)];
+    if (a.length !== b.length) problems.push(`the second run's ${at} has ${b.length} element(s), the first run's ${a.length}`);
+    else if (![...differs].some((p) => p.startsWith(at)) && JSON.stringify(a.map(withoutCreated)) !== JSON.stringify(b.map(withoutCreated))) {
+      problems.push(`the second run's ${at} is ${JSON.stringify(b.map(withoutCreated))}, the first run's ${JSON.stringify(a.map(withoutCreated))} (created aside)`);
+    }
+  }
+  return [...new Set(problems), ...checkProblems(env, entry.replay.checks, scope).map((x) => `the second run: ${x}`)];
+}
 
 // The planner's side of one run: exit 0, an ok envelope, every read present with a declared type, arrays non-empty
 // unless listed in may_be_empty, and (when `expect`) the entry's expected values.
@@ -332,7 +423,8 @@ function run(side, argv) {
   return { status: r.error ? `error ${r.error.code}` : r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
 
-// The seed on both sides, then every entry in file order, then every refusal case. Returns one { row, problems } per
+// The seed on both sides, then every entry in file order (its `checks` on each side's answer, and for an entry with
+// `replay` the same argv once more on each side), then every refusal case. Returns one { row, problems } per
 // failed seed step, one { row, problems, ran } per entry and one per refusal case (its row `refusal: reeve <argv>`). `real` and `fake` are { bin, env }; `scope` holds the seed file's values and run_id; `out` (optional) receives
 // every answer as JSON; `fakeScope` (optional) overrides seed values on the fake's side only, for a seed value that is a
 // planner key (`shot.story`). PROPERTY: each side binds from its own answers only, so the fake never runs on a planner key.
@@ -374,6 +466,21 @@ function runSmoke({ fixture, real, fake, scope, fakeScope = {}, expect = true, o
       const realEnv = envelopeOf(r.stdout);
       if (realEnv) ran += 1;
       if (!rp.length) problems.push(...fakeProblems(entry, realEnv, f).map((p) => `fake: ${p}`));
+      // What the answers hold, each side judged on its own answer with its own keys; then the same command again.
+      const fakeEnv = envelopeOf(f.stdout);
+      const fakeOk = !!fakeEnv && fakeEnv.outcome === 'ok' && f.status === 0;
+      const contents = (side, env, check) => {
+        try { return check(env, scopes[side]); } catch (e) { return [e.message]; }
+      };
+      const blame = (side) => (p) => (side === 'fake' ? `fake: ${p}; ${FIX_FAKE}` : `real: ${p}`);
+      if (!rp.length) problems.push(...contents('real', realEnv, (env, sc) => checkProblems(env, entry.checks, sc)).map(blame('real')));
+      if (fakeOk) problems.push(...contents('fake', fakeEnv, (env, sc) => checkProblems(env, entry.checks, sc)).map(blame('fake')));
+      if (entry.replay) {
+        const [r2, f2] = [!rp.length && run(real, rArgv), fakeOk && run(fake, fArgv)];
+        record(`${name}-replay`, { row: entry.row, real: r2 ? { argv: rArgv, ...r2 } : null, fake: f2 ? { argv: fArgv, ...f2 } : null });
+        if (r2) problems.push(...contents('real', realEnv, (env, sc) => replayProblems(entry, env, r2, sc)).map(blame('real')));
+        if (f2) problems.push(...contents('fake', fakeEnv, (env, sc) => replayProblems(entry, env, f2, sc)).map(blame('fake')));
+      }
       if (entry.bind && j === 0) {
         if (!rp.length) scopes.real[entry.bind] = realEnv.value;
         const fe = envelopeOf(f.stdout);
@@ -401,4 +508,4 @@ function runSmoke({ fixture, real, fake, scope, fakeScope = {}, expect = true, o
   return results;
 }
 
-module.exports = { refusalProblems, runSmoke, commandWords, typeOf, envelopeOf, commandRows, formsOf, readPaths, coverageProblems, runsOf, bind, walk, realProblems, fakeProblems, liveConfig };
+module.exports = { checkProblems, replayProblems, valuesAt, refusalProblems, runSmoke, commandWords, typeOf, envelopeOf, commandRows, formsOf, readPaths, coverageProblems, runsOf, bind, walk, realProblems, fakeProblems, liveConfig };

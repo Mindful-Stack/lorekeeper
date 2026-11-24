@@ -31,6 +31,23 @@
 // `interactive_only`, exit 2, after clap's checks (one of --on, --to, --clear; --clear alone; --on a shortcut or a date).
 // Whole-queue triage (GRA-642): REEVE_FAKE_TRIAGE=1 adds GRA-48 to the untriaged queue, a duplicate of GRA-46.
 // A duplicate comment's key is `triage-dup:<KEY>:<DUP>`, the web triage page's, beside the skills' <skill>:<KEY>:<run-id>:<n>.
+// Item links and web links (kb/ADR-0031): `link add|rm <KEY> <follows|duplicates|relates-to> <OTHER>`, `link add <KEY>
+// --url <URL> --title <TITLE>`, `link rm <KEY> --url <URL>` and `link ls <KEY>` persist in the state file, with clap's
+// checks (a blocking word or another unknown name is a usage error) and the planner's rules (no link to itself; a title
+// of 1 to 200 characters on one line; an http or https URL of at most 1 000 characters without user name or password;
+// a URL once per item). Nothing seeded has one. An answer holding one item (`story show`, `story context`'s story,
+// `initiative show`, `epic show`) carries `links` and `web_links`; lists do not. Readiness never reads them. A plan
+// takes `links` and `web_links` (at most 500 each) and answers them with `created`. `story block|unblock <KEY> --by
+// <OTHER>` writes the blocker, the relation readiness does read. A reference is resolved as the planner does
+// (handler/mod.rs `resolve`): where one level is taken (a plan's `epic`, `initiative` and `blocks`) among the items of
+// that level, by key and then by external reference; where any level is taken (`reeve link`, a plan's item link ends,
+// a web link's `on` and a decision's `on`) by the key of any level first, then by the external reference of a story,
+// an epic, an initiative. REEVE_FAKE_COLLISION=1 adds the case where the two differ: epic OLD-1, issued under an
+// earlier key prefix, and story GRA-49, migrated from a ticket that was OLD-1 too.
+// A plan is read as the real CLI reads it (serde over YAML, crates/reeve-protocol/src/plan.rs): an unknown field, a
+// missing required field, a list or a map where a string goes, anything but a list where a list goes and an unknown
+// `kind`, `delivery`, `reversibility` or `type` are the CLI's own `internal` error, nothing sent; a number, a boolean
+// or (where the field is required) a null where a string goes is read as its text, as YAML reads any scalar.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -71,8 +88,10 @@ const error = (code, message, extra = {}) => emit({ outcome: 'error', code, mess
 // What clap rejects: no envelope, the usage text on stderr, exit 1.
 const usage = (message) => { process.stderr.write(`error: ${message}\n\nFor more information, try '--help'.\n`); process.exit(1); };
 
-if (argv[0] === '--version') { process.stdout.write('reeve-planner 0.3.0-fake\n'); process.exit(0); }
+if (argv[0] === '--version') { process.stdout.write('reeve-planner 0.8.0-fake\n'); process.exit(0); }
 if (!argv.includes('--json')) error('validation', 'the fake planner answers --json calls only');
+// `--json` is a global flag taken once (crates/reeve/src/lib.rs): check it before it is filtered out of the words.
+if (argv.filter((a) => a === '--json').length > 1) usage("the argument '--json' cannot be used multiple times");
 const words = argv.filter((a) => a !== '--json');
 
 const DISCOVERY = { pos: 1, val: ['version'], bool: ['complete', 'reopen'], req: ['version'] };
@@ -86,6 +105,11 @@ const SPEC = {
   'story create': { pos: 0, val: ['idempotency-key', 'title', 'kind', 'epic', 'description', 'description-file', 'owner', 'external-ref'], rep: ['criterion', 'label'], req: ['idempotency-key', 'title'] },
   'story mv': { pos: 2, val: ['version', 'resolution', 'override'] },
   'story promise': PROMISE,
+  'story block': { pos: 1, val: ['by'], req: ['by'] },
+  'story unblock': { pos: 1, val: ['by'], req: ['by'] },
+  'link add': { pos: 1, max: 3, val: ['url', 'title'] }, // <KEY> [follows|duplicates|relates-to] [OTHER], or --url with --title
+  'link rm': { pos: 1, max: 3, val: ['url'] },
+  'link ls': { pos: 1 },
   'story edit': { pos: 1, val: ['version', 'title', 'epic', 'kind', 'rank', 'owner', 'external-ref', 'description', 'description-file'], bool: ['no-epic', 'no-owner'], rep: ['criterion', 'add-label', 'remove-label'], req: ['version'] },
   'initiative show': { pos: 1 },
   'initiative ls': { pos: 0 },
@@ -133,6 +157,8 @@ for (let i = cmd.split(' ').length; i < words.length; i++) {
   const w = words[i];
   if (!w.startsWith('--')) { pos.push(w); continue; }
   const name = w.slice(2);
+  // clap takes a flag once unless it repeats (`--criterion`, `--label`, `--verdict`): a second one is a usage error.
+  if (!(spec.rep || []).includes(name) && name in f) usage(`the argument '--${name}' cannot be used multiple times`);
   if ((spec.bool || []).includes(name)) f[name] = true;
   else if ((spec.val || []).includes(name) || (spec.rep || []).includes(name)) {
     if (i + 1 >= words.length) usage(`a value is required for '--${name}'`);
@@ -155,6 +181,27 @@ if (spec === PROMISE) {
   if ('on' in f && !['this-sprint', 'next-sprint'].includes(f.on)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.on)) usage(`invalid value '${f.on}' for '${ON}': \`${f.on}\` is neither this-sprint, next-sprint nor a date (YYYY-MM-DD)`);
     if (!calendar(f.on)) usage(`invalid value '${f.on}' for '${ON}': \`${f.on}\` is not a calendar date`);
+  }
+}
+// clap's rules on `link add` and `link rm` (kb/ADR-0031): the name is parsed first (a blocking word is answered with
+// where blocking lives, R2), then each form must be complete and the two exclude each other.
+const LINK_NAMES = { follows: 'follows', duplicates: 'duplicates', 'relates-to': 'relates_to' }; // command line -> wire
+const BLOCKING_WORDS = ['blocks', 'blocked-by', 'blocked_by', 'depends-on', 'depends_on'];
+if (cmd === 'link add' || cmd === 'link rm') {
+  const NAME = '[follows|duplicates|relates-to]';
+  if (pos.length > 1 && BLOCKING_WORDS.includes(pos[1])) usage(`invalid value '${pos[1]}' for '${NAME}': blocking is not an item link: use \`reeve story block <KEY> --by <OTHER>\``);
+  if (pos.length > 1 && !(pos[1] in LINK_NAMES)) usage(`invalid value '${pos[1]}' for '${NAME}': \`${pos[1]}\` is not an item link name: use follows, duplicates or relates-to`);
+  if ('url' in f && pos.length > 1) usage(`the argument '${NAME}' cannot be used with '--url <URL>'`);
+  if (!('url' in f) && pos.length < 3) usage(`the following required arguments were not provided:\n  <${pos.length < 2 ? 'follows|duplicates|relates-to' : 'OTHER'}>`);
+  if (cmd === 'link add' && ('url' in f) !== ('title' in f)) usage(`the following required arguments were not provided:\n  --${'url' in f ? 'title <TITLE>' : 'url <URL>'}`);
+}
+// The items of `reeve link` and `reeve story block|unblock` are `KeyRef`s (crates/reeve-protocol/src/ids.rs): a key or
+// an external reference, `^[A-Z][A-Z0-9]*-[0-9]+$`. clap parses them, so anything else is a usage error and reaches
+// nothing.
+const KEY_REF = /^[A-Z][A-Z0-9]*-[0-9]+$/;
+if (cmd.startsWith('link ') || cmd === 'story block' || cmd === 'story unblock') {
+  for (const [value, where] of [[pos[0], '<KEY>'], [pos[2], '[OTHER]'], [f.by, '--by <BY>']]) {
+    if (value !== undefined && !KEY_REF.test(value)) usage(`invalid value '${value}' for '${where}': invalid key: ${value}`);
   }
 }
 if (f.sort !== undefined && !['rank', 'relevance'].includes(f.sort)) usage(`invalid value '${f.sort}' for '--sort <SORT>'\n  [possible values: rank, relevance]`);
@@ -187,24 +234,96 @@ const readText = (file) => {
   try { return fs.readFileSync(file === '-' ? 0 : file, 'utf8'); } catch (e) { return error('internal', `reading ${file}: ${e.message}`); }
 };
 for (const name of ['brief', 'description']) if (f[`${name}-file`] !== undefined) f[name] = readText(f[`${name}-file`]);
-// The CLI parses the plan into the wire type before sending it: a misspelt field is its own error, never sent.
+// The CLI parses the plan into the wire type before sending it (crates/reeve-protocol/src/plan.rs, serde over YAML),
+// so what does not fit is its own `internal` error and is never sent. Per field: 'string' is required, 'string?' may
+// be left out or null, 'strings' is a list of strings (an empty list when left out, never null), 'date?' an optional
+// YYYY-MM-DD, and a list of words an enum, optional unless under `required`. Where a string goes YAML reads any
+// scalar as its text (`title: 42` is the title "42", and a required `title: null` the title "null"); a list or a
+// map there is refused.
 const PLAN_FIELDS = {
-  '': ['id', 'initiatives', 'epics', 'stories', 'decisions', 'blocks'],
-  initiatives: ['name', 'title', 'horizon', 'brief', 'target_month', 'owner', 'external_ref'],
-  epics: ['name', 'title', 'initiative', 'brief', 'external_ref'],
-  stories: ['name', 'title', 'kind', 'epic', 'description', 'criteria', 'labels', 'external_ref'],
-  decisions: ['name', 'on', 'title', 'decider', 'due', 'reversibility'],
-  blocks: ['story', 'blocked_by'],
+  initiatives: { name: 'string', title: 'string', horizon: 'string', brief: 'string?', target_month: 'string?', owner: 'string?', external_ref: 'string?' },
+  epics: { name: 'string', title: 'string', initiative: 'string?', brief: 'string?', external_ref: 'string?' },
+  stories: { name: 'string', title: 'string', kind: ['story', 'bug', 'chore'], epic: 'string?', description: 'string?', criteria: 'strings', labels: 'strings', external_ref: 'string?', delivery: ['todo', 'in_progress', 'in_review', 'testing', 'done'] },
+  decisions: { name: 'string', on: 'string', title: 'string', decider: 'string', due: 'date?', reversibility: ['one_way', 'two_way'] },
+  blocks: { story: 'string', blocked_by: 'string' },
+  links: { from: 'string', type: ['follows', 'duplicates', 'relates_to'], to: 'string' },
+  web_links: { on: 'string', title: 'string', url: 'string' },
 };
+const PLAN_REQUIRED_ENUMS = ['links.type'];
 let plan = null;
 if (cmd === 'apply') {
   const text = readText(pos[0]);
-  try { plan = JSON.parse(text); } catch (e) { error('internal', `reading the plan in ${pos[0]}: the fake planner reads JSON plans only: ${e.message}`); }
-  const unknown = (o, list, at) => { for (const k of Object.keys(o || {})) if (!PLAN_FIELDS[list].includes(k)) error('internal', `reading the plan in ${pos[0]}: ${at}unknown field \`${k}\`, expected one of ${PLAN_FIELDS[list].map((x) => `\`${x}\``).join(', ')}`); };
-  unknown(plan, '', '');
-  if (typeof plan.id !== 'string') error('internal', `reading the plan in ${pos[0]}: missing field \`id\``);
-  for (const list of Object.keys(PLAN_FIELDS).filter(Boolean)) (plan[list] ||= []).forEach((x, i) => unknown(x, list, `${list}[${i}]: `));
-  plan.decisions.forEach((d, i) => { if (d.reversibility != null && !['one_way', 'two_way'].includes(d.reversibility)) error('internal', `reading the plan in ${pos[0]}: decisions[${i}].reversibility: unknown variant \`${d.reversibility}\`, expected \`one_way\` or \`two_way\``); });
+  const reading = `reading the plan in ${pos[0]}`;
+  let raw;
+  // A number's own text, kept by holder and key: a string field given a number reads its spelling (serde_yaml visits
+  // the scalar's text), so `1e3` stays `1e3` and a long integer keeps its digits.
+  const numText = new WeakMap();
+  const keepNumber = function (k, v, c) {
+    if (typeof v === 'number' && c && typeof c.source === 'string') {
+      if (!numText.has(this)) numText.set(this, {});
+      numText.get(this)[k] = c.source;
+    }
+    return v;
+  };
+  try { raw = JSON.parse(text, keepNumber); } catch (e) { error('internal', `${reading}: the fake planner reads JSON plans only: ${e.message}`); }
+  // A plan that does not parse and writes a blocking word as a link's `type` gets the CLI's pointer at `blocks`
+  // (kb/ADR-0031 R2) in place of the parser's message, whatever else is wrong with it.
+  const refuse = (message) => {
+    const links = raw !== null && typeof raw === 'object' && Array.isArray(raw.links) ? raw.links : [];
+    if (links.some((l) => l !== null && typeof l === 'object' && BLOCKING_WORDS.includes(l.type))) error('internal', `${reading}: blocking is not an item link: list it under \`blocks\` as \`{story, blocked_by}\` (stories only; otherwise leave it out)`);
+    return error('internal', `${reading}: ${message}`);
+  };
+  const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const shown = (v) => (v === null ? 'unit value' : Array.isArray(v) ? 'sequence' : typeof v === 'object' ? 'map' : typeof v === 'string' ? `string ${JSON.stringify(v)}` : typeof v === 'boolean' ? `boolean \`${v}\`` : `${Number.isInteger(v) ? 'integer' : 'floating point'} \`${v}\``);
+  const quoted = (names) => names.map((x) => `\`${x}\``);
+  const oneOf = (names) => (names.length === 2 ? quoted(names).join(' or ') : `one of ${quoted(names).join(', ')}`);
+  const unknown = (o, names, at) => { for (const k of Object.keys(o)) if (!names.includes(k)) refuse(`${at}unknown field \`${k}\`, expected one of ${quoted(names).join(', ')}`); };
+  // The string a scalar field reads: `holder[k]`, a number by its text in the plan.
+  const scalar = (holder, k, at) => {
+    const v = holder[k];
+    if (v !== null && typeof v === 'object') return refuse(`${at}: invalid type: ${shown(v)}, expected a string`);
+    return typeof v === 'number' ? (numText.get(holder) || {})[k] ?? String(v) : String(v);
+  };
+  const calendar = (d) => { const t = Date.parse(`${d}T00:00:00Z`); return /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === d; };
+  if (!isMap(raw)) refuse(`invalid type: ${shown(raw)}, expected struct ApplyPlan`);
+  unknown(raw, ['id', ...Object.keys(PLAN_FIELDS)], '');
+  if (!('id' in raw)) refuse('missing field `id`');
+  plan = { id: scalar(raw, 'id', 'id') };
+  for (const [list, fields] of Object.entries(PLAN_FIELDS)) {
+    const entries = list in raw ? raw[list] : [];
+    if (!Array.isArray(entries)) refuse(`${list}: invalid type: ${shown(entries)}, expected a sequence`);
+    plan[list] = entries.map((x, i) => {
+      const at = `${list}[${i}]`;
+      if (!isMap(x)) refuse(`${at}: invalid type: ${shown(x)}, expected struct`);
+      unknown(x, Object.keys(fields), `${at}: `);
+      const out = {};
+      for (const [k, type] of Object.entries(fields)) {
+        const v = x[k];
+        const here = `${at}.${k}`;
+        if (Array.isArray(type)) {
+          const required = PLAN_REQUIRED_ENUMS.includes(`${list}.${k}`);
+          if (!(k in x) && required) refuse(`${at}: missing field \`${k}\``);
+          if (v == null && !required) continue;
+          if (!type.includes(v)) refuse(`${here}: unknown variant \`${v !== null && typeof v === 'object' ? shown(v) : v}\`, expected ${oneOf(type)}`);
+          out[k] = v;
+        } else if (type === 'string') {
+          if (!(k in x)) refuse(`${at}: missing field \`${k}\``);
+          out[k] = scalar(x, k, here);
+        } else if (type === 'string?') {
+          if (v != null) out[k] = scalar(x, k, here);
+        } else if (type === 'strings') {
+          if (!(k in x)) { out[k] = []; continue; }
+          if (!Array.isArray(v)) refuse(`${here}: invalid type: ${shown(v)}, expected a sequence`);
+          out[k] = v.map((y, j) => scalar(v, String(j), `${here}[${j}]`));
+        } else if (v != null) { // 'date?'
+          const d = scalar(x, k, here);
+          if (!calendar(d)) refuse(`${here}: \`${d}\` is not a date (YYYY-MM-DD)`);
+          out[k] = d;
+        }
+      }
+      return out;
+    });
+  }
   logged = () => `${argv.join(' ')} ${JSON.stringify(plan)}`;
 }
 if (f['idempotency-key'] !== undefined && !KEY_SHAPE.test(f['idempotency-key'])) error('validation', `--idempotency-key must look like <skill>:<KEY>:<run-id>:<n>, got ${f['idempotency-key']}`);
@@ -222,6 +341,9 @@ const epics = {
   'GRA-21': epic('GRA-21', 'Mentor profiles', { brief: 'Mentors describe their skills and availability.', initiative: 'GRA-13' }),
   // Standalone (no initiative); migrated from PRM-1 and promised by the draft sprint's end (kb/ADR-0025), so `epic show
   // PRM-1` reads an epic's promise, as the Reeve skill smoke's seeded epic does.
+  // REEVE_FAKE_COLLISION=1: an epic issued under an earlier key prefix. Story GRA-49 below was migrated from a ticket
+  // that was OLD-1 too, so `OLD-1` names the epic by its key and the story by its external reference.
+  ...(process.env.REEVE_FAKE_COLLISION === '1' ? { 'OLD-1': epic('OLD-1', 'Legacy matching', { brief: 'Matching as it was before the queue.' }) } : {}),
   'GRA-22': epic('GRA-22', 'Session feedback', { brief: 'Mentees rate each mentoring session after it ends.', external_ref: 'PRM-1', promise: { fact: { on: '2026-11-17', by: 'dan@example.com', at: NOW, to: 'the mentoring board' }, due: 'next_sprint', past: false } }),
 };
 const decision7 = { id: 7, on: 'GRA-20', on_type: 'epic', title: 'Queue or cron', decider: 'dan@example.com', due: null, reversibility: null, record: null, pr_url: null, check: { kind: 'unchecked' }, checked_at: null, closed: null, created_at: NOW, version: 1 };
@@ -243,6 +365,7 @@ const stories = {
   'GRA-46': story('GRA-46', 'Fax match summaries to coordinators'),
   'GRA-47': story('GRA-47', 'Translate the mentee app into Spanish', { criteria: [{ text: 'The app shows Spanish when the phone is set to Spanish', done: false }] }),
   ...(process.env.REEVE_FAKE_TRIAGE === '1' ? { 'GRA-48': story('GRA-48', 'Fax match summaries to the coordinators') } : {}),
+  ...(process.env.REEVE_FAKE_COLLISION === '1' ? { 'GRA-49': story('GRA-49', 'Match mentors by legacy rules', { external_ref: 'OLD-1' }) } : {}),
 };
 // Sprints (kb/ADR-0014): #1 closed, #2 active (opened at NOW), #3 the draft opening when #2 ends. Goal 1 is the closed
 // sprint's (met, no links), 2 and 3 the active one's (linked to epic GRA-20 and initiative GRA-13), 4 the draft's (no links).
@@ -356,6 +479,67 @@ const readinessOf = (s) => {
 
 // The level of the item a key names (a decision's on_type).
 const typeOfKey = (key) => { const x = itemsOf()[key] || initiatives[key] || epics[key] || stories[key]; return x ? kindOf(x) : error('not_found', `no item ${key}`); };
+// Item links and web links (kb/ADR-0031). An item link is stored once as { from, type, to }: `from` follows, duplicates
+// or relates to `to`, and a relates_to has the lower key in `from`, whichever end named it. Web links are kept per
+// item, oldest first, with ids of their own. `st` is the state to read: the run's as read at the start, or the one a
+// write just returned.
+// What a reference names (handler/mod.rs `resolve`), or undefined. With a level: the item of that level with that
+// key, else the one of that level migrated from it. Without one (`resolve_any`): the item of any level with that key,
+// and only when there is none the one migrated from it, a story before an epic before an initiative.
+const LEVELS = ['story', 'epic', 'initiative'];
+const resolveRef = (ref, level, st = state) => {
+  const known = Object.values({ ...initiatives, ...epics, ...stories, ...(st.items || {}) });
+  const of = (l) => known.filter((x) => kindOf(x) === l);
+  if (level) return of(level).find((x) => x.key === ref) || of(level).find((x) => x.external_ref === ref);
+  return known.find((x) => x.key === ref) || LEVELS.map((l) => of(l).find((x) => x.external_ref === ref)).find(Boolean);
+};
+const anyItem = (ref) => resolveRef(ref, null) || error('not_found', 'not found');
+const LINK_LABELS = { follows: ['follows', 'is followed by'], duplicates: ['duplicates', 'is duplicated by'], relates_to: ['relates to', 'relates to'] }; // read from `from`, read from `to`
+// In the planner's order (handler/item_links.rs item_link_dtos_in): by name (follows, duplicates, relates_to), `out`
+// before `in`, then the other item's key number, then its key text (two prefixes can hold the same number).
+const linksOf = (key, st = state) => (st.links || []).filter((l) => l.from === key || l.to === key)
+  .map((l) => {
+    const out = l.from === key || l.type === 'relates_to';
+    const other = anyItem(l.from === key ? l.to : l.from);
+    return { type: l.type, direction: out ? 'out' : 'in', label: LINK_LABELS[l.type][out ? 0 : 1], item: { key: other.key, level: kindOf(other), title: other.title } };
+  })
+  .sort((a, b) => (Object.keys(LINK_LABELS).indexOf(a.type) - Object.keys(LINK_LABELS).indexOf(b.type)) || ((a.direction === 'in') - (b.direction === 'in'))
+    || byKeyNumber(a.item.key, b.item.key) || (a.item.key < b.item.key ? -1 : a.item.key > b.item.key ? 1 : 0));
+const webLinksOf = (key, st = state) => (st.web || {})[key] || [];
+// An answer that holds one item carries both lists, possibly empty; an answer that lists items carries neither.
+const withLinks = (x) => ({ ...x, links: linksOf(x.key), web_links: webLinksOf(x.key) });
+const stored = (from, type, to) => (type === 'relates_to' && to < from ? [to, from] : [from, to]);
+// Both adds change the state they are given and never exit (the caller holds the state's lock).
+const addLink = (st, a, type, b) => {
+  const [from, to] = stored(a, type, b);
+  const created = !(st.links ||= []).some((l) => l.from === from && l.type === type && l.to === to);
+  if (created) st.links.push({ from, type, to });
+  return { from, type, to, created };
+};
+// A URL the item has under the same title is a repeat; under another title the add is refused (`other`: that title).
+const addWeb = (st, key, title, url) => {
+  const list = ((st.web ||= {})[key] ||= []);
+  const had = list.find((w) => w.url === url);
+  if (had) return had.title === title ? { link: had, created: false, list } : { other: had.title };
+  const link = { id: (st.next_web = (st.next_web || 0) + 1), title, url };
+  list.push(link);
+  return { link, created: true, list };
+};
+const WEB_TITLE = "a web link's title must be 1 to 200 characters on one line, with no tab or other control character";
+const WEB_URL = "a web link's URL must start with http:// or https://, be at most 1000 characters and hold no user name or password";
+const webSameUrl = (titled) => `this item already has a web link to that URL, titled ${JSON.stringify(titled)}: remove it first, then add it with the new title`;
+const SELF_LINK = 'an item cannot have an item link to itself';
+// The title as stored (trimmed), or null: 1 to 200 characters, none a control character or a line or paragraph separator.
+const webTitle = (raw) => { const t = raw.trim(); const n = [...t].length; return n >= 1 && n <= 200 && !/[\p{Cc}\u2028\u2029]/u.test(t) ? t : null; };
+// The URL as stored (the parser's serialisation), or null: http or https with a host, no user name or password, at
+// most 1 000 characters.
+const webUrl = (raw) => {
+  let u;
+  try { u = new URL(raw.trim()); } catch { return null; }
+  return ['http:', 'https:'].includes(u.protocol) && u.hostname && !u.username && !u.password && [...u.href].length <= 1000 ? u.href : null;
+};
+// A blocker is between two stories: any other item is not_found.
+const storyNamed = (ref) => { const x = find(stories, ref); return kindOf(x) === 'story' ? x : error('not_found', 'not found'); };
 // Comments made in this run, stored by idempotency key like any create, in the planner's CommentDto shape.
 const comment = (id, author, body, on) => ({ id, on_story: null, on_decision: null, on_initiative: null, on_epic: null, author, body, at: NOW, external_ref: null, ...on });
 const thread = (on) => {
@@ -547,9 +731,42 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     const required = on.flatMap((k) => allDecisions().filter((d) => d.on === k && !d.closed));
     const sp = activeSprint();
     const served = servedBy(s).map(({ goal: g, via }) => ({ goal: g, starts_on: sp.starts_on, ends_on: sp.ends_on, via }));
-    ok({ story: withGoals(withPromise(s)), epic: e, initiative: i, required_decisions: required, blockers: blockedByOf(s).map((k) => { const b = storyOf(k); return { key: k, title: b.title, delivery: b.delivery, owner: b.owner ?? null }; }), comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served, attachments: attachmentsOf(s) });
+    ok({ story: withLinks(withGoals(withPromise(s))), epic: e, initiative: i, required_decisions: required, blockers: blockedByOf(s).map((k) => { const b = storyOf(k); return { key: k, title: b.title, delivery: b.delivery, owner: b.owner ?? null }; }), comments: [comment(1, 'sam@example.com', 'Coordinators want to see every retry.', { on_story: s.key }), ...thread({ on_story: s.key })], readiness: readinessOf(s), goals: served, attachments: attachmentsOf(s) });
   },
-  'story show': () => ok(withGoals(withPromise(find(stories, p0)))),
+  'story show': () => ok(withLinks(withGoals(withPromise(find(stories, p0))))),
+  // POST and DELETE /stories/<key>/blocks: the answer is empty; a block that is there, or one that is not, changes nothing.
+  'story block': () => { const s = storyNamed(p0); const b = storyNamed(f.by); if (!s.blocked_by.includes(b.key)) save({ ...s, blocked_by: [...s.blocked_by, b.key] }); ok({}); },
+  'story unblock': () => { const s = storyNamed(p0); const b = storyNamed(f.by); if (s.blocked_by.includes(b.key)) save({ ...s, blocked_by: s.blocked_by.filter((k) => k !== b.key) }); ok({}); },
+  // GET /items/<key>/links: both lists, the item links read from this item's side.
+  'link ls': () => { const x = anyItem(p0); ok({ links: linksOf(x.key), web_links: webLinksOf(x.key) }); },
+  // POST /items/<key>/links and /web-links: the answer is the item's list after the add; a repeat changes nothing.
+  'link add': () => {
+    const x = anyItem(p0);
+    if ('url' in f) {
+      const title = webTitle(f.title) ?? error('validation', WEB_TITLE);
+      const url = webUrl(f.url) ?? error('validation', WEB_URL);
+      const r = withState((st) => addWeb(st, x.key, title, url));
+      ok(r.other === undefined ? r.list : error('validation', webSameUrl(r.other)));
+    }
+    const o = anyItem(pos[2]);
+    if (o.key === x.key) error('validation', SELF_LINK);
+    ok(linksOf(x.key, withState((st) => { addLink(st, x.key, LINK_NAMES[pos[1]], o.key); return st; })));
+  },
+  // DELETE: the item link named as it was added (the reverse order names another item link), or the web link with
+  // that URL in either spelling; removing what is not there changes nothing, and an item link from an item to itself
+  // is refused as on an add. The answer is the list the item has left.
+  'link rm': () => {
+    const x = anyItem(p0);
+    if ('url' in f) {
+      const url = webUrl(f.url) || f.url.trim();
+      ok(withState((st) => ((st.web ||= {})[x.key] = webLinksOf(x.key, st).filter((w) => w.url !== url))));
+    }
+    const type = LINK_NAMES[pos[1]];
+    const o = anyItem(pos[2]);
+    if (o.key === x.key) error('validation', SELF_LINK); // the planner builds the item link before it removes it
+    const [from, to] = stored(x.key, type, o.key);
+    ok(linksOf(x.key, withState((st) => { st.links = (st.links || []).filter((l) => !(l.from === from && l.type === type && l.to === to)); return st; })));
+  },
   'story ls': () => ok(page(all(stories, 'story').map(withPromise).filter((s) => (f.untriaged ? !s.epic && s.delivery !== 'done' : !f.epic || s.epic === f.epic))
     .filter((s) => (!f.owner || s.owner === f.owner) && (!f.mine || s.owner === 'dan@example.com') && (!f.delivery || s.delivery === f.delivery.replace('-', '_')) && (!f.label || s.labels.includes(f.label)))
     .filter((s) => (f.text === undefined || matchesText(s, f.text)) && (!f.kind || s.kind === f.kind) && (f.initiative === undefined || epicsUnder(f.initiative).includes(s.epic))
@@ -584,13 +801,13 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
   'story edit': () => { const s = find(stories, p0); ok(save({ ...bump(s), title: f.title ?? s.title, kind: f.kind ?? s.kind, epic: f['no-epic'] ? null : f.epic ?? s.epic, owner: f['no-owner'] ? null : f.owner ?? s.owner, external_ref: refOf(s), description: f.description ?? s.description,
     criteria: f.criterion ? f.criterion.map((text, i) => ({ text, done: !!(s.criteria[i] && s.criteria[i].text === text && s.criteria[i].done) })) : s.criteria,
     labels: [...new Set([...s.labels, ...(f['add-label'] || [])])].filter((l) => !(f['remove-label'] || []).includes(l)) })); },
-  'initiative show': () => ok(find(initiatives, p0)),
+  'initiative show': () => ok(withLinks(find(initiatives, p0))),
   'initiative findings': () => { const i = find(initiatives, p0); const own = all(epics, 'epic').filter((e) => e.initiative === i.key).map((e) => e.key); ok(findingsOf(i, [], all(stories, 'story').filter((x) => own.includes(x.epic)).length)); },
   'initiative ls': () => ok(all(initiatives, 'initiative')),
   'initiative create': () => ok(mint((id) => initiative(`GRA-${id}`, f.title, { brief: f.brief || '', horizon: f.horizon, owner: f.owner || null, target_month: f['target-month'] || null, external_ref: f['external-ref'] || null }))),
   'initiative edit': () => { const i = find(initiatives, p0); ok(save({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon, owner: f['no-owner'] ? null : f.owner ?? i.owner, target_month: f['no-target-month'] ? null : f['target-month'] ?? i.target_month, external_ref: refOf(i) })); },
   'initiative discovery': () => ok(save({ ...bump(find(initiatives, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
-  'epic show': () => ok(find(epics, p0)),
+  'epic show': () => ok(withLinks(find(epics, p0))),
   'epic findings': () => { const e = find(epics, p0); ok(findingsOf(e, [e.initiative], all(stories, 'story').filter((x) => x.epic === e.key).length)); },
   'epic ls': () => ok(all(epics, 'epic').filter((e) => !f.initiative || e.initiative === f.initiative)),
   'epic create': () => ok(mint((id) => epic(`GRA-${id}`, f.title, { brief: f.brief || '', initiative: f.initiative || null, external_ref: f['external-ref'] || null }))),
@@ -670,85 +887,159 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     withState((st) => { (st.decisions ||= {})[d.id] = value; });
     ok(value);
   },
-  // POST /plans (GRA-66): the whole plan validated first, every problem reported at once; then each item created
-  // under `plan:<id>:<name>`, so the same plan again creates nothing and answers every name as existing.
+  // POST /plans (GRA-66, handler/plans.rs): the whole plan validated first, every problem reported at once, in the
+  // planner's order; then each item created under `plan:<id>:<name>`, so the same plan again creates nothing and
+  // answers every name as existing.
   apply: () => {
     const errors = [];
     const id = plan.id.trim();
-    if (!id || id.length > 100) errors.push('the plan needs an id of 1..=100 characters');
-    const refs = {}; // name -> item type, for the plan's own items
+    if (!id || [...id].length > 100) errors.push('the plan needs an id of 1..=100 characters');
+    const q = JSON.stringify;
+    const refs = {}; // name -> level, for the plan's own items
     const named = [...plan.initiatives.map((x) => [x, 'initiative']), ...plan.epics.map((x) => [x, 'epic']), ...plan.stories.map((x) => [x, 'story'])];
+    // What an earlier apply of this plan made under a name, or undefined.
+    const earlier = (name) => state.creates[`plan:${id}:${name}`];
     for (const [x, t] of named) {
-      const name = x.name || '';
-      if (!name.trim() || name.trim() !== name) errors.push(`${t} name ${JSON.stringify(name)} must be non-empty with no surrounding spaces`);
-      else if (/^[A-Z][A-Z0-9]*-[0-9]+$/.test(name)) errors.push(`${t} name ${JSON.stringify(name)} looks like a key; a name must not, so a reference is never ambiguous`);
-      else if (name in refs) errors.push(`${JSON.stringify(name)} is used twice; every name in a plan names one item`);
+      const name = x.name;
+      if (!name.trim() || name.trim() !== name) errors.push(`${t} name ${q(name)} must be non-empty with no surrounding spaces`);
+      else if (KEY_REF.test(name)) errors.push(`${t} name ${q(name)} looks like a key; a name must not, so a reference is never ambiguous`);
+      else if (name in refs) errors.push(`${q(name)} is used twice; every name in a plan names one item`);
       else refs[name] = t;
+    }
+    // A name keeps its level across applies of one plan id (check_name_levels).
+    for (const [x, t] of named) {
+      const made = refs[x.name] === t && earlier(x.name);
+      if (made && made.key && kindOf(made) !== t) errors.push(`${q(x.name)} was ${kindOf(made) === 'story' ? 'a' : 'an'} ${kindOf(made)} (${made.key}) in an earlier apply of this plan; a name keeps its level`);
     }
     const decisionNames = new Set();
     for (const d of plan.decisions) {
-      if (d.name in refs || decisionNames.has(d.name)) errors.push(`${JSON.stringify(d.name)} is used twice; every name in a plan names one item`);
+      if (d.name in refs || decisionNames.has(d.name)) errors.push(`${q(d.name)} is used twice; every name in a plan names one item`);
       decisionNames.add(d.name);
     }
+    // References, checked once every item's own rules are: [the reference, the level it must name (null: any), where].
+    const pending = [];
     for (const x of plan.initiatives) {
-      if (!(x.title || '').trim()) errors.push(`initiative ${JSON.stringify(x.name)}: the title is required`);
-      if (!HORIZONS.includes(x.horizon)) errors.push(`initiative ${JSON.stringify(x.name)}: horizon ${x.horizon} is not one of the configured buckets`);
+      if (!x.title.trim()) errors.push(`initiative ${q(x.name)}: the title is required`);
+      if (!HORIZONS.includes(x.horizon)) errors.push(`initiative ${q(x.name)}: horizon ${x.horizon} is not one of the configured buckets`);
     }
-    for (const x of [...plan.epics, ...plan.stories]) if (!(x.title || '').trim()) errors.push(`${JSON.stringify(x.name)}: the title is required`);
-    for (const x of plan.stories) if (x.kind !== undefined && !['story', 'bug', 'chore'].includes(x.kind)) errors.push(`story ${JSON.stringify(x.name)}: unknown kind ${x.kind}`);
-    // A reference is a name in the plan, else an existing item's key (of the wanted type; any type for a decision's on).
-    const existing = (r, wanted) => { const x = itemsOf()[r] || initiatives[r] || epics[r] || stories[r]; return x && (!wanted || kindOf(x) === wanted) ? x.key : null; };
-    const check = (r, wanted, at) => {
-      if (r in refs) { if (wanted && refs[r] !== wanted) errors.push(`${at} is a ${refs[r]} in the plan, not a ${wanted}`); return; }
-      if (!existing(r, wanted)) errors.push(`${at} is neither a name in the plan nor an existing ${wanted || 'item'}`);
-    };
-    for (const x of plan.epics) if (x.initiative != null) check(x.initiative, 'initiative', `epic ${JSON.stringify(x.name)}: initiative ${JSON.stringify(x.initiative)}`);
-    for (const x of plan.stories) if (x.epic != null) check(x.epic, 'epic', `story ${JSON.stringify(x.name)}: epic ${JSON.stringify(x.epic)}`);
+    for (const x of plan.epics) {
+      if (!x.title.trim()) errors.push(`epic ${q(x.name)}: the title is required`);
+      if (x.initiative !== undefined) pending.push([x.initiative, 'initiative', `epic ${q(x.name)}: initiative ${q(x.initiative)}`]);
+    }
+    for (const x of plan.stories) {
+      const at = `story ${q(x.name)}`;
+      if (!x.title.trim()) errors.push(`${at}: the title is required`);
+      // A delivery state is a migrated ticket's (kb/ADR-0003): it needs the reference it came from, and done is the importer's.
+      if (x.delivery !== undefined && x.external_ref === undefined) errors.push(`${at}: a delivery state requires an external_ref; only migrated work skips the gate`);
+      if (x.delivery === 'done') errors.push(`${at}: delivery done is the importer's (it needs a resolution); a plan takes todo, in_progress, in_review or testing`);
+      if (x.epic !== undefined) pending.push([x.epic, 'epic', `${at}: epic ${q(x.epic)}`]);
+    }
     for (const d of plan.decisions) {
-      if (!(d.title || '').trim() || !(d.decider || '').trim()) errors.push(`decision ${JSON.stringify(d.name)}: title and decider are required`);
-      check(d.on, null, `decision ${JSON.stringify(d.name)}: on ${JSON.stringify(d.on)}`);
+      if (!d.title.trim() || !d.decider.trim()) errors.push(`decision ${q(d.name)}: title and decider are required`);
+      pending.push([d.on, null, `decision ${q(d.name)}: on ${q(d.on)}`]);
     }
     for (const b of plan.blocks) {
-      const at = `block ${JSON.stringify(b.story)} by ${JSON.stringify(b.blocked_by)}`;
+      const at = `block ${q(b.story)} by ${q(b.blocked_by)}`;
       if (b.story === b.blocked_by) errors.push(`${at}: a story cannot block itself`);
-      check(b.story, 'story', `${at}: story ${JSON.stringify(b.story)}`);
-      check(b.blocked_by, 'story', `${at}: story ${JSON.stringify(b.blocked_by)}`);
+      pending.push([b.story, 'story', `${at}: story ${q(b.story)}`], [b.blocked_by, 'story', `${at}: story ${q(b.blocked_by)}`]);
+    }
+    // Item links and web links (kb/ADR-0031): at most 500 of each; each end an item of any level; no item link from an
+    // item to itself; a web link's title and URL under the planner's rules, and a URL once per item, in the plan and stored.
+    if (plan.links.length > 500) errors.push(`a plan holds at most 500 item links; this one has ${plan.links.length}`);
+    if (plan.web_links.length > 500) errors.push(`a plan holds at most 500 web links; this one has ${plan.web_links.length}`);
+    const linkAt = (l) => `item link ${q(l.from)} ${l.type} ${q(l.to)}`;
+    // Where a web link's problem is: its title (trimmed, the first 40 characters) and its item, never its URL.
+    const webAt = (w) => `web link ${q([...w.title.trim()].slice(0, 40).join(''))} on ${q(w.on)}`;
+    for (const l of plan.links) pending.push([l.from, null, `${linkAt(l)}: from ${q(l.from)}`], [l.to, null, `${linkAt(l)}: to ${q(l.to)}`]);
+    // As `WebLink::new`: the title is judged first and a bad one is reported alone; the URL only under a good title.
+    const web = plan.web_links.map((w) => {
+      const title = webTitle(w.title);
+      const url = title === null ? null : webUrl(w.url);
+      if (title === null) errors.push(`${webAt(w)}: ${WEB_TITLE}`); else if (url === null) errors.push(`${webAt(w)}: ${WEB_URL}`);
+      pending.push([w.on, null, `${webAt(w)}: on ${q(w.on)}`]);
+      return url === null ? null : { title, url };
+    });
+    // Each reference in the scope of the place it stands in: one spelling may be one item where a level is taken and
+    // another where any level is (`Refs`), and neither answer serves the other.
+    const existing = (r, wanted) => { const x = resolveRef(r, wanted); return x ? x.key : null; };
+    for (const [r, wanted, at] of pending) {
+      if (r in refs) { if (wanted && refs[r] !== wanted) errors.push(`${at} is a ${refs[r]} in the plan, not a ${wanted}`); continue; }
+      if (!existing(r, wanted)) errors.push(`${at} is neither a name in the plan nor an existing ${wanted || 'item'}`);
+    }
+    // Which item an any-level reference names, as one comparable value (plan_identities): `key:` an item that exists,
+    // an existing one however it is spelled or the one an earlier apply of this plan made under that name; `name:` a
+    // plan item with no key yet. Undefined when it names nothing (reported above).
+    const identity = (r) => {
+      if (r in refs) { const made = earlier(r); return made && made.key ? `key:${made.key}` : `name:${r}`; }
+      const k = existing(r, null);
+      return k ? `key:${k}` : undefined;
+    };
+    for (const l of plan.links) {
+      const [from, to] = [identity(l.from), identity(l.to)];
+      if (from !== undefined && from === to) errors.push(`${linkAt(l)}: ${SELF_LINK}`);
+    }
+    const planned = {}; // identity -> the web links the plan's earlier entries give that item
+    const stored = [];
+    plan.web_links.forEach((w, i) => {
+      const who = identity(w.on);
+      if (!web[i] || who === undefined) return;
+      const { title, url } = web[i];
+      const before = (planned[who] ||= []).find((x) => x.url === url);
+      if (!before) planned[who].push({ title, url });
+      else if (before.title !== title) errors.push(`${webAt(w)}: the plan gives ${q(w.on)} that URL under two titles (${q(before.title)} and ${q(title)}); an item has a URL once`);
+      if (who.startsWith('key:')) stored.push([w, who.slice(4), title, url]);
+    });
+    for (const [w, key, title, url] of stored) {
+      const had = webLinksOf(key).find((x) => x.url === url);
+      if (had && had.title !== title) errors.push(`${webAt(w)}: ${webSameUrl(had.title)}`);
     }
     if (errors.length) error('validation', errors.join('; '));
     const keys = {};
-    const resolve = (r) => keys[r] || existing(r, null);
+    const resolve = (r, wanted) => keys[r] || existing(r, wanted);
     const items = [];
-    const make = (name, item, build) => withState((st) => {
+    const make = (name, build) => withState((st) => {
       const k = `plan:${id}:${name}`;
       const created = !(k in st.creates);
       if (created) { st.creates[k] = build(st.next++); if (st.creates[k].key) (st.items ||= {})[st.creates[k].key] = st.creates[k]; }
       return { made: st.creates[k], created };
     });
     for (const x of plan.initiatives) {
-      const { made, created } = make(x.name, 'initiative', (n) => initiative(`GRA-${n}`, x.title, { brief: x.brief || '', horizon: x.horizon, owner: x.owner || null, target_month: x.target_month || null, external_ref: x.external_ref || null }));
+      const { made, created } = make(x.name, (n) => initiative(`GRA-${n}`, x.title, { brief: x.brief || '', horizon: x.horizon, owner: x.owner || null, target_month: x.target_month || null, external_ref: x.external_ref || null }));
       keys[x.name] = made.key; items.push({ name: x.name, item: 'initiative', key: made.key, created });
     }
     for (const x of plan.epics) {
-      const { made, created } = make(x.name, 'epic', (n) => epic(`GRA-${n}`, x.title, { brief: x.brief || '', initiative: x.initiative != null ? resolve(x.initiative) : null, external_ref: x.external_ref || null }));
+      const { made, created } = make(x.name, (n) => epic(`GRA-${n}`, x.title, { brief: x.brief || '', initiative: x.initiative !== undefined ? resolve(x.initiative, 'initiative') : null, external_ref: x.external_ref || null }));
       keys[x.name] = made.key; items.push({ name: x.name, item: 'epic', key: made.key, created });
     }
+    // A story with a migrated ticket's state is created in that state, never moved there (the gate is not asked).
     for (const x of plan.stories) {
-      const { made, created } = make(x.name, 'story', (n) => story(`GRA-${n}`, x.title, { kind: x.kind || 'story', epic: x.epic != null ? resolve(x.epic) : null, description: x.description || '', criteria: (x.criteria || []).map((text) => ({ text, done: false })), labels: x.labels || [], external_ref: x.external_ref || null }));
+      const { made, created } = make(x.name, (n) => story(`GRA-${n}`, x.title, { kind: x.kind || 'story', epic: x.epic !== undefined ? resolve(x.epic, 'epic') : null, description: x.description || '', criteria: x.criteria.map((text) => ({ text, done: false })), labels: x.labels, external_ref: x.external_ref || null, delivery: x.delivery || 'todo' }));
       keys[x.name] = made.key; items.push({ name: x.name, item: 'story', key: made.key, created });
     }
     const decisions = plan.decisions.map((d) => {
-      const on = resolve(d.on);
-      const { made, created } = make(d.name, 'decision', (n) => ({ ...decision7, id: n, on, on_type: refs[d.on] || typeOfKey(on), title: d.title, decider: d.decider, due: d.due || null, reversibility: d.reversibility || null }));
+      const on = resolve(d.on, null);
+      const { made, created } = make(d.name, (n) => ({ ...decision7, id: n, on, on_type: refs[d.on] || typeOfKey(on), title: d.title, decider: d.decider, due: d.due || null, reversibility: d.reversibility || null }));
       return { name: d.name, id: made.id, created };
     });
     const blocks = plan.blocks.map((b) => withState((st) => {
-      const [sk, bk] = [resolve(b.story), resolve(b.blocked_by)];
+      const [sk, bk] = [resolve(b.story, 'story'), resolve(b.blocked_by, 'story')];
       const s = (st.items || {})[sk] || stories[sk];
       const created = !s.blocked_by.includes(bk);
       if (created) (st.items ||= {})[sk] = { ...s, blocked_by: [...s.blocked_by, bk] };
       return { story: sk, blocked_by: bk, created };
     }));
-    ok({ items, decisions, blocks });
+    // Each item link and web link is its own write, after the items exist; one that is there answers `created` false.
+    const levelIn = (st, k) => kindOf((st.items || {})[k] || initiatives[k] || epics[k] || stories[k]);
+    const links = plan.links.map((l) => withState((st) => {
+      const r = addLink(st, resolve(l.from, null), l.type, resolve(l.to, null));
+      return { from: r.from, from_level: levelIn(st, r.from), type: r.type, to: r.to, to_level: levelIn(st, r.to), created: r.created };
+    }));
+    const webLinks = plan.web_links.map((w, i) => withState((st) => {
+      const on = resolve(w.on, null);
+      const r = addWeb(st, on, web[i].title, web[i].url);
+      return { on, level: levelIn(st, on), id: r.link.id, title: r.link.title, url: r.link.url, created: r.created };
+    }));
+    ok({ items, decisions, blocks, links, web_links: webLinks });
   },
   // GET /search (GRA-73): title, brief or description, or external reference containing the text (case-insensitive,
   // literal), newest first, at most 50, each with the fields that matched.

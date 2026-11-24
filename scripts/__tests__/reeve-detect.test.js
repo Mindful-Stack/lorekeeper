@@ -57,12 +57,12 @@ test('an update is offered only when both builds are known and differ', () => {
     [{ current: A, server: null }, false, 'a server that offers none'],
     [{ current: A, server: 'not-a-build' }, false, 'a value that is not a build'],
   ]) {
-    const { bin } = fake("echo 'reeve-planner 0.7.0'", withCli(cli));
+    const { bin } = fake("echo 'reeve-planner 0.8.0'", withCli(cli));
     const out = detect(bin);
     assert.equal(out.signed_in, true, why);
     assert.equal(out.update_offered, offered, why);
   }
-  const { bin } = fake("echo 'reeve-planner 0.7.0'", OK);
+  const { bin } = fake("echo 'reeve-planner 0.8.0'", OK);
   assert.equal(detect(bin).update_offered, false, 'a CLI that reports no cli object');
 });
 

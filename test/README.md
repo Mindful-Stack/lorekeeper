@@ -121,10 +121,12 @@ per run; the log is appended to the output shown by `--verbose` and deleted afte
 **The log.** One line per call that passed the fake's validation (a malformed call is not logged, so it never satisfies a log expectation; a valid call the planner refuses is), except `--version`, which the SessionStart hook also runs to decide whether to list the planner skills in its router (a skill's detection shows as `auth status --json`): the argv joined by spaces, newlines inside an argument
 flattened to spaces, e.g. `epic create --initiative GRA-12 --title A --brief one two --idempotency-key planning-initiative:GRA-12:0a1b2c3d:1 --json`.
 
-**What the fake answers.** `--version` prints `reeve-planner 0.3.0-fake`; every other call must
-include `--json` (anywhere, as the real CLI's global flag) and uses only flags the real CLI has.
+**What the fake answers.** `--version` prints `reeve-planner 0.8.0-fake`; every other call must
+include `--json` once (anywhere, as the real CLI's global flag) and uses only flags the real CLI has.
 What the real CLI's parser rejects (an unknown command or flag, a missing value, a value starting
-with `-` except `comment add --body`) is a usage error as there: the text on stderr, nothing on
+with `-` except `comment add --body`, a flag given twice unless it repeats, `--json` included, a key of `reeve link` or
+`reeve story block|unblock` that is not shaped like a key or an external reference) is a usage
+error as there: the text on stderr, nothing on
 stdout, exit 1. `scripts/__tests__/reeve-reference.test.js` runs every `reeve … --json` command of
 the reference and the skills through the fake, and through the real CLI when `REEVE_REAL_BIN` is
 set. With `REEVE_REAL_BIN` set it also checks the reverse direction: for every command
@@ -209,14 +211,49 @@ Answers use the planner's wire shapes:
   `sprint show` lists the sprint's promises (`promises[]`, the stories whose date is after
   `promises_after`, the previous sprint's planned end, and up to the sprint's own; GRA-41 in the
   active sprint, none in the closed first sprint or the draft) and `sprint ls` leaves the active
-  sprint's list empty, as the planner does.
+  sprint's list empty, as the planner does;
+- item links and web links (kb/ADR-0031): nothing seeded has one; `link add|rm <KEY>
+  <follows|duplicates|relates-to> <OTHER>`, `link add <KEY> --url <URL> --title <TITLE>`, `link rm
+  <KEY> --url <URL>` and `link ls <KEY>` persist in the state file and answer the item's lists as
+  the planner does (an item link read from each side, a `relates_to` stored once; a web link with
+  its trimmed title and the URL in the parser's form, once per item); a blocking word or another
+  unknown name where the name goes is a usage error, as are an incomplete form and the two forms
+  together; a link from an item to itself and a title or URL outside the planner's rules are
+  `validation` errors with the planner's messages; an answer that holds one item (`story show`,
+  the story in `story context`, `initiative show`, `epic show`) carries `links` and `web_links`
+  and a list carries neither; readiness never reads them; a plan takes `links` and `web_links`
+  (at most 500 each, a blocking word as a `type` refused before it is sent) and answers each with
+  `created`; `story block|unblock <KEY> --by <OTHER>` writes the blocker that readiness does read.
+  An item's item links come in the planner's order (name, `out` before `in`, the other key's
+  number, its text), and `link rm` refuses an item link from an item to itself as `link add` does;
+- a plan (`apply`) as the real CLI and planner take it: the CLI's own `internal` error, nothing
+  sent, for an unknown field, a required field left out, a list or a map where a string goes,
+  anything but a list where a list goes and a `kind`, `delivery`, `reversibility` or `type` outside
+  its values (a number, a boolean or a required null where a string goes is read as its text, as
+  YAML reads any scalar: the real CLI sends `"title": "42"` for `title: 42`); then the planner's
+  check, every problem at once and in its order. A story's `delivery` needs an `external_ref` and
+  is never `done`. A reference is resolved in the scope of its place: `epic`, `initiative` and the
+  two stories of a block among the items of that level (key, then external reference), an item
+  link's ends, a web link's `on` and a decision's `on` among all items, keys before external
+  references. A plan name is the item an earlier apply of the same plan id made under it, so the
+  name and that item's key are one item in the self-link check and in the one-URL-per-item checks,
+  and a name keeps its level. `REEVE_FAKE_COLLISION=1` adds epic `OLD-1` (a key from an earlier
+  prefix) and story GRA-49 migrated from a ticket that was `OLD-1` too, the one case where the two
+  scopes name different items.
 
 **The real-planner smoke.** `scripts/__tests__/reeve-real-server.test.js` keeps the fake honest.
 `test/fixtures/reeve-real/commands.json` holds a seed and one entry per row of the reference's
 *Commands* table: the argv (placeholders `{{name.field}}`), the envelope paths the skills read
 (`x[]` is every element), each path's JSON types, the arrays that may be empty and, for `decision
 link`, the planner's expected `check.kind`, and a list of `refusals`: a person's commands (each
-promise form) with the reason the run's agent token must be refused. Seven tests always run: every
+promise form) with the reason the run's agent token must be refused. The seed's last steps add
+item links and web links to the seeded story, its initiative and the screenshot story, so the
+entries that read `links` and `web_links` check their elements. An entry may also say what its
+answer holds, judged on the planner's answer and on the fake's, each with its own keys: `checks`
+(an array `at`, and fields of its elements that `some` element, `none` or `all` of them have) and
+`replay` (the same argv once more: the `same` paths answer what the first run's did, and its own
+`checks` hold). The two `link rm` entries check that the removed one is gone and the others stay,
+and `apply` that a second apply answers the same keys, ids and ends with every `created` false. Seven tests always run: every
 row has exactly one entry, every command form of the row (`story ls --untriaged`, `comment add
 --story`) exactly one run, and every field path in the row's Read column a read at or below it, or a
 reasoned `unread` waiver (a command or a Read added to the reference without a matching entry

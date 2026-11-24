@@ -12,13 +12,13 @@ report with the same sentence, since a non-interactive session shows only that.
 A story moves when its work happens, by its owner or the agent working for them (kb/ADR-0028).
 `<plugin-root>` is the plugin's root directory, two levels above this skill's base directory (the
 path shown when the skill loads); write it out as an absolute path. Read
-`<plugin-root>/references/reeve-cli.md`, *Detection and the binary* and *Moving stories*, first:
+`<plugin-root>/references/reeve-cli.md`, *Detection and the binary*, *Updating the CLI* and *Moving stories*, first:
 they hold the contract, and this skill does not repeat it.
 
 Do nothing here when a plan or stack run is already moving these stories.
 
 1. Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints `"present":true` and
-   `"signed_in":true`, stop and say nothing about the planner (nor the skill).
+   `"signed_in":true`, stop and say nothing about the planner (nor the skill). When it prints `"update_offered":true`, or a `reeve` command prints a line that starts with `note: this reeve is build`, follow *Updating the CLI* in `<plugin-root>/references/reeve-cli.md` between two planner commands.
 2. Find the moment and the stories:
    - work starts: the key the user named;
    - a pull request is ready for review or merged: the keys in its description's `## Stories`.

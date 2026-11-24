@@ -45,6 +45,7 @@ argument.
    the Reeve planner." Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints
    `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this
    session: <reason>." and stop; this skill has no fallback. Keep `bin` and `run_id`.
+   When it prints `"update_offered":true`, or a `reeve` command prints a line that starts with `note: this reeve is build`, follow *Updating the CLI* in `<plugin-root>/references/reeve-cli.md` between two planner commands.
 1. **Read.** `reeve initiative show <KEY> --json` (keep `value.brief`, `value.owner`,
    `value.target_month` and `value.version`), `reeve initiative findings <KEY> --json`,
    `reeve decision ls --initiative <KEY> --json` (every decision on the initiative, on its epics and

@@ -7,7 +7,7 @@ nothing into the record or any repository (kb/ADR-0004 R3): it stores one refere
 1. **Detect.** Run `node <plugin-root>/scripts/reeve-detect.js` (record step 6 has already run it,
    or the calling skill passed its `bin` and `run_id`: reuse them). Keep `bin` and `run_id`.
    Unless it prints `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this session: <reason>; nothing
-   was linked." and stop.
+   was linked." and stop. When it prints `"update_offered":true`, or a `reeve` command prints a line that starts with `note: this reeve is build`, follow *Updating the CLI* in `<plugin-root>/references/reeve-cli.md` between two planner commands.
 2. **Inputs.** Take each from the request or the caller (record step 6); ask, one at a time, only
    for what is missing. In a session that cannot ask (rule 3), a missing input stops the action
    with the line "Nothing was linked: missing <the inputs>." verbatim, on its own line; never

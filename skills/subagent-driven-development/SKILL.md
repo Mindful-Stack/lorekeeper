@@ -96,7 +96,7 @@ complete rather than starting over.
 carry on): read it with `reeve story context <KEY> --json`, then
 `reeve story mv <KEY> in-progress --json`, as `<plugin-root>/references/reeve-cli.md` *Moving
 stories* says. On a refusal, stop the run and report the reasons to the developer; do not dispatch
-this task or later tasks that build on that story.
+this task or later tasks that build on that story. When it prints `"update_offered":true`, or a `reeve` command prints a line that starts with `note: this reeve is build`, follow *Updating the CLI* in `<plugin-root>/references/reeve-cli.md` between two planner commands.
 
 When dispatching an implementer subagent, include relevant knowledge from **knowledge-reader** results (already loaded during planning) in the implementer's prompt so they have domain context and standards.
 

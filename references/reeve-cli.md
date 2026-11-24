@@ -8,8 +8,10 @@ file does not mention for a command it documents.
 ## Detection and the binary
 
 Run `node <plugin-root>/scripts/reeve-detect.js` once per skill invocation. It prints
-`{"present", "signed_in", "url", "email", "bin", "run_id", "reason"}` and always exits 0. Use the
-planner only when `present` and `signed_in` are both true; otherwise behave exactly as without it.
+`{"present", "signed_in", "url", "email", "bin", "run_id", "update_offered", "reason"}` and always
+exits 0. Use the planner only when `present` and `signed_in` are both true; otherwise behave exactly
+as without it. `update_offered` true means the planner offers a CLI build other than this one: see
+*Updating the CLI*.
 
 The binary is `${REEVE_BIN:-reeve}`, the one the detector checked; the detector prints it as `bin`.
 Write that value as the command's first word (it is `reeve` unless `REEVE_BIN` is set), never the
@@ -39,6 +41,46 @@ older CLI's story context has no `attachments`, and an older server lists none (
 0.7.0 or later and a planner running it: an older CLI drops the two fields from its output, and an
 older planner judges every unfinished blocker as blocking. Without `delivery`, word the reason as
 *Wording the planner's answers* says and go on.
+
+## Updating the CLI
+
+The planner serves its own build of the CLI (kb/ADR-0030). When the CLI's build differs from the
+one the server offers, every command still prints its usual output, envelope and exit status, and
+then one line on standard error that starts with `note: this reeve is build`, such as
+`note: this reeve is build 9f8e7d6, the server offers 1a2b3c4 — run reeve update between commands`.
+The detector reports the same thing as `"update_offered":true` (from `cli.current` and `cli.server`
+in `reeve auth status --json`). Neither changes the step: handle the envelope as usual.
+
+When you see either one, update the CLI (kb/ADR-0030 R8):
+
+- **At most once per session.** If this session already ran `reeve update`, under any skill, do not
+  run it again.
+- **Only between two planner commands.** Let the command that printed the notice finish and handle
+  its envelope first. Never run the update while another `reeve` command is running, and never in
+  the same batch of parallel tool calls as one.
+- Run it with no other argument:
+
+```
+reeve update --json
+```
+
+It needs no sign-in and changes nothing but the binary, so `bin` stays the same.
+
+| Envelope | Do |
+|---|---|
+| `{"outcome":"ok","value":{"from":…,"to":…,"updated":true}}` | say in your output (to the user, when one is present) that you updated the reeve CLI from build `from` to build `to` (their first seven characters), and continue with the next command |
+| `{"outcome":"ok","value":{…,"updated":false}}` | the builds already match: say nothing and continue |
+| `{"outcome":"error",…}`, with or without a `reason` (`not_distributed`, `checksum_mismatch`, `cannot_replace`) | do not retry and do not update again this session: show the message, which says how to update, and continue with the CLI you have |
+
+If the notice appears again after a successful update in the same session, do not update again: say
+once that the CLI still differs from the build the server offers, tell the user to update it by hand
+with `curl -q --proto '=https' --tlsv1.2 -fsS <url>/cli/install.sh | sh` (Linux, macOS) or, in
+PowerShell, `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; irm <url>/cli/install.ps1 | iex`
+(Windows), `<url>` the detector's `url`, and continue with the CLI you have. Never set `REEVE_UPDATE_NOTICE=0`
+yourself to silence the notice; a user who has set it sees no notice, and that is their choice.
+
+A CLI without `reeve update` (one built before kb/ADR-0030) never shows the notice and reports no
+`cli` builds, so this section never applies to it.
 
 ## Arguments
 

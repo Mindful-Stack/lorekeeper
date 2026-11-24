@@ -2,13 +2,15 @@
 // scripts/reeve-detect.js — is the Reeve planner present and is the user signed in? (kb/ADR-0005 R1)
 // Prints one JSON line and always exits 0. REEVE_BIN overrides the binary (tests);
 // REEVE_DETECT_TIMEOUT_MS overrides the 10 s timeout per call (tests).
+// update_offered: the server offers a CLI build other than this one (kb/ADR-0030 R6, R8), read from
+// `cli.current` and `cli.server` in `reeve auth status --json`; false whenever either is missing.
 'use strict';
 const { execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
 
 const bin = process.env.REEVE_BIN || 'reeve';
 const timeout = Number(process.env.REEVE_DETECT_TIMEOUT_MS) || 10_000;
-const result = { present: false, signed_in: false, url: null, email: null, bin, run_id: crypto.randomBytes(4).toString('hex'), reason: '' };
+const result = { present: false, signed_in: false, url: null, email: null, bin, run_id: crypto.randomBytes(4).toString('hex'), update_offered: false, reason: '' };
 
 function finish(reason) {
   result.reason = reason;
@@ -38,4 +40,8 @@ if (auth.status !== 0 || envelope.outcome !== 'ok') finish(`signed out: ${envelo
 result.signed_in = true;
 result.url = envelope.value?.url ?? null;
 result.email = envelope.value?.email ?? null;
+// A build is a 40-character hex CLI version; null means an unstamped CLI, or a server that offers none.
+const isBuild = (b) => typeof b === 'string' && /^[0-9a-f]{40}$/.test(b);
+const cli = envelope.value?.cli;
+result.update_offered = isBuild(cli?.current) && isBuild(cli?.server) && cli.current !== cli.server;
 finish('');

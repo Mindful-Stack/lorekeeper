@@ -33,7 +33,7 @@ task for this and say nothing about it. Run `node <plugin-root>/scripts/reeve-de
 never mentions the planner, the detector, a sign-in or a story lookup (not even that the story
 could not be loaded), and reads exactly as it would if the planner did not exist. Otherwise
 read `<plugin-root>/references/reeve-cli.md` and run `reeve story context <KEY> --json` (the
-detector's `bin` as the first word). If it does not answer `ok`, say so in one line (the planner
+detector's `bin` as the first word). When it prints `"update_offered":true`, or a `reeve` command prints a line that starts with `note: this reeve is build`, follow *Updating the CLI* in `<plugin-root>/references/reeve-cli.md` between two planner commands. If it does not answer `ok`, say so in one line (the planner
 has no story <KEY>, and an epic or initiative key is not a story; for an `unauthenticated` or
 `forbidden` error, run `reeve auth login`) and go on with checklist item 1 without planner
 context. On `ok`, the story's title, description and criteria, the initiative and epic briefs,

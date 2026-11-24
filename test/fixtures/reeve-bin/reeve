@@ -122,6 +122,7 @@ const SPEC = {
   'goal link': { pos: 2, variadic: true }, // <ID> <KEYS>...
   'goal unlink': { pos: 2, variadic: true },
   'attachment get': { pos: 1, val: ['dir'], req: ['dir'] },
+  update: { pos: 0 }, // `reeve update` (kb/ADR-0030): replaces the binary with the build the server offers
 };
 // A command is one word (`search`) or two (`story ls`).
 const cmd = SPEC[words[0]] ? words[0] : words.slice(0, 2).join(' ');
@@ -424,7 +425,7 @@ if (['story create', 'story edit', 'epic create', 'epic edit'].includes(cmd)) {
   for (const [flag, table] of [['epic', epics], ['initiative', initiatives]]) if (f[flag] !== undefined && !itemsOf()[f[flag]] && !table[f[flag]]) error('not_found', `no ${flag} ${f[flag]}`);
 }
 logCall(); // valid: the call reached the planner (a refusal below is the planner's answer)
-if (process.env.REEVE_FAKE_SIGNIN === 'expired' && cmd !== 'auth status') error('unauthenticated', 'the session has expired; run `reeve auth login`');
+if (process.env.REEVE_FAKE_SIGNIN === 'expired' && cmd !== 'auth status' && cmd !== 'update') error('unauthenticated', 'the session has expired; run `reeve auth login`');
 if (process.env.REEVE_FAKE_REFUSE && cmd.includes(process.env.REEVE_FAKE_REFUSE)) emit({ outcome: 'refused', reasons: [{ reason: 'no_criteria' }] }, 2);
 // A story's owner must be an allowed user (GRA-69); nobody@example.com stands for one who is not.
 if ((cmd === 'story create' || cmd === 'story edit') && f.owner === NOT_ALLOWED) error('validation', `owner ${f.owner} is not an allowed user`);
@@ -506,7 +507,17 @@ const promisedMatches = (which, p) => {
 const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
 
 ({
-  'auth status': () => ok({ url: 'http://127.0.0.1:7474', token_from_env: false, email: 'dan@example.com', role: 'member', token_kind: 'interactive' }),
+  // REEVE_FAKE_CLI_CURRENT / REEVE_FAKE_CLI_SERVER set the two builds (40 hex characters); unset, both are null.
+  'auth status': () => ok({ url: 'http://127.0.0.1:7474', token_from_env: false, email: 'dan@example.com', role: 'member', token_kind: 'interactive', cli: { current: process.env.REEVE_FAKE_CLI_CURRENT || null, server: process.env.REEVE_FAKE_CLI_SERVER || null } }),
+  // REEVE_FAKE_UPDATE=<reason> fails with that reason (not_distributed, checksum_mismatch, cannot_replace); the fake
+  // never replaces itself.
+  update: () => {
+    const reason = process.env.REEVE_FAKE_UPDATE;
+    if (reason) error(reason === 'not_distributed' ? 'not_found' : 'internal', `reeve update failed (${reason}); to update by hand: curl -q --proto '=https' --tlsv1.2 -fsS https://reeve.example.com/cli/install.sh | sh`, { reason });
+    const from = process.env.REEVE_FAKE_CLI_CURRENT || null;
+    const to = process.env.REEVE_FAKE_CLI_SERVER || from;
+    ok({ from, to, updated: from !== to });
+  },
   'sprint show': () => {
     const sp = p0 !== undefined ? sprints[p0] || error('not_found', `no sprint ${p0}`) : activeSprint();
     const v = viewOf(sp);

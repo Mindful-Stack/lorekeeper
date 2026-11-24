@@ -61,7 +61,7 @@ Read `<plugin-root>/skills/recording-decisions/reference/record-format.md` first
    updater's own-pr worktree is removed before it returns, so the record is not in the index).
    Reuse the calling skill's `bin`, `run_id`, key prefix and next `<n>` when it passed them;
    otherwise run `node <plugin-root>/scripts/reeve-detect.js` once and keep `bin` and `run_id`;
-   unless it prints `"present":true` and `"signed_in":true`, skip the rest of this step. The
+   unless it prints `"present":true` and `"signed_in":true`, skip the rest of this step. When it prints `"update_offered":true`, or a `reeve` command prints a line that starts with `note: this reeve is build`, follow *Updating the CLI* in `<plugin-root>/references/reeve-cli.md` between two planner commands. The
    inputs:
    - the qualified id and the file name: the ones the draft was numbered and saved with (the
      qualified id is the draft's front-matter `id`);

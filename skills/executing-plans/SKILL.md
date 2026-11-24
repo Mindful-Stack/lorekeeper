@@ -29,7 +29,7 @@ For each task:
    (once per run) prints `"present":true` and `"signed_in":true`, start that story first (without a
    planner, skip the move and carry on):
    read it with `reeve story context <KEY> --json`, then `reeve story mv <KEY> in-progress --json`,
-   as `<plugin-root>/references/reeve-cli.md` *Moving stories* says
+   as `<plugin-root>/references/reeve-cli.md` *Moving stories* says. When it prints `"update_offered":true`, or a `reeve` command prints a line that starts with `note: this reeve is build`, follow *Updating the CLI* in `<plugin-root>/references/reeve-cli.md` between two planner commands.
 2. Follow each step exactly (plan has bite-sized steps)
    - If the task involves a different domain/tech than previously loaded, dispatch **knowledge-reader** with implementation hints
    - After completing the task, dispatch **plan-compliance-reviewer** with the task text and the plan path, to verify the implementation matches the plan and its *Governing decisions*

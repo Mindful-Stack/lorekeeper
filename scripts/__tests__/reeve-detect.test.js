@@ -39,9 +39,31 @@ test('the planner, signed in', () => {
   for (const version of ['reeve-planner 0.1.0', 'reeve-planner 0.1.0-fake']) {
     const { bin } = fake(`echo '${version}'`, OK);
     const { run_id, ...out } = detect(bin);
-    assert.deepEqual(out, { present: true, signed_in: true, url: 'http://127.0.0.1:7474', email: 'dan@example.com', bin, reason: '' });
+    assert.deepEqual(out, { present: true, signed_in: true, url: 'http://127.0.0.1:7474', email: 'dan@example.com', bin, update_offered: false, reason: '' });
     assert.match(run_id, /^[0-9a-f]{8}$/);
   }
+});
+
+// kb/ADR-0030 R6: `reeve auth status --json` reports the two builds as cli.current and cli.server.
+test('an update is offered only when both builds are known and differ', () => {
+  const A = '9f8e7d6c5b4a39281706f5e4d3c2b1a098765432';
+  const B = '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b';
+  const withCli = (cli) => OK.replace('"token_kind":"interactive"}', `"token_kind":"interactive","cli":${JSON.stringify(cli)}}`);
+  for (const [cli, offered, why] of [
+    [{ current: A, server: B }, true, 'different builds'],
+    [{ current: B, server: A }, true, 'an older build offered is still offered (R7)'],
+    [{ current: A, server: A }, false, 'equal builds'],
+    [{ current: null, server: B }, false, 'an unstamped CLI'],
+    [{ current: A, server: null }, false, 'a server that offers none'],
+    [{ current: A, server: 'not-a-build' }, false, 'a value that is not a build'],
+  ]) {
+    const { bin } = fake("echo 'reeve-planner 0.7.0'", withCli(cli));
+    const out = detect(bin);
+    assert.equal(out.signed_in, true, why);
+    assert.equal(out.update_offered, offered, why);
+  }
+  const { bin } = fake("echo 'reeve-planner 0.7.0'", OK);
+  assert.equal(detect(bin).update_offered, false, 'a CLI that reports no cli object');
 });
 
 test('anything else answering to reeve is not the planner, and its auth is never run', () => {

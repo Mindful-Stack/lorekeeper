@@ -51,6 +51,7 @@ single-quoted argument on one line, as the reference's Arguments section says.
    Reeve planner." Run `node <plugin-root>/scripts/reeve-detect.js`. Unless it prints
    `"present":true` and `"signed_in":true`, say "The Reeve planner is not available in this
    session: <reason>." and stop; this skill has no fallback. Keep `bin` and `run_id`.
+   When it prints `"update_offered":true`, or a `reeve` command prints a line that starts with `note: this reeve is build`, follow *Updating the CLI* in `<plugin-root>/references/reeve-cli.md` between two planner commands.
    **No epic named.** A request to triage the whole untriaged queue ("triage the untriaged
    stories in Reeve") follows *Whole-queue triage* below instead of steps 1 to 10. Any other
    request that names no epic ("refine an epic in Reeve") asks which epic to refine and stops

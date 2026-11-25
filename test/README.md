@@ -197,7 +197,7 @@ Answers use the planner's wire shapes:
 - created items get keys `GRA-100`, `GRA-101`, … (decision and comment ids `100`, …), minted from a counter
   in the per-run state file `$REEVE_FAKE_LOG.state`, distinct within a run;
 - every create needs `--idempotency-key <skill>:<KEY>:<run-id>:<n>` (kb/ADR-0005 R3), or for a duplicate
-  comment `triage-dup:<KEY>:<DUP>` (anything else is a `validation` error), and replays by key: the same key again returns the first item, it never mints a second;
+  comment `triage-dup:<KEY>:<DUP>` (anything else is a `validation` error), and replays by key: the same key again returns the first item, it never mints a second (a story's, an epic's and an initiative's keys are kept apart, as the planner's tables keep them);
 - an edit or discovery mark with a stale `--version` is a `conflict` (exit 1);
 - promises (kb/ADR-0025): `GRA-41` has its own open promise due this sprint and epic `GRA-22` (migrated
   from `PRM-1`, so `epic show PRM-1` finds it) one due next sprint; every other story and epic has
@@ -253,7 +253,9 @@ Answers use the planner's wire shapes:
   `validation` error and nothing is created); else nothing with `--no-template`; else the level's
   default when one is marked. A brief flag with `--template`, and `--template` with
   `--no-template`, are usage errors. A create replayed by its idempotency key answers its item
-  though the template is gone, and a plan (`apply`) never applies one.
+  though the template is gone, and a plan (`apply`) never applies one. A key is its level's, as
+  each of the planner's item tables keeps its own: an epic create under a key only an initiative
+  (or a story) used is a new create, so one naming a missing template is refused.
 
 **The real-planner smoke.** `scripts/__tests__/reeve-real-server.test.js` keeps the fake honest.
 `test/fixtures/reeve-real/commands.json` holds a seed and one entry per row of the reference's
@@ -264,14 +266,18 @@ promise form) with the reason the run's agent token must be refused. The seed's 
 item links and web links to the seeded story, its initiative and the screenshot story, so the
 entries that read `links` and `web_links` check their elements. An entry may also say what its
 answer holds, judged on the planner's answer and on the fake's, each with its own keys: `checks`
-(an array `at`, and fields of its elements that `some` element, `none` or `all` of them have) and
+(an array `at`, and fields of its elements that `some` element, `none` or `all` of them have; an
+`at` without `[]` is one object, judged as an array of one, and a value that is a lone placeholder
+keeps its type, so `{{bet_template.id}}` compares as a number) and
 `replay` (the same argv once more: the `same` paths answer what the first run's did, and its own
 `checks` hold). The two `link rm` entries check that the removed one is gone and the others stay,
 and `apply` that a second apply answers the same keys, ids and ends with every `created` false.
 The seed also creates three brief templates and marks one the initiative default, which takes an
 admin: the Reeve smoke's token is one, and the test runs the fake with `REEVE_FAKE_ROLE=admin`. The
 `template ls` entry then checks that one level's list holds the default and leaves the other
-level's out. Seven tests always run: every
+level's out, and the `template show` entry shows the second template made, not the first, and
+checks its id and fields on both sides, so a fake that answers the first template for every id
+fails. Twelve tests always run: every
 row has exactly one entry, every command form of the row (`story ls --untriaged`, `comment add
 --story`) exactly one run, and every field path in the row's Read column a read at or below it, or a
 reasoned `unread` waiver (a command or a Read added to the reference without a matching entry
@@ -279,7 +285,10 @@ fails), and two mutation tests prove that check on the committed files; the seed
 the refusals run against the fake on both sides (the `story context` entry runs on the screenshot
 story `{{shot.story}}`, which the live run gives the fake as GRA-31 through `fakeScope`); a copy of
 the fake with a field renamed is reported as the fake's to fix; a copy that lets `story promise`
-through is too; and every promise command in the reference's *Promises* table needs a refusal case. The eighth, the live test, runs
+through is too; so are five copies that break what an entry's `checks` or `replay` hold (a `link
+rm` that removes nothing, one that drops a survivor, an apply that creates its plan again, a replay
+with an element more, an apply whose ends are reversed); and every promise command in the
+reference's *Promises* table needs a refusal case. The thirteenth, the live test, runs
 only when `REEVE_SMOKE_SEED` is set, which the Reeve repository's `mise run skill-smoke` does after
 starting a real server: it runs the detector, then the seed and every entry against the real CLI
 (`REEVE_REAL_BIN`, `REEVE_URL`, `REEVE_TOKEN`) and the fake side by side, and fails when a path is

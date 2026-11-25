@@ -1343,6 +1343,23 @@ test('a create starts from a template only when it passes no brief: --template n
   // a member's create starts from the default too: reading a template needs no admin
   assert.equal(runIn(log, createArgs('initiative', 14)).envelope.value.brief, 'changed');
 });
+test("a key is its level's: an epic create under a key an initiative used is no replay, so a missing template refuses it", () => {
+  const log = freshLog();
+  const call = (args) => runIn(log, args, ADMIN);
+  call(templateArgs('epic', 'Outline', '## Outline\n'));
+  const initiative = call(createArgs('initiative', 1)).envelope.value;
+  const refused = call(createArgs('epic', 1, '--template', 'Missing'));
+  assert.deepEqual([refused.status, refused.envelope.code, refused.envelope.message], [1, 'validation', 'no epic brief template is named "Missing": `reeve template ls --level epic` lists them']);
+  const epic = call(createArgs('epic', 1, '--template', 'Outline')).envelope.value;
+  assert.notEqual(epic.key, initiative.key, 'the same key at another level makes another item');
+  assert.equal(epic.brief, '## Outline\n');
+  assert.equal(call(['initiative', 'show', initiative.key, '--json']).envelope.value.brief, '', 'the initiative is as it was made');
+  // once the epic level has used the key, a retry naming a template gone since answers the epic it made
+  call(['template', 'rm', '1', '--json']);
+  assert.equal(call(createArgs('epic', 1, '--template', 'Outline')).envelope.value.key, epic.key);
+  const story = runIn(log, ['story', 'create', '--title', 'S', '--idempotency-key', 'planning-initiative:GRA-12:0a1b2c3d:1', '--json']).envelope.value;
+  assert.ok(![initiative.key, epic.key].includes(story.key), 'a story under the key is a third item');
+});
 test('a brief with --template, and --template with --no-template, are usage errors; a plan applies no template', () => {
   const log = freshLog();
   for (const [extra, text] of [[['--brief', 'Mine', '--template', 'Scenario'], /'--brief' cannot be used with '--template'/], [['--brief', '', '--template', 'Scenario'], /'--brief' cannot be used with '--template'/],

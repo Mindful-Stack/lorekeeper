@@ -59,6 +59,8 @@
 // error); else `--no-template` starts empty; else the level's default, when one is marked. A brief flag with
 // `--template`, and `--template` with `--no-template`, are usage errors. A create replayed by its idempotency key is
 // answered its item whatever happened to the template since. A plan never applies one.
+// An item create's key is its level's (each level keeps its own keys, as the planner's tables do): a story, an epic
+// and an initiative created under one key are three items, and a key another level used replays nothing.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -70,7 +72,8 @@ const log = process.env.REEVE_FAKE_LOG;
 let logged = () => argv.join(' ');
 const logCall = () => { if (log) fs.appendFileSync(log, logged().replace(/[\r\n\u2028\u2029\u0085]+/g, ' ') + '\n'); };
 
-// Per-run state next to the log: { next, creates: { <idempotency key>: <response value> },
+// Per-run state next to the log: { next, creates: { <idempotency key>: <response value> } (an item create's under
+// `<level> <idempotency key>`, `createKey`),
 // items: { <KEY>: <the item as last written> }, decisions: { <id>: <the decision as last linked> } }. Updates
 // run under an exclusive lock file, so parallel calls neither share an id nor lose a replay entry.
 function withState(fn) {
@@ -458,9 +461,13 @@ const createdDecisions = () => Object.values(state.creates).filter((v) => !Array
 const kindOf = (v) => ('criteria' in v ? 'story' : 'horizon' in v ? 'initiative' : 'epic');
 const all = (table, kind) => Object.values({ ...table, ...Object.fromEntries(Object.entries(itemsOf()).filter(([, v]) => kindOf(v) === kind)) });
 const save = (item) => withState((state) => { (state.items ||= {})[item.key] = item; return item; });
-// A create answers with the item built for a fresh id; the same key again replays the first answer.
-const mint = (build) => withState((state) => {
-  const key = f['idempotency-key'];
+// Where a create is stored: an item create under its level and key, as each of the planner's item tables keeps its
+// own keys (a key is one word, so the space keeps the two apart); any other create under its key.
+const createKey = (level) => (level ? `${level} ${f['idempotency-key']}` : f['idempotency-key']);
+// A create answers with the item built for a fresh id; the same key again (at the same level, for an item) replays
+// the first answer.
+const mint = (build, level) => withState((state) => {
+  const key = createKey(level);
   if (!(key in state.creates)) {
     state.creates[key] = build(state.next++);
     if (state.creates[key].key) (state.items ||= {})[state.creates[key].key] = state.creates[key];
@@ -593,10 +600,10 @@ const NO_TEMPLATE = { code: 'not_found', message: 'not found' };
 // The brief a new initiative or epic starts from (the server's actions/templates.rs `starting_brief`, asked as the CLI
 // asks): a brief flag is the brief, an empty one too; else the template --template names; else nothing with
 // --no-template; else the level's default, when one is marked. A create replayed by its key is answered its item, so
-// a template that is gone by then refuses nothing.
+// a template that is gone by then refuses nothing; a key only another level used is not a replay, and is refused.
 const startingBrief = (level) => {
   if ('brief' in f) return f.brief;
-  if (f['idempotency-key'] in state.creates) return '';
+  if (createKey(level) in state.creates) return '';
   if (f.template !== undefined) {
     const t = templateNamed(level, f.template);
     return t ? t.body : error('validation', `no ${level} brief template is named ${JSON.stringify(f.template)}: \`reeve template ls --level ${level}\` lists them`);
@@ -843,7 +850,7 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
     .map(withGoals) // --goal: serving that active-sprint goal, any of them, or none (upkeep)
     .filter((s) => f.goal === undefined || (f.goal === 'any' ? s.goals.length > 0 : f.goal === 'none' ? !s.goals.length : s.goals.some((g) => String(g.id) === f.goal)))
     .map((s) => ({ story: s, readiness: readinessOf(s) })).filter((x) => !f.ready || (x.readiness.ready && x.story.delivery === 'todo')))),
-  'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], owner: f.owner || null, external_ref: f['external-ref'] || null }))),
+  'story create': () => ok(mint((id) => story(`GRA-${id}`, f.title, { kind: f.kind || 'story', epic: f.epic || null, criteria: (f.criterion || []).map((text) => ({ text, done: false })), description: f.description || '', labels: f.label || [], owner: f.owner || null, external_ref: f['external-ref'] || null }), 'story')),
   'story mv': () => {
     const s = find(stories, p0);
     const active = (d) => ['in_progress', 'in_review', 'testing'].includes(d);
@@ -871,13 +878,13 @@ const byKeyNumber = (a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]);
   'initiative show': () => ok(withLinks(find(initiatives, p0))),
   'initiative findings': () => { const i = find(initiatives, p0); const own = all(epics, 'epic').filter((e) => e.initiative === i.key).map((e) => e.key); ok(findingsOf(i, [], all(stories, 'story').filter((x) => own.includes(x.epic)).length)); },
   'initiative ls': () => ok(all(initiatives, 'initiative')),
-  'initiative create': () => { const brief = startingBrief('initiative'); ok(mint((id) => initiative(`GRA-${id}`, f.title, { brief, horizon: f.horizon, owner: f.owner || null, target_month: f['target-month'] || null, external_ref: f['external-ref'] || null }))); },
+  'initiative create': () => { const brief = startingBrief('initiative'); ok(mint((id) => initiative(`GRA-${id}`, f.title, { brief, horizon: f.horizon, owner: f.owner || null, target_month: f['target-month'] || null, external_ref: f['external-ref'] || null }), 'initiative')); },
   'initiative edit': () => { const i = find(initiatives, p0); ok(save({ ...bump(i), brief: f.brief ?? i.brief, title: f.title ?? i.title, horizon: f.horizon ?? i.horizon, owner: f['no-owner'] ? null : f.owner ?? i.owner, target_month: f['no-target-month'] ? null : f['target-month'] ?? i.target_month, external_ref: refOf(i) })); },
   'initiative discovery': () => ok(save({ ...bump(find(initiatives, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
   'epic show': () => ok(withLinks(find(epics, p0))),
   'epic findings': () => { const e = find(epics, p0); ok(findingsOf(e, [e.initiative], all(stories, 'story').filter((x) => x.epic === e.key).length)); },
   'epic ls': () => ok(all(epics, 'epic').filter((e) => !f.initiative || e.initiative === f.initiative)),
-  'epic create': () => { const brief = startingBrief('epic'); ok(mint((id) => epic(`GRA-${id}`, f.title, { brief, initiative: f.initiative || null, external_ref: f['external-ref'] || null }))); },
+  'epic create': () => { const brief = startingBrief('epic'); ok(mint((id) => epic(`GRA-${id}`, f.title, { brief, initiative: f.initiative || null, external_ref: f['external-ref'] || null }), 'epic')); },
   'epic edit': () => { const e = find(epics, p0); ok(save({ ...bump(e), brief: f.brief ?? e.brief, title: f.title ?? e.title, initiative: f['no-initiative'] ? null : f.initiative ?? e.initiative, external_ref: refOf(e) })); },
   'epic discovery': () => ok(save({ ...bump(find(epics, p0)), discovery_complete: f.complete ? { at: NOW, by: 'dan@example.com' } : null })),
   // --initiative (GRA-67): every decision on the initiative, on its epics and on their stories.

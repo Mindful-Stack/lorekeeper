@@ -221,8 +221,10 @@ function coverageProblems(rows, fixture) {
       (list || []).forEach((c, i) => {
         const at = `${e.row}: ${where}[${i}]`;
         const kinds = CHECK_KINDS.filter((k) => c && k in c);
-        if (!c || typeof c.at !== 'string' || !c.at.endsWith('[]')) { problems.push(`${at} needs \`at\`, the array it reads (a path ending in [])`); return; }
-        if (!e.reads.some((r) => r === c.at || r.startsWith(`${c.at}.`))) problems.push(`${at}: ${c.at} names no array the entry reads`);
+        if (!c || typeof c.at !== 'string' || !c.at) { problems.push(`${at} needs \`at\`, the array it reads (a path ending in []) or the object`); return; }
+        if (c.at.endsWith('[]')) {
+          if (!e.reads.some((r) => r === c.at || r.startsWith(`${c.at}.`))) problems.push(`${at}: ${c.at} names no array the entry reads`);
+        } else if (!e.reads.some((r) => r.startsWith(`${c.at}.`))) problems.push(`${at}: ${c.at} names no object the entry reads a field of (an array's path ends in [])`);
         if (kinds.length !== 1) problems.push(`${at} needs exactly one of ${CHECK_KINDS.join(', ')}`);
         else if (!c[kinds[0]] || typeof c[kinds[0]] !== 'object' || !Object.keys(c[kinds[0]]).length) problems.push(`${at}: ${kinds[0]} needs at least one field to compare`);
       });
@@ -288,11 +290,20 @@ function valuesAt(root, spec) {
 }
 // What an answer holds, beyond its shape. A check names an array (`at`) and fields of its elements (dotted paths, their
 // values bound from the side's own scope like an argv): `some`, an element has every field so; `none`, no element
-// has; `all`, every element has, and there is at least one. PROPERTY: an answer that returns a removed element, drops
-// a survivor or reports `created` the wrong way is a problem, where the type checks alone pass it.
+// has; `all`, every element has, and there is at least one. An `at` without `[]` names one object (`value` of a show),
+// judged as an array of that one element. A value that is one placeholder and nothing else is the bound value itself,
+// so a number compares as a number (`{{bet.id}}`); a placeholder inside other text binds as text. PROPERTY: an answer
+// that returns a removed element, drops a survivor, reports `created` the wrong way or shows another item than the one
+// asked for is a problem, where the type checks alone pass it.
 // `{{named.<name>}}` is the key the same answer's `value.items[]` gives that plan name, so a check can tie an apply's
 // ends to the items it made: an answer whose ends are all consistently reversed fails, where levels alone pass it.
 const CHECK_KINDS = ['some', 'none', 'all'];
+const boundValue = (v, scope) => {
+  const whole = /^\{\{([^}]+)\}\}$/.exec(v);
+  if (!whole) return bind([v], scope)[0];
+  bind([v], scope); // an unbound or non-scalar placeholder is refused as bind refuses it
+  return whole[1].split('.').reduce((o, k) => o[k], scope);
+};
 function checkProblems(env, checks, scope) {
   const problems = [];
   const items = valueAt(env, 'value.items');
@@ -300,7 +311,7 @@ function checkProblems(env, checks, scope) {
   const own = { ...scope, named };
   for (const c of checks || []) {
     const kind = CHECK_KINDS.find((k) => k in c);
-    const want = Object.entries(c[kind]).map(([field, v]) => [field, typeof v === 'string' ? bind([v], own)[0] : v]);
+    const want = Object.entries(c[kind]).map(([field, v]) => [field, typeof v === 'string' ? boundValue(v, own) : v]);
     const shown = `{${want.map(([field, v]) => `${field}: ${JSON.stringify(v)}`).join(', ')}}`;
     const elements = valuesAt(env, c.at);
     const hits = elements.filter((x) => want.every(([field, v]) => valueAt(x, field) === v)).length;

@@ -29,7 +29,7 @@ const PLACEHOLDERS = {
   repo: 'lore', 'path in repo': 'knowledge/adrs/0002-x.md', path: 'knowledge/adrs/0002-x.md', url: 'https://github.com/example/w/pull/9',
   household: '.', dir: '.', ID: '0193a6a2-7b1c-7d2e-9f00-000000000031', branch: 'feat/x', note: 'Note', 'goal id': '2', 'its title': 'Match queue stories',
   'brief file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'brief.md'), 'description file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'brief.md'),
-  'plan file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'plan.json'), 'the new epic or initiative, its title and where it goes': 'new epic under GRA-13',
+  'plan file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'plan.json'), 'template name': 'Scenario', 'body file': path.join(root, 'test', 'fixtures', 'reeve-bin', 'brief.md'), 'the new epic or initiative, its title and where it goes': 'new epic under GRA-13',
 };
 
 // `reeve … --json` spans: inline code, and fenced blocks that start with `reeve `.

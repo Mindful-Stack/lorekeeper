@@ -26,7 +26,7 @@ test('commandRows reads the Commands table only and reads \\| inside a cell as |
 });
 test('commandRows finds the rows of the reference, each with its Read cell', () => {
   const rows = s.commandRows(fs.readFileSync(path.join(__dirname, '..', '..', 'references', 'reeve-cli.md'), 'utf8'));
-  assert.equal(rows.length, 43);
+  assert.equal(rows.length, 45);
   for (const r of rows) {
     assert.match(r.row, /^`reeve [a-z]+( [a-z]+)?[ `]/, r.row);
     assert.match(r.read, /`value/, r.row);
@@ -237,6 +237,19 @@ test('replayProblems: the second run answers the same keys, ids and ends, the sa
     'the second run\'s value.links[] is [{"from":"A-1","to":"B-9"}], the first run\'s [{"from":"A-1"}] (created aside)']);
   assert.deepEqual(s.replayProblems(entry, first, { status: 1, stdout: '{"outcome":"error","code":"validation","message":"m"}', stderr: '' }, {}), ['the second run answered exit 1, outcome error validation m']);
 });
+test("checkProblems: an object is judged as one element, and a whole placeholder keeps its value's type", () => {
+  const scope = { bet: { id: 2, name: 'Bet' } };
+  const shown = (value) => ({ outcome: 'ok', value });
+  const check = [{ at: 'value', all: { id: '{{bet.id}}', name: '{{bet.name}}' } }];
+  assert.deepEqual(s.checkProblems(shown({ id: 2, name: 'Bet' }), check, scope), []);
+  // the first template answered for every id: another id, another name
+  assert.deepEqual(s.checkProblems(shown({ id: 1, name: 'Scenario' }), check, scope), ['0 of 1 element(s) of value have {id: 2, name: "Bet"}, expected every one of at least one']);
+  assert.equal(s.checkProblems(shown({ id: '2', name: 'Bet' }), check, scope).length, 1, 'the number 2, not the text');
+  assert.equal(s.checkProblems({ outcome: 'ok' }, check, scope).length, 1, 'a missing object is no element');
+  assert.deepEqual(s.checkProblems(shown({ title: 'id 2' }), [{ at: 'value', all: { title: 'id {{bet.id}}' } }], scope), [], 'inside other text it binds as text');
+  assert.throws(() => s.checkProblems(shown({}), [{ at: 'value', all: { id: '{{nobody.id}}' } }], scope), /unbound \{\{nobody\.id\}\}/);
+  assert.throws(() => s.checkProblems(shown({}), [{ at: 'value', all: { id: '{{bet}}' } }], scope), /\{\{bet\}\} is an object/);
+});
 test('checkProblems: {{named.<name>}} is the key the same answer gives that plan name', () => {
   const env = { outcome: 'ok', value: { items: [{ name: 'a', key: 'A-1' }, { name: 'b', key: 'A-2' }], links: [{ from: 'A-2', type: 'follows', to: 'A-1' }] } };
   const check = [{ at: 'value.links[]', some: { from: '{{named.b}}', type: 'follows', to: '{{named.a}}' } }];
@@ -250,8 +263,14 @@ test('coverageProblems: a check names an array the entry reads and one way to ju
   const e = (o) => ({ seed: [], entries: [entry({ row: rows[0].row, argv: ['link', 'ls', 'X', '--json'], reads: ['value.links[].type'], types: { 'value.links[].type': 'string' }, ...o })] });
   assert.deepEqual(s.coverageProblems(rows, e({ checks: [{ at: 'value.links[]', some: { type: 'follows' } }], replay: { same: ['value.links[].type'], checks: [{ at: 'value.links[]', all: { type: 'follows' } }] } })), []);
   assert.deepEqual(s.coverageProblems(rows, e({ checks: [{ at: 'value.links', some: { type: 'follows' } }, { at: 'value.web_links[]', none: { id: 1 } }, { at: 'value.links[]' }, { at: 'value.links[]', some: { type: 'x' }, none: { type: 'y' } }, { at: 'value.links[]', all: {} }] })), [
-    `${rows[0].row}: checks[0] needs \`at\`, the array it reads (a path ending in [])`, `${rows[0].row}: checks[1]: value.web_links[] names no array the entry reads`,
+    `${rows[0].row}: checks[0]: value.links names no object the entry reads a field of (an array's path ends in [])`, `${rows[0].row}: checks[1]: value.web_links[] names no array the entry reads`,
     `${rows[0].row}: checks[2] needs exactly one of some, none, all`, `${rows[0].row}: checks[3] needs exactly one of some, none, all`, `${rows[0].row}: checks[4]: all needs at least one field to compare`]);
+  assert.deepEqual(s.coverageProblems(rows, e({ checks: [{ some: { type: 'x' } }] })), [`${rows[0].row}: checks[0] needs \`at\`, the array it reads (a path ending in []) or the object`]);
+  // an object a show answers: a field of it is read
+  const show = [r('`reeve template show <id> --json`', '`value`: `id`')];
+  const shown = (o) => ({ seed: [], entries: [entry({ row: show[0].row, argv: ['template', 'show', '1', '--json'], reads: ['value.id'], types: { 'value.id': 'number' }, ...o })] });
+  assert.deepEqual(s.coverageProblems(show, shown({ checks: [{ at: 'value', all: { id: 1 } }] })), []);
+  assert.deepEqual(s.coverageProblems(show, shown({ checks: [{ at: 'value.id', all: { id: 1 } }] })), [`${show[0].row}: checks[0]: value.id names no object the entry reads a field of (an array's path ends in [])`]);
   assert.deepEqual(s.coverageProblems(rows, e({ replay: { same: [] } })), [`${rows[0].row}: replay needs \`same\`, the paths a second run must answer unchanged`]);
   assert.deepEqual(s.coverageProblems(rows, e({ replay: { same: ['value.links[].label'], checks: [{ at: 'value.links[]', every: { type: 'x' } }] } })), [
     `${rows[0].row}: replay.checks[0] needs exactly one of some, none, all`, `${rows[0].row}: replay.same value.links[].label is not read`]);

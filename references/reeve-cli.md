@@ -53,6 +53,15 @@ them. A `not_found` from `reeve link` when every key the command names was read 
 of this run means the planner is older, not that an item is missing; to tell, run
 `reeve link ls <KEY> --json` on a key just read: `not_found` there means the planner has no item
 links.
+Brief templates (`reeve template`, and `--template` and `--no-template` on `initiative create` and
+`epic create`) need `reeve-planner` 0.9.0 or later and a planner running it: an older CLI answers
+`reeve template` and the two flags with a usage error (an unrecognized subcommand, an unexpected
+argument), and a create it sends without a brief starts empty even where a default is marked: tell
+the user to update the CLI and go on without brief templates. An older planner answers every
+`reeve template` with a `not_found` error (exit 1) and ignores what the two flags ask for: a create
+with `--template` answers `ok` with an empty brief, whatever name it gave. So before a create with
+`--template`, run `reeve template ls --json`: `not_found` there means the planner has no brief
+templates; say so, and go on without them (see *Brief templates*).
 
 ## Updating the CLI
 
@@ -148,7 +157,9 @@ your text (a teammate's edit is kept, never overwritten), show it, and retry onc
 seconds) — wait that many seconds (a few seconds when none is given), then run the SAME command
 again, with the SAME `--idempotency-key` for a create: a create retried with its key answers the
 same item, never a duplicate (an `apply` retried with the same plan file and `id` likewise). Retry at most twice; then show the code and message and stop that
-step. `decision link` — see its section. A usage error (an unknown flag, a value starting with
+step. `decision link` — see its section. `code: forbidden` from `reeve template create`, `edit`,
+`rm` or `default` means the signed-in user is not an admin, not that the sign-in failed: do not
+stop the run or send the user to `reeve auth login` (*Brief templates*). A usage error (an unknown flag, a value starting with
 `-`) prints the CLI's usage text on stderr and no envelope (stdout is empty), exit 1: fix the
 command, never retry it as it was.
 
@@ -190,12 +201,12 @@ One exception: the comment that marks a duplicate, `Duplicate of <DUP>.` on item
 | `reeve initiative show <KEY> --json` | `value.brief`, `.horizon`, `.owner` (null = none), `.target_month` (a month such as 2027-03, null = none), `.external_ref` (null = none), `.discovery_complete` (null = not complete), `.version`, `.links[]`, `.web_links[]` (its item links and web links, as `reeve link ls` answers them; see *Item links and web links*) |
 | `reeve initiative ls --json` | `value[]`: `key`, `title`, `horizon` |
 | `reeve search <text> --json` | `value[]`: `key`, `item` (initiative, epic or story), `kind` (null = not a story), `title`, `matched[]` (which of title, brief, description and external_ref contain the text); newest first, at most 50, empty when nothing matches |
-| `reeve initiative create --title <title> --horizon <bucket> --brief-file <brief file> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json` | `value.key`, `value.version`; a bucket the planner does not have is a `validation` error |
+| `reeve initiative create --title <title> --horizon <bucket> --brief-file <brief file> [--owner <email>] [--target-month <YYYY-MM>] --idempotency-key <key> --json` | `value.key`, `value.version`; a bucket the planner does not have is a `validation` error; the brief file is the brief, so no brief template is applied (see *Brief templates*) |
 | `reeve initiative edit <KEY> [--brief-file <brief file>] [--owner <email>] [--target-month <YYYY-MM>] --version <n> --json` | `value.version` |
 | `reeve initiative discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
 | `reeve epic show <KEY> --json` | `value.brief`, `.initiative`, `.discovery_complete`, `.promise` (null = none): `{fact, due, past}` (see *Promises*), `.version`, `.links[]`, `.web_links[]` (its item links and web links, as `reeve link ls` answers them) |
 | `reeve epic ls [--initiative <KEY>] --json` | `value[]`: `key`, `title`, `initiative` |
-| `reeve epic create --initiative <KEY> --title <title> --brief-file <brief file> --idempotency-key <key> --json` | `value.key`, `value.version` |
+| `reeve epic create --initiative <KEY> --title <title> --brief-file <brief file> --idempotency-key <key> --json` | `value.key`, `value.version`; the brief file is the brief, so no brief template is applied (see *Brief templates*) |
 | `reeve epic edit <KEY> --brief-file <brief file> --version <n> --json` | `value.version` |
 | `reeve epic discovery <KEY> --complete --version <n> --json` | `value.discovery_complete` |
 | `reeve initiative findings <KEY> --json` / `reeve epic findings <KEY> --json` | `value[]`, `.finding`; empty when there are none (see *Findings*) |
@@ -230,6 +241,8 @@ One exception: the comment that marks a duplicate, `Duplicate of <DUP>.` on item
 | `reeve link rm <KEY> follows\|duplicates\|relates-to <OTHER> --json` | `value[]`: `{type, direction, label, item: {key, level, title}}`, the item links the first item has left (empty when none); the item link is named as it was added (`relates-to`: either item first) |
 | `reeve link add <KEY> --url <url> --title <title> --json` | `value[]`: `{id, title, url}`, the item's web links after the add, oldest first |
 | `reeve link rm <KEY> --url <url> --json` | `value[]`: `{id, title, url}`, the web links the item has left (empty when none) |
+| `reeve template ls [--level initiative\|epic] --json` | `value[]`: `id`, `level` (initiative or epic), `name`, `body` (the Markdown text), `is_default` (true on at most one template of a level), `version`; the planner's brief templates, or one level's, initiative templates first and then by name; empty when there are none. No skill reads them yet (see *Brief templates*) |
+| `reeve template show <id> --json` | `value`: one brief template, the same fields |
 
 `decision require` without `--due` writes `no decide-by date; the queue will flag it` to stderr,
 also with `--json`; the envelope is `ok` and the exit status 0. It is a reminder, not an error: pass
@@ -338,6 +351,8 @@ the user asks for what it does, with the command written as shown.
 | `reeve story edit <KEY> --version <n> [--description-file <description file>] [--add-label <label> …] [--remove-label <label> …] --json` | replaces the whole description (through a file), or adds and removes labels (each repeats; a label the story already has is kept once) |
 | `reeve initiative create --title <title> --horizon <bucket> --brief <md> --idempotency-key <key> --json` / `reeve initiative edit <KEY> --brief <md> --version <n> --json` / `reeve epic create --initiative <KEY> --title <title> --brief <md> --idempotency-key <key> --json` / `reeve epic edit <KEY> --brief <md> --version <n> --json` | a one-line brief inline, in place of `--brief-file` (one line, single-quoted, as *Arguments* says) |
 | `reeve story create --epic <KEY> --title <title> --kind story --description <text> --idempotency-key <key> --json` / `reeve story edit <KEY> --version <n> --description <text> --json` | a one-line description inline, in place of `--description-file` |
+| `reeve initiative create --title <title> --horizon <bucket> --template <template name> --idempotency-key <key> --json` / `reeve epic create --initiative <KEY> --title <title> --template <template name> --idempotency-key <key> --json` | starts the brief from the planner's brief template of that level with that name, in place of a brief (`--template` with `--brief` or `--brief-file` is a usage error); a name the level has no template for is a `validation` error and nothing is created; `value.brief` is the brief the item got (see *Brief templates*) |
+| `reeve initiative create --title <title> --horizon <bucket> --no-template --idempotency-key <key> --json` / `reeve epic create --initiative <KEY> --title <title> --no-template --idempotency-key <key> --json` | starts the brief empty: with neither a brief nor `--template`, a create starts from the level's default brief template when an admin has marked one, and `--no-template` asks for none |
 | `reeve story edit <KEY> --version <n> --no-owner --json` | clears the story's owner (`--no-owner` in place of `--owner`) |
 | `reeve initiative edit <KEY> --version <n> --no-owner --no-target-month --json` | clears the initiative's owner and target month (each in place of its setter; either alone is allowed) |
 | `reeve story block <KEY> --by <OTHER> --json` / `reeve story unblock <KEY> --by <OTHER> --json` | records that story `<OTHER>` blocks story `<KEY>`, or takes that back: the blocker is the one relation between items that holds a story back (kb/ADR-0027; an item link never does, see *Item links and web links*). Both are stories (any other item is `not_found`); `value` is empty, and the story's `blocked_by[]` (`reeve story show <KEY> --json`) lists its blockers. Blocking what is blocked, or unblocking what is not, changes nothing |
@@ -777,6 +792,86 @@ a `validation` error (exit 1) with its message to show:
 - **Add or remove** one when the user names it, or confirms one you proposed (*Confirmation*).
   Several additions at once go in a plan (*Plans*), as several creates do. A plan only adds
   (*Plans*): run each removal as its own `reeve link rm`, one after the other.
+
+## Brief templates
+
+A brief template is a named Markdown text that an admin of the planner keeps for one level,
+`initiative` or `epic` (a story has none), and that a new brief can start from. Each level has at
+most one **default**. A template only prefills a brief when the item is created: the item keeps no
+reference to it, nothing is checked against it, and editing or removing a template changes no
+brief. Templates have numeric ids, like decisions. Every member reads them; only an admin writes
+them.
+
+This is not the layout the planning skills write a brief by
+(`<plugin-root>/skills/planning-initiative/reference/brief-template.md`): that file is Lorekeeper's
+and says how a skill sets out a brief; a brief template is a text kept in the planner.
+
+**Which brief a create gets.** `reeve initiative create` and `reeve epic create` decide it by what
+the command passes:
+
+| The create passes | The brief starts as |
+|---|---|
+| `--brief-file <brief file>` or `--brief <md>` | that text, an empty one too (`--brief ''`, an empty file, empty standard input): never a template |
+| `--template <template name>` | the body of the level's template with that name, compared trimmed and without regard to case; a name the level has no template for is a `validation` error ("no initiative brief template is named …") and nothing is created |
+| `--no-template` | empty |
+| none of them | the body of the level's default template; empty when the level has no default |
+
+A brief flag together with `--template`, and `--template` together with `--no-template`, are usage
+errors (exit 1, nothing sent); `--no-template` beside a brief flag changes nothing. The create's
+answer carries the brief the item got (`value.brief`). A create retried with its
+`--idempotency-key` answers the item it made, also when the template was edited or removed in
+between. `reeve apply` never applies a template: a plan's item without `brief` gets an empty brief,
+whatever the default (*Plans*).
+
+**What a skill does.** The planning skills write the brief themselves and create with
+`--brief-file` (one item) or through `reeve apply` (two or more), so a brief template, the default
+included, never reaches an item a skill creates. Keep it so: never leave the brief file out to get
+the default, and never add `--template` or `--no-template` to a create a skill runs. Use a template
+only when the user asks for one by name or asks for the planner's default: then run the create as
+*Other flags* writes it (`--template <template name>`, or with no brief flag for the default), and
+show `value.brief` as what the item starts from. An item made without a brief elsewhere (the web
+client, a person's own command) may hold a template's body with nothing filled in. The planner does
+not mark it: the item names no template, and the `empty_brief` finding (*Findings*) does not
+report a brief that holds a template's text.
+
+**Reading.** `reeve template ls --json` answers every template and
+`reeve template ls --level initiative|epic --json` one level's (*Commands*): each is
+`{id, level, name, body, is_default, version}`, `body` the Markdown text as the admin wrote it and
+`is_default` true on the level's default. `reeve template show <id> --json` answers one. The list
+is empty when the planner has none; an id no template has is `not_found` (exit 1), and a `--level`
+other than `initiative` or `epic` a usage error. In a sentence, name a template by its level and
+name ("the initiative brief template Scenario"), and say which one is the default.
+
+**An admin's commands.** These change what every later create starts from, so a skill runs one only
+when the user asks for exactly that change, as a write under *Confirmation*; it never creates,
+edits or removes a template, or moves the default, on its own judgment. The body is Markdown and
+goes through a file, as a brief does (*Arguments*). None takes an idempotency key.
+
+| Command | What it does |
+|---|---|
+| `reeve template create --level initiative\|epic --name <template name> --body-file <body file> --json` | creates a template; `value` is the template, with `is_default` false and `version` 1 (it is not the default until `template default`). The name is 1 to 100 characters on one line, stored trimmed, and unique at its level whatever its case; the body must not be blank. Creating one that is there with the same body changes nothing and answers the stored template, so a retry is safe; the same name with another body is refused (edit that one) |
+| `reeve template edit <id> --version <n> [--name <template name>] [--body-file <body file>] --json` | renames the template, replaces its whole body, or both; `value` is the template with its new `version`. `--version` is the one last read (`template show`); an edit that changes nothing answers `ok` and keeps the version. The level cannot be changed |
+| `reeve template rm <id> --json` | removes the template; `value` is empty (`{}`). If it was the default, its level has none afterwards. Removing one that is gone is `not_found`, so read the list before a retry |
+| `reeve template default <id> --json` / `reeve template default <id> --clear --json` | marks the template as its level's default, taking the mark off the level's previous one; `--clear` takes the mark off this template if it holds it, and the level then has no default; otherwise nothing changes, and the level's default stays. `value` is the template with its `is_default`; the `version` does not change. Marking the default again changes nothing |
+| `reeve template create --level initiative\|epic --name <template name> --body <md> --json` / `reeve template edit <id> --version <n> --body <md> --json` | a one-line body inline, in place of `--body-file` (the two together are a usage error; `template create` needs one of them) |
+
+**Refusals and errors.** Show the message, and never retry with another name or body of your own.
+
+- `forbidden` (exit 2; the message is the one word "forbidden"): the signed-in user is not an
+  admin of the planner, and only an admin writes templates. This is not a sign-in problem: do not
+  tell the user to run `reeve auth login`, and go on with the run. Say that changing brief templates
+  takes an admin. A member's `template ls` and `template show` still answer. The planner does not
+  ask for a person here: an admin's automation token writes templates too.
+- `validation` (exit 1), each with the planner's message: a name another template of the level has
+  ("the initiative brief template #1 is already named "Scenario": edit that one, or choose another
+  name"; the message gives the id to edit), a name that is not 1 to 100 characters on one line, a
+  blank body, and on `initiative create` or `epic create` a `--template` name the level has no
+  template for.
+- `conflict` (exit 1, with `current`): the `--version` of a `template edit` is stale. Read the
+  template again, show what changed, and retry once with the new version (*Envelope and exit
+  status*).
+- `not_found` (exit 1): no template has that id (`template show`, `edit`, `rm`, `default`), or the
+  planner is older than 0.9.0 (every `reeve template`: see the version notes at the top).
 
 ## Wording the planner's answers
 

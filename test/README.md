@@ -121,7 +121,7 @@ per run; the log is appended to the output shown by `--verbose` and deleted afte
 **The log.** One line per call that passed the fake's validation (a malformed call is not logged, so it never satisfies a log expectation; a valid call the planner refuses is), except `--version`, which the SessionStart hook also runs to decide whether to list the planner skills in its router (a skill's detection shows as `auth status --json`): the argv joined by spaces, newlines inside an argument
 flattened to spaces, e.g. `epic create --initiative GRA-12 --title A --brief one two --idempotency-key planning-initiative:GRA-12:0a1b2c3d:1 --json`.
 
-**What the fake answers.** `--version` prints `reeve-planner 0.8.0-fake`; every other call must
+**What the fake answers.** `--version` prints `reeve-planner 0.9.0-fake`; every other call must
 include `--json` once (anywhere, as the real CLI's global flag) and uses only flags the real CLI has.
 What the real CLI's parser rejects (an unknown command or flag, a missing value, a value starting
 with `-` except `comment add --body`, a flag given twice unless it repeats, `--json` included, a key of `reeve link` or
@@ -239,7 +239,21 @@ Answers use the planner's wire shapes:
   name and that item's key are one item in the self-link check and in the one-URL-per-item checks,
   and a name keeps its level. `REEVE_FAKE_COLLISION=1` adds epic `OLD-1` (a key from an earlier
   prefix) and story GRA-49 migrated from a ticket that was `OLD-1` too, the one case where the two
-  scopes name different items.
+  scopes name different items;
+- brief templates (reeve-planner 0.9.0): nothing is seeded; `template ls [--level initiative|epic]`
+  and `template show <ID>` read the run's state file, and `template create|edit|rm|default` write
+  it under the planner's rules (a name of 1 to 100 characters on one line, one per level whatever
+  its case; a body that is not blank; a create that is there with the same body changes nothing; an
+  edit under the version read, which only a change raises; one default per level, its mark moved
+  or cleared without a new version; `rm` answers `{}` and a second one `not_found`). The fake
+  stands for a member's token, so the four writes answer `forbidden` with exit 2 unless
+  `REEVE_FAKE_ROLE=admin` (below). `initiative create` and `epic create` take `--template <NAME>`
+  and `--no-template` and start the brief as the real CLI and planner do: a brief flag given, an
+  empty one too, is the brief; else the named template of the level (an unknown name is a
+  `validation` error and nothing is created); else nothing with `--no-template`; else the level's
+  default when one is marked. A brief flag with `--template`, and `--template` with
+  `--no-template`, are usage errors. A create replayed by its idempotency key answers its item
+  though the template is gone, and a plan (`apply`) never applies one.
 
 **The real-planner smoke.** `scripts/__tests__/reeve-real-server.test.js` keeps the fake honest.
 `test/fixtures/reeve-real/commands.json` holds a seed and one entry per row of the reference's
@@ -253,7 +267,11 @@ answer holds, judged on the planner's answer and on the fake's, each with its ow
 (an array `at`, and fields of its elements that `some` element, `none` or `all` of them have) and
 `replay` (the same argv once more: the `same` paths answer what the first run's did, and its own
 `checks` hold). The two `link rm` entries check that the removed one is gone and the others stay,
-and `apply` that a second apply answers the same keys, ids and ends with every `created` false. Seven tests always run: every
+and `apply` that a second apply answers the same keys, ids and ends with every `created` false.
+The seed also creates three brief templates and marks one the initiative default, which takes an
+admin: the Reeve smoke's token is one, and the test runs the fake with `REEVE_FAKE_ROLE=admin`. The
+`template ls` entry then checks that one level's list holds the default and leaves the other
+level's out. Seven tests always run: every
 row has exactly one entry, every command form of the row (`story ls --untriaged`, `comment add
 --story`) exactly one run, and every field path in the row's Read column a read at or below it, or a
 reasoned `unread` waiver (a command or a Read added to the reference without a matching entry
@@ -284,6 +302,11 @@ user as owner on entering an active state (in progress, in review, testing).
 
 `REEVE_FAKE_SIGNIN=expired` makes every call but `auth status` answer an `unauthenticated` error
 with exit 2, as the real CLI does for an expired or revoked token.
+
+`REEVE_FAKE_ROLE=admin` makes the fake an admin's token: `auth status` reports `role` `admin`, and
+`template create`, `edit`, `rm` and `default` write. Unset, the role is `member` and each of the
+four answers `{"outcome":"error","code":"forbidden","message":"forbidden"}` with exit 2, as the
+planner answers a member.
 
 `REEVE_FAKE_LINK_CHECK=unreadable` makes `decision link` behave like a link whose immediate
 check could not run: exit 1 with an `ok` envelope (the decision, check `unchecked`) and a

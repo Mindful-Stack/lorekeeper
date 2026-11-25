@@ -21,7 +21,7 @@ test('every call is one log line, newlines flattened', () => {
 });
 test('--version names the fake planner and is not logged (the SessionStart hook probes it too)', () => {
   const r = run(['--version']);
-  assert.equal(r.stdout, 'reeve-planner 0.8.0-fake\n');
+  assert.equal(r.stdout, 'reeve-planner 0.9.0-fake\n');
   assert.equal(r.log, '');
 });
 test('a flag the real CLI lacks is a usage error: no envelope, text on stderr, exit 1', () => {
@@ -1206,4 +1206,156 @@ test('removing an item link or a web link takes exactly that one: the others sta
   assert.deepEqual(call(['link', 'ls', 'GRA-31', '--json']).envelope.value.links.map((l) => `${l.type} ${l.direction} ${l.item.key}`), ['follows out GRA-32', 'relates_to out GRA-12']);
   assert.deepEqual(call(['link', 'rm', 'GRA-31', '--url', 'https://example.com/two', '--json']).envelope.value, [{ id: 1, title: 'One', url: 'https://example.com/one' }, { id: 3, title: 'Three', url: 'https://example.com/three' }]);
   assert.deepEqual(call(['link', 'ls', 'GRA-31', '--json']).envelope.value.web_links.map((w) => w.id), [1, 3]);
+});
+
+// Brief templates (reeve-planner 0.9.0). The fake is a member's token unless REEVE_FAKE_ROLE=admin.
+const ADMIN = { REEVE_FAKE_ROLE: 'admin' };
+const templateArgs = (level, name, body) => ['template', 'create', '--level', level, '--name', name, '--body', body, '--json'];
+const createArgs = (item, n, ...extra) => [item, 'create', '--title', `Item ${n}`, ...(item === 'initiative' ? ['--horizon', 'Now'] : []), ...extra, '--idempotency-key', `planning-initiative:GRA-12:0a1b2c3d:${n}`, '--json'];
+test('every member reads brief templates; only an admin writes them, and a member is answered forbidden, exit 2', () => {
+  const log = freshLog();
+  assert.deepEqual(runIn(log, ['template', 'ls', '--json']).envelope, { outcome: 'ok', value: [] });
+  assert.equal(runIn(log, ['auth', 'status', '--json']).envelope.value.role, 'member');
+  assert.equal(runIn(log, ['auth', 'status', '--json'], ADMIN).envelope.value.role, 'admin');
+  const made = runIn(log, templateArgs('initiative', ' Scenario ', '## Vision'), ADMIN);
+  assert.deepEqual([made.status, made.envelope.value], [0, { id: 1, level: 'initiative', name: 'Scenario', body: '## Vision', is_default: false, version: 1 }]);
+  for (const args of [templateArgs('epic', 'Outline', 'b'), ['template', 'edit', '1', '--version', '1', '--name', 'Mine', '--json'], ['template', 'rm', '1', '--json'],
+    ['template', 'default', '1', '--json'], ['template', 'default', '1', '--clear', '--json']]) {
+    const r = runIn(log, args);
+    assert.deepEqual([r.status, r.envelope], [2, { outcome: 'error', code: 'forbidden', message: 'forbidden' }], args.join(' '));
+  }
+  // nothing a member tried was written, and a member still reads
+  assert.deepEqual(runIn(log, ['template', 'ls', '--json']).envelope.value, [made.envelope.value]);
+  assert.deepEqual(runIn(log, ['template', 'show', '1', '--json']).envelope.value, made.envelope.value);
+  const none = runIn(log, ['template', 'show', '9', '--json']);
+  assert.deepEqual([none.status, none.envelope.code, none.envelope.message], [1, 'not_found', 'not found']);
+});
+test('template create is idempotent by content; a name is one per level whatever its case, and the list is initiative first, then by name', () => {
+  const log = freshLog();
+  const call = (args, input) => runIn(log, args, ADMIN, input);
+  const first = call(templateArgs('initiative', 'Scenario', 'body')).envelope.value;
+  assert.deepEqual(call(templateArgs('initiative', ' scenario ', 'body')).envelope.value, first, 'the same content again answers the stored template');
+  const taken = call(templateArgs('initiative', 'SCENARIO', 'another body'));
+  assert.deepEqual([taken.status, taken.envelope.code, taken.envelope.message], [1, 'validation', 'the initiative brief template #1 is already named "Scenario": edit that one, or choose another name']);
+  assert.equal(call(templateArgs('epic', 'Scenario', 'epic body')).envelope.value.id, 2, 'the same name at the other level is another template');
+  assert.equal(call(templateArgs('initiative', 'Bet', 'b')).envelope.value.id, 3);
+  assert.deepEqual(call(['template', 'ls', '--json']).envelope.value.map((t) => `${t.level} ${t.name}`), ['initiative Bet', 'initiative Scenario', 'epic Scenario']);
+  assert.deepEqual(call(['template', 'ls', '--level', 'epic', '--json']).envelope.value.map((t) => t.id), [2]);
+  for (const [name, body, message] of [['', 'b', "a brief template's name must be 1 to 100 characters on one line"], ['a'.repeat(101), 'b', "a brief template's name must be 1 to 100 characters on one line"],
+    ['two\nlines', 'b', "a brief template's name must be 1 to 100 characters on one line"], ['Blank', '  ', "a brief template's text must not be blank"]]) {
+    const r = call(templateArgs('epic', name, body));
+    assert.deepEqual([r.status, r.envelope.code, r.envelope.message], [1, 'validation', message], JSON.stringify(name));
+  }
+  // the body through a file, unchanged; `-` reads standard input
+  assert.equal(call(['template', 'create', '--level', 'epic', '--name', 'Piped', '--body-file', '-', '--json'], "## Why\n\n- it's piped\n").envelope.value.body, "## Why\n\n- it's piped\n");
+});
+test('what clap refuses of a template command is a usage error: a level, an id, a missing body, both bodies', () => {
+  for (const [args, text] of [
+    [templateArgs('story', 'A', 'b'), /`story` is neither initiative nor epic \(a story has no brief template\)/],
+    [['template', 'ls', '--level', 'story', '--json'], /neither initiative nor epic/],
+    [['template', 'create', '--level', 'epic', '--name', 'A', '--json'], /--body <BODY>/],
+    [['template', 'create', '--level', 'epic', '--name', 'A', '--body', 'b', '--body-file', '-', '--json'], /'--body' cannot be used with '--body-file'/],
+    [['template', 'create', '--name', 'A', '--body', 'b', '--json'], /--level/],
+    [['template', 'show', 'abc', '--json'], /invalid value 'abc' for '<ID>'/],
+    [['template', 'edit', '1', '--name', 'A', '--json'], /--version/],
+    [['template', 'rm', '--json'], /positional/],
+    [['template', 'default', '1', '--version', '1', '--json'], /unexpected argument '--version'/],
+  ]) {
+    const r = spawnSync(fake, args, { encoding: 'utf8', env: { ...process.env, REEVE_FAKE_LOG: freshLog(), ...ADMIN } });
+    assert.deepEqual([r.status, r.stdout], [1, ''], args.join(' '));
+    assert.match(r.stderr, text, args.join(' '));
+  }
+});
+test('template edit goes under the version read and only a change raises it; rm answers empty and a second rm is not_found', () => {
+  const log = freshLog();
+  const call = (args) => runIn(log, args, ADMIN);
+  call(templateArgs('initiative', 'Scenario', 'body'));
+  call(templateArgs('initiative', 'Bet', 'body'));
+  const renamed = call(['template', 'edit', '1', '--version', '1', '--name', 'User scenario', '--json']);
+  assert.deepEqual([renamed.envelope.value.name, renamed.envelope.value.body, renamed.envelope.value.version], ['User scenario', 'body', 2]);
+  const stale = call(['template', 'edit', '1', '--version', '1', '--body', 'stale', '--json']);
+  assert.deepEqual([stale.status, stale.envelope], [1, { outcome: 'error', code: 'conflict', message: 'version conflict: current is 2', current: 2 }]);
+  assert.equal(call(['template', 'edit', '1', '--version', '2', '--json']).envelope.value.version, 2, 'an edit that names nothing changes nothing');
+  assert.equal(call(['template', 'edit', '1', '--version', '2', '--name', 'User scenario', '--json']).envelope.value.version, 2, 'nor does the name it has');
+  const taken = call(['template', 'edit', '1', '--version', '2', '--name', 'bet', '--json']);
+  assert.deepEqual([taken.envelope.code, taken.envelope.message], ['validation', 'the initiative brief template #2 is already named "Bet": edit that one, or choose another name']);
+  assert.equal(call(['template', 'edit', '1', '--version', '2', '--body', '  ', '--json']).envelope.message, "a brief template's text must not be blank");
+  assert.equal(call(['template', 'edit', '1', '--version', '2', '--name', 'user SCENARIO', '--body', 'new', '--json']).envelope.value.version, 3, 'its own name in another case is a rename');
+  assert.equal(call(['template', 'edit', '9', '--version', '1', '--name', 'x', '--json']).envelope.code, 'not_found');
+  assert.deepEqual(call(['template', 'rm', '2', '--json']).envelope, { outcome: 'ok', value: {} });
+  const gone = call(['template', 'rm', '2', '--json']);
+  assert.deepEqual([gone.status, gone.envelope.code], [1, 'not_found']);
+  assert.equal(call(templateArgs('initiative', 'Bet', 'body')).envelope.value.id, 3, 'an id is never given twice');
+});
+test('template default marks one template per level and keeps the version; --clear takes the mark off', () => {
+  const log = freshLog();
+  const call = (args) => runIn(log, args, ADMIN);
+  call(templateArgs('initiative', 'Scenario', 'body'));
+  call(templateArgs('initiative', 'Bet', 'body'));
+  call(templateArgs('epic', 'Outline', 'body'));
+  const defaults = () => call(['template', 'ls', '--json']).envelope.value.filter((t) => t.is_default).map((t) => t.id);
+  assert.deepEqual([call(['template', 'default', '1', '--json']).envelope.value.is_default, call(['template', 'default', '1', '--json']).envelope.value.version], [true, 1]);
+  call(['template', 'default', '3', '--json']);
+  assert.deepEqual(defaults(), [1, 3], 'one per level');
+  assert.equal(call(['template', 'default', '2', '--json']).envelope.value.is_default, true);
+  assert.deepEqual(defaults(), [2, 3], "the mark moved off the level's previous default");
+  assert.equal(call(['template', 'default', '1', '--clear', '--json']).envelope.value.is_default, false, 'clearing a mark that is not there changes nothing');
+  assert.deepEqual(defaults(), [2, 3]);
+  assert.equal(call(['template', 'default', '2', '--clear', '--json']).envelope.value.is_default, false);
+  assert.deepEqual(defaults(), [3]);
+  assert.equal(call(['template', 'default', '9', '--json']).envelope.code, 'not_found');
+  call(['template', 'rm', '3', '--json']);
+  assert.deepEqual(defaults(), [], 'removing the default leaves its level with none');
+});
+test('a create starts from a template only when it passes no brief: --template names one, --no-template none, else the default', () => {
+  const log = freshLog();
+  const call = (args, input) => runIn(log, args, ADMIN, input);
+  const briefOf = (args, input) => { const r = call(args, input); assert.equal(r.status, 0, `${args.join(' ')}: ${r.stdout}`); return r.envelope.value.brief; };
+  assert.equal(briefOf(createArgs('initiative', 1)), '', 'no default marked: empty');
+  call(templateArgs('initiative', 'Scenario', '## Scenario\n'));
+  call(templateArgs('initiative', 'Bet', '## Bet\n'));
+  call(templateArgs('epic', 'Outline', '## Outline\n'));
+  assert.equal(briefOf(createArgs('initiative', 2)), '', 'a template that is not the default is not applied');
+  call(['template', 'default', '1', '--json']);
+  assert.equal(briefOf(createArgs('initiative', 3)), '## Scenario\n', 'the default, asked for by passing nothing');
+  assert.equal(briefOf(createArgs('epic', 4)), '', "the epic level has no default: the initiative's is not it");
+  assert.equal(briefOf(createArgs('initiative', 5, '--template', ' bet ')), '## Bet\n', 'by name, trimmed and whatever its case');
+  assert.equal(briefOf(createArgs('epic', 6, '--template', 'Outline')), '## Outline\n');
+  assert.equal(briefOf(createArgs('initiative', 7, '--no-template')), '');
+  // a brief flag is the brief, an empty one too
+  assert.equal(briefOf(createArgs('initiative', 8, '--brief', '')), '');
+  assert.equal(briefOf(createArgs('initiative', 9, '--brief-file', '-'), ''), '');
+  assert.equal(briefOf(createArgs('initiative', 10, '--brief', 'Mine')), 'Mine');
+  assert.equal(briefOf(createArgs('initiative', 11, '--brief', 'Mine', '--no-template')), 'Mine');
+  // a name the level has no template for: a validation error, nothing created
+  const unknown = call(createArgs('epic', 12, '--template', 'Scenario'));
+  assert.deepEqual([unknown.status, unknown.envelope.code, unknown.envelope.message], [1, 'validation', 'no epic brief template is named "Scenario": `reeve template ls --level epic` lists them']);
+  assert.equal(call(['search', 'Item 12', '--json']).envelope.value.length, 0);
+  // a retry by its key answers the item it made, though the template is gone; a new create naming it is refused
+  call(['template', 'rm', '2', '--json']);
+  const retried = call(createArgs('initiative', 5, '--template', ' bet '));
+  assert.deepEqual([retried.status, retried.envelope.value.brief], [0, '## Bet\n']);
+  assert.equal(call(createArgs('initiative', 13, '--template', 'Bet')).envelope.code, 'validation');
+  // a brief already made does not change with its template
+  const made = call(createArgs('initiative', 3)).envelope.value.key;
+  call(['template', 'edit', '1', '--version', '1', '--body', 'changed', '--json']);
+  assert.equal(call(['initiative', 'show', made, '--json']).envelope.value.brief, '## Scenario\n');
+  // a member's create starts from the default too: reading a template needs no admin
+  assert.equal(runIn(log, createArgs('initiative', 14)).envelope.value.brief, 'changed');
+});
+test('a brief with --template, and --template with --no-template, are usage errors; a plan applies no template', () => {
+  const log = freshLog();
+  for (const [extra, text] of [[['--brief', 'Mine', '--template', 'Scenario'], /'--brief' cannot be used with '--template'/], [['--brief', '', '--template', 'Scenario'], /'--brief' cannot be used with '--template'/],
+    [['--brief-file', '-', '--template', 'Scenario'], /'--brief-file' cannot be used with '--template'/], [['--template', 'Scenario', '--no-template'], /'--template' cannot be used with '--no-template'/]]) {
+    for (const item of ['initiative', 'epic']) {
+      const r = spawnSync(fake, createArgs(item, 1, ...extra), { encoding: 'utf8', input: '', env: { ...process.env, REEVE_FAKE_LOG: log } });
+      assert.deepEqual([r.status, r.stdout], [1, ''], `${item} ${extra.join(' ')}`);
+      assert.match(r.stderr, text);
+    }
+  }
+  assert.equal(fs.existsSync(log), false, 'none of them reached the planner');
+  runIn(log, templateArgs('epic', 'Outline', '## Outline\n'), ADMIN);
+  runIn(log, ['template', 'default', '1', '--json'], ADMIN);
+  const applied = applyIn(log, { id: 'refining-epic:GRA-20:0a1b2c3d:1', epics: [{ name: 'plain', title: 'Plan epic' }] });
+  assert.equal(runIn(log, ['epic', 'show', applied.value.items[0].key, '--json']).envelope.value.brief, '');
 });

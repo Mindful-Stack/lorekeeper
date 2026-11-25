@@ -74,7 +74,8 @@ function baseEnv() {
   for (const k of Object.keys(env)) if (k.startsWith('REEVE_') || k === 'XDG_CONFIG_HOME') delete env[k];
   return env;
 }
-const fakeSide = (bin, dir) => ({ bin, env: { ...baseEnv(), REEVE_CONFIG_DIR: dir, REEVE_FAKE_LOG: path.join(dir, 'log') } });
+// The fake runs as an admin: the seed writes brief templates, which the smoke's token (an admin's) may and a member's may not.
+const fakeSide = (bin, dir) => ({ bin, env: { ...baseEnv(), REEVE_CONFIG_DIR: dir, REEVE_FAKE_LOG: path.join(dir, 'log'), REEVE_FAKE_ROLE: 'admin' } });
 // The files the entries pass by path (--brief-file, apply), written for the run into dir; {{files.<name>}} names each.
 // The plan is the run's own (its id carries the run id) and creates a small tree of its own, a decision, a blocker,
 // two item links and a web link.

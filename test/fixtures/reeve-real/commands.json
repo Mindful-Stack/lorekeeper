@@ -1,5 +1,5 @@
 {
-  "about": "The real-planner smoke (scripts/__tests__/reeve-real-server.test.js). The seed runs first on the planner and on the fake; then every entry, one per row of references/reeve-cli.md's Commands table, in file order. bind stores the answer's value under a name for {{name.field}} placeholders. reads are paths into the envelope (x[] = every element of the array x); types gives each read's JSON types (a|b allowed); may_be_empty lists array paths allowed to be empty; unread waives, with a reason, a path the Read cell names that no read can reach; expect is checked on the planner's answer only. The epic show entry reads PRM-1: the planner's epic the Reeve smoke seeds promised (seed_promise, by its external reference), the fake's GRA-22. refusals run after the entries, on both sides with the same token: each must answer exit 2 with a refused envelope naming its reason (a person's command, refused interactive_only to an agent's token). The seed's last steps give the seeded story, its initiative and the screenshot story item links and web links (kb/ADR-0031), so the reads of `links` and `web_links` check elements and the two link rm entries leave something behind; the epic PRM-1 has none (may_be_empty). checks are judged on each side's own answer (the planner's and the fake's, placeholders bound from that side): each names an array (at) and fields of its elements, and wants some element with them, none, or all (every element, at least one). So a link rm that answers the removed link, or drops one that should stay, fails where the types alone pass. A check's {{named.<name>}} is the key the same answer's value.items[] gives that plan name, so the apply's ends are tied to the items it made (a relates_to is stored lower key first: the initiative, made first). replay runs the entry's argv a second time on each side: every read must reach its declared type, its same paths must reach the values the first run's did, every array under them must hold as many elements and the same records (created aside), and its own checks hold (reeve apply: the same keys, ids and ends, every created false).",
+  "about": "The real-planner smoke (scripts/__tests__/reeve-real-server.test.js). The seed runs first on the planner and on the fake; then every entry, one per row of references/reeve-cli.md's Commands table, in file order. bind stores the answer's value under a name for {{name.field}} placeholders. reads are paths into the envelope (x[] = every element of the array x); types gives each read's JSON types (a|b allowed); may_be_empty lists array paths allowed to be empty; unread waives, with a reason, a path the Read cell names that no read can reach; expect is checked on the planner's answer only. The epic show entry reads PRM-1: the planner's epic the Reeve smoke seeds promised (seed_promise, by its external reference), the fake's GRA-22. refusals run after the entries, on both sides with the same token: each must answer exit 2 with a refused envelope naming its reason (a person's command, refused interactive_only to an agent's token). The seed's last steps give the seeded story, its initiative and the screenshot story item links and web links (kb/ADR-0031), so the reads of `links` and `web_links` check elements and the two link rm entries leave something behind; the epic PRM-1 has none (may_be_empty). checks are judged on each side's own answer (the planner's and the fake's, placeholders bound from that side): each names an array (at) and fields of its elements, and wants some element with them, none, or all (every element, at least one). So a link rm that answers the removed link, or drops one that should stay, fails where the types alone pass. A check's {{named.<name>}} is the key the same answer's value.items[] gives that plan name, so the apply's ends are tied to the items it made (a relates_to is stored lower key first: the initiative, made first). replay runs the entry's argv a second time on each side: every read must reach its declared type, its same paths must reach the values the first run's did, every array under them must hold as many elements and the same records (created aside), and its own checks hold (reeve apply: the same keys, ids and ends, every created false). The seed also makes three brief templates (reeve-planner 0.9.0), which takes an admin: the Reeve smoke's token is one, and the test runs the fake as one (REEVE_FAKE_ROLE=admin). Two are for initiatives, one of them marked the default, and one is for epics, so `template ls --level initiative` must hold the default and the other and leave the epic's out. Every create that follows passes a brief, so the default reaches none of them.",
   "seed": [
     { "bind": "initiative", "argv": ["initiative", "create", "--title", "Skill smoke initiative", "--horizon", "Now", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:1", "--json"] },
     { "bind": "epic", "argv": ["epic", "create", "--initiative", "{{initiative.key}}", "--title", "Skill smoke epic", "--brief", "Seeded by the skill smoke.", "--idempotency-key", "skill-smoke:SEED-1:{{run_id}}:2", "--json"] },
@@ -19,7 +19,11 @@
     { "argv": ["link", "add", "{{story.key}}", "--url", "https://example.com/skill-smoke/extra", "--title", "Skill smoke extra page", "--json"] },
     { "argv": ["link", "add", "{{initiative.key}}", "--url", "https://example.com/skill-smoke/initiative", "--title", "Skill smoke initiative page", "--json"] },
     { "argv": ["link", "add", "{{shot.story}}", "relates-to", "{{story.key}}", "--json"] },
-    { "argv": ["link", "add", "{{shot.story}}", "--url", "https://example.com/skill-smoke/screenshot", "--title", "Skill smoke screenshot page", "--json"] }
+    { "argv": ["link", "add", "{{shot.story}}", "--url", "https://example.com/skill-smoke/screenshot", "--title", "Skill smoke screenshot page", "--json"] },
+    { "bind": "template", "argv": ["template", "create", "--level", "initiative", "--name", "Skill smoke scenario", "--body-file", "{{files.brief}}", "--json"] },
+    { "argv": ["template", "create", "--level", "initiative", "--name", "Skill smoke bet", "--body", "Seeded by the skill smoke.", "--json"] },
+    { "argv": ["template", "create", "--level", "epic", "--name", "Skill smoke outline", "--body", "Seeded by the skill smoke.", "--json"] },
+    { "argv": ["template", "default", "{{template.id}}", "--json"] }
   ],
   "entries": [
     {
@@ -349,6 +353,25 @@
       ],
       "reads": ["value[].id", "value[].title", "value[].url"],
       "types": { "value[].id": "number", "value[].title": "string", "value[].url": "string" }
+    },
+    {
+      "row": "`reeve template ls [--level initiative|epic] --json`",
+      "argv": ["template", "ls", "--level", "initiative", "--json"],
+      "checks": [
+        { "at": "value[]", "all": { "level": "initiative" } },
+        { "at": "value[]", "some": { "name": "Skill smoke scenario", "is_default": true, "version": 1 } },
+        { "at": "value[]", "some": { "name": "Skill smoke bet", "body": "Seeded by the skill smoke.", "is_default": false } },
+        { "at": "value[]", "none": { "name": "Skill smoke outline" } }
+      ],
+      "reads": ["value[].id", "value[].level", "value[].name", "value[].body", "value[].is_default", "value[].version"],
+      "types": { "value[].id": "number", "value[].level": "string", "value[].name": "string", "value[].body": "string", "value[].is_default": "boolean", "value[].version": "number" }
+    },
+    {
+      "row": "`reeve template show <id> --json`",
+      "argv": ["template", "show", "{{template.id}}", "--json"],
+      "reads": ["value.id", "value.level", "value.name", "value.body", "value.is_default", "value.version"],
+      "types": { "value.id": "number", "value.level": "string", "value.name": "string", "value.body": "string", "value.is_default": "boolean", "value.version": "number" },
+      "expect": { "value.level": "initiative", "value.name": "Skill smoke scenario", "value.is_default": true, "value.version": 1 }
     }
   ],
   "refusals": [

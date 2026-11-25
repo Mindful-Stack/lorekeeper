@@ -243,6 +243,116 @@ test('GRA-86: a meta-repo the manifest does not list is still not a repo', (t) =
     assert.match(r.stderr, /repo planner is not in household\.json/);
 });
 
+// A pull request to the team KB itself (GRA-921): a record about the KB's own process scoped to
+// `lore:`, a code record the PR cites, and a patch that adds a new record.
+function kbPullRequest(t) {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    write(path.join(w.shared, '0002-record-format.md'), makeRecord({ number: '0002', fm: { scope: ['lore:knowledge/adrs/**'] } }));
+    w.patch = path.join(w.root, 'change.patch');
+    write(w.patch, 'diff --git a/knowledge/adrs/0003-new.md b/knowledge/adrs/0003-new.md\nnew file mode 100644\n--- /dev/null\n+++ b/knowledge/adrs/0003-new.md\n');
+    w.body = path.join(w.root, 'body.md');
+    write(w.body, '## Decisions\n- Follows: kb/ADR-0001\n');
+    return w;
+}
+const idsAndReasons = (stdout) => stdout.trim().split('\n').map((l) => l.split('\t')[0] + ' ' + l.split('\t')[3]);
+
+test('GRA-921: select --repo names the team KB, and its records keep their kb/ ids', (t) => {
+    const w = kbPullRequest(t);
+    const r = runCli(w.kb, w.env, 'select', '--repo', 'lore', '--diff', w.patch, '--pr-body', w.body);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.deepEqual(idsAndReasons(r.stdout), ['kb/ADR-0001 cited', 'kb/ADR-0002 scope']);
+});
+
+test('GRA-921: select infers the team KB from its checkout', (t) => {
+    const w = kbPullRequest(t);
+    const r = runCli(w.kb, w.env, 'select', '--diff', w.patch, '--json');
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.repo, 'lore');
+    assert.deepEqual(out.candidates.map((c) => [c.id, c.home, c.reasons]), [['kb/ADR-0002', 'shared', ['scope']]]);
+});
+
+test('GRA-921: verdict runs on a pull request to the team KB', (t) => {
+    const w = kbPullRequest(t);
+    const file = path.join(w.root, 'findings.json');
+    write(file, JSON.stringify({ coverage: { checked: ['kb/ADR-0001', 'kb/ADR-0002'], notReviewed: [] }, findings: [] }));
+    const r = runCli(w.kb, w.env, 'verdict', '--findings', file, '--diff', w.patch, '--repo', 'lore', '--pr-body', w.body);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.equal(JSON.parse(r.stdout).blocking, 0);
+});
+
+test('GRA-921: select infers the team KB from its origin remote', (t) => {
+    const w = kbPullRequest(t);
+    write(path.join(w.root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore',
+        repos: [{ name: 'ws' }, { name: 'lore', url: 'git@example.invalid:org/handbook.git' }, { name: 'api' }],
+    }));
+    git(w.kb, w.env, 'remote', 'add', 'origin', 'https://example.invalid/org/handbook.git');
+    const r = runCli(w.kb, w.env, 'select', '--diff', w.patch, '--json');
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.equal(JSON.parse(r.stdout).repo, 'lore');
+});
+
+test('GRA-921: a team KB that is not checked out is refused, not passed with nothing selected', (t) => {
+    const w = kbPullRequest(t);
+    fs.rmSync(w.kb, { recursive: true, force: true });
+    const r = runCli(w.root, w.env, 'select', '--repo', 'lore', '--diff', w.patch);
+    assert.equal(r.code, 2, r.stdout);
+    assert.match(r.stderr, /knowledge base lore is not checked out/);
+});
+
+test('GRA-921: a shared_knowledge_bases repo is still not a repo to select for', (t) => {
+    // Its authors call their own records kb/, which here are the team KB's: a citation would
+    // resolve to the wrong record. Out of scope until a household needs it.
+    const w = workspace(t);
+    write(path.join(w.root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore', shared_knowledge_bases: ['org'],
+        repos: [{ name: 'ws' }, { name: 'lore' }, { name: 'org' }, { name: 'api' }],
+    }));
+    fs.mkdirSync(path.join(w.root, 'org', 'knowledge', 'adrs'), { recursive: true });
+    const r = runCli(w.root, w.env, 'select', '--repo', 'org', '--paths', 'knowledge/adrs/0002-new.md');
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /repo org is not in household\.json/);
+});
+
+test('GRA-921: a code checkout whose origin is named like the KB is still the code repo', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    git(w.api, w.env, 'remote', 'add', 'origin', 'https://example.invalid/fork/lore.git');
+    const r = runCli(w.api, w.env, 'select', '--paths', 'src/Sessions/Store.cs', '--json');
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.repo, 'api');
+    assert.deepEqual(out.candidates.map((c) => c.id), ['kb/ADR-0001']);
+});
+
+test('GRA-921: a team KB that coincides with a code repo\'s home selects that repo\'s records by citation only', (t) => {
+    // Their globs are relative to the code repo's root (local scope), so they say nothing about
+    // the KB's paths; the id keeps the code repo's prefix, as the catalogue lists it.
+    const w = workspace(t);
+    write(path.join(w.root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore',
+        repos: [{ name: 'ws' }, { name: 'lore' }, { name: 'api', adrDir: '../lore/knowledge/adrs' }],
+    }));
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord({ prefix: 'api', fm: { id: undefined, scope: ['docs/**'] } }));
+    write(path.join(w.shared, '0002-cache.md'), makeRecord({ prefix: 'api', number: '0002', fm: { id: undefined, scope: ['knowledge/**'] } }));
+    const body = path.join(w.root, 'body.md');
+    write(body, '## Decisions\n- Follows: api/ADR-0001\n');
+    const r = runCli(w.root, w.env, 'select', '--repo', 'lore', '--paths', 'docs/x.md,knowledge/adrs/0003-new.md', '--pr-body', body, '--json');
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.deepEqual(JSON.parse(r.stdout).candidates.map((c) => [c.id, c.status, c.reasons]), [
+        ['api/ADR-0001', 'accepted', ['cited']],
+    ]);
+});
+
+test('GRA-921: a name the manifest does not declare is still not a repo', (t) => {
+    const w = kbPullRequest(t);
+    const r = runCli(w.kb, w.env, 'select', '--repo', 'wiki', '--diff', w.patch);
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /repo wiki is not in household\.json/);
+});
+
 test('I3: --base: a record accepted on the base after branching cannot be rewritten', (t) => {
     const w = workspace(t);
     const file = path.join(w.local, '0001-session-storage.md');

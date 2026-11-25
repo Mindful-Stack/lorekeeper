@@ -23,18 +23,33 @@ function metaRepoHome(homes, repo) {
     return { repo, dir, present: true, coinciding: H.sameDir(dir, homes.sharedHome) };
 }
 
+// A knowledge base is not a local home: its records are a shared home, read under that home's
+// prefix. A pull request to the team KB (or to one of `shared_knowledge_bases`) is checked
+// against the shared records, its own first (GRA-921).
+function kbHome(homes, repo) {
+    if (homes.mode !== 'household') return null;
+    if (repo === homes.teamKb) return { dir: homes.sharedHome, prefix: 'kb' };
+    const other = homes.otherKbs.find((k) => k.name === repo);
+    return other ? { dir: other.dir, prefix: other.name } : null;
+}
+
+function kbNames(homes) {
+    return homes.mode === 'household' ? [homes.teamKb, ...homes.otherKbs.map((k) => k.name)] : [];
+}
+
 function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
     const homes = H.resolveHomes(cwd);
     const root = G.gitRoot(cwd);
     const repo = wanted
         || H.repoFromRemote(homes, root && G.originUrl(root))
         || (homes.mode === 'single' ? homes.localHomes[0].repo : null)
-        || (root ? [G.repoName(root), path.basename(root)].find((n) => homes.localHomes.some((h) => h.repo === n)) : null);
+        || (root ? [G.repoName(root), path.basename(root)].find((n) => homes.localHomes.some((h) => h.repo === n) || kbNames(homes).includes(n)) : null);
     if (!repo) throw new SelectionError('cannot tell which repo this is; pass --repo <name>');
     const local = homes.mode === 'single'
         ? homes.localHomes[0]
         : homes.localHomes.find((h) => h.repo === repo) || metaRepoHome(homes, repo);
-    if (!local) throw new SelectionError(`repo ${repo} is not in household.json`);
+    const kb = local ? null : kbHome(homes, repo);
+    if (!local && !kb) throw new SelectionError(`repo ${repo} is not in household.json`);
     const candidates = [];
     const add = (dir, kind, prefix) => {
         for (const r of R.loadHome(dir).records) {
@@ -44,8 +59,9 @@ function selectFor({ cwd, repo: wanted, diffText, paths: given, prBody }) {
             });
         }
     };
-    add(local.dir, 'local', repo);
-    if (homes.sharedHome && !local.coinciding) add(homes.sharedHome, 'shared', 'kb');
+    if (local) add(local.dir, 'local', repo);
+    if (kb && kb.prefix !== 'kb') add(kb.dir, 'shared', kb.prefix);
+    if (homes.sharedHome && !(local && local.coinciding)) add(homes.sharedHome, 'shared', 'kb');
     const paths = given || parsePatchPaths(diffText);
     const picked = select({ candidates, repo, paths, cited: parseCitedIds(prBody || '') });
     return { repo, homes, picked, candidates };

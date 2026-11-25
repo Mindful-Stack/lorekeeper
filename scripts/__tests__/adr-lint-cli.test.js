@@ -288,13 +288,54 @@ test('GRA-921: a shared_knowledge_bases repo selects from its own home, under it
         schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore', shared_knowledge_bases: ['org'],
         repos: [{ name: 'ws' }, { name: 'lore' }, { name: 'org' }, { name: 'api' }],
     }));
+    // Another team's KB calls its own records kb/, as the team KB does; the catalogue reads them
+    // under the KB's name, and selection must agree.
     const org = path.join(w.root, 'org', 'knowledge', 'adrs');
     fs.mkdirSync(org, { recursive: true });
-    write(path.join(org, '0001-naming.md'), makeRecord({ prefix: 'org', fm: { scope: ['org:knowledge/**'], blast_radius: 'shared' } }));
+    write(path.join(org, '0001-naming.md'), makeRecord({ fm: { scope: ['org:knowledge/**'] } }));
     write(path.join(w.shared, '0001-session-storage.md'), makeRecord({ fm: { scope: ['org:knowledge/**'] } }));
     const r = runCli(w.root, w.env, 'select', '--repo', 'org', '--paths', 'knowledge/adrs/0002-new.md');
     assert.equal(r.code, 0, r.stdout + r.stderr);
     assert.deepEqual(idsAndReasons(r.stdout), ['kb/ADR-0001 scope', 'org/ADR-0001 scope']);
+
+    const patch = path.join(w.root, 'change.patch');
+    write(patch, '+++ b/knowledge/adrs/0002-new.md\n');
+    const body = path.join(w.root, 'body.md');
+    write(body, '## Decisions\n- Follows: org/ADR-0001\n');
+    const file = path.join(w.root, 'findings.json');
+    write(file, JSON.stringify({ coverage: { checked: ['kb/ADR-0001', 'org/ADR-0001'], notReviewed: [] }, findings: [] }));
+    const v = runCli(w.root, w.env, 'verdict', '--findings', file, '--diff', patch, '--repo', 'org', '--pr-body', body);
+    assert.equal(v.code, 0, v.stdout + v.stderr);
+    const out = JSON.parse(v.stdout);
+    assert.deepEqual(out.findings, [], 'a cited org/ record is not dangling');
+    assert.deepEqual(out.coverage.extra, []);
+});
+
+test('GRA-921: a code checkout whose origin is named like the KB is still the code repo', (t) => {
+    const w = workspace(t);
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord());
+    git(w.api, w.env, 'remote', 'add', 'origin', 'https://example.invalid/fork/lore.git');
+    const r = runCli(w.api, w.env, 'select', '--paths', 'src/Sessions/Store.cs', '--json');
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.repo, 'api');
+    assert.deepEqual(out.candidates.map((c) => c.id), ['kb/ADR-0001']);
+});
+
+test('GRA-921: a team KB that coincides with a code repo\'s home keeps that home\'s prefix', (t) => {
+    const w = workspace(t);
+    write(path.join(w.root, 'household.json'), JSON.stringify({
+        schema_version: 2, meta_repo: 'ws', knowledge_base: 'lore',
+        repos: [{ name: 'ws' }, { name: 'lore' }, { name: 'api', adrDir: '../lore/knowledge/adrs' }],
+    }));
+    write(path.join(w.shared, '0001-session-storage.md'), makeRecord({ prefix: 'api', fm: { id: undefined, scope: ['knowledge/adrs/**'] } }));
+    const body = path.join(w.root, 'body.md');
+    write(body, '## Decisions\n- Follows: api/ADR-0001\n');
+    const r = runCli(w.root, w.env, 'select', '--repo', 'lore', '--paths', 'knowledge/adrs/0002-new.md', '--pr-body', body, '--json');
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.deepEqual(JSON.parse(r.stdout).candidates.map((c) => [c.id, c.home, c.status, c.reasons]), [
+        ['api/ADR-0001', 'local', 'accepted', ['scope', 'cited']],
+    ]);
 });
 
 test('GRA-921: a name the manifest does not declare is still not a repo', (t) => {
